@@ -13,13 +13,13 @@ from app.worker.runtime import deploy_locked
 
 def test_blocked_without_a_stack_directory():
     reason = deploy_locked("")
-    assert "kein eigenes Stack-Verzeichnis" in reason
+    assert "no stack directory of its own" in reason
     assert "check" in reason          # the agent learns what to do instead
 
 
 def test_traccoon_itself_is_blocked(monkeypatch):
     monkeypatch.setenv("SELF_STACK_DIR", "/opt/docker/stacks/traccoon")
-    assert "Wartungs-Update" in deploy_locked("/opt/docker/stacks/traccoon/")
+    assert "maintenance update" in deploy_locked("/opt/docker/stacks/traccoon/")
 
 
 def test_a_foreign_project_may_not(monkeypatch):

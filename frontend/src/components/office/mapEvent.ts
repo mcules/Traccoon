@@ -114,8 +114,9 @@ function ensure(ev: Ev, roster: Roster): Cmd {
 
 /** What the runtime really returns as an error, the same list as in
  *  `services/office.py::ERROR_PREFIXES`. */
-const ERROR_PREFIXES = ["FEHLER:", "FEHLER ", "TOOL-FEHLER:", "FS-FEHLER:", "CHECK-FEHLER:",
-                        "❌", "⛔"];
+const ERROR_PREFIXES = ["ERROR:", "ERROR ", "TOOL-ERROR:", "FS-ERROR:", "CHECK-ERROR:",
+                        "FEHLER:", "FEHLER ", "TOOL-FEHLER:", "FS-FEHLER:", "CHECK-FEHLER:",
+                        "\u274C", "\u26D4"];
 
 /** The result of a tool, **three valued**.
  *

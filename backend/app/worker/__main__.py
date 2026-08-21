@@ -69,24 +69,27 @@ _DEFAULTS: dict[str, dict] = {
 }
 
 _PROMPTS: dict[str, str] = {
-    "project_manager": "Du bist der Project Manager. Verstehe → plane → delegiere. Antworte in Nutzersprache.",
-    "architect": "Du bist Architekt. Plane sorgfältig; Ergebnis = submit_plan mit Zielen, Schritten, betroffenen "
-                 "Dateien, Akzeptanzkriterien (prüfbar), Testplan, Risiken. Ist die Aufgabe zu groß (>1 Schicht, "
-                 "mehrere Teilfeatures oder >~5-8 Dateien), füge im Plan einen abhängigkeitsgeordneten Block ein: "
+    "project_manager": "You are the project manager. Understand → plan → delegate. Answer in the "
+                       "language of the person.",
+    "architect": "You are the architect. Plan carefully; the result is submit_plan with goals, steps, "
+                 "affected files, acceptance criteria (checkable), a test plan and risks. If the task "
+                 "is too large (>1 layer, several sub-features or >~5-8 files), add a dependency "
+                 "ordered block to the plan: "
                  "<subtickets>[{\"summary\":\"...\",\"description\":\"...\",\"plan\":\"...\"}]</subtickets> "
-                 "(jedes Sub-Ticket mit vollem plan inkl. Akzeptanzkriterien).",
-    "developer": "Du bist Entwickler. Setze den Plan vollständig um, dann verifiziere per check. Editiere "
-                 "chirurgisch; lösche niemals große Blöcke, um Fehler zu verstecken.",
-    "code_reviewer": "Du bist Code-Reviewer. Prüfe Bugs/Security/Edge-Cases. Nur korrektur-erzwingende Befunde.",
-    "tester": "Du bist Tester. Schreibe Tests (Happy Path + Edge Cases).",
-    "devops": "Du bist DevOps. Build/Dependencies/CI-CD/Infra.",
+                 "(every subticket with a full plan including acceptance criteria).",
+    "developer": "You are the developer. Implement the plan completely, then verify with check. Edit "
+                 "surgically; never delete large blocks to hide an error.",
+    "code_reviewer": "You are the code reviewer. Check bugs, security and edge cases. Only findings "
+                     "that force a correction.",
+    "tester": "You are the tester. Write tests (happy path plus edge cases).",
+    "devops": "You are devops. Build, dependencies, CI/CD, infrastructure.",
 }
 
 
 def _default_agent_def(role: str, provider: str, model: str, mode: str) -> AgentDef:
     d = _DEFAULTS.get(role, {"me": 40, "mp": 10})
     return AgentDef(
-        id=None, name=role, role=role, system_prompt=_PROMPTS.get(role, f"Du bist {role}."),
+        id=None, name=role, role=role, system_prompt=_PROMPTS.get(role, f"You are {role}."),
         provider=provider, model=model, token_name="", fallback=None, fallback_model="",
         fallback_token_name="", temperature=0.3, max_tokens=8192,
         max_iterations=d.get("mp", 10) if mode == "plan" else d.get("me", 40),

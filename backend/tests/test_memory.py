@@ -1,6 +1,6 @@
 """Memory of the agents in the Obsidian vault (TRA-30).
 
-The most important test here is `test_erinnere_dich_baut_target_als_objekt`: the obsidian MCP
+The most important test here is `test_remember_builds_the_target_as_an_object`: the obsidian MCP
 describes `target` as a `oneOf` without a `type`, and older models send a string for it
 instead of an object, and then every call ends in `MCP error -32602`. Because Traccoon builds
 the argument itself, that cannot happen here; the test records it.
@@ -55,20 +55,20 @@ ROOT = "04 Traccoon/Gedächtnis"
 
 def test_paths():
     """Every area has its note; areas that do not fit yield no path."""
-    assert note_path(ROOT, "mensch") == f"{ROOT}/Mensch.md"
+    assert note_path(ROOT, "person") == f"{ROOT}/Mensch.md"
     assert note_path(ROOT, "agent", "developer") == f"{ROOT}/Agent-developer.md"
-    assert note_path(ROOT, "projekt", "developer", "TRA") == f"{ROOT}/Projekt-TRA.md"
+    assert note_path(ROOT, "project", "developer", "TRA") == f"{ROOT}/Projekt-TRA.md"
     # Without a role respectively a project the note does not exist: the caller has to take 'mensch'.
     assert note_path(ROOT, "agent") is None
-    assert note_path(ROOT, "projekt", "developer") is None
+    assert note_path(ROOT, "project", "developer") is None
     # No folder configured means the function is off.
-    assert note_path("", "mensch") is None
-    assert note_path("  ", "mensch") is None
+    assert note_path("", "person") is None
+    assert note_path("  ", "person") is None
 
 
 def test_paths_without_a_path_change():
     """Role and project key must not be able to leave the folder."""
-    p = note_path(ROOT, "projekt", "", "../../etc")
+    p = note_path(ROOT, "project", "", "../../etc")
     assert p is not None and ".." not in p and p.count("/") == ROOT.count("/") + 1
 
 
@@ -82,7 +82,7 @@ async def test_recall_collects_from_the_general_to_the_specific():
     text = await read_memory(mcp, ROOT, "developer", "TRA")
     assert text.index("Commit-Betreffe") < text.index("Tests mitliefern") \
         < text.index("Migration in beiden")
-    assert "## Über deinen Menschen" in text and "## Für dieses Projekt" in text
+    assert "## About your person" in text and "## For this project" in text
 
 
 async def test_a_missing_note_on_recall_is_not_an_error():
@@ -110,8 +110,8 @@ async def test_without_a_vault_it_tells_the_agent(db):
     """Without a folder set, the agent gets a clear refusal instead of an error."""
     u = await make_user(db, "ohnevault")
     mcp = FakeMcp()
-    out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
-                                 {"bereich": "mensch", "text": "irgendwas"})
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": "person", "text": "irgendwas"})
     assert out == NO_MEMORY
     assert mcp.calls == []
 
@@ -126,9 +126,9 @@ async def test_remember_builds_the_target_as_an_object(db):
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "# Mensch\n\n"})
-    out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
-                                 {"bereich": "mensch", "text": "Commit-Betreffe auf Deutsch."})
-    assert "Gemerkt" in out
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": "person", "text": "Commit-Betreffe auf Deutsch."})
+    assert "Noted" in out
     for _name, args in mcp.calls:
         assert isinstance(args["target"], dict), "target as a string, MCP error -32602"
         assert args["target"]["type"] == "path"
@@ -142,10 +142,10 @@ async def test_remember_creates_a_missing_note(db):
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp()
-    out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
-                                 {"bereich": "agent", "text": "Tests mitliefern."},
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": "agent", "text": "Tests mitliefern."},
                                  agent_role="developer")
-    assert "Gemerkt" in out
+    assert "Noted" in out
     assert mcp.names() == ["obsidian__obsidian_append_to_note", "obsidian__obsidian_write_note"]
     assert "Tests mitliefern." in mcp.notes[f"{ROOT}/Agent-developer.md"]
 
@@ -156,9 +156,9 @@ async def test_remember_reports_failure(db):
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp(fail={"obsidian__obsidian_append_to_note", "obsidian__obsidian_write_note"})
-    out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
-                                 {"bereich": "mensch", "text": "etwas"})
-    assert out.startswith("FEHLER")
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": "person", "text": "etwas"})
+    assert out.startswith("ERROR")
 
 
 async def test_a_project_area_without_a_project(db):
@@ -167,9 +167,9 @@ async def test_a_project_area_without_a_project(db):
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp()
-    out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
-                                 {"bereich": "projekt", "text": "x"}, agent_role="assistent")
-    assert out.startswith("FEHLER") and "mensch" in out
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": "project", "text": "x"}, agent_role="assistent")
+    assert out.startswith("ERROR") and "person" in out
     assert mcp.calls == []
 
 
@@ -181,9 +181,9 @@ async def test_forget_removes_only_the_matching_line(db):
     mcp = FakeMcp({f"{ROOT}/Mensch.md":
                    "# Mensch\n\n- [2026-01-01] Commit-Betreffe auf Englisch.\n"
                    "- [2026-01-02] Keine Werbemails melden.\n"})
-    out = await call_memory_tool(db, mcp, u.id, "vergiss",
-                                 {"bereich": "mensch", "textfragment": "Englisch"})
-    assert "1 Zeile" in out
+    out = await call_memory_tool(db, mcp, u.id, "forget",
+                                 {"area": "person", "fragment": "Englisch"})
+    assert "1 line" in out
     remainder = mcp.notes[f"{ROOT}/Mensch.md"]
     assert "Englisch" not in remainder and "Keine Werbemails melden." in remainder
 
@@ -194,9 +194,9 @@ async def test_forget_without_hits_changes_nothing(db):
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "- [2026-01-01] Eine Vorgabe.\n"})
-    out = await call_memory_tool(db, mcp, u.id, "vergiss",
-                                 {"bereich": "mensch", "textfragment": "gibtsnicht"})
-    assert "nichts geändert" in out
+    out = await call_memory_tool(db, mcp, u.id, "forget",
+                                 {"area": "person", "fragment": "gibtsnicht"})
+    assert "nothing changed" in out
     assert "obsidian__obsidian_write_note" not in mcp.names()
 
 
@@ -206,7 +206,7 @@ async def test_search_stays_within_the_memory_folder(db):
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp()
-    out = await call_memory_tool(db, mcp, u.id, "gedaechtnis_suchen", {"suche": "Commit"})
+    out = await call_memory_tool(db, mcp, u.id, "memory_search", {"query": "Commit"})
     assert "Commit" in out
     name, args = mcp.calls[0]
     assert name == "obsidian__obsidian_search_notes"
@@ -375,15 +375,15 @@ async def test_the_review_remembers_and_counts_tokens(db, monkeypatch):
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "# Mensch\n\n"})
 
     replies = [
-        FakeResp(tool_calls=[FakeCall("erinnere_dich",
-                                      {"bereich": "mensch", "text": "Deutsche Commits."})]),
+        FakeResp(tool_calls=[FakeCall("remember",
+                                      {"area": "person", "text": "Deutsche Commits."})]),
         FakeResp(text="nichts"),
     ]
     seen: list[list[dict]] = []
 
     async def fake_chat(**kw):
         assert {t["function"]["name"] for t in kw["tools"]} == {
-            "erinnere_dich", "vergiss", "gedaechtnis_suchen"}, "only memory tools"
+            "remember", "forget", "memory_search"}, "only memory tools"
         seen.append(list(kw["messages"]))
         return replies.pop(0)
 
@@ -405,14 +405,14 @@ async def test_the_review_remembers_and_counts_tokens(db, monkeypatch):
                                      tokens={}, base_urls={})
     assert (ein, aus, cache) == (20, 10, 0)          # two turns
     assert "Deutsche Commits." in mcp.notes[f"{ROOT}/Mensch.md"]
-    assert any(t == "erinnere_dich" for _r, t, _c in log_line)
+    assert any(t == "remember" for _r, t, _c in log_line)
 
     # The assignment has to stand as a user turn at the end: role=system would be rebuilt
     # into a system block at Anthropic and would no longer stand at the end of the
     # conversation. And the closing summary of the run belongs before it: it is its result.
     last = seen[0][-2:]
     assert last[0] == {"role": "assistant", "content": "Habe alles erledigt."}
-    assert last[1]["role"] == "user" and "Rückschau" in last[1]["content"]
+    assert last[1]["role"] == "user" and "A look back at this run" in last[1]["content"]
 
 
 async def test_a_review_without_a_lesson_writes_nothing(db, monkeypatch):
@@ -472,21 +472,21 @@ async def test_the_review_refuses_foreign_tools(db, monkeypatch):
 
     await _reflect(db=db, mcp=mcp, agent=agent, owner_id=u.id, project_key="",
                    messages=[], summary="", log_line=log, tokens={}, base_urls={})
-    assert any("FEHLER" in g for g in reported)
+    assert any("ERROR" in g for g in reported)
     assert mcp.calls == []
 
 
-@pytest.mark.parametrize("area", ["quatsch", "", "MENSCH "])
+@pytest.mark.parametrize("area", ["quatsch", "", "PERSON "])
 async def test_an_unknown_area(db, area):
     """An invented scope writes nowhere."""
     u = await make_user(db, f"bereich{abs(hash(area)) % 1000}")
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "x"})
-    out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
-                                 {"bereich": area, "text": "y"})
-    if area.strip().lower() == "mensch":
-        assert "Gemerkt" in out          # case and spaces are forgivable
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": area, "text": "y"})
+    if area.strip().lower() == "person":
+        assert "Noted" in out          # case and spaces are forgivable
     else:
-        assert out.startswith("FEHLER")
+        assert out.startswith("ERROR")
         assert mcp.calls == []

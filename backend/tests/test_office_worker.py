@@ -199,7 +199,7 @@ async def test_a_failing_tool_is_provably_failed(db, make_run):
         answer("fertig"),
     ])
     end = next(s for s in await steps(db) if s.kind == "tool_result")
-    assert end.ok is False and end.content.startswith("FEHLER:")
+    assert end.ok is False and end.content.startswith("ERROR:")
     assert end.target == "gibtsnicht"      # the label from the table, not guessed
 
 

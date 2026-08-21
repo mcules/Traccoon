@@ -31,7 +31,7 @@ from .providers.base import ProviderError
 from .providers.router import router
 from .assistant_gate import gate_check
 from .tools_memory import (
-    MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLEXION_PROMPT, call_memory_tool, memory_root, read_memory,
+    MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLECTION_PROMPT, call_memory_tool, memory_root, read_memory,
 )
 from .compaction import compact as _compact
 from .compaction import handover as _handover
@@ -87,62 +87,62 @@ _ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "s
 
 SUBMIT_PLAN_TOOL = {"type": "function", "function": {
     "name": "submit_plan",
-    "description": "Reiche den fertigen Umsetzungsplan (Markdown) ein. Beendet die Planungsphase "
-                   "– der Plan geht zur Freigabe an den Menschen.",
+    "description": "Submit the finished implementation plan (markdown). Ends the planning phase "
+                   "— the plan goes to a person for approval.",
     "parameters": {"type": "object", "properties": {
-        "plan": {"type": "string", "description": "Vollständiger Plan in Markdown"},
-        "summary": {"type": "string", "description": "1–3 Sätze: was wurde geplant?"}},
+        "plan": {"type": "string", "description": "The complete plan in markdown"},
+        "summary": {"type": "string", "description": "1-3 sentences: what was planned?"}},
         "required": ["plan"]}}}
 
 ASK_HUMAN_TOOL = {"type": "function", "function": {
     "name": "ask_human",
-    "description": "Stelle dem Menschen eine Rückfrage, wenn du blockiert bist und ohne Antwort nicht "
-                   "weiterarbeiten kannst. Beendet den Lauf bis zur Antwort. Nur bei echten Blockern.",
+    "description": "Ask the person a question when you are blocked and cannot work on without an "
+                   "answer. Ends the run until the answer arrives. Only for real blockers.",
     "parameters": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}}}
 
 CONTINUE_LATER_TOOL = {"type": "function", "function": {
     "name": "continue_later",
-    "description": "Signalisiere, dass du noch eine Runde brauchst. Traccoon startet automatisch eine "
-                   "Fortsetzung mit demselben Worktree-Stand. NIEMALS zusammen mit ask_human.",
+    "description": "Signal that you need another round. Traccoon starts a continuation with the "
+                   "same worktree state automatically. NEVER together with ask_human.",
     "parameters": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}}}
 
 FS_READ_TOOL = {"type": "function", "function": {
     "name": "fs_read",
-    "description": "Datei im Projekt-Workspace lesen (mit Zeilennummern). `path` relativ zur Projektwurzel. "
-                   "Große Dateien seitenweise via `offset`/`limit`.",
+    "description": "Read a file in the project workspace (with line numbers). `path` is relative to "
+                   "the project root. Read large files page by page with `offset`/`limit`.",
     "parameters": {"type": "object", "properties": {
         "path": {"type": "string"}, "offset": {"type": "integer"}, "limit": {"type": "integer"}},
         "required": ["path"]}}}
 FS_LIST_TOOL = {"type": "function", "function": {
-    "name": "fs_list", "description": "Dateibaum im Projekt-Workspace auflisten.",
+    "name": "fs_list", "description": "List the file tree in the project workspace.",
     "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": []}}}
 FS_WRITE_TOOL = {"type": "function", "function": {
-    "name": "fs_write", "description": "Datei schreiben/überschreiben (legt Verzeichnisse an).",
+    "name": "fs_write", "description": "Write or overwrite a file (creates directories).",
     "parameters": {"type": "object", "properties": {
         "path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}}}
 FS_EDIT_TOOL = {"type": "function", "function": {
     "name": "fs_edit",
-    "description": "Textstelle ersetzen. `old` muss EXAKT der Dateiinhalt sein (OHNE Zeilennummern-Präfix). "
-                   "Alle Vorkommen von `old` werden durch `new` ersetzt.",
+    "description": "Replace a passage. `old` has to be EXACTLY the file content (WITHOUT the line "
+                   "number prefix). Every occurrence of `old` is replaced by `new`.",
     "parameters": {"type": "object", "properties": {
         "path": {"type": "string"}, "old": {"type": "string"}, "new": {"type": "string"}},
         "required": ["path", "old", "new"]}}}
 CHECK_TOOL = {"type": "function", "function": {
-    "name": "check", "description": "Baut/prüft das Projekt OHNE Deploy (verify_command). Rufe dies nach "
-    "fs_write/fs_edit und behebe alle Fehler, BEVOR du `deploy` rufst.",
+    "name": "check", "description": "Builds/checks the project WITHOUT a deploy (verify_command). Call "
+    "this after fs_write/fs_edit and fix every error BEFORE you call `deploy`.",
     "parameters": {"type": "object", "properties": {}}}}
 DEPLOY_TOOL = {"type": "function", "function": {
-    "name": "deploy", "description": "Baut das Projekt neu und startet es (via Deployer). Wartet auf Ergebnis.",
+    "name": "deploy", "description": "Rebuilds the project and starts it (through the deployer). Waits for the result.",
     "parameters": {"type": "object", "properties": {}}}}
 SCREENSHOT_TOOL = {"type": "function", "function": {
-    "name": "screenshot", "description": "Screenshot der gerenderten Projekt-Seite (Vision) zur UI-Kontrolle. "
-    "`target` = Hash-Route, z.B. 'q/NA101' oder leer.",
+    "name": "screenshot", "description": "A screenshot of the rendered project page (vision) to check the "
+    "UI. `target` = a hash route, 'q/NA101' say, or empty.",
     "parameters": {"type": "object", "properties": {"target": {"type": "string"}}, "required": []}}}
 READ_ATTACHMENT_TOOL = {"type": "function", "function": {
-    "name": "read_attachment", "description": "Liest einen an DIESES Ticket angehängten Anhang. "
-    "Bilder/Screenshots werden dir als Bild gezeigt (Vision), Text-Dateien als Text. "
-    "`name` = Dateiname des Anhangs (siehe die Anhang-Liste im Auftrag).",
-    "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "Dateiname des Anhangs"}},
+    "name": "read_attachment", "description": "Reads an attachment of THIS ticket. Images and "
+    "screenshots are shown to you as an image (vision), text files as text. "
+    "`name` = the file name of the attachment (see the attachment list in the assignment).",
+    "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "The file name of the attachment"}},
                    "required": ["name"]}}}
 OPEN_TASKS_TOOL = {"type": "function", "function": {
     "name": "open_tasks", "description": "Offene, einem Agenten zugewiesene Tickets (read-only).",
@@ -150,45 +150,46 @@ OPEN_TASKS_TOOL = {"type": "function", "function": {
 CODEGRAPH_TOOL = {"type": "function", "function": {
     "name": "codegraph",
     "description": (
-        "Code-Wissensgraph dieses Projekts abfragen — nutze das ZUERST, um Symbole, Aufrufwege und "
-        "Blast-Radius zu verstehen, statt viele Dateien einzeln zu lesen (spart Tokens). `explore` gibt "
-        "die relevanten Symbol-Quellen VERBATIM zurück; dort gezeigte Dateien musst du NICHT nochmal "
-        "fs_read. commands: explore=<Frage> (relevante Quellen+Aufrufpfade+Blast-Radius in einem Schuss), "
-        "query=<Symbolsuche>, node=<Symbol|Datei>, callers=<Symbol>, callees=<Symbol>, "
-        "impact=<Symbol> (Was bricht bei Änderung?), files=<Pfad> (Struktur), affected=<Datei> (betroffene Tests)."),
+        "Query the code knowledge graph of this project — use this FIRST to understand symbols, call "
+        "paths and blast radius instead of reading many files one by one (it saves tokens). `explore` "
+        "returns the relevant symbol sources VERBATIM; files shown there you do NOT have to fs_read "
+        "again. commands: explore=<question> (relevant sources + call paths + blast radius in one shot), "
+        "query=<symbol search>, node=<symbol|file>, callers=<symbol>, callees=<symbol>, "
+        "impact=<symbol> (what breaks on a change?), files=<path> (structure), affected=<file> (affected tests)."),
     "parameters": {"type": "object", "properties": {
         "command": {"type": "string",
                     "enum": ["explore", "query", "node", "callers", "callees", "impact", "files", "affected"]},
-        "query": {"type": "string", "description": "Frage/Symbol/Datei/Pfad je nach command"}},
+        "query": {"type": "string", "description": "A question/symbol/file/path, depending on the command"}},
         "required": ["command", "query"]}}}
 
 
 def _delegate_tool(roles: list[str]) -> dict:
     return {"type": "function", "function": {
         "name": "delegate",
-        "description": "Delegiere eine Teilaufgabe an einen spezialisierten Sub-Agenten (läuft im selben "
-                       "Workspace). Nutze das, wenn eine andere Rolle besser passt. Gib die Rolle + eine "
-                       "klare Teilaufgabe an; du erhältst das Ergebnis zurück.",
+        "description": "Delegate a subtask to a specialised sub-agent (it runs in the same workspace). "
+                       "Use this when another role fits better. Name the role plus a clear subtask; you "
+                       "get the result back.",
         "parameters": {"type": "object", "properties": {
-            "role": {"type": "string", "enum": roles or None, "description": "Ziel-Rolle"},
-            "task": {"type": "string", "description": "Klare Teilaufgabe für den Sub-Agenten"}},
+            "role": {"type": "string", "enum": roles or None, "description": "The target role"},
+            "task": {"type": "string", "description": "A clear subtask for the sub-agent"}},
             "required": ["role", "task"]}}}
 
 CODE_WORKFLOW = (
-    "## Code-Workflow (Projekt-Workspace)\n"
-    "0. Lesen ist Mittel, nicht Zweck. Verschaffe dir einen Überblick und fang dann mit der KLEINSTEN "
-    "sinnvollen Änderung an — weiterlesen kannst du danach jederzeit, und eine begonnene Änderung "
-    "überlebt das Ende des Laufs, reine Leserei nicht. Wer eine halbe Stunde nur liest, hat nichts "
-    "geliefert.\n"
-    "1. Verstehe den Code BEVOR du änderst — auch ähnliche Stellen, damit Änderungen KONSISTENT sind. "
-    "Nutze wenn verfügbar ZUERST `codegraph` (explore/impact) für Symbole, Aufrufwege & Blast-Radius — das "
-    "spart viele fs_read; erst danach fs_read/fs_list für Details.\n2. Ändere mit fs_write/fs_edit — "
-    "CHIRURGISCH. LÖSCHE NIEMALS große Blöcke/Funktionen "
-    "nur, damit ein Fehler verschwindet; behebe die Ursache.\n3. Rufe nach JEDER Änderung `check` und behebe "
-    "die Fehler, bis der Build GRÜN ist.\n4. ERST bei grünem Build: `deploy`.\n"
-    "Bei hartnäckigem Build-Fehler (2-3 rote checks): `ask_human` statt blind weiter.\n"
-    "Bei UI-Änderungen: bestehendes Element ändern statt duplizieren, nach Edit erneut lesen; wenn `screenshot` "
-    "verfügbar, nach dem Deploy screenshotten und das Bild selbst prüfen; sonst um Sichtprüfung bitten."
+    "## Code workflow (project workspace)\n"
+    "0. Reading is a means, not an end. Get an overview and then start with the SMALLEST sensible "
+    "change — you can keep reading afterwards at any time, and a change you started survives the end "
+    "of the run while pure reading does not. Whoever reads for half an hour has delivered nothing.\n"
+    "1. Understand the code BEFORE you change it — similar places included, so that changes stay "
+    "CONSISTENT. If available, use `codegraph` FIRST (explore/impact) for symbols, call paths and blast "
+    "radius — that saves many fs_read calls; only then fs_read/fs_list for the details.\n"
+    "2. Change with fs_write/fs_edit — SURGICALLY. NEVER DELETE large blocks or functions just to make "
+    "an error go away; fix the cause.\n"
+    "3. Call `check` after EVERY change and fix the errors until the build is GREEN.\n"
+    "4. ONLY with a green build: `deploy`.\n"
+    "With a stubborn build error (2-3 red checks): `ask_human` instead of carrying on blindly.\n"
+    "With UI changes: change the existing element instead of duplicating it, read it again after an "
+    "edit; if `screenshot` is available, take one after the deploy and check the image yourself; "
+    "otherwise ask for a visual check."
 )
 
 FS_TOOL_NAMES = {"fs_read", "fs_list", "fs_write", "fs_edit"}
@@ -217,26 +218,24 @@ def reminder_text(mode: str, used: float, sharp: bool) -> str:
     the executor of the estate.
     """
     if mode == "plan":
-        was = "noch keinen Plan eingereicht"
-        stays = "ein eingereichter Plan schon"
-        postscript = ("Reiche JETZT einen Plan ein (`submit_plan`), auch wenn Details offen "
-                    "sind — benenne die offenen Punkte darin. Nur bei echter Blockade: "
-                    "`ask_human`."
+        what = "not submitted a plan yet"
+        stays = "a submitted plan does"
+        postscript = ("Submit a plan NOW (`submit_plan`), even when details are open — name the open "
+                    "points in it. Only on a real blocker: `ask_human`."
                     if sharp else
-                    "Prüfe, ob du genug weißt, um den Plan zu schreiben — im Zweifel ja: "
-                    "ein Plan mit benannten Unsicherheiten ist mehr wert als keiner.")
+                    "Check whether you know enough to write the plan — in doubt yes: a plan with "
+                    "named uncertainties is worth more than none.")
     else:
-        was = "noch keine Änderung geschrieben"
-        stays = "eine begonnene Änderung schon"
-        postscript = ("Fang JETZT mit der kleinsten sinnvollen Änderung an, statt weiterzulesen. "
-                    "Fehlt dir eine Entscheidung, die du nicht selbst treffen kannst: "
-                    "`ask_human`. Kannst du wirklich nur übergeben: `continue_later` mit "
-                    "allem, was du weißt."
+        what = "not written a change yet"
+        stays = "a change you started does"
+        postscript = ("Start NOW with the smallest sensible change instead of reading on. If you are "
+                    "missing a decision you cannot take yourself: `ask_human`. If you really can only "
+                    "hand over: `continue_later` with everything you know."
                     if sharp else
-                    "Prüfe, ob du genug weißt, um anzufangen — im Zweifel ja: die kleinste "
-                    "sinnvolle Änderung zuerst, den Rest danach.")
-    return (f"⚠️ {int(used * 100)} % deines Budgets für diesen Lauf sind weg und du hast "
-            f"{was}. Recherche allein überlebt das Ende des Laufs nicht — "
+                    "Check whether you know enough to start — in doubt yes: the smallest sensible "
+                    "change first, the rest afterwards.")
+    return (f"⚠️ {int(used * 100)} % of your budget for this run is gone and you have "
+            f"{what}. Research alone does not survive the end of the run — "
             f"{stays}.\n{postscript}")
 
 
@@ -252,7 +251,7 @@ def _fs_resolve(root: str, rel: str) -> str:
 
 def _fs_dispatch(name: str, root: str | None, args: dict[str, Any]) -> str:
     if not root:
-        return "FEHLER: kein bearbeitbarer Workspace für dieses Projekt."
+        return "ERROR: no editable workspace for this project."
     try:
         if name == "fs_read":
             with open(_fs_resolve(root, args.get("path", "")), encoding="utf-8", errors="replace") as f:
@@ -272,8 +271,8 @@ def _fs_dispatch(name: str, root: str | None, args: dict[str, Any]) -> str:
                 out.append(row)
                 chars += len(row) + 1
             head = f"[{args.get('path')} · {total} Zeilen total · zeige {offset + 1}–{offset + len(out)}]"
-            body = "\n".join(out) if out else "(leer / Bereich außerhalb der Datei)"
-            tail = (f"\n…(gekürzt — weiterlesen mit offset={next_line})" if next_line else "")
+            body = "\n".join(out) if out else "(empty / range outside the file)"
+            tail = (f"\n…(shortened — read on with offset={next_line})" if next_line else "")
             return head + "\n" + body + tail
         if name == "fs_list":
             base = _fs_resolve(root, args.get("path", "."))
@@ -288,7 +287,7 @@ def _fs_dispatch(name: str, root: str | None, args: dict[str, Any]) -> str:
                 for fn in sorted(files):
                     out2.append(os.path.join(rel, fn) if rel != "." else fn)
                 if len(out2) > 800:
-                    out2.append("…(gekürzt)")
+                    out2.append("…(shortened)")
                     break
             return "\n".join(out2) or "(leer)"
         if name == "fs_write":
@@ -302,29 +301,29 @@ def _fs_dispatch(name: str, root: str | None, args: dict[str, Any]) -> str:
             full = _fs_resolve(root, args.get("path", ""))
             old, new = args.get("old", ""), args.get("new", "")
             if not old:
-                return "FEHLER: `old` ist leer."
+                return "ERROR: `old` ist leer."
             with open(full, encoding="utf-8") as f:
                 text = f.read()
             n = text.count(old)
             if n == 0:
-                return "FEHLER: `old` kommt in der Datei nicht vor (exakt prüfen)."
+                return "ERROR: `old` does not appear in the file (check it exactly)."
             with open(full, "w", encoding="utf-8") as f:
                 f.write(text.replace(old, new))
             return f"OK: {n} Ersetzung(en) in {args.get('path')}."
     except FileNotFoundError:
-        return f"FEHLER: Datei nicht gefunden: {args.get('path')}"
+        return f"ERROR: Datei nicht gefunden: {args.get('path')}"
     except ValueError as exc:
-        return f"FEHLER: {exc}"
+        return f"ERROR: {exc}"
     except Exception as exc:  # noqa: BLE001
-        return f"FS-FEHLER: {exc}"
-    return f"FEHLER: unbekanntes FS-Tool {name}"
+        return f"FS-ERROR: {exc}"
+    return f"ERROR: unbekanntes FS-Tool {name}"
 
 
 async def _do_check(ws_root: str | None, verify_command: str) -> str:
     if not ws_root:
-        return "FEHLER: kein Workspace."
+        return "ERROR: kein Workspace."
     if not verify_command:
-        return "✅ BUILD OK (kein verify_command gesetzt — kein Build-Check konfiguriert)."
+        return "✅ BUILD OK (no verify_command set — no build check configured)."
     try:
         p = await asyncio.create_subprocess_shell(
             verify_command, cwd=ws_root, stdout=asyncio.subprocess.PIPE,
@@ -337,7 +336,7 @@ async def _do_check(ws_root: str | None, verify_command: str) -> str:
     except asyncio.TimeoutError:
         return "❌ BUILD TIMEOUT (>600s)"
     except Exception as exc:  # noqa: BLE001
-        return f"❌ CHECK-FEHLER: {exc}"
+        return f"❌ CHECK-ERROR: {exc}"
 
 
 def deploy_locked(stack_dir: str) -> str:
@@ -353,13 +352,13 @@ def deploy_locked(stack_dir: str) -> str:
     selbst = (os.getenv("SELF_STACK_DIR") or "").rstrip("/")
     target = (stack_dir or "").rstrip("/")
     if not target:
-        return ("Dieses Projekt hat kein eigenes Stack-Verzeichnis — ein Deploy ist hier "
-                "nicht vorgesehen und würde abgelehnt. Prüfe deine Änderung mit `check`; "
-                "live geht sie über Abnahme und Merge, das Wartungs-Update löst ein Mensch aus.")
+        return ("This project has no stack directory of its own — a deploy is not foreseen here "
+                "and would be refused. Check your change with `check`; it goes live through "
+                "acceptance and merge, and the maintenance update is triggered by a person.")
     if selbst and target == selbst:
-        return ("Das Ziel ist Traccoon selbst. Ein Self-Deploy läuft ausschließlich über das "
-                "explizite Wartungs-Update (ein Mensch löst es aus) — er würde den eigenen "
-                "Lauf mitten im Arbeiten neu starten. Prüfe mit `check` und schließe ab.")
+        return ("The target is Traccoon itself. A self-deploy runs solely through the explicit "
+                "maintenance update (a person triggers it) — it would restart this very run in the "
+                "middle of the work. Check with `check` and finish.")
     return ""
 
 
@@ -367,7 +366,7 @@ async def _do_deploy(db: AsyncSession, issue_id: int, project_id: int, stack_dir
                      worktree: str | None, check_only: bool = False) -> str:
     """Queue a deployment (deployments table) and wait for the result of the deployer sidecar."""
     if not check_only and (reason := deploy_locked(stack_dir)):
-        return f"❌ NICHT MÖGLICH\n{reason}"
+        return f"❌ NOT POSSIBLE\n{reason}"
     from ..models.ops import Deployment
     dep = Deployment(issue_id=issue_id, project_id=project_id, stack_dir=stack_dir,
                      worktree=worktree or "", check_only=check_only, source="agent",
@@ -384,7 +383,7 @@ async def _do_deploy(db: AsyncSession, issue_id: int, project_id: int, stack_dir
         if dep.status in ("ok", "failed", "rolledback"):
             head = "✅ OK" if dep.status == "ok" else ("❌ FEHLGESCHLAGEN" if dep.status == "failed" else "↩ ROLLBACK")
             return f"{head}\n{(dep.log or '')[-3000:]}"
-    return "FEHLER: Deployer-Timeout (läuft der deployer-Sidecar?)."
+    return "ERROR: deployer timeout (is the deployer sidecar running?)."
 
 
 async def _do_screenshot(args: dict[str, Any], base_url: str) -> Any:
@@ -394,13 +393,13 @@ async def _do_screenshot(args: dict[str, Any], base_url: str) -> Any:
             r = await client.post(f"{SHOTTER_URL.rstrip('/')}/shot",
                                   json={"target": target, "base_url": base_url})
     except Exception as exc:  # noqa: BLE001
-        return f"FEHLER: Screenshot-Dienst nicht erreichbar: {exc}"
+        return f"ERROR: Screenshot-Dienst nicht erreichbar: {exc}"
     if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
-        return f"FEHLER beim Screenshot (HTTP {r.status_code}): {r.text[:200]}"
+        return f"ERROR while taking the screenshot (HTTP {r.status_code}): {r.text[:200]}"
     b64 = base64.b64encode(r.content).decode()
     return [
         {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
-        {"type": "text", "text": f"Screenshot #{target or '(Startseite)'}. Prüfe Position/Größe/Dubletten."},
+        {"type": "text", "text": f"Screenshot #{target or '(start page)'}. Check position, size and duplicates."},
     ]
 
 
@@ -416,11 +415,11 @@ async def _do_read_attachment(db: AsyncSession, issue_id: int, args: dict[str, A
         select(Attachment).where(Attachment.issue_id == issue_id).order_by(Attachment.id)
     )).scalars().all()
     if not rows:
-        return "Dieses Ticket hat keine Anhänge."
+        return "This ticket has no attachments."
     att = (next((a for a in rows if a.filename == name), None)
            or next((a for a in rows if name and name.lower() in a.filename.lower()), None))
     if att is None:
-        return f"Anhang '{name}' nicht gefunden. Verfügbar: {', '.join(a.filename for a in rows)}"
+        return f"Attachment '{name}' not found. Available: {', '.join(a.filename for a in rows)}"
     mime = (att.mime_type or "application/octet-stream").lower()
     data = att.data or b""
     if mime.startswith("image/"):
@@ -433,7 +432,7 @@ async def _do_read_attachment(db: AsyncSession, issue_id: int, args: dict[str, A
     if mime.startswith("text/") or mime in ("application/json", "application/xml", "application/x-yaml") \
             or att.filename.lower().endswith(_TEXT_EXT):
         return f"Anhang „{att.filename}“ ({mime}):\n\n{data.decode('utf-8', errors='replace')[:16000]}"
-    return f"Anhang „{att.filename}“ ist eine Binärdatei ({mime}, {len(data)} Bytes) — nicht als Text/Bild lesbar."
+    return f"Attachment \"{att.filename}\" is a binary file ({mime}, {len(data)} bytes) — not readable as text or image."
 
 
 # ---------- Agent-Definition ----------
@@ -701,20 +700,21 @@ def _read_conventions(ws_root: str | None) -> str:
         if not text:
             continue
         if len(text) > MAX_CONVENTION_CHARS:
-            text = text[:MAX_CONVENTION_CHARS] + "\n\n… (gekürzt)"
+            text = text[:MAX_CONVENTION_CHARS] + "\n\n… (shortened)"
         return (f"# Hausordnung des Projekts ({name})\n\n"
-                "Diese Datei liegt im Repo und gilt für diesen Auftrag. Widerspricht sie einer "
-                "Anweisung aus den Projekt-Hinweisen weiter unten, gilt die Projekt-Anweisung — "
-                "die kennt die Traccoon-Umgebung, die Datei nicht.\n\n" + text)
+                "This file lies in the repository and applies to this assignment. Where it "
+                "contradicts an instruction from the project notes further down, the project "
+                "instruction applies — it knows the Traccoon environment, the file does not.\n\n" + text)
     return ""
 
 
 def _build_system_prompt(agent: AgentDef) -> str:
     today = dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     parts = [agent.system_prompt or f"Du bist {agent.role}.",
-             f"Aktuelles Datum/Zeit: {today}.",
-             "Arbeite den Auftrag eigenständig ab. Nutze Tools, wenn nötig. Bist du fertig, antworte mit "
-             "einer kurzen Zusammenfassung OHNE Tool-Call. Frage nur bei echten Blockern mit `ask_human`."]
+             f"Current date and time: {today}.",
+             "Work the assignment through on your own. Use tools when you need them. When you are "
+             "finished, answer with a short summary WITHOUT a tool call. Ask only on real blockers "
+             "with `ask_human`."]
     return "\n\n".join(parts)
 
 
@@ -828,7 +828,7 @@ async def _agent_skills(db: AsyncSession, agent: AgentDef) -> tuple[str, str]:
             menu.append(f"- `{s.key}` — {s.name}: {s.description or '(keine Beschreibung)'}")
     menu_text = ""
     if menu:
-        menu_text = ("# Verfügbare Skills (bei Bedarf per Tool `load_skill` nachladen)\n"
+        menu_text = ("# Available skills (load one with the tool `load_skill` when you need it)\n"
                      + "\n".join(menu))
     return ("\n\n".join(parts), menu_text)
 
@@ -836,10 +836,10 @@ async def _agent_skills(db: AsyncSession, agent: AgentDef) -> tuple[str, str]:
 LOAD_SKILL_TOOL = {
     "type": "function", "function": {
         "name": "load_skill",
-        "description": "Lädt den vollständigen Text eines verfügbaren Skills (siehe Liste im Kontext), "
-                       "wenn du ihn für die aktuelle Aufgabe brauchst.",
+        "description": "Loads the full text of an available skill (see the list in the context) when "
+                       "you need it for the task at hand.",
         "parameters": {"type": "object", "properties": {
-            "key": {"type": "string", "description": "Der Skill-Key aus der Verfügbar-Liste."}},
+            "key": {"type": "string", "description": "The skill key from the list of available ones."}},
             "required": ["key"]},
     }}
 
@@ -868,7 +868,7 @@ async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | No
     msgs = list(messages)
     if (summary or "").strip():
         msgs.append({"role": "assistant", "content": summary})
-    msgs.append({"role": "user", "content": REFLEXION_PROMPT})
+    msgs.append({"role": "user", "content": REFLECTION_PROMPT})
     for _ in range(MAX_REFLEXION_TURNS):
         resp = await router.chat(provider=agent.provider, model=agent.model, messages=msgs,
                                  tools=list(MEMORY_TOOLS), temperature=agent.temperature,
@@ -890,12 +890,12 @@ async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | No
                 out = await call_memory_tool(db, mcp, owner_id, call.name, call.arguments,
                                              agent.role, project_key)
             else:
-                out = f"FEHLER: In der Rückschau ist nur '{', '.join(sorted(MEMORY_TOOL_NAMES))}' erlaubt."
+                out = f"ERROR: in the review only '{', '.join(sorted(MEMORY_TOOL_NAMES))}' is allowed."
             # Deliberately stays one summarised row without a `kind`: the look back is the
             # wrap up of the run, not work on the assignment, and it should not fill the room
             # with tools. The old data path still splits it cleanly while reading.
             await log_line("tool", call.name,
-                      f"Rückschau: args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {out[:500]}")
+                      f"Review: args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {out[:500]}")
             msgs.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                          "content": out[:2000]})
     return in_tok, out_tok, cache_read
@@ -965,7 +965,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         messages.append({"role": "system", "content": project["system_prompt"]})
     if mode == "plan" and issue.get("plan"):
         messages.append({"role": "user", "content":
-                         "# Bestehender Plan (überarbeite ihn anhand der Kommentare)\n\n" + issue["plan"]})
+                         "# The existing plan (revise it along the comments)\n\n" + issue["plan"]})
     elif (plan_text := (issue.get("plan") or "").strip()):
         # THE PLAN BELONGS IN THE EXECUTION. It used to be passed to `run_agent` but only used
         # in planning mode, so the developer worked from the ticket description. On TRA-31
@@ -974,15 +974,15 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         # The result on 2026-08-07: three runs, 155 turns, no
         # agent worked out the finished analysis for itself all over again.
         messages.append({"role": "user", "content":
-            "# Freigegebener Umsetzungsplan — das ist dein Auftrag\n\n" + plan_text +
-            "\n\nDieser Plan ist geprüft und freigegeben: seine Fundstellen sind belegt, "
-            "die Analyse ist getan. Arbeite ihn ab, statt sie zu wiederholen. Weiche nur ab, "
-            "wo der Code dem Plan widerspricht — und schreibe dann ins Ergebnis, was du "
-            "anders gemacht hast und warum."})
+            "# The approved implementation plan — this is your assignment\n\n" + plan_text +
+            "\n\nThis plan has been checked and approved: its findings are evidenced, the analysis "
+            "is done. Work it through instead of repeating it. Deviate only where the code "
+            "contradicts the plan — and then write into the result what you "
+            "did differently and why."})
     if continuation_index > 0 and continuation_hint:
         messages.append({"role": "system", "content":
             f"## Fortsetzung (Runde {continuation_index})\nWorktree-Stand ist erhalten. Letzter Stand:\n"
-            f"{continuation_hint}\nArbeite direkt weiter, prüfe den Build-Status, schließe offene Schritte ab."})
+            f"{continuation_hint}\nCarry straight on, check the build status, finish the open steps."})
     elif mode != "plan" and issue.get("id"):
         # No orderly end, no handover, and the successor starts from zero although the
         # worktree already carries half the work. For an abort (worker restart, crash) the
@@ -993,14 +993,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     if comment_history:
         thread = "\n".join(f"- **{c['label']}** ({c['role']}): {c['body']}" for c in comment_history)
         messages.append({"role": "user", "content":
-                         (history_title or "# Kommentar-Verlauf (Rückfragen & Antworten)") +
+                         (history_title or "# Comment history (questions and answers)") +
                          "\n" + thread +
-                         "\n\nBerücksichtige besonders die Antworten des Nutzers (role=user)."})
+                         "\n\nPay particular attention to the answers of the person (role=user)."})
     if _att_rows:
         _lst = "\n".join(f"- {fn} ({mt or 'unbekannt'}, {sz} Bytes)" for fn, mt, sz in _att_rows)
         messages.append({"role": "system", "content":
-                         "# Anhänge am Ticket\nDieses Ticket hat Datei-Anhänge. Nutze das Tool "
-                         "`read_attachment` mit dem Dateinamen, um einen Anhang anzusehen — "
+                         "# Attachments on the ticket\nThis ticket has file attachments. Use the "
+                         "tool `read_attachment` with the file name to look at one — "
                          "Bilder/Screenshots werden dir als Bild gezeigt.\n" + _lst})
 
     gw_url, gw_token = await _owner_gateway(db, owner_id)
@@ -1063,10 +1063,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     _mem = ""      # no vault reachable: run without memory, do not abort
                 if _mem:
                     messages.append({"role": "system", "content":
-                        "# Gedächtnis (früher gelernt, gilt weiter)\n" + _mem +
-                        "\n\nDas hat dir dein Mensch beigebracht — halte dich daran, ohne dass er "
+                        "# Memory (learned earlier, still applies)\n" + _mem +
+                        "\n\nThis is what your person taught you — keep to it without them having "
                         "es wiederholen muss. Widerspricht der aktuelle Auftrag einer Erinnerung, "
-                        "gilt der Auftrag: korrigiere die Erinnerung dann mit `vergiss` und "
+                        "the assignment applies: correct the memory with `forget` and "
                         "`erinnere_dich`."})
 
             # Vault-Projektkontext (MOC + Dateibaum) laden, falls konfiguriert (via obsidian-MCP)
@@ -1108,8 +1108,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     break
                 if iteration == max(2, agent.max_iterations - 2):
                     messages.append({"role": "system", "content":
-                        "⚠️ Du näherst dich dem Iterations-Limit. Wenn du NICHT unmittelbar vor dem Abschluss "
-                        "stehst: `continue_later` mit Zusammenfassung. Nur bei echter Blockade: `ask_human`."})
+                        "⚠️ You are approaching the iteration limit. If you are NOT right before "
+                        "finishing: `continue_later` with a summary. Only on a real blocker: `ask_human`."})
                 # Remind while it still helps: budget spent without any result at all. On
                 # 2026-08-07 UNI-12 read 190 files across three runs and wrote not a line. The
                 # only reminder came at round 78 of 80, long after the time was gone.
@@ -1199,8 +1199,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         if (agent.can_code and mode != "plan" and ws_root
                                 and strict_success and not verify_command):
                             # Strict acceptance without a verify command: success would not be provable.
-                            err = ("Strenge Abnahme ist aktiv, aber das Projekt hat keinen verify_command. "
-                                   "Ohne grünen Prüflauf gilt der Lauf nicht als erfolgreich.")
+                            err = ("Strict acceptance is active, but the project has no verify_command. "
+                                   "Without a green check the run does not count as successful.")
                             await _end_run(db, run_id, "failed", error=err, iterations=iteration,
                                            in_tok=in_tok, out_tok=out_tok, cache_read=cache_read,
                                            ctx=ctx)
@@ -1215,8 +1215,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                                    cache_read=cache_read, ctx=ctx)
                                     return RunResult("loop_exhausted", verdict, iteration, run_id=run_id)
                                 messages.append({"role": "system", "content":
-                                    "⛔ ABSCHLUSS BLOCKIERT: Build ist ROT. Behebe die Ursache (nichts weglöschen) "
-                                    "und arbeite weiter:\n\n" + verdict})
+                                    "⛔ FINISHING BLOCKED: the build is RED. Fix the cause (delete nothing) "
+                                    "and carry on:\n\n" + verdict})
                                 continue
                         # Look back: what was a lasting rule? (TRA-30) Only on success, because
                         # an aborted run holds no solid lesson. Errors stay here: the run was
@@ -1230,7 +1230,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                     base_urls=base_urls)
                                 in_tok += _ri; out_tok += _ro; cache_read += _rc
                             except Exception as exc:  # noqa: BLE001
-                                await log_line("system", None, f"Rückschau übersprungen: {exc}",
+                                await log_line("system", None, f"Review skipped: {exc}",
                                                 kind="system")
                         await _end_run(db, run_id, "success", summary=resp.text, iterations=iteration,
                                        in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
@@ -1243,7 +1243,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                        cache_read=cache_read, ctx=ctx)
                         return RunResult("failed", "Leere Modell-Antwort.", iteration, run_id=run_id)
                     messages.append({"role": "system", "content":
-                        "Deine letzte Antwort war leer. Rufe ein Tool auf oder liefere eine Abschluss-Zusammenfassung."})
+                        "Your last answer was empty. Call a tool or deliver a closing summary."})
                     continue
 
                 assistant_msg = (resp.raw.get("choices") or [{}])[0].get("message") or {
@@ -1255,7 +1255,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         question = (call.arguments.get("question") or "").strip()
                         if not question:
                             messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
-                                             "content": "Keine Rückfrage nötig – antworte direkt."})
+                                             "content": "No question needed — answer directly."})
                             continue
                         # Blocker and comment hang on the ticket, and a projectless run
                         # (assistant, job) has none. Without this brake the insert fails on NOT
@@ -1282,7 +1282,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         plan = (call.arguments.get("plan") or "").strip()
                         if not plan:
                             messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
-                                             "content": "Plan war leer – vollständigen Plan einreichen."})
+                                             "content": "The plan was empty — submit a complete plan."})
                             continue
                         psum = (call.arguments.get("summary") or "").strip()
                         await _end_run(db, run_id, "planned", summary="Plan erstellt", iterations=iteration,
@@ -1296,13 +1296,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             action = perms.evaluate(permissions, call.name, resource)
                             if action == "deny":
                                 messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
-                                                 "content": f"FEHLER: Berechtigung verweigert (deny) für "
+                                                 "content": f"ERROR: permission denied (deny) for "
                                                  f"`{call.name}` auf `{resource or '—'}`."})
                                 continue
                             if action == "ask":
                                 await perms.create_perm_request(db, issue_id, run_id, call.name, resource)
                                 await _add_comment(db, issue_id, agent.name,
-                                                   f"⚙️ Berechtigung nötig: `{call.name}` auf `{resource or '—'}`")
+                                                   f"⚙️ Permission needed: `{call.name}` on `{resource or '—'}`")
                                 await _end_run(db, run_id, "blocked", summary=f"Berechtigung: {call.name}",
                                                iterations=iteration, in_tok=in_tok, out_tok=out_tok,
                                                cache_read=cache_read, blocker_kind="permission", ctx=ctx)
@@ -1327,14 +1327,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             _dec = await gate_check(db, _atask, owner_id, call.name, _res)
                             if _dec == "deny":
                                 messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
-                                                 "content": f"FEHLER: Freigabe verweigert (nie) für `{call.name}`."})
+                                                 "content": f"ERROR: permission refused (never) for `{call.name}`."})
                                 continue
                             if _dec == "ask":
-                                await _end_run(db, run_id, "blocked", summary=f"Freigabe nötig: {call.name}",
+                                await _end_run(db, run_id, "blocked", summary=f"Permission needed: {call.name}",
                                                iterations=iteration, in_tok=in_tok, out_tok=out_tok,
                                                cache_read=cache_read, blocker_kind="assistant_perm",
                                                ctx=ctx)
-                                return RunResult("blocked", f"Freigabe nötig: {call.name}", iteration,
+                                return RunResult("blocked", f"Permission needed: {call.name}", iteration,
                                                  run_id=run_id, blocker_kind="assistant_perm")
 
                     # The tool start deliberately stands HERE, after every gate and immediately
@@ -1354,17 +1354,17 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     elif call.name == "load_skill":
                         skey = (call.arguments.get("key") or "").strip()
                         if skey not in (agent.allowed_skills or []):
-                            result = f"FEHLER: Skill '{skey}' ist diesem Agenten nicht zugewiesen."
+                            result = f"ERROR: skill '{skey}' is not assigned to this agent."
                         else:
                             sk = await _latest_skill(db, skey)
                             result = (f"## Skill: {sk.name}\n{sk.body}" if sk
-                                      else f"FEHLER: Skill '{skey}' nicht gefunden.")
+                                      else f"ERROR: skill '{skey}' not found.")
                     elif call.name == "delegate" and agent.can_delegate and delegate_loader is not None:
                         sub_role = (call.arguments.get("role") or "").strip()
                         sub_task = (call.arguments.get("task") or "").strip()
                         sub_agent = await delegate_loader(sub_role)
                         if sub_agent is None:
-                            result = f"FEHLER: Rolle '{sub_role}' nicht verfügbar."
+                            result = f"ERROR: role '{sub_role}' is not available."
                         else:
                             sub = await run_agent(
                                 db=db, agent=sub_agent,
@@ -1393,7 +1393,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         result = _fs_dispatch(call.name, ws_root, call.arguments)
                         # Delivered means what actually worked: a rejected write attempt must
                         # not switch the reminders off.
-                        if call.name in result_tools and not result.startswith("FEHLER"):
+                        if call.name in result_tools and not result.startswith("ERROR"):
                             result_there = True
                     elif call.name == "codegraph":
                         result = await _codegraph.query(
@@ -1415,12 +1415,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         result = await call_memory_tool(db, mcp, owner_id, call.name, call.arguments,
                                                         agent.role, project.get("key") or "")
                     elif not agent.tool_allowed(call.name):
-                        result = f"FEHLER: Tool '{call.name}' ist für diesen Agenten nicht erlaubt."
+                        result = f"ERROR: tool '{call.name}' is not allowed for this agent."
                     else:
                         try:
                             result = await mcp.call(call.name, call.arguments)
                         except Exception as exc:  # noqa: BLE001
-                            result = f"TOOL-FEHLER: {exc}"
+                            result = f"TOOL-ERROR: {exc}"
 
                     # The counterpart to the start above: only this closes the tool again.
                     _duration_ms = max(0, int((asyncio.get_running_loop().time() - _t0) * 1000))
@@ -1440,7 +1440,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         cap = MAX_HTTP_TOOL_CHARS if call.name == "traccoon_http_call" else 8000
                         # `tool_ok` knows only the PROVEN error (the prefix) and otherwise
                         # "unknown". The runtime knows more here: the call came back, and every
-                        # exception would have become "TOOL-FEHLER:" above. So "no error
+                        # exception would have become "TOOL-ERROR:" above. So "no error
                         # prefix" counts as success, and only a proven True lets `step_events`
                         # derive a `file_edit` from it at all.
                         _ok = office.tool_ok(result)
@@ -1509,13 +1509,13 @@ async def _abort_handover(db: AsyncSession, issue_id: int, run_id: int) -> str:
     moves = (await db.scalar(select(func.count()).select_from(RunStep).where(
         RunStep.run_id == before.id, RunStep.role == "assistant"))) or 0
     last = (before.last_text or "").strip()[:600]
-    return ("## Vorlauf abgebrochen — der Worktree trägt seine Arbeit bereits\n"
-            f"Der vorige Lauf (#{before.id}) endete nach {moves} Zügen unfreiwillig "
+    return ("## The previous run was aborted — the worktree already carries its work\n"
+            f"The previous run (#{before.id}) ended after {moves} moves involuntarily "
             f"({(before.error or 'ohne Meldung').strip()[:160]}).\n"
-            "Bereits geänderte Dateien (Stand liegt im Worktree, NICHT neu schreiben ohne "
+            "Files already changed (the state lies in the worktree, do NOT rewrite them without "
             "vorher zu lesen):\n" + "\n".join(f"- {d}" for d in files[:40]) +
             (f"\n\nSein letzter Satz war:\n{last}" if last else "") +
-            "\n\nLies diese Dateien, bevor du sie erneut änderst, und mache dort weiter, "
+            "\n\nRead these files before you change them again, and carry on where "
             "statt von vorn anzufangen.")
 
 

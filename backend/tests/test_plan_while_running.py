@@ -58,9 +58,9 @@ PLAN = "## Ursache\n`__main__.py:554` wertet `loop_exhausted` als Fehler.\n## Um
 async def test_execution_receives_the_plan(monkeypatch, db):
     texts = " ".join(m.get("content") or "" for m in await _messages(db, monkeypatch, "execute", PLAN))
 
-    assert "Freigegebener Umsetzungsplan" in texts
+    assert "approved implementation plan" in texts
     assert "__main__.py:554" in texts, "the plan itself is missing from the prompt"
-    assert "Arbeite ihn ab" in texts
+    assert "Work it through" in texts
 
 
 async def test_no_empty_section_without_a_plan(monkeypatch, db):
@@ -73,5 +73,5 @@ async def test_a_planning_run_keeps_its_own_wording(monkeypatch, db):
     """In the planning the plan is revised, not worked off."""
     texts = " ".join(m.get("content") or "" for m in await _messages(db, monkeypatch, "plan", PLAN))
 
-    assert "Bestehender Plan" in texts
+    assert "existing plan" in texts
     assert "Freigegebener Umsetzungsplan" not in texts
