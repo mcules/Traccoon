@@ -19,6 +19,7 @@ from ..models.enums import (
 from ..models.hardware import HardwareAsset, HardwareModel, HardwareWorkflow, HardwareWorkflowStep
 from ..models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowVersion
 from .workflow_engine import start_workflow
+from .workflow_terms import migrate_graph
 
 HARDWARE_DEF_KEY = "hardware-beschaffung"
 HARDWARE_SLOT = WorkflowSlot.hardware_procurement.value
@@ -275,7 +276,10 @@ async def refresh_generated_definitions(db) -> int:
                    if d.current_version_id else None)
         if current is None:
             continue
-        new = build_hardware_graph(await _project_steps(db, d.project_id))
+        # With the mark of the terms pass, exactly as in `workflow_seed`: without it the
+        # comparison below never holds and every start hangs a fresh, identical version on
+        # the chain.
+        new, _ = migrate_graph(build_hardware_graph(await _project_steps(db, d.project_id)))
         if new == current.graph:
             continue
         if _comparisonform(current.graph or {}) != _comparisonform(new):

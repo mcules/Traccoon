@@ -24,6 +24,7 @@ from ..models.enums import (
 )
 from ..models.workflow import WorkflowDefinition, WorkflowSet, WorkflowVersion
 from .workflow_sets import BUILTIN_SET_KEY, SLOT_META
+from .workflow_terms import migrate_graph
 
 log = logging.getLogger("workflow_seed")
 
@@ -382,7 +383,11 @@ async def ensure_builtin_set(db: AsyncSession) -> WorkflowSet:
 
     changed = 0
     for slot, build in BUILDERS.items():
-        graph = build()
+        # The terms pass rewrites every stored version onto the English words and leaves its
+        # mark on it. Whoever compares here without that mark compares apples to a marked
+        # apple: the graphs are the same, the comparison fails, and every start publishes
+        # another identical version. That is where the several hundred duplicates came from.
+        graph, _ = migrate_graph(build())
         meta = SLOT_META[slot]
         d = (await db.execute(select(WorkflowDefinition).where(
             WorkflowDefinition.set_id == s.id, WorkflowDefinition.slot == slot,
