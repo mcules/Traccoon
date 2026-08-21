@@ -15,7 +15,7 @@ from app.models.workflow import (
     WorkflowDefinition, WorkflowStepRun, WorkflowToken, WorkflowVersion,
 )
 from app.services import workflow_actions, workflow_engine
-from app.services.workflow_engine import faellige_timer, start_workflow, validate_graph
+from app.services.workflow_engine import due_timer, start_workflow, validate_graph
 from sqlalchemy import select
 
 from conftest import make_user
@@ -27,24 +27,24 @@ def _graph(timer: dict | None = None, action: dict | None = None) -> dict:
     node = [{"id": "s", "type": "start", "position": {"x": 0, "y": 0},
                "data": {"config": {"label": "Start"}}}]
     edges = []
-    vorher = "s"
+    before = "s"
     if timer is not None:
         node.append({"id": "warten", "type": "timer", "position": {"x": 0, "y": 1},
                        "data": {"config": timer}})
-        edges.append({"id": "e1", "source": vorher, "target": "warten"})
-        vorher = "warten"
+        edges.append({"id": "e1", "source": before, "target": "warten"})
+        before = "warten"
     if action is not None:
         node.append({"id": "tun", "type": "auto_action", "position": {"x": 0, "y": 2},
                        "data": {"config": action}})
-        edges.append({"id": "e2", "source": vorher, "target": "tun"})
-        vorher = "tun"
+        edges.append({"id": "e2", "source": before, "target": "tun"})
+        before = "tun"
     node.append({"id": "ende", "type": "end", "position": {"x": 0, "y": 3},
                    "data": {"config": {"outcome": "completed"}}})
-    edges.append({"id": "e3", "source": vorher, "target": "ende"})
+    edges.append({"id": "e3", "source": before, "target": "ende"})
     return {"nodes": node, "edges": edges}
 
 
-async def _lauf(db, graph: dict, name: str):
+async def _run(db, graph: dict, name: str):
     user = await make_user(db, name)
     d = WorkflowDefinition(project_id=None, key=name, name=name, created_by=user.id,
                            subject_kind=WorkflowSubjectKind.standalone)
@@ -61,7 +61,7 @@ async def _lauf(db, graph: dict, name: str):
 
 
 async def test_the_timer_halts_the_run(db):
-    inst = await _lauf(db, _graph(timer={"dauer": 30, "einheit": "m"}), "wartet")
+    inst = await _run(db, _graph(timer={"dauer": 30, "einheit": "m"}), "wartet")
     assert inst.status == WorkflowInstanceStatus.waiting
     token = (await db.execute(select(WorkflowToken).where(
         WorkflowToken.instance_id == inst.id))).scalars().one()
@@ -76,17 +76,17 @@ async def test_the_timer_halts_the_run(db):
 
 
 async def test_a_due_timer_wakes_and_carries_on(db):
-    inst = await _lauf(db, _graph(timer={"dauer": 30, "einheit": "m"}), "geweckt")
+    inst = await _run(db, _graph(timer={"dauer": 30, "einheit": "m"}), "geweckt")
     step = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.instance_id == inst.id))).scalars().one()
 
     # Not due means nothing happens. That is half the value: the alarm must not collect
-    assert await faellige_timer() == 0
+    assert await due_timer() == 0
 
     step.result = {"faellig": (dt.datetime.now(dt.timezone.utc)
                                - dt.timedelta(seconds=1)).isoformat()}
     await db.commit()
-    assert await faellige_timer() == 1
+    assert await due_timer() == 1
 
     await db.refresh(inst)
     assert inst.status == WorkflowInstanceStatus.completed
@@ -94,9 +94,9 @@ async def test_a_due_timer_wakes_and_carries_on(db):
 
 async def test_a_moment_in_the_past_does_not_wait(db):
     """A point in time that has already passed means "now", not "never"."""
-    gestern = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).isoformat()
-    inst = await _lauf(db, _graph(timer={"bis": gestern}), "vergangen")
-    assert await faellige_timer() == 1
+    yesterday = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).isoformat()
+    inst = await _run(db, _graph(timer={"bis": yesterday}), "vergangen")
+    assert await due_timer() == 1
     await db.refresh(inst)
     assert inst.status == WorkflowInstanceStatus.completed
 
@@ -104,22 +104,22 @@ async def test_a_moment_in_the_past_does_not_wait(db):
 async def test_a_repeat_keeps_its_distance_and_then_gives_up(db, monkeypatch):
     """A failure to the outside is mostly one of the moment. So: wait, try again, but not
     endlessly."""
-    versuche = {"n": 0}
+    attempts = {"n": 0}
 
-    async def kaputt(db_, inst_, node_):
-        versuche["n"] += 1
+    async def broken(db_, inst_, node_):
+        attempts["n"] += 1
         raise ValueError("Gegenstelle weg")
 
-    monkeypatch.setattr(workflow_actions, "run_action", kaputt)
-    inst = await _lauf(db, _graph(action={
+    monkeypatch.setattr(workflow_actions, "run_action", broken)
+    inst = await _run(db, _graph(action={
         "action": {"action": "notify", "params": {}}, "wiederholungen": 2, "warte_sek": 1,
     }), "wiederholt")
 
-    assert versuche["n"] == 1
+    assert attempts["n"] == 1
     assert inst.status == WorkflowInstanceStatus.waiting     # waits for the second attempt
     assert inst.context["_versuche"]["tun"] == 1
 
-    async def due_stellen():
+    async def due_spots():
         for st in (await db.execute(select(WorkflowStepRun).where(
                 WorkflowStepRun.instance_id == inst.id,
                 WorkflowStepRun.status == "waiting"))).scalars().all():
@@ -127,12 +127,12 @@ async def test_a_repeat_keeps_its_distance_and_then_gives_up(db, monkeypatch):
                                      - dt.timedelta(seconds=1)).isoformat()}
         await db.commit()
 
-    await due_stellen()
-    await faellige_timer()
-    assert versuche["n"] == 2
-    await due_stellen()
-    await faellige_timer()
-    assert versuche["n"] == 3          # the third is the last (two retries)
+    await due_spots()
+    await due_timer()
+    assert attempts["n"] == 2
+    await due_spots()
+    await due_timer()
+    assert attempts["n"] == 3          # the third is the last (two retries)
 
     await db.refresh(inst)
     assert inst.status == WorkflowInstanceStatus.failed
@@ -142,17 +142,17 @@ async def test_a_repeat_keeps_its_distance_and_then_gives_up(db, monkeypatch):
 
 async def test_the_error_branch_catches_the_failure(db, monkeypatch):
     """Whoever wires an `error` exit wants to handle the error instead of losing the run."""
-    async def kaputt(db_, inst_, node_):
+    async def broken(db_, inst_, node_):
         raise ValueError("kaputt")
 
-    monkeypatch.setattr(workflow_actions, "run_action", kaputt)
+    monkeypatch.setattr(workflow_actions, "run_action", broken)
     graph = _graph(action={"action": {"action": "notify", "params": {}}})
     graph["nodes"].append({"id": "aufgefangen", "type": "end", "position": {"x": 1, "y": 3},
                            "data": {"config": {"outcome": "completed"}}})
     graph["edges"].append({"id": "e9", "source": "tun", "target": "aufgefangen",
                            "sourceHandle": "error"})
 
-    inst = await _lauf(db, graph, "fehlerzweig")
+    inst = await _run(db, graph, "fehlerzweig")
     assert inst.status == WorkflowInstanceStatus.completed
 
 
@@ -164,5 +164,5 @@ async def test_validation_demands_a_duration_or_a_moment():
 
 async def test_a_long_wait_is_capped():
     """A flow that sleeps for two years is almost always a typo."""
-    due = workflow_engine._due_ab({"dauer": 900, "einheit": "t"}, {})
+    due = workflow_engine._due_from({"dauer": 900, "einheit": "t"}, {})
     assert due - dt.datetime.now(dt.timezone.utc) <= dt.timedelta(days=90)

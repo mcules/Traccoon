@@ -36,7 +36,7 @@ async def _flow(db, anna) -> WorkflowDefinition:
     return d
 
 
-async def _lauf(db, anna, args):
+async def _run(db, anna, args):
     d = await _flow(db, anna)
     job = Job(name="Wächter", type="cron", schedule="0 * * * *", kind="workflow",
               workflow_definition_id=d.id, user_id=anna.id, args=args)
@@ -54,7 +54,7 @@ async def _lauf(db, anna, args):
 
 async def test_the_parameter_set_becomes_the_start_context(db):
     anna = await make_user(db, "anna")
-    jr, inst = await _lauf(db, anna, {"reihe": "akku.shelter", "still_stunden": 26})
+    jr, inst = await _run(db, anna, {"reihe": "akku.shelter", "still_stunden": 26})
     assert jr.status == "ok"
     assert inst.context["reihe"] == "akku.shelter"
     assert inst.context["still_stunden"] == 26
@@ -63,13 +63,13 @@ async def test_the_parameter_set_becomes_the_start_context(db):
 async def test_script_arguments_stay_outside(db):
     """A list is a script argument, not a context: regression protection."""
     anna = await make_user(db, "anna")
-    _jr, inst = await _lauf(db, anna, ["-x", "42"])
+    _jr, inst = await _run(db, anna, ["-x", "42"])
     assert "reihe" not in inst.context
 
 
 async def test_without_parameters_as_before(db):
     anna = await make_user(db, "anna")
-    _jr, inst = await _lauf(db, anna, [])
+    _jr, inst = await _run(db, anna, [])
     # Was ohne Parametersatz bleibt, ist der Rahmen des Laufs: wer ihn bestellt hat und die
     # Zeitwerte, die jeder wiederkehrende Ablauf braucht.
     assert set(inst.context) == {"job", "today", "now", "since", "window"}
@@ -79,6 +79,6 @@ async def test_the_run_knows_who_ordered_it(db):
     """Ohne das könnte ein Ablauf weder seinen Namen nennen noch den Digest verlinken —
     beides brauchte er, als die Job-Arten zu Abläufen wurden."""
     anna = await make_user(db, "anna")
-    jr, inst = await _lauf(db, anna, {})
+    jr, inst = await _run(db, anna, {})
     assert inst.context["job"] == {"id": jr.job_id, "name": "Wächter", "run_id": jr.id}
     assert jr.workflow_instance_id == inst.id

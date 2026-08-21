@@ -25,7 +25,7 @@ def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * ERDRADIUS_M * math.asin(min(1.0, math.sqrt(a)))
 
 
-def rahmen(lat: float, lon: float, meter: float) -> tuple[float, float, float, float]:
+def frame(lat: float, lon: float, meter: float) -> tuple[float, float, float, float]:
     """Das Rechteck um einen Punkt: (lat_min, lat_max, lon_min, lon_max).
 
     Fuer die Vorauswahl in SQL, wenn einmal mehr Punkte da sind, als man durchgehen mag. Die

@@ -126,15 +126,15 @@ async def project_override(db: AsyncSession, project_id: int, slot: str,
     type.
     """
     if issue_type_id is not None:
-        eigen = (await db.execute(
+        own = (await db.execute(
             select(WorkflowDefinition).where(
                 WorkflowDefinition.project_id == project_id,
                 WorkflowDefinition.slot == slot,
                 WorkflowDefinition.issue_type_id == issue_type_id,
                 WorkflowDefinition.archived_at.is_(None),
             ))).scalars().first()
-        if eigen is not None:
-            return eigen
+        if own is not None:
+            return own
     return (await db.execute(
         select(WorkflowDefinition).where(
             WorkflowDefinition.project_id == project_id,
@@ -337,12 +337,12 @@ async def slot_overview(db: AsyncSession, project: Project) -> list[dict]:
             "definition_name": d.name if d else None,
             "published": bool(d and d.current_version_id),
             "customizable": True,
-            "per_issue_type": await _je_vorgangsart(db, project.id, slot.value),
+            "per_issue_type": await _per_casekind(db, project.id, slot.value),
         })
     return out
 
 
-async def _je_vorgangsart(db: AsyncSession, project_id: int, slot: str) -> list[dict]:
+async def _per_casekind(db: AsyncSession, project_id: int, slot: str) -> list[dict]:
     """Copies that apply to one issue type only, the usual case for the lifecycle."""
     from ..models.ticket import IssueType
     rows = (await db.execute(

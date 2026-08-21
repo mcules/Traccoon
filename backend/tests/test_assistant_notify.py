@@ -14,8 +14,8 @@ from conftest import make_user
 from sqlalchemy import select
 
 
-async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
-                status: str = "done", meldet: bool = False, title: str = "Bestellung 123",
+async def _run(db, monkeypatch, *, owner: User, kind: str = "email",
+                status: str = "done", reports: bool = False, title: str = "Bestellung 123",
                 blocker_kind: str | None = None):
     """Let an assistant item run through; `meldet` = the agent calls notify_human."""
     t = AssistantTask(owner_user_id=owner.id, kind=kind, title=title, status="approved",
@@ -35,7 +35,7 @@ async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
             self.blocker_kind = blocker_kind
 
     async def fake_run_agent(**kwargs):
-        if meldet:
+        if reports:
             # This is how `traccoon_notify_human` would act: its own message plus a note on the item.
             db.add(Notification(user_id=owner.id, kind="assistant", title="Frist am Freitag",
                                 body="Rechnung 240 € fällig", chat_id=owner.telegram_chat_id))
@@ -79,21 +79,21 @@ async def owner(db):
 
 async def test_finished_work_without_action_needed_stays_quiet(db, owner, monkeypatch):
     """The case from practice: filed, nothing to do, so no message."""
-    await _lauf(db, monkeypatch, owner=owner)
+    await _run(db, monkeypatch, owner=owner)
     assert await _messages(db) == []
 
 
 async def test_an_explicit_notice_arrives_and_only_once(db, owner, monkeypatch):
     """If the assistant reports itself, EXACTLY its message goes out, not the closing report
     in addition (because otherwise the same thing would come twice)."""
-    await _lauf(db, monkeypatch, owner=owner, meldet=True)
+    await _run(db, monkeypatch, owner=owner, reports=True)
     n = await _messages(db)
     assert len(n) == 1
     assert n[0].title == "Frist am Freitag"
 
 
 async def test_a_breakdown_always_reports_itself(db, owner, monkeypatch):
-    await _lauf(db, monkeypatch, owner=owner, status="error")
+    await _run(db, monkeypatch, owner=owner, status="error")
     n = await _messages(db)
     assert len(n) == 1 and "Fehler" in n[0].title
 
@@ -102,7 +102,7 @@ async def test_chat_is_always_answered(db, owner, monkeypatch):
     """A question asked is a question one wants answered, even with "not at all"."""
     owner.assistant_notify = "never"
     await db.commit()
-    await _lauf(db, monkeypatch, owner=owner, kind="chat")
+    await _run(db, monkeypatch, owner=owner, kind="chat")
     n = await _messages(db)
     assert len(n) == 1 and n[0].title.startswith("🤖 Assistent")
 
@@ -110,21 +110,21 @@ async def test_chat_is_always_answered(db, owner, monkeypatch):
 async def test_mode_always_also_reports_finished_work(db, owner, monkeypatch):
     owner.assistant_notify = "always"
     await db.commit()
-    await _lauf(db, monkeypatch, owner=owner)
+    await _run(db, monkeypatch, owner=owner)
     assert len(await _messages(db)) == 1
 
 
 async def test_mode_never_stays_quiet_even_on_breakdowns(db, owner, monkeypatch):
     owner.assistant_notify = "never"
     await db.commit()
-    await _lauf(db, monkeypatch, owner=owner, status="error")
+    await _run(db, monkeypatch, owner=owner, status="error")
     assert await _messages(db) == []
 
 
 async def test_callback_in_the_chat_arrives(db, owner, monkeypatch):
     """The occasion: `ask_human` ended as 'blocked' and was misread as a tool gate; the
     question disappeared silently and the human saw only an eternal 'running'."""
-    t = await _lauf(db, monkeypatch, owner=owner, kind="chat", status="blocked",
+    t = await _run(db, monkeypatch, owner=owner, kind="chat", status="blocked",
                     blocker_kind="ask_human")
     n = await _messages(db)
     assert len(n) == 1 and "Ticket oder API-Freigabe?" in n[0].body
@@ -137,7 +137,7 @@ async def test_callback_without_chat_reports_despite_the_mode(db, owner, monkeyp
     """Outside the chat as well (mail inbox): a question without a recipient is pointless."""
     owner.assistant_notify = "needed"
     await db.commit()
-    await _lauf(db, monkeypatch, owner=owner, status="blocked", blocker_kind="ask_human")
+    await _run(db, monkeypatch, owner=owner, status="blocked", blocker_kind="ask_human")
     n = await _messages(db)
     assert len(n) == 1 and "Rückfrage" in n[0].title
 
@@ -145,7 +145,7 @@ async def test_callback_without_chat_reports_despite_the_mode(db, owner, monkeyp
 async def test_tool_grant_stays_quiet_and_open(db, owner, monkeypatch):
     """The counterpart: with the tool gate the item waits for the approval card; it must be
     neither finalised nor reported twice."""
-    t = await _lauf(db, monkeypatch, owner=owner, status="blocked",
+    t = await _run(db, monkeypatch, owner=owner, status="blocked",
                     blocker_kind="assistant_perm")
     assert await _messages(db) == []
     await db.refresh(t)

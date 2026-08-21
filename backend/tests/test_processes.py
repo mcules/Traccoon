@@ -31,12 +31,12 @@ async def test_slots_show_the_shipped_set(client, db, standard):
     admin = await make_user(db, "chef", admin=True)
     r = await client.get("/processes/slots", headers=auth(admin))
     assert r.status_code == 200, r.text
-    daten = {s["slot"]: s for s in r.json()}
-    assert set(daten) == set(sets.SLOT_META)
-    lz = daten["ticket_lifecycle"]
+    data = {s["slot"]: s for s in r.json()}
+    assert set(data) == set(sets.SLOT_META)
+    lz = data["ticket_lifecycle"]
     assert lz["published"] is True
     assert lz["version"] >= 1
-    assert lz["abweichungen"] == []
+    assert lz["deviations"] == []
 
 
 async def test_a_project_copy_appears_as_a_deviation(client, db, standard):
@@ -48,21 +48,21 @@ async def test_a_project_copy_appears_as_a_deviation(client, db, standard):
 
     r = await client.get("/processes/slots", headers=auth(admin))
     lz = next(s for s in r.json() if s["slot"] == "ticket_lifecycle")
-    assert [a["project_key"] for a in lz["abweichungen"]] == ["ABW"]
+    assert [a["project_key"] for a in lz["deviations"]] == ["ABW"]
 
 
 async def test_foreign_projects_stay_hidden(client, db, standard):
     """A deviation would otherwise reveal names of projects that are none of one's business."""
     owner = await make_user(db, "eigner", admin=True)
-    fremder = await make_user(db, "fremd")
+    foreign = await make_user(db, "fremd")
     proj = await make_project(db, "GEH", "Geheim", inherit_members=False)
     await add_member(db, proj, owner, ProjectRole.owner)
     await sets.customize(db, proj, "ticket_lifecycle", owner.id)
     await db.commit()
 
-    r = await client.get("/processes/slots", headers=auth(fremder))
+    r = await client.get("/processes/slots", headers=auth(foreign))
     lz = next(s for s in r.json() if s["slot"] == "ticket_lifecycle")
-    assert lz["abweichungen"] == []
+    assert lz["deviations"] == []
 
 
 # ── Betrieb ──────────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ async def test_foreign_projects_stay_hidden(client, db, standard):
 _lfd = itertools.count(1)
 
 
-async def _instanz(db, proj, *, status, alter_hours=0.0) -> WorkflowInstance:
+async def _instance(db, proj, *, status, age_hours=0.0) -> WorkflowInstance:
     # The key is unique per project; one test creates several flows.
     d = WorkflowDefinition(project_id=proj.id, key=f"ab{next(_lfd)}", name="Ablauf",
                            subject_kind=WorkflowSubjectKind.standalone)
@@ -87,9 +87,9 @@ async def _instanz(db, proj, *, status, alter_hours=0.0) -> WorkflowInstance:
                             context={})
     db.add(inst)
     await db.flush()
-    if alter_hours:
+    if age_hours:
         inst.started_at = (dt.datetime.now(tz=dt.timezone.utc)
-                           - dt.timedelta(hours=alter_hours))
+                           - dt.timedelta(hours=age_hours))
     await db.commit()
     return inst
 
@@ -99,7 +99,7 @@ async def test_waiting_cases_belong_in_the_operations_view(client, db):
     user = await make_user(db, "op", admin=True)
     proj = await make_project(db, "OPS", "Betrieb")
     await add_member(db, proj, user, ProjectRole.owner)
-    await _instanz(db, proj, status=WorkflowInstanceStatus.waiting)
+    await _instance(db, proj, status=WorkflowInstanceStatus.waiting)
 
     r = await client.get("/processes/running", headers=auth(user))
     assert r.status_code == 200, r.text
@@ -110,7 +110,7 @@ async def test_finished_work_stays_out_until_asked_for(client, db):
     user = await make_user(db, "op", admin=True)
     proj = await make_project(db, "OPS", "Betrieb")
     await add_member(db, proj, user, ProjectRole.owner)
-    await _instanz(db, proj, status=WorkflowInstanceStatus.completed)
+    await _instance(db, proj, status=WorkflowInstanceStatus.completed)
 
     assert (await client.get("/processes/running", headers=auth(user))).json() == []
     mit = await client.get("/processes/running?include_done=true", headers=auth(user))
@@ -121,23 +121,23 @@ async def test_a_long_wait_counts_as_hanging(client, db):
     user = await make_user(db, "op", admin=True)
     proj = await make_project(db, "OPS", "Betrieb")
     await add_member(db, proj, user, ProjectRole.owner)
-    await _instanz(db, proj, status=WorkflowInstanceStatus.waiting, alter_hours=50)
-    await _instanz(db, proj, status=WorkflowInstanceStatus.waiting)
+    await _instance(db, proj, status=WorkflowInstanceStatus.waiting, age_hours=50)
+    await _instance(db, proj, status=WorkflowInstanceStatus.waiting)
 
     alle = (await client.get("/processes/running", headers=auth(user))).json()
     assert sorted(x["hangs"] for x in alle) == [False, True]
-    nur = (await client.get("/processes/running?only_stuck=true", headers=auth(user))).json()
-    assert len(nur) == 1 and nur[0]["hangs"] is True
+    only = (await client.get("/processes/running?only_stuck=true", headers=auth(user))).json()
+    assert len(only) == 1 and only[0]["hangs"] is True
 
 
 async def test_foreign_cases_are_invisible(client, db):
     owner = await make_user(db, "eigner", admin=True)
-    fremder = await make_user(db, "fremd")
+    foreign = await make_user(db, "fremd")
     proj = await make_project(db, "GEH", "Geheim", inherit_members=False)
     await add_member(db, proj, owner, ProjectRole.owner)
-    await _instanz(db, proj, status=WorkflowInstanceStatus.waiting)
+    await _instance(db, proj, status=WorkflowInstanceStatus.waiting)
 
-    assert (await client.get("/processes/running", headers=auth(fremder))).json() == []
+    assert (await client.get("/processes/running", headers=auth(foreign))).json() == []
 
 
 # ── Triggers ─────────────────────────────────────────────────────────────────
@@ -147,25 +147,25 @@ async def test_the_trigger_finds_subflows_and_manual_starts(client, db, standard
     admin = await make_user(db, "chef", admin=True)
     r = await client.get("/processes/triggers", headers=auth(admin))
     assert r.status_code == 200, r.text
-    daten = r.json()
-    acceptance = [t for t in daten if t["slot"] == "acceptance"]
+    data = r.json()
+    acceptance = [t for t in data if t["slot"] == "acceptance"]
     assert acceptance and acceptance[0]["kind"] == "subflow"
     assert "KI-Ticket-Lebenszyklus" in acceptance[0]["label"]
     # Every published flow turns up exactly once.
-    assert {t["slot"] for t in daten} >= set(sets.SLOT_META)
+    assert {t["slot"] for t in data} >= set(sets.SLOT_META)
 
 
 async def test_events_count_their_listeners(client, db, standard):
     admin = await make_user(db, "chef", admin=True)
     r = await client.get("/processes/events", headers=auth(admin))
     assert r.status_code == 200
-    daten = r.json()
-    assert {e["event"] for e in daten}
+    data = r.json()
+    assert {e["event"] for e in data}
     # Without a set trigger nobody listens, and the overview should show that honestly. The
     # shipped set contains no event driven flow any more: the mail inbox left it and is now
     # a template one creates for oneself.
-    zuhoerer = {e["event"]: e["listeners"] for e in daten}
-    assert all(z == 0 for z in zuhoerer.values())
+    listener = {e["event"]: e["listeners"] for e in data}
+    assert all(z == 0 for z in listener.values())
 
 
 # ── Rolling back ─────────────────────────────────────────────────────────────
@@ -177,18 +177,18 @@ async def test_rolling_back_creates_a_new_version(client, db, standard):
     first = await db.get(WorkflowVersion, d.current_version_id)
     graph = dict(first.graph)
 
-    zweite = WorkflowVersion(definition_id=d.id, version=first.version + 1, graph=graph,
+    second = WorkflowVersion(definition_id=d.id, version=first.version + 1, graph=graph,
                              status=WorkflowVersionStatus.published,
                              published_at=dt.datetime.now(tz=dt.timezone.utc))
-    db.add(zweite)
+    db.add(second)
     await db.flush()
-    d.current_version_id = zweite.id
+    d.current_version_id = second.id
     await db.commit()
 
     r = await client.post(f"/workflows/{d.id}/versions/{first.id}/rollback", headers=auth(admin))
     assert r.status_code == 200, r.text
     new = r.json()
-    assert new["version"] == zweite.version + 1
+    assert new["version"] == second.version + 1
     assert f"{first.version}" in new["notes"]
     await db.refresh(d)
     assert d.current_version_id == new["id"]
@@ -206,10 +206,10 @@ async def test_rolling_back_to_the_current_version_is_a_conflict(client, db, sta
 
 
 async def test_only_an_admin_may_roll_back_the_default(client, db, standard):
-    niemand = await make_user(db, "gast")
+    nobody = await make_user(db, "gast")
     d = await sets.set_definition(db, standard.id, "ticket_lifecycle")
     first = await db.get(WorkflowVersion, d.current_version_id)
-    r = await client.post(f"/workflows/{d.id}/versions/{first.id}/rollback", headers=auth(niemand))
+    r = await client.post(f"/workflows/{d.id}/versions/{first.id}/rollback", headers=auth(nobody))
     assert r.status_code == 403
 
 
@@ -242,29 +242,29 @@ async def test_context_fields_cover_the_guards_of_the_default_set(client, db):
     anna = await make_user(db, "anna")
     k = (await client.get("/workflow-context-fields", headers=auth(anna))).json()
     known = {f["path"] for group in ("base",) for f in k[group]}
-    for topf in ("triggers", "actions", "nodes"):
-        for fields in k[topf].values():
+    for pot in ("triggers", "actions", "nodes"):
+        for fields in k[pot].values():
             known |= {f["path"] for f in fields}
 
-    def vars_von(rule, out: set):
+    def vars_from(rule, out: set):
         if isinstance(rule, dict):
             for op, args in rule.items():
                 if op == "var" and isinstance(args, str):
                     out.add(args)
                 else:
-                    vars_von(args, out)
+                    vars_from(args, out)
         elif isinstance(rule, list):
             for a in rule:
-                vars_von(a, out)
+                vars_from(a, out)
 
-    benutzt: set[str] = set()
+    used: set[str] = set()
     for build in BUILDERS.values():
         for n in build()["nodes"]:
             cfg = (n.get("data") or {}).get("config") or {}
             for b in cfg.get("branches") or []:
-                vars_von(b.get("guard"), benutzt)
+                vars_from(b.get("guard"), used)
 
     # `entry` controls the entry of the lifecycle and comes from the caller, not from an
     # action; the rest has to stand in the catalog.
-    fehlend = {v for v in benutzt if v not in known and v != "entry"}
-    assert not fehlend, f"Guards read fields the catalog does not know: {sorted(fehlend)}"
+    missing = {v for v in used if v not in known and v != "entry"}
+    assert not missing, f"Guards read fields the catalog does not know: {sorted(missing)}"

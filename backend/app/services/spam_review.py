@@ -31,68 +31,68 @@ from ..models.user import User
 from . import spam_learn
 from .appsettings import get_setting
 from .i18n import tr
-from .mail_classify import ja
+from .mail_classify import yes
 from .mcp_client import McpError, call_tool, result_text
 from .spam_rules import (
-    FREEMAIL_DOMAINS, evaluate, features, ist_forgery_suspicion, mail_text,
+    FREEMAIL_DOMAINS, evaluate, features, is_forgery_suspicion, mail_text,
 )
-from .vault_contacts import bekannte_domains, kontakt_hits, namens_kollision
+from .vault_contacts import known_domains, contact_hits, named_collision
 
 log = logging.getLogger("traccoon.spam")
 
 # --- Adjustable settings (AppSetting, so they can be changed without a restart) ------
-AKTIV_KEY = "spam_aktiv"                     # '1'/'0'
-QUESTION_AB_KEY = "spam_frage_ab"               # from here on anything is asked at all
-SOFORT_AB_KEY = "spam_sofort_ab"             # from here on singly instead of a digest card
-AUTO_AB_KEY = "spam_auto_ab"                 # from here on away without asking (recall window)
+ACTIVE_KEY = "spam_aktiv"                     # '1'/'0'
+QUESTION_FROM_KEY = "spam_frage_ab"               # from here on anything is asked at all
+IMMEDIATE_FROM_KEY = "spam_sofort_ab"             # from here on singly instead of a digest card
+AUTO_FROM_KEY = "spam_auto_ab"                 # from here on away without asking (recall window)
 DIGEST_MIN_KEY = "spam_digest_minuten"       # beat of the digest card
 # Whether a mail cleared away WITHOUT a question is worth a message. The sorting itself
 # does not hang off this: the verdict comes into being, is learnt from and stands in the
 # overview either way, only the card stays away. The branch for it stands in the flow,
 # this is merely the value it reads.
 AUTO_REPORT_KEY = "spam_auto_melden"         # 1 = melden (Vorgabe), 0 = still
-MEINE_ADRESSEN_KEY = "spam_meine_adressen"   # eigene Empfangsadressen, Komma-getrennt
+MY_ADDRESSES_KEY = "spam_meine_adressen"   # eigene Empfangsadressen, Komma-getrennt
 # Domains over which demonstrably no contractual business runs. There, every "invoice" is a
 # claim, regardless of what the address in front of it is called.
-KEINE_GESCHAEFTSDOMAINS_KEY = "spam_keine_geschaeftsdomains"
+NO_GESCHAEFTSDOMAINS_KEY = "spam_keine_geschaeftsdomains"
 
-_VORGABE = {
-    AKTIV_KEY: "1",
-    QUESTION_AB_KEY: "0.45",
-    SOFORT_AB_KEY: "0.9",
+_DEFAULT = {
+    ACTIVE_KEY: "1",
+    QUESTION_FROM_KEY: "0.45",
+    IMMEDIATE_FROM_KEY: "0.9",
     # Above 1.0 = off. Auto-moving is not a default but a decision a human takes after
     # their own measurement (see `spam_report.rueckschau`).
-    AUTO_AB_KEY: "1.01",
+    AUTO_FROM_KEY: "1.01",
     DIGEST_MIN_KEY: "120",
     AUTO_REPORT_KEY: "1",
-    MEINE_ADRESSEN_KEY: "",
-    KEINE_GESCHAEFTSDOMAINS_KEY: "",
+    MY_ADDRESSES_KEY: "",
+    NO_GESCHAEFTSDOMAINS_KEY: "",
 }
 
 IMAP_MCP_URL = os.getenv("IMAP_MCP_URL", "http://imap-mcp:3010/mcp")
 
 
-async def _zahl(db: AsyncSession, key: str) -> float:
+async def _number(db: AsyncSession, key: str) -> float:
     try:
-        return float(await get_setting(db, key, _VORGABE[key]))
+        return float(await get_setting(db, key, _DEFAULT[key]))
     except ValueError:
-        return float(_VORGABE[key])
+        return float(_DEFAULT[key])
 
 
-async def meine_adressen(db: AsyncSession) -> frozenset[str]:
+async def my_addresses(db: AsyncSession) -> frozenset[str]:
     """Own receiving addresses and aliases. Entries may read `*@my-domain.de`."""
-    roh = await get_setting(db, MEINE_ADRESSEN_KEY, "")
-    return frozenset(t.strip().lower() for t in roh.replace(";", ",").split(",") if t.strip())
+    raw = await get_setting(db, MY_ADDRESSES_KEY, "")
+    return frozenset(t.strip().lower() for t in raw.replace(";", ",").split(",") if t.strip())
 
 
 async def nonbusiness_domains(db: AsyncSession) -> frozenset[str]:
     """Domains without contractual business (setting). `@` and case are forgiven."""
-    roh = await get_setting(db, KEINE_GESCHAEFTSDOMAINS_KEY, "")
+    raw = await get_setting(db, NO_GESCHAEFTSDOMAINS_KEY, "")
     return frozenset(t.strip().lstrip("@").lower()
-                     for t in roh.replace(";", ",").split(",") if t.strip())
+                     for t in raw.replace(";", ",").split(",") if t.strip())
 
 
-def _mischen(rule: float, modell: float, gelernt: float | None) -> float:
+def _mix(rule: float, model: float, learned: float | None) -> float:
     """Three partial verdicts into one overall verdict.
 
     Weighted instead of maximum: the maximum would let every single voice decide on its own,
@@ -101,9 +101,9 @@ def _mischen(rule: float, modell: float, gelernt: float | None) -> float:
 
     Without observations the memory drops out instead of pulling towards the middle with 0.5.
     """
-    if gelernt is None:
-        return round(0.55 * rule + 0.45 * modell, 3)
-    return round(0.4 * rule + 0.3 * modell + 0.3 * gelernt, 3)
+    if learned is None:
+        return round(0.55 * rule + 0.45 * model, 3)
+    return round(0.4 * rule + 0.3 * model + 0.3 * learned, 3)
 
 
 # What a fraud named by the model is worth at least. The weighted mixture cannot carry it:
@@ -111,22 +111,22 @@ def _mischen(rule: float, modell: float, gelernt: float | None) -> float:
 # sensible auto threshold stays out of reach. Case of 2026-08-19 (verdict #42): a "N26" mail
 # from fremde-firma.example, SPF, DKIM and DMARC all passing, model 0.95 with "Phishing-Versuch
 # mit gefälschtem Absender", overall verdict 0.731, and so it stayed in the inbox.
-_BETRUG_SCORE = 0.95
+_FRAUD_SCORE = 0.95
 # From here on the wording of the reason counts as a statement of its own. The floor keeps a
 # negation ("kein Betrugsversuch, nur Werbung") from turning into the opposite verdict, and
 # it keeps the technical findings out that the flow passes into the prompt (they contain the
 # word "Fälschungsverdacht" themselves).
-_BETRUG_TEXT_AB = 0.8
+_FRAUD_TEXT_FROM = 0.8
 # Bei Streit zwischen Modell und Gedächtnis: über der Frage-Schwelle, unter jeder sinnvollen
 # Auto-Schwelle. Die Mail wird also gezeigt, aber nicht angefasst.
-_STREIT_SCORE = 0.6
+_DISPUTE_SCORE = 0.6
 # Und wenn ein Mensch für diesen Absender schon einmal widersprochen hat: durchlassen. Unter
 # jeder Frage-Schwelle, denn die Frage ist beantwortet.
-_ENTSCHIEDEN_SCORE = 0.2
-_BETRUG_WORTE = re.compile(r"phish|betrug|scam|f[äa]lsch|identit[äa]tsdiebstahl", re.I)
+_DECIDED_SCORE = 0.2
+_FRAUD_WORDS = re.compile(r"phish|betrug|scam|f[äa]lsch|identit[äa]tsdiebstahl", re.I)
 
 
-def _modell_betrug(cls: dict, modell: float) -> bool:
+def _model_fraud(cls: dict, model: float) -> bool:
     """Does the local model name a fraud, not merely bulk mail?
 
     Three ways in, because the field is younger than some of the models that answer here: the
@@ -134,15 +134,15 @@ def _modell_betrug(cls: dict, modell: float) -> bool:
     only above `_BETRUG_TEXT_AB`, so that a model mentioning the word in order to rule it out
     does not produce the opposite verdict.
     """
-    if ja(cls.get("betrug")):
+    if yes(cls.get("betrug")):
         return True
     if str(cls.get("category") or "").strip().lower() in ("phishing", "betrug"):
         return True
     reason = str(cls.get("spam_reason") or "")
-    return modell >= _BETRUG_TEXT_AB and bool(_BETRUG_WORTE.search(reason))
+    return model >= _FRAUD_TEXT_FROM and bool(_FRAUD_WORDS.search(reason))
 
 
-async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
+async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
                      cls: dict, rule=None) -> dict:
     """Assess an incoming mail: a pure verdict, without side effects.
 
@@ -156,11 +156,11 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     anyway to pass them to the local model, and evaluating twice yields the same thing and
     would only spread the interpretation of the findings over two places.
     """
-    aktiv = (await get_setting(db, AKTIV_KEY, _VORGABE[AKTIV_KEY])) == "1"
+    active = (await get_setting(db, ACTIVE_KEY, _DEFAULT[ACTIVE_KEY])) == "1"
 
     if rule is None:
-        rule = evaluate(payload, meine_adressen=await meine_adressen(db),
-                         bekannte_domains=await bekannte_domains(db, owner_id),
+        rule = evaluate(payload, my_addresses=await my_addresses(db),
+                         known_domains=await known_domains(db, owner_id),
                          nonbusiness_domains=await nonbusiness_domains(db),
                          body=mail_text(payload))
     subject = str(payload.get("subject") or "")
@@ -168,40 +168,40 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # The verdict of the local model, pulled forward: both the contact acquittal below and
     # the memory need to know whether a fraud was named, and both stand before the place
     # where the score is put together.
-    modell = float(cls.get("spam_score") or 0.0)
+    model = float(cls.get("spam_score") or 0.0)
     if str(cls.get("category") or "").lower() in ("spam", "phishing", "werbung"):
-        modell = max(modell, 0.6)
-    betrug = _modell_betrug(cls, modell)
+        model = max(model, 0.6)
+    fraud = _model_fraud(cls, model)
 
     # Boss scam: the display name is a known contact but the address is not theirs.
     # Technically there is nothing wrong with such a mail; only the contact list gives it
     # away, which is why this check stands here and not in the rule based part.
     if rule.sender_name:
-        opfer = await namens_kollision(db, owner_id, rule.sender_name, rule.sender_email)
-        if opfer:
+        victim = await named_collision(db, owner_id, rule.sender_name, rule.sender_email)
+        if victim:
             rule.hits("namens_kollision",
-                          f"gibt sich als „{opfer}“ aus, schreibt aber von "
+                          f"gibt sich als „{victim}“ aus, schreibt aber von "
                           f"{rule.sender_email or 'unbekannt'}")
             rule.score = min(1.0, rule.score)
 
     # --- Bekannter Absender ---------------------------------------------------
     # The address is always checked, the domain only when it says anything at all: a contact
     # at gmx.de does not exonerate all other gmx addresses.
-    hits = await kontakt_hits(
+    hits = await contact_hits(
         db, owner_id, rule.sender_email,
         "" if rule.sender_domain in FREEMAIL_DOMAINS else rule.sender_domain)
     # A known sender only exonerates as long as the technical side is right. The known name
     # in particular is the rewarding target: a forged mail "from the house bank" is more
     # dangerous than any advertising, and it is noticed exactly here.
-    forgery_suspicion = ist_forgery_suspicion(rule.signals)
+    forgery_suspicion = is_forgery_suspicion(rule.signals)
     # `sent` counts like a vault entry: whoever I wrote to myself I demonstrably know, and
     # that is the strongest "wanted" statement a mailbox can produce.
     # A named fraud lifts the acquittal as well: the graph checks the `kontakt` branch BEFORE
     # the automatic one, so a boss scam from a taken over contact address would otherwise walk
     # past everything below.
-    bekannter_kontakt = (hits in ("frontmatter", "sent")
-                         and not forgery_suspicion and not betrug)
-    if bekannter_kontakt:
+    known_contact = (hits in ("frontmatter", "sent")
+                         and not forgery_suspicion and not fraud)
+    if known_contact:
         log.debug("Mail from the known contact %s, no spam suspicion", rule.sender_email)
     if hits and forgery_suspicion:
         rule.reasons.append("bekannter Absender, aber Echtheitsprüfung fehlgeschlagen "
@@ -212,37 +212,37 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         # Weaker degree of familiarity: a deduction, not an acquittal.
         rule.score = max(0.0, rule.score - 0.15)
 
-    merkmale = features(rule, subject, kontakt_hits=hits)
+    feature_list = features(rule, subject, contact_hits=hits)
     # The findings of both sources in one shape. The rules have carried key plus plain text
     # since `RuleResult.treffer()`; the model now delivers the same, and only the origin
     # tells them apart. Whoever reads the card, writes the note or counts the statistics
     # reads from here instead of taking each source apart again.
-    modell_merkmale = list(cls.get("merkmale") or [])
-    befunde = [{"quelle": "regel", "kennung": sig, "text": text}
+    model_features = list(cls.get("merkmale") or [])
+    findings = [{"quelle": "regel", "kennung": sig, "text": text}
                for sig, text in zip(rule.signals, rule.reasons)]
-    befunde += [{"quelle": "modell", "kennung": str(m.get("kennung") or ""),
+    findings += [{"quelle": "modell", "kennung": str(m.get("kennung") or ""),
                  "text": str(m.get("text") or "")}
-                for m in modell_merkmale if m.get("kennung")]
+                for m in model_features if m.get("kennung")]
     # The model keys join the memory with their own namespace: the format is prefixed anyway
     # (`from:`, `dom:`, `sig:`, `wort:`), so nothing in the learning has to change.
-    merkmale += [f"llm:{m['kennung']}" for m in modell_merkmale if m.get("kennung")]
+    feature_list += [f"llm:{m['kennung']}" for m in model_features if m.get("kennung")]
 
     # --- Memory ---------------------------------------------------------------
-    gelernt_score, gelernt_reasons, sicher = await spam_learn.bewerten(db, owner_id, merkmale)
-    hat_gedaechtnis = bool(gelernt_reasons) or sicher
+    learned_score, learned_reasons, safe = await spam_learn.rate(db, owner_id, feature_list)
+    has_memory = bool(learned_reasons) or safe
     # Wie gut kennt das Postfach diesen Absender? Nicht der Score, sondern die Erfahrung:
     # „286-mal erwünscht, nie Spam" ist etwas anderes als „dreimal gesehen".
-    vertraut = await spam_learn.absender_vertraut(db, owner_id, rule.sender_email)
+    trusted = await spam_learn.sender_trusted(db, owner_id, rule.sender_email)
     # Und ob schon einmal jemand ausdrücklich widersprochen hat. Das wiegt schwerer als
     # jede Statistik: Wer zweimal „kein Spam" sagt und beim dritten Mal wieder gefragt wird,
     # hat recht, wenn er die Erkennung für kaputt hält.
-    widersprochen = await spam_learn.schon_widersprochen(db, owner_id, rule.sender_email)
+    contradicted = await spam_learn.already_contradicted(db, owner_id, rule.sender_email)
 
-    score = _mischen(rule.score, modell, gelernt_score if hat_gedaechtnis else None)
+    score = _mix(rule.score, model, learned_score if has_memory else None)
 
     # A subscribed newsletter is not spam. Without this brake, order confirmations and
     # invoices would wander into the spam folder along with the advertising.
-    if rule.ist_newsletter and not forgery_suspicion:
+    if rule.is_newsletter and not forgery_suspicion:
         score = min(score, 0.4)
 
     # Here the model wins, against the mixture and against the newsletter brake. Whoever asks
@@ -250,8 +250,8 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # need not have asked. Deliberately AFTER the brake: a phish that hangs a List-Unsubscribe
     # under its footer counts as a "newsletter" to the rules, and the cap of 0.4 would take
     # back exactly the verdict this is about.
-    if betrug:
-        score = round(max(score, modell, _BETRUG_SCORE), 3)
+    if fraud:
+        score = round(max(score, model, _FRAUD_SCORE), 3)
 
     # Widerspruch zwischen Modell und Gedächtnis: fragen, nicht wegräumen.
     #
@@ -264,76 +264,76 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # wurde vom Modell als Marken-Phishing gewertet und automatisch weggeräumt — und weil
     # eine verschobene Mail beim Zurückholen eine neue Nummer bekommt, ging das Spiel bei
     # jedem Zurückholen von vorn los.
-    streit = bool(betrug and vertraut and not forgery_suspicion)
-    reasons_streit = ""
-    if streit and widersprochen:
+    dispute = bool(fraud and trusted and not forgery_suspicion)
+    reasons_dispute = ""
+    if dispute and contradicted:
         # Entschieden ist entschieden. Nur die Echtheitsprüfung hebt das noch auf, und die
         # steht in `faelschungsverdacht` — sonst wäre ein einmal freigegebener Absender ein
         # Freifahrtschein für jeden, der seinen Namen benutzt.
-        score = min(score, _ENTSCHIEDEN_SCORE)
-        reasons_streit = (f"{rule.sender_email} wurde hier schon einmal ausdrücklich als "
+        score = min(score, _DECIDED_SCORE)
+        reasons_dispute = (f"{rule.sender_email} wurde hier schon einmal ausdrücklich als "
                           f"kein Spam entschieden")
-    elif streit:
-        score = min(score, _STREIT_SCORE)
-        reasons_streit = (f"das Modell hält es für Betrug, dieses Postfach kennt "
+    elif dispute:
+        score = min(score, _DISPUTE_SCORE)
+        reasons_dispute = (f"das Modell hält es für Betrug, dieses Postfach kennt "
                           f"{rule.sender_email} aber als erwünscht — deshalb die Rückfrage")
 
     reasons = list(rule.reasons)
-    if reasons_streit:
-        reasons.append(reasons_streit)
-    if betrug:
+    if reasons_dispute:
+        reasons.append(reasons_dispute)
+    if fraud:
         reasons.append("das lokale Modell erkennt einen Betrugsversuch")
     if cls.get("spam_reason"):
         reasons.append(str(cls["spam_reason"])[:200])
-    reasons.extend(gelernt_reasons)
+    reasons.extend(learned_reasons)
 
     # The memory may decide alone when it agrees about the sender, which is exactly what the
     # learning is for. Otherwise the same question would stand forever. The consequence is
     # drawn by the graph; here stands only THAT the matter is settled and how.
-    geklaert = bool(sicher and not forgery_suspicion)
+    settled = bool(safe and not forgery_suspicion)
     # A named fraud lifts the "wanted" of the memory, not its "spam": what is dangerous here
     # is the acquittal. Whoever wrote to me three times harmlessly can have their account
     # taken over on the fourth, and the memory would wave exactly that mail through. The
     # condition keeps the `geklaert_spam` path intact, which clears away regardless of the
     # auto threshold.
-    if geklaert and betrug and gelernt_score < 0.5:
-        geklaert = False
+    if settled and fraud and learned_score < 0.5:
+        settled = False
     # …es sei denn, das Postfach kennt den Absender wirklich. Dann bleibt es beim Streit
     # (Rückfrage) statt beim stillen Wegräumen — siehe oben.
-    if streit:
-        geklaert = False
+    if dispute:
+        settled = False
     # The verdict of one's own mail server stands for itself. In the weighted mixture it
     # would go under: with rule = 1.0 and a silent model, even a mail the own server gives 13
     # spam points to lands at ~0.55, which would put an auto threshold out of reach. Whoever
     # asks their own infrastructure and then does not believe it need not have asked; the
     # recall card remains the safety net.
-    serverurteil = any(str(sig).startswith("server_spam") or sig == "betreff_spam_markiert"
+    serververdict = any(str(sig).startswith("server_spam") or sig == "betreff_spam_markiert"
                        for sig in rule.signals)
     recipient = rule.recipients[0] if rule.recipients else ""
-    urteil = {
-        "aktiv": aktiv,
+    verdict_row = {
+        "aktiv": active,
         "score": score,
         "rule_score": rule.score,
-        "model_score": modell,
-        "learned_score": gelernt_score if hat_gedaechtnis else 0.0,
-        "geklaert": geklaert,
-        "serverurteil": serverurteil,
-        "modellurteil": betrug,
+        "model_score": model,
+        "learned_score": learned_score if has_memory else 0.0,
+        "geklaert": settled,
+        "serverurteil": serververdict,
+        "modellurteil": fraud,
         # What the mail was classified as. Comes from the model, and a named fraud is at
         # least "phishing" even when the model called it something vaguer. This is what the
         # statistics group by, so it is deliberately a value and not a flag: a new kind
         # appears there without a line of code.
-        "art": ("phishing" if betrug and str(cls.get("category") or "").lower()
+        "art": ("phishing" if fraud and str(cls.get("category") or "").lower()
                 not in ("phishing", "betrug") else
                 str(cls.get("category") or "").strip().lower() or "unbekannt"),
-        "befunde": befunde,
+        "befunde": findings,
         # Ready made line for a note or a card: the plain texts, in reading order.
-        "befunde_text": " · ".join(b["text"] for b in befunde if b["text"])[:600],
-        "geklaert_urteil": ("spam" if gelernt_score >= 0.5 else "ham") if geklaert else "",
-        "bekannter_kontakt": bekannter_kontakt,
+        "befunde_text": " · ".join(b["text"] for b in findings if b["text"])[:600],
+        "geklaert_urteil": ("spam" if learned_score >= 0.5 else "ham") if settled else "",
+        "bekannter_kontakt": known_contact,
         "faelschungsverdacht": forgery_suspicion,
         "reasons": reasons[:12],
-        "features": merkmale,
+        "features": feature_list,
         "sender_email": rule.sender_email[:320],
         "sender_domain": rule.sender_domain[:255],
         "recipient": recipient[:320],
@@ -343,23 +343,23 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         "uid": payload.get("uid") if isinstance(payload.get("uid"), int) else None,
         # The thresholds travel into the verdict: the branch stands in the graph, and it
         # should be able to check against the setting of NOW without reading the database.
-        "frage_ab": await _zahl(db, QUESTION_AB_KEY),
-        "sofort_ab": await _zahl(db, SOFORT_AB_KEY),
-        "auto_ab": await _zahl(db, AUTO_AB_KEY),
+        "frage_ab": await _number(db, QUESTION_FROM_KEY),
+        "sofort_ab": await _number(db, IMMEDIATE_FROM_KEY),
+        "auto_ab": await _number(db, AUTO_FROM_KEY),
         # Same reason as the thresholds: the branch in front of the reporting step reads
         # it out of the context instead of asking the database itself.
         "auto_melden": str(await get_setting(
-            db, AUTO_REPORT_KEY, _VORGABE[AUTO_REPORT_KEY])).strip().lower()
+            db, AUTO_REPORT_KEY, _DEFAULT[AUTO_REPORT_KEY])).strip().lower()
             not in ("0", "false", "nein", "aus"),
     }
     log.info("Spam verdict (%.2f: rule=%.2f model=%.2f learnt=%.2f, resolved=%s, fraud=%s, "
              "kind=%s) from %s",
-             score, rule.score, modell, gelernt_score, urteil["geklaert_urteil"] or "nein",
-             betrug, urteil["art"], rule.sender_email)
-    return urteil
+             score, rule.score, model, learned_score, verdict_row["geklaert_urteil"] or "nein",
+             fraud, verdict_row["art"], rule.sender_email)
+    return verdict_row
 
 
-async def create(db: AsyncSession, owner_id: int | None, urteil: dict, *,
+async def create(db: AsyncSession, owner_id: int | None, verdict_row: dict, *,
                   task_id: int | None = None, instance_id: int | None = None) -> SpamVerdict:
     """Turn a verdict into a row: work stock and later learning material.
 
@@ -371,21 +371,21 @@ async def create(db: AsyncSession, owner_id: int | None, urteil: dict, *,
         owner_user_id=owner_id,
         assistant_task_id=task_id,
         workflow_instance_id=instance_id,
-        account=str(urteil.get("account") or ""),
-        folder=str(urteil.get("folder") or ""),
-        uid=urteil.get("uid") if isinstance(urteil.get("uid"), int) else None,
-        sender_email=str(urteil.get("sender_email") or "")[:320],
-        sender_domain=str(urteil.get("sender_domain") or "")[:255],
-        recipient=str(urteil.get("recipient") or "")[:320],
-        subject=str(urteil.get("subject") or "")[:500],
-        rule_score=float(urteil.get("rule_score") or 0.0),
-        model_score=float(urteil.get("model_score") or 0.0),
-        learned_score=float(urteil.get("learned_score") or 0.0),
-        score=float(urteil.get("score") or 0.0),
-        reasons=list(urteil.get("reasons") or [])[:12],
-        features=list(urteil.get("features") or []),
-        kind=str(urteil.get("art") or "")[:40],
-        befunde=list(urteil.get("befunde") or [])[:20],
+        account=str(verdict_row.get("account") or ""),
+        folder=str(verdict_row.get("folder") or ""),
+        uid=verdict_row.get("uid") if isinstance(verdict_row.get("uid"), int) else None,
+        sender_email=str(verdict_row.get("sender_email") or "")[:320],
+        sender_domain=str(verdict_row.get("sender_domain") or "")[:255],
+        recipient=str(verdict_row.get("recipient") or "")[:320],
+        subject=str(verdict_row.get("subject") or "")[:500],
+        rule_score=float(verdict_row.get("rule_score") or 0.0),
+        model_score=float(verdict_row.get("model_score") or 0.0),
+        learned_score=float(verdict_row.get("learned_score") or 0.0),
+        score=float(verdict_row.get("score") or 0.0),
+        reasons=list(verdict_row.get("reasons") or [])[:12],
+        features=list(verdict_row.get("features") or []),
+        kind=str(verdict_row.get("art") or "")[:40],
+        findings=list(verdict_row.get("befunde") or [])[:20],
         status="pending")
     db.add(verdict)
     await db.flush()
@@ -427,7 +427,7 @@ def karte(verdict: SpamVerdict, *, predecided: bool = False,
 
 
 async def report(db: AsyncSession, owner_id: int | None, verdict: SpamVerdict, *,
-                 sofort: bool, predecided: bool = False,
+                 immediate: bool, predecided: bool = False,
                  recoverable: bool = False) -> None:
     """Put a single card into the notifications (the bot delivers it and attaches the
     buttons)."""
@@ -443,7 +443,7 @@ async def report(db: AsyncSession, owner_id: int | None, verdict: SpamVerdict, *
         user_id=owner_id, spam_verdict_id=verdict.id,
         kind="spam_auto" if recoverable else "spam_review",
         chat_id=owner.telegram_chat_id, title=title[:200], body=text[:4000]))
-    if not sofort:
+    if not immediate:
         log.debug("Verdict #%s is waiting for the collection card", verdict.id)
 
 
@@ -454,27 +454,27 @@ async def digest_due(db: AsyncSession) -> int:
     messages at any notable spam volume, and whoever is asked every three minutes eventually
     presses a button at random.
     """
-    takt = int(await _zahl(db, DIGEST_MIN_KEY))
-    if takt <= 0:
+    beat = int(await _number(db, DIGEST_MIN_KEY))
+    if beat <= 0:
         return 0
-    limit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=takt)
+    limit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=beat)
     offen = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.status == "pending", SpamVerdict.digest_batch.is_(None),
         SpamVerdict.created_at <= limit).order_by(SpamVerdict.id).limit(50))).scalars().all()
     # Cases reported immediately already hang off a card of their own; they must not be
     # asked about twice.
-    schon_gemeldet = set((await db.execute(select(Notification.spam_verdict_id).where(
+    already_reported = set((await db.execute(select(Notification.spam_verdict_id).where(
         Notification.spam_verdict_id.in_([v.id for v in offen] or [0])))).scalars().all())
-    offen = [v for v in offen if v.id not in schon_gemeldet]
+    offen = [v for v in offen if v.id not in already_reported]
     if not offen:
         return 0
 
-    nach_owner: dict[int | None, list[SpamVerdict]] = {}
+    by_owner: dict[int | None, list[SpamVerdict]] = {}
     for v in offen:
-        nach_owner.setdefault(v.owner_user_id, []).append(v)
+        by_owner.setdefault(v.owner_user_id, []).append(v)
 
-    gesendet = 0
-    for owner_id, cases in nach_owner.items():
+    sent = 0
+    for owner_id, cases in by_owner.items():
         if not owner_id:
             continue
         owner = await db.get(User, owner_id)
@@ -497,14 +497,14 @@ async def digest_due(db: AsyncSession) -> int:
             title=(await tr(db, "server.notify.spam_verdacht", owner.locale,
                             count=len(cases)))[:200],
             body="\n".join(lines)[:4000]))
-        gesendet += 1
+        sent += 1
     await db.commit()
-    return gesendet
+    return sent
 
 
 # --- Decision and execution ---------------------------------------------------------
 
-async def entscheiden(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, *,
+async def decide(db: AsyncSession, verdict: SpamVerdict, is_spam: bool, *,
                       decided_by: str = "telegram") -> str:
     """Take the answer of the human. Returns a plain text result for the reply.
 
@@ -519,24 +519,24 @@ async def entscheiden(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, *,
     executable.
     """
     if verdict.workflow_instance_id:
-        return await _an_flow_report(db, verdict, ist_spam, decided_by=decided_by)
-    await festschreiben(db, verdict, ist_spam, decided_by=decided_by)
-    result = await imap_action(verdict, ist_spam)
+        return await _an_flow_report(db, verdict, is_spam, decided_by=decided_by)
+    await commit(db, verdict, is_spam, decided_by=decided_by)
+    result = await imap_action(verdict, is_spam)
     verdict.action_result = result[:2000]
     await db.commit()
     return result
 
 
-async def festschreiben(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, *,
+async def commit(db: AsyncSession, verdict: SpamVerdict, is_spam: bool, *,
                         decided_by: str = "telegram") -> None:
     """Record the verdict and learn from it (without IMAP). Does NOT commit."""
-    vorher = verdict.status if verdict.status in ("spam", "ham") else ""
-    verdict.status = "spam" if ist_spam else "ham"
+    before = verdict.status if verdict.status in ("spam", "ham") else ""
+    verdict.status = "spam" if is_spam else "ham"
     verdict.decided_by = decided_by
     verdict.decided_at = dt.datetime.now(tz=dt.timezone.utc)
-    await spam_learn.merken(db, verdict, ist_spam, vorher=vorher)
+    await spam_learn.remember(db, verdict, is_spam, before=before)
 
-    if not ist_spam:
+    if not is_spam:
         # "Not spam" is more than a no: the sender should not even stand out in future. The
         # learned rule takes hold before the assessment already.
         from .assistant_policy import upsert_policy
@@ -545,7 +545,7 @@ async def festschreiben(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, 
                                 match_value=verdict.sender_email, auto_approve=False)
 
 
-async def _an_flow_report(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, *,
+async def _an_flow_report(db: AsyncSession, verdict: SpamVerdict, is_spam: bool, *,
                             decided_by: str) -> str:
     """Give the answer to the waiting flow and advance it.
 
@@ -555,20 +555,20 @@ async def _an_flow_report(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool
     into nothing.
     """
     from ..models.workflow import WorkflowInstance
-    from .workflow_engine import advance, entscheide_genehmigung
+    from .workflow_engine import advance, decide_approval
 
     inst = await db.get(WorkflowInstance, verdict.workflow_instance_id)
-    entschieden = await entscheide_genehmigung(
-        db, inst, "approved" if ist_spam else "rejected", actor_id=None,
+    decided = await decide_approval(
+        db, inst, "approved" if is_spam else "rejected", actor_id=None,
         context={"spam": {**((inst.context or {}).get("spam") or {}),
-                          "entschieden": "spam" if ist_spam else "ham",
+                          "entschieden": "spam" if is_spam else "ham",
                           "entschieden_von": decided_by}},
     ) if inst is not None else False
-    if not entschieden:
+    if not decided:
         log.warning("Verdict #%s: no waiting flow (instance %s), executed directly",
                     verdict.id, verdict.workflow_instance_id)
-        await festschreiben(db, verdict, ist_spam, decided_by=decided_by)
-        result = await imap_action(verdict, ist_spam)
+        await commit(db, verdict, is_spam, decided_by=decided_by)
+        result = await imap_action(verdict, is_spam)
         verdict.action_result = result[:2000]
         await db.commit()
         return result
@@ -581,12 +581,12 @@ async def _an_flow_report(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool
     return verdict.action_result or "an den Ablauf übergeben"
 
 
-async def imap_action(verdict: SpamVerdict, ist_spam: bool) -> str:
+async def imap_action(verdict: SpamVerdict, is_spam: bool) -> str:
     """Move mail through `imap-mcp`. Errors are reported, not raised: a mail that cannot be
     moved must not undo the decision."""
     if not (verdict.account and verdict.folder and verdict.uid):
         return "keine Mailkennung hinterlegt — nichts verschoben"
-    tool = "mark_spam" if ist_spam else "mark_not_spam"
+    tool = "mark_spam" if is_spam else "mark_not_spam"
     try:
         result = await call_tool(IMAP_MCP_URL, tool, {
             "account": verdict.account, "folder": verdict.folder, "uid": verdict.uid})
@@ -598,7 +598,7 @@ async def imap_action(verdict: SpamVerdict, ist_spam: bool) -> str:
     return text
 
 
-async def zurueckholen(db: AsyncSession, verdict: SpamVerdict, *,
+async def reclaim(db: AsyncSession, verdict: SpamVerdict, *,
                        decided_by: str = "telegram") -> str:
     """An automatically sorted out mail back into the inbox. Returns a plain text result.
 
@@ -609,7 +609,7 @@ async def zurueckholen(db: AsyncSession, verdict: SpamVerdict, *,
     """
     if verdict.status not in ("spam", "pending"):
         return f"schon erledigt ({verdict.status})"
-    await festschreiben(db, verdict, False, decided_by=decided_by)
+    await commit(db, verdict, False, decided_by=decided_by)
     result = await imap_action(verdict, False)
     verdict.action_result = result[:2000]
     await db.commit()
@@ -617,14 +617,14 @@ async def zurueckholen(db: AsyncSession, verdict: SpamVerdict, *,
     return result
 
 
-async def entscheide_batch(db: AsyncSession, batch: str, ist_spam: bool, *,
+async def decide_batch(db: AsyncSession, batch: str, is_spam: bool, *,
                            decided_by: str = "telegram") -> tuple[int, int]:
     """Decide all open cases of a digest card at once. Returns (done, errors)."""
     cases = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.digest_batch == batch, SpamVerdict.status == "pending"))).scalars().all()
     error = 0
     for v in cases:
-        result = await entscheiden(db, v, ist_spam, decided_by=decided_by)
+        result = await decide(db, v, is_spam, decided_by=decided_by)
         if result.startswith("nicht verschoben"):
             error += 1
     return len(cases), error

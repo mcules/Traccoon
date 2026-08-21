@@ -9,7 +9,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.enums import ProjectRole
 from ..models.ops import Job, JobRun, PermAction, Permission, WebhookCoalesce, WebhookSub
@@ -97,9 +97,9 @@ async def _check_webhook_project(project_id: int | None, user: User, db: AsyncSe
     from ..models.project import Project
     proj = await db.get(Project, project_id)
     if proj is None:
-        raise Fehler(400, "err.target_project_does_not_exist", "The target project does not exist")
+        raise Error(400, "err.target_project_does_not_exist", "The target project does not exist")
     if not (await build_access(proj, user, db)).ai_assign:
-        raise Fehler(403, "err.ai_right_target_project_required",
+        raise Error(403, "err.ai_right_target_project_required",
                      "The AI right in the target project is required")
 
 
@@ -119,7 +119,7 @@ async def update_webhook(wid: int, data: WebhookIn, user: User = Depends(get_cur
                          db: AsyncSession = Depends(get_session)):
     w = await db.get(WebhookSub, wid)
     if w is None or not is_owner_or_admin(w.owner_user_id, user):
-        raise Fehler(404, "err.webhook_not_found", "Webhook not found")
+        raise Error(404, "err.webhook_not_found", "Webhook not found")
     await _check_webhook_project(data.project_id, user, db)
     for field, value in data.model_dump().items():
         if field == "secret" and not value:
@@ -140,7 +140,7 @@ async def set_webhook_enabled(wid: int, data: EnabledIn, user: User = Depends(ge
     """On/off without deleting: deactivated, the inbound endpoint rejects (404)."""
     w = await db.get(WebhookSub, wid)
     if w is None or not is_owner_or_admin(w.owner_user_id, user):
-        raise Fehler(404, "err.webhook_not_found", "Webhook not found")
+        raise Error(404, "err.webhook_not_found", "Webhook not found")
     w.enabled = data.enabled
     await db.commit()
     await db.refresh(w)
@@ -174,7 +174,7 @@ def _dig_payload(data, path: str):
 ANSWER_MAX_SEK = 120
 
 
-async def _warte_auf_answer(instance_id: int, sub: WebhookSub) -> dict:
+async def _wait_on_answer(instance_id: int, sub: WebhookSub) -> dict:
     """Hold the answer of a flow open for the caller (mode 'workflow').
 
     A webhook is a trigger, and a trigger may have an answer: the flow writes it (action
@@ -192,8 +192,8 @@ async def _warte_auf_answer(instance_id: int, sub: WebhookSub) -> dict:
     from ..models.workflow import WorkflowInstance
 
     limit = max(0, min(int(sub.response_timeout or 0), ANSWER_MAX_SEK))
-    uhr = asyncio.get_running_loop().time
-    ende = uhr() + limit
+    clock = asyncio.get_running_loop().time
+    end = clock() + limit
     karte = sub.response_map or {}
     ctx: dict = {}
     status, done = "weg", False
@@ -210,10 +210,10 @@ async def _warte_auf_answer(instance_id: int, sub: WebhookSub) -> dict:
         # An answer that already stands does not need the end of the flow: answering first
         # and tidying up afterwards is a perfectly good order.
         if karte:
-            bereit = done or all(_dig_payload(ctx, path) is not None for path in karte.values())
+            ready = done or all(_dig_payload(ctx, path) is not None for path in karte.values())
         else:
-            bereit = done or "answer" in ctx
-        if bereit or uhr() >= ende:
+            ready = done or "answer" in ctx
+        if ready or clock() >= end:
             break
         await asyncio.sleep(0.4)
 
@@ -239,7 +239,7 @@ def _fill(tpl: str, payload) -> str:
     return out
 
 
-def _setze_tief(target: dict, path: str, value) -> None:
+def _set_deep(target: dict, path: str, value) -> None:
     """`intake.agent` legt {"intake": {"agent": …}} an — ein Punkt im ZIEL verschachtelt."""
     parts = [t for t in str(path).split(".") if t]
     if not parts:
@@ -264,18 +264,18 @@ def _context(sub: WebhookSub, payload) -> dict:
     """
     nutz = payload if isinstance(payload, dict) else {"payload": payload}
     cmap = sub.context_map or {}
-    fest = sub.context_fixed or {}
-    if not cmap and not fest:
+    fixed = sub.context_fixed or {}
+    if not cmap and not fixed:
         return nutz
     ctx: dict = {}
     for target, path in cmap.items():
-        _setze_tief(ctx, str(target), nutz if not path else _dig_payload(nutz, str(path)))
-    for target, value in fest.items():
-        _setze_tief(ctx, str(target), _fill(value, nutz) if isinstance(value, str) else value)
+        _set_deep(ctx, str(target), nutz if not path else _dig_payload(nutz, str(path)))
+    for target, value in fixed.items():
+        _set_deep(ctx, str(target), _fill(value, nutz) if isinstance(value, str) else value)
     return ctx
 
 
-def _referenz(sub: WebhookSub, payload) -> str | None:
+def _reference(sub: WebhookSub, payload) -> str | None:
     """Der Schlüssel gegen Doppel-Zustellung: ein Feld der Nutzlast oder eine Vorlage.
 
     Ein Schlüssel aus mehreren Feldern (`{account}:{uid}`) ist der Normalfall, sobald das
@@ -296,14 +296,14 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
     sub = (await db.execute(
         select(WebhookSub).where(WebhookSub.public_id == public_id))).scalar_one_or_none()
     if sub is None or not sub.enabled:
-        raise Fehler(404, "err.unknown_route", "Unknown route")
+        raise Error(404, "err.unknown_route", "Unknown route")
     route = sub.route  # label for coalescing, notify and the idempotency source
     raw = await request.body()
     if sub.secret:
         sig = request.headers.get("X-Webhook-Signature", "")
         expected = hmac.new(sub.secret.encode(), raw, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(sig, expected):
-            raise Fehler(401, "err.invalid_signature", "Invalid signature")
+            raise Error(401, "err.invalid_signature", "Invalid signature")
     try:
         payload = await request.json()
     except Exception:
@@ -327,10 +327,10 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
     # Alarm-Ereignisse überspringen das Sammelfenster: Sie sollen durchlaufen, nicht auf die
     # Zusammenfassung warten. WAS dabei gemeldet wird, sagt der Ablauf (notify-Knoten) — der
     # Webhook selbst verschickt nichts mehr, sonst hinge die Nachricht wieder an ihm fest.
-    sofort = bool(event) and event in (sub.alert_events or [])
+    immediate = bool(event) and event in (sub.alert_events or [])
 
     # Coalescing: within the cooldown window only collect, the scheduler summarises.
-    cooldown = 0 if sofort else (int((sub.event_cooldowns or {}).get(event, 0)) if event else 0)
+    cooldown = 0 if immediate else (int((sub.event_cooldowns or {}).get(event, 0)) if event else 0)
     if cooldown > 0:
         now = dt.datetime.now(tz=dt.timezone.utc)
         ekey = (request.headers.get(sub.event_key_header, "") if sub.event_key_header else "") or event
@@ -355,7 +355,7 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
     # sind heute Knoten und damit für JEDEN Auslöser zu haben, nicht nur für Webhooks.
     # Bestehende Webhooks stellt `services/webhook_modes.py` beim Start um.
     ctx = _context(sub, payload)
-    src_ref = _referenz(sub, payload)
+    src_ref = _reference(sub, payload)
 
     if sub.mode == "event":
         # Meldet ein Ereignis; wer darauf hört, entscheiden die Abläufe selbst über den
@@ -371,11 +371,11 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
     from ..models.workflow import WorkflowDefinition, WorkflowInstance
     from ..services.workflow_engine import start_workflow
     if sub.workflow_definition_id is None:
-        raise Fehler(400, "err.webhook_without_workflow_definition_id",
+        raise Error(400, "err.webhook_without_workflow_definition_id",
                      "Webhook without workflow_definition_id")
     definition = await db.get(WorkflowDefinition, sub.workflow_definition_id)
     if definition is None or definition.current_version_id is None:
-        raise Fehler(400, "err.workflow_definition_missing_not",
+        raise Error(400, "err.workflow_definition_missing_not",
                      "The workflow definition is missing or not published")
     if src_ref:
         dup = (await db.execute(select(WorkflowInstance).where(
@@ -387,8 +387,8 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
     # artifact stands in (ticket key, ticket id, unit id). Without this binding a flow
     # with a ticket subject would run into nothing: its actions (setting a state,
     # commenting, assigning) would find nothing to act on.
-    from ..services.workflow_subject import subjekt_aus_payload
-    issue_id, asset_id, error = await subjekt_aus_payload(
+    from ..services.workflow_subject import subject_from_payload
+    issue_id, asset_id, error = await subject_from_payload(
         db, definition, payload if isinstance(payload, dict) else {}, ctx,
         owner_id=sub.owner_user_id)
     if error:
@@ -403,17 +403,17 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         # is what the flow wrote: a dict answer IS the body (so the far side sees exactly
         # the fields it was promised), anything else is wrapped.
         from fastapi.responses import JSONResponse
-        result = await _warte_auf_answer(inst.id, sub)
+        result = await _wait_on_answer(inst.id, sub)
         answer = result["answer"]
         if isinstance(answer, dict):
-            rumpf = answer
+            base = answer
         elif answer is None:
-            rumpf = {"accepted": True, "mode": "workflow", "answer": None,
+            base = {"accepted": True, "mode": "workflow", "answer": None,
                      "instance_id": inst.id, "status": result["status"],
                      "done": result["done"]}
         else:
-            rumpf = {"answer": answer}
-        return JSONResponse(rumpf, status_code=200 if answer is not None else 202)
+            base = {"answer": answer}
+        return JSONResponse(base, status_code=200 if answer is not None else 202)
     return {"accepted": True, "mode": "workflow", "instance_id": inst.id,
             "status": inst.status.value,
             **({"issue_id": issue_id} if issue_id else {}),
@@ -456,11 +456,11 @@ class JobIn(BaseModel):
 
     @field_validator("type")
     @classmethod
-    def _zeitplan_check(cls, value: str) -> str:
-        from ..services.scheduler import ZEITPLAN_KINDS
-        if value not in ZEITPLAN_KINDS:
+    def _schedule_check(cls, value: str) -> str:
+        from ..services.scheduler import SCHEDULE_KINDS
+        if value not in SCHEDULE_KINDS:
             raise ValueError(
-                f"'{value}' ist kein Zeitplan. Erlaubt: {', '.join(ZEITPLAN_KINDS)}. "
+                f"'{value}' ist kein Zeitplan. Erlaubt: {', '.join(SCHEDULE_KINDS)}. "
                 f"Die Art der Arbeit (prompt, workflow, film …) gehoert in `kind`.")
         return value
 
@@ -501,8 +501,8 @@ async def create_job(data: JobIn, user: User = Depends(get_current_user),
     # Wer noch eine alte Art einträgt (Vorlage, Agenten-Werkzeug, altes Skript), bekommt
     # gleich einen Ablauf. Sonst stünde hier ein Weg offen, den ein späterer Neustart erst
     # wieder einsammeln müsste — und bis dahin liefe der Job anders als angezeigt.
-    from ..services.job_modes import ALTE_KINDS, as_flow
-    if job.kind in ALTE_KINDS:
+    from ..services.job_modes import OLD_KINDS, as_flow
+    if job.kind in OLD_KINDS:
         await as_flow(db, job)
     await db.commit()
     await db.refresh(job)
@@ -514,11 +514,11 @@ async def update_job(jid: int, data: JobIn, user: User = Depends(get_current_use
                     db: AsyncSession = Depends(get_session)):
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
-        raise Fehler(404, "err.job_not_found", "Job not found")
+        raise Error(404, "err.job_not_found", "Job not found")
     for field, value in data.model_dump().items():
         setattr(job, field, value)
-    from ..services.job_modes import ALTE_KINDS, as_flow
-    if job.kind in ALTE_KINDS:
+    from ..services.job_modes import OLD_KINDS, as_flow
+    if job.kind in OLD_KINDS:
         await as_flow(db, job)
     await db.commit()
     await db.refresh(job)
@@ -531,7 +531,7 @@ async def run_job_now(jid: int, user: User = Depends(get_current_user),
     from ..services.scheduler import run_job_kind
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
-        raise Fehler(404, "err.job_not_found", "Job not found")
+        raise Error(404, "err.job_not_found", "Job not found")
     jr = JobRun(job_id=job.id, status="running")
     db.add(jr)
     job.last_run_at = dt.datetime.now(tz=dt.timezone.utc)
@@ -551,7 +551,7 @@ async def set_job_enabled(jid: int, data: EnabledIn, user: User = Depends(get_cu
     Reactivating also lifts a pause_on_success `paused` again."""
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
-        raise Fehler(404, "err.job_not_found", "Job not found")
+        raise Error(404, "err.job_not_found", "Job not found")
     job.enabled = data.enabled
     if data.enabled:
         job.paused = False
@@ -565,7 +565,7 @@ async def job_runs(jid: int, user: User = Depends(get_current_user),
                    db: AsyncSession = Depends(get_session)):
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
-        raise Fehler(404, "err.job_not_found", "Job not found")
+        raise Error(404, "err.job_not_found", "Job not found")
     rows = (await db.execute(select(JobRun).where(JobRun.job_id == jid).order_by(JobRun.id.desc()))).scalars().all()
     return [{"id": r.id, "status": r.status, "output": r.output, "started_at": r.started_at} for r in rows]
 

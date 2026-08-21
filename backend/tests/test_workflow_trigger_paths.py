@@ -20,7 +20,7 @@ async def anna(db):
     return await make_user(db, "anna", admin=True)
 
 
-async def _prozess(db, key="preis-abgleich", subject=WorkflowSubjectKind.standalone,
+async def _flow(db, key="preis-abgleich", subject=WorkflowSubjectKind.standalone,
                    project_id=None, published=True) -> WorkflowDefinition:
     graph = {
         "nodes": [{"id": "s", "type": "start", "position": {"x": 0, "y": 0}, "data": {"config": {}}},
@@ -41,46 +41,46 @@ async def _prozess(db, key="preis-abgleich", subject=WorkflowSubjectKind.standal
     return d
 
 
-async def _instanzen(db) -> list[WorkflowInstance]:
+async def _instances(db) -> list[WorkflowInstance]:
     return list((await db.execute(select(WorkflowInstance))).scalars().all())
 
 
 async def test_a_workflow_job_run_now_starts_an_instance(db, anna, monkeypatch):
     """The core of the bug: run_job must not give the job into the prompt path."""
-    d = await _prozess(db)
+    d = await _flow(db)
     job = Job(user_id=anna.id, name="Preise", kind="workflow", workflow_definition_id=d.id,
               type="cron", schedule="0 3 * * *")
     db.add(job)
     await db.commit()
 
-    eingereiht = []
+    queued = []
 
     async def fake_enqueue(payload):
-        eingereiht.append(payload)
+        queued.append(payload)
 
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", fake_enqueue)
 
     out = await call_traccoon_tool(db, anna.id, "traccoon_run_job", {"job_id": job.id})
     assert "ok" in out and "workflow" in out
-    assert eingereiht == [], "a workflow job does not belong in the worker queue"
-    inst = await _instanzen(db)
+    assert queued == [], "a workflow job does not belong in the worker queue"
+    inst = await _instances(db)
     assert len(inst) == 1 and inst[0].definition_id == d.id
     jr = (await db.execute(select(JobRun))).scalars().one()
     assert jr.status == "ok"
 
 
 async def test_the_agent_starts_a_flow_and_sees_only_startable_ones(db, anna):
-    startbar = await _prozess(db, key="startbar")
-    await _prozess(db, key="entwurf", published=False)
+    startable = await _flow(db, key="startbar")
+    await _flow(db, key="entwurf", published=False)
 
     listing = await call_traccoon_tool(db, anna.id, "traccoon_list_workflows", {})
     assert "startbar" in listing and "entwurf" not in listing
 
     out = await call_traccoon_tool(db, anna.id, "traccoon_start_workflow",
-                                   {"workflow_id": startbar.id, "context": {"quelle": "models.dev"}})
+                                   {"workflow_id": startable.id, "context": {"quelle": "models.dev"}})
     assert "gestartet" in out
-    inst = await _instanzen(db)
+    inst = await _instances(db)
     assert len(inst) == 1
     assert inst[0].context["quelle"] == "models.dev"
     # The origin has to stay recognisable; otherwise it is unclear later who triggered the run.
@@ -88,17 +88,17 @@ async def test_the_agent_starts_a_flow_and_sees_only_startable_ones(db, anna):
 
 
 async def test_a_flow_on_a_ticket_demands_a_ticket(db, anna):
-    d = await _prozess(db, key="ticket-prozess", subject=WorkflowSubjectKind.issue)
+    d = await _flow(db, key="ticket-prozess", subject=WorkflowSubjectKind.issue)
     out = await call_traccoon_tool(db, anna.id, "traccoon_start_workflow", {"workflow_id": d.id})
     assert "issue_key" in out
-    assert await _instanzen(db) == []
+    assert await _instances(db) == []
 
 
 async def test_an_unpublished_flow_does_not_start(db, anna):
-    d = await _prozess(db, key="entwurf", published=False)
+    d = await _flow(db, key="entwurf", published=False)
     out = await call_traccoon_tool(db, anna.id, "traccoon_start_workflow", {"workflow_id": d.id})
     assert "veröffentlichte" in out
-    assert await _instanzen(db) == []
+    assert await _instances(db) == []
 
 
 async def test_starting_a_flow_needs_a_grant(db):

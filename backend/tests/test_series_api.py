@@ -24,23 +24,23 @@ async def _token(client, user, key="handy") -> str:
 # ── Anlegen ──────────────────────────────────────────────────────────────────
 
 async def test_creating_and_finding_again(client, db):
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy")
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy")
 
-    (r,) = (await client.get("/series", headers=auth(ich))).json()
+    (r,) = (await client.get("/series", headers=auth(me))).json()
     assert (r["key"], r["kind"], r["own"], r["has_token"]) == ("handy", "location", True, False)
 
 
 async def test_an_unknown_kind_is_rejected(client, db):
-    ich = await make_user(db, "ich")
-    r = await client.post("/series", headers=auth(ich), json={"key": "x", "kind": "bilder"})
+    me = await make_user(db, "ich")
+    r = await client.post("/series", headers=auth(me), json={"key": "x", "kind": "bilder"})
     assert r.status_code == 400 and r.json()["key"] == "err.unknown_series_kind"
 
 
 async def test_the_same_key_twice_does_not_work(client, db):
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy")
-    r = await client.post("/series", headers=auth(ich),
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy")
+    r = await client.post("/series", headers=auth(me),
                           json={"key": "handy", "kind": "location"})
     assert r.status_code == 409
 
@@ -56,9 +56,9 @@ async def test_two_people_may_have_the_same_key(client, db):
 # ── Aufnahme ─────────────────────────────────────────────────────────────────
 
 async def test_all_four_formats_land_in_the_same_series(client, db):
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy", settings={"min_distance_m": 0, "min_interval_s": 0})
-    tok = await _token(client, ich)
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy", settings={"min_distance_m": 0, "min_interval_s": 0})
+    tok = await _token(client, me)
 
     # flach (Home Assistant)
     r = await client.post(f"/ingest/{tok}",
@@ -80,16 +80,16 @@ async def test_all_four_formats_land_in_the_same_series(client, db):
     r = await client.get(f"/ingest/{tok}?id=handy&lat=50.12&lon=10.60&timestamp=1787227200")
     assert r.json()["accepted"] == 1
 
-    daten = (await client.get("/series/handy/points", headers=auth(ich))).json()
-    assert len(daten["points"]) == 5
-    assert {p["source"] for p in daten["points"]} == {"ha", "owntracks", "overland", "traccar"}
+    data = (await client.get("/series/handy/points", headers=auth(me))).json()
+    assert len(data["points"]) == 5
+    assert {p["source"] for p in data["points"]} == {"ha", "owntracks", "overland", "traccar"}
 
 
 async def test_a_report_without_a_position_is_not_an_error(client, db):
     """Sonst schickt ein Geraet dieselbe Nachricht in einer Wiederholungsschleife."""
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy")
-    tok = await _token(client, ich)
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy")
+    tok = await _token(client, me)
 
     r = await client.post(f"/ingest/{tok}", json={"_type": "waypoints"})
     assert r.status_code == 202 and r.json()["ignored"] is True
@@ -101,185 +101,185 @@ async def test_an_unknown_token_reveals_nothing(client, db):
 
 
 async def test_a_new_token_makes_the_old_one_worthless(client, db):
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy")
-    alt = await _token(client, ich)
-    new = await _token(client, ich)
-    assert alt != new
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy")
+    old = await _token(client, me)
+    new = await _token(client, me)
+    assert old != new
 
-    assert (await client.post(f"/ingest/{alt}", json={"lat": 50, "lon": 10})).status_code == 404
+    assert (await client.post(f"/ingest/{old}", json={"lat": 50, "lon": 10})).status_code == 404
     assert (await client.post(f"/ingest/{new}", json={"lat": 50, "lon": 10})).status_code == 202
 
 
 async def test_the_token_can_be_looked_at_again(client, db):
     """Man muss es in ein Telefon eintragen — einmal zeigen reicht da nicht."""
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy")
-    tok = await _token(client, ich)
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy")
+    tok = await _token(client, me)
 
-    r = await client.get("/series/handy/token", headers=auth(ich))
+    r = await client.get("/series/handy/token", headers=auth(me))
     assert r.status_code == 200 and r.json()["token"] == tok
 
 
 # ── Sehen und Teilen ─────────────────────────────────────────────────────────
 
 async def test_a_foreign_series_is_invisible(client, db):
-    ich = await make_user(db, "ich")
-    fremd = await make_user(db, "fremd")
-    await _series(client, ich, "handy")
+    me = await make_user(db, "ich")
+    foreign = await make_user(db, "fremd")
+    await _series(client, me, "handy")
 
-    assert (await client.get("/series", headers=auth(fremd))).json() == []
+    assert (await client.get("/series", headers=auth(foreign))).json() == []
     # 404 und nicht 403: Eine 403 wuerde bestaetigen, dass es die Reihe gibt.
-    r = await client.get("/series/handy/points", headers=auth(fremd))
+    r = await client.get("/series/handy/points", headers=auth(foreign))
     assert r.status_code == 404
 
 
 async def test_a_grant_makes_it_visible(client, db):
-    ich = await make_user(db, "ich")
-    freund = await make_user(db, "freund")
-    await _series(client, ich, "handy")
+    me = await make_user(db, "ich")
+    friend = await make_user(db, "freund")
+    await _series(client, me, "handy")
 
-    r = await client.post("/series/handy/shares", headers=auth(ich),
-                          json={"user_id": freund.id, "level": "view"})
+    r = await client.post("/series/handy/shares", headers=auth(me),
+                          json={"user_id": friend.id, "level": "view"})
     assert r.status_code == 201
 
-    (seen,) = (await client.get("/series", headers=auth(freund))).json()
+    (seen,) = (await client.get("/series", headers=auth(friend))).json()
     assert seen["key"] == "handy" and seen["own"] is False
     assert seen["owner"] == "Ich"
-    assert (await client.get("/series/handy/points", headers=auth(freund))).status_code == 200
+    assert (await client.get("/series/handy/points", headers=auth(friend))).status_code == 200
 
 
 async def test_read_access_is_not_enough_to_change(client, db):
-    ich = await make_user(db, "ich")
-    freund = await make_user(db, "freund")
-    await _series(client, ich, "handy")
-    await client.post("/series/handy/shares", headers=auth(ich),
-                      json={"user_id": freund.id, "level": "view"})
+    me = await make_user(db, "ich")
+    friend = await make_user(db, "freund")
+    await _series(client, me, "handy")
+    await client.post("/series/handy/shares", headers=auth(me),
+                      json={"user_id": friend.id, "level": "view"})
 
-    r = await client.put("/series/handy", headers=auth(freund), json={"name": "meins jetzt"})
+    r = await client.put("/series/handy", headers=auth(friend), json={"name": "meins jetzt"})
     assert r.status_code == 403
     # Auch kein neues Token: Damit koennte man die Reihe des anderen kapern.
-    assert (await client.post("/series/handy/token", headers=auth(freund))).status_code == 403
+    assert (await client.post("/series/handy/token", headers=auth(friend))).status_code == 403
 
 
 async def test_manage_may_change_but_not_redistribute(client, db):
-    ich = await make_user(db, "ich")
-    freund = await make_user(db, "freund")
-    dritter = await make_user(db, "dritter")
-    await _series(client, ich, "handy")
-    await client.post("/series/handy/shares", headers=auth(ich),
-                      json={"user_id": freund.id, "level": "manage"})
+    me = await make_user(db, "ich")
+    friend = await make_user(db, "freund")
+    third = await make_user(db, "dritter")
+    await _series(client, me, "handy")
+    await client.post("/series/handy/shares", headers=auth(me),
+                      json={"user_id": friend.id, "level": "manage"})
 
-    assert (await client.put("/series/handy", headers=auth(freund),
+    assert (await client.put("/series/handy", headers=auth(friend),
                              json={"name": "Handy neu"})).status_code == 200
-    r = await client.post("/series/handy/shares", headers=auth(freund),
-                          json={"user_id": dritter.id, "level": "view"})
+    r = await client.post("/series/handy/shares", headers=auth(friend),
+                          json={"user_id": third.id, "level": "view"})
     assert r.status_code == 403
 
 
 async def test_withdrawing_a_grant(client, db):
-    ich = await make_user(db, "ich")
-    freund = await make_user(db, "freund")
-    await _series(client, ich, "handy")
-    r = await client.post("/series/handy/shares", headers=auth(ich),
-                          json={"user_id": freund.id, "level": "view"})
+    me = await make_user(db, "ich")
+    friend = await make_user(db, "freund")
+    await _series(client, me, "handy")
+    r = await client.post("/series/handy/shares", headers=auth(me),
+                          json={"user_id": friend.id, "level": "view"})
     sid = r.json()["id"]
 
     assert (await client.delete(f"/series/handy/shares/{sid}",
-                                headers=auth(ich))).status_code == 204
-    assert (await client.get("/series", headers=auth(freund))).json() == []
+                                headers=auth(me))).status_code == 204
+    assert (await client.get("/series", headers=auth(friend))).json() == []
 
 
 # ── Live und Orte ────────────────────────────────────────────────────────────
 
 async def test_live_shows_the_latest_state(client, db):
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy")
-    tok = await _token(client, ich)
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy")
+    tok = await _token(client, me)
     await client.post(f"/ingest/{tok}", json={"lat": 50.08, "lon": 10.56, "battery": 42})
 
-    (r,) = (await client.get("/series-live", headers=auth(ich))).json()
+    (r,) = (await client.get("/series-live", headers=auth(me))).json()
     assert r["state"]["lat"] == 50.08 and r["state"]["battery"] == 42
 
 
 async def test_a_series_called_live_does_not_displace_the_endpoint(client, db):
     """`{key:path}` ist gierig — deshalb liegt der Live-Stand auf einer eigenen Adresse."""
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "live")
-    r = await client.get("/series-live", headers=auth(ich))
+    me = await make_user(db, "ich")
+    await _series(client, me, "live")
+    r = await client.get("/series-live", headers=auth(me))
     assert r.status_code == 200 and isinstance(r.json(), list)
 
 
 async def test_creating_and_deleting_places(client, db):
-    ich = await make_user(db, "ich")
-    r = await client.post("/places", headers=auth(ich),
+    me = await make_user(db, "ich")
+    r = await client.post("/places", headers=auth(me),
                           json={"key": "zuhause", "name": "Zuhause",
                                 "lat": 50.0825, "lon": 10.5663, "radius_m": 120})
     assert r.status_code == 201
     pid = r.json()["id"]
 
-    (o,) = (await client.get("/places", headers=auth(ich))).json()
+    (o,) = (await client.get("/places", headers=auth(me))).json()
     assert o["radius_m"] == 120
 
-    assert (await client.delete(f"/places/{pid}", headers=auth(ich))).status_code == 204
-    assert (await client.get("/places", headers=auth(ich))).json() == []
+    assert (await client.delete(f"/places/{pid}", headers=auth(me))).status_code == 204
+    assert (await client.get("/places", headers=auth(me))).json() == []
 
 
 async def test_foreign_places_stay_foreign(client, db):
-    ich = await make_user(db, "ich")
-    fremd = await make_user(db, "fremd")
-    r = await client.post("/places", headers=auth(ich),
+    me = await make_user(db, "ich")
+    foreign = await make_user(db, "fremd")
+    r = await client.post("/places", headers=auth(me),
                           json={"key": "zuhause", "lat": 50.0, "lon": 10.0})
     pid = r.json()["id"]
 
-    assert (await client.get("/places", headers=auth(fremd))).json() == []
-    assert (await client.delete(f"/places/{pid}", headers=auth(fremd))).status_code == 404
+    assert (await client.get("/places", headers=auth(foreign))).json() == []
+    assert (await client.delete(f"/places/{pid}", headers=auth(foreign))).status_code == 404
 
 
 async def test_deleting_a_point_updates_the_counter(client, db):
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy", settings={"min_distance_m": 0, "min_interval_s": 0})
-    tok = await _token(client, ich)
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy", settings={"min_distance_m": 0, "min_interval_s": 0})
+    tok = await _token(client, me)
     await client.post(f"/ingest/{tok}", json={"lat": 50.08, "lon": 10.56})
     await client.post(f"/ingest/{tok}", json={"lat": 50.09, "lon": 10.57})
 
-    daten = (await client.get("/series/handy/points", headers=auth(ich))).json()
-    assert daten["series"]["points"] == 2
-    erster = daten["points"][0]["id"]
+    data = (await client.get("/series/handy/points", headers=auth(me))).json()
+    assert data["series"]["points"] == 2
+    first = data["points"][0]["id"]
 
-    assert (await client.delete(f"/series/handy/points/{erster}",
-                                headers=auth(ich))).status_code == 204
-    daten = (await client.get("/series/handy/points", headers=auth(ich))).json()
-    assert daten["series"]["points"] == 1
+    assert (await client.delete(f"/series/handy/points/{first}",
+                                headers=auth(me))).status_code == 204
+    data = (await client.get("/series/handy/points", headers=auth(me))).json()
+    assert data["series"]["points"] == 1
 
 
 async def test_renaming(client, db):
     """Namen aendern sich. Was dabei nicht geht, ist ein Schluessel, den es schon gibt."""
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy.alt")
-    await _series(client, ich, "handy.belegt")
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy.alt")
+    await _series(client, me, "handy.belegt")
 
-    r = await client.put("/series/handy.alt", headers=auth(ich),
+    r = await client.put("/series/handy.alt", headers=auth(me),
                          json={"key": "tracker.neu", "name": "Neu"})
     assert r.status_code == 200 and r.json()["key"] == "tracker.neu"
-    assert (await client.get("/series/handy.alt/points", headers=auth(ich))).status_code == 404
-    assert (await client.get("/series/tracker.neu/points", headers=auth(ich))).status_code == 200
+    assert (await client.get("/series/handy.alt/points", headers=auth(me))).status_code == 404
+    assert (await client.get("/series/tracker.neu/points", headers=auth(me))).status_code == 200
 
-    r = await client.put("/series/tracker.neu", headers=auth(ich),
+    r = await client.put("/series/tracker.neu", headers=auth(me),
                          json={"key": "handy.belegt"})
     assert r.status_code == 409
 
 
 async def test_renaming_keeps_points_and_token(client, db):
-    ich = await make_user(db, "ich")
-    await _series(client, ich, "handy.alt", settings={"min_distance_m": 0, "min_interval_s": 0})
-    tok = await _token(client, ich, "handy.alt")
+    me = await make_user(db, "ich")
+    await _series(client, me, "handy.alt", settings={"min_distance_m": 0, "min_interval_s": 0})
+    tok = await _token(client, me, "handy.alt")
     await client.post(f"/ingest/{tok}", json={"lat": 50.08, "lon": 10.56})
 
-    await client.put("/series/handy.alt", headers=auth(ich), json={"key": "tracker.neu"})
+    await client.put("/series/handy.alt", headers=auth(me), json={"key": "tracker.neu"})
 
-    daten = (await client.get("/series/tracker.neu/points", headers=auth(ich))).json()
-    assert len(daten["points"]) == 1
+    data = (await client.get("/series/tracker.neu/points", headers=auth(me))).json()
+    assert len(data["points"]) == 1
     # Das Token haengt an der Reihe, nicht am Schluessel — das Geraet meldet weiter.
     r = await client.post(f"/ingest/{tok}", json={"lat": 50.09, "lon": 10.57})
     assert r.status_code == 202 and r.json()["accepted"] == 1

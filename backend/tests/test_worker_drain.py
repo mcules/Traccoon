@@ -25,7 +25,7 @@ async def test_draining_waits_for_the_running_agent(monkeypatch):
     worker.RUNNING.clear()
     worker.RUNNING["TST-1"] = asyncio.create_task(agent())
     try:
-        await worker._auslaufen()
+        await worker._drain()
         assert done.is_set(), "the running agent was not brought to an end"
     finally:
         worker.RUNNING.clear()
@@ -36,14 +36,14 @@ async def test_draining_gives_up_after_the_deadline(monkeypatch):
     aborted; it still stands in PROCESSING and is queued anew."""
     monkeypatch.setattr(worker, "DRAIN_SEC", 0)
 
-    async def zaeher_agent():
+    async def tougher_agent():
         await asyncio.sleep(30)
 
-    task = asyncio.create_task(zaeher_agent())
+    task = asyncio.create_task(tougher_agent())
     worker.RUNNING.clear()
     worker.RUNNING["TST-1"] = task
     try:
-        await worker._auslaufen()
+        await worker._drain()
         assert not task.done()
         assert not task.cancelled(), "the run must not be aborted by hand"
     finally:
@@ -54,14 +54,14 @@ async def test_draining_gives_up_after_the_deadline(monkeypatch):
 async def test_without_running_agents_done_at_once(monkeypatch):
     monkeypatch.setattr(worker, "DRAIN_SEC", 30)
     worker.RUNNING.clear()
-    await asyncio.wait_for(worker._auslaufen(), timeout=1)     # must not sit out the deadline
+    await asyncio.wait_for(worker._drain(), timeout=1)     # must not sit out the deadline
 
 
 async def test_the_signal_handler_sets_the_shutdown_flag():
-    worker._beenden.clear()
-    worker._signale_annehmen()
+    worker._shutdown.clear()
+    worker._signals_accept()
     try:
-        asyncio.get_running_loop().call_soon(worker._beenden.set)
-        await asyncio.wait_for(worker._beenden.wait(), timeout=1)
+        asyncio.get_running_loop().call_soon(worker._shutdown.set)
+        await asyncio.wait_for(worker._shutdown.wait(), timeout=1)
     finally:
-        worker._beenden.clear()
+        worker._shutdown.clear()

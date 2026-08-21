@@ -291,7 +291,7 @@ async def test_chat_history(db):
     from app.worker.__main__ import _chat_history
 
     u = await make_user(db, "plauderer")
-    fremd = await make_user(db, "fremder")
+    foreign = await make_user(db, "fremder")
     now = dt.datetime.now(tz=dt.timezone.utc)
 
     def task(**kw):
@@ -304,7 +304,7 @@ async def test_chat_history(db):
         # older material wanders into the summary instead of falling away without replacement.
         task(title="alt", meta={"chat_text": "Uraltes"}, result="Uralte Antwort",
              created_at=now - dt.timedelta(days=30)),
-        task(title="fremd", meta={"chat_text": "Fremdes"}, result="A", owner_user_id=fremd.id),
+        task(title="fremd", meta={"chat_text": "Fremdes"}, result="A", owner_user_id=foreign.id),
         task(title="anderer", meta={"chat_text": "UniWar", "agent": "uniwar-operator"}, result="A"),
         task(title="laufend", meta={"chat_text": "Noch offen"}, status="running"),
         task(title="frueher", meta={"chat_text": "Wie schreibe ich Commits?"},
@@ -316,12 +316,12 @@ async def test_chat_history(db):
     await db.commit()
     await db.refresh(current)
 
-    verlauf = await _chat_history(db, current)
-    texte = " | ".join(v["body"] for v in verlauf)
-    assert "Wie schreibe ich Commits?" in texte and "Auf Deutsch mit TRA-Nummer." in texte
-    for draussen in ("Uraltes", "Fremdes", "UniWar", "Noch offen", "Und die Betreffzeile?"):
-        assert draussen not in texte
-    assert [v["role"] for v in verlauf] == ["user", "agent"]
+    history = await _chat_history(db, current)
+    texts = " | ".join(v["body"] for v in history)
+    assert "Wie schreibe ich Commits?" in texts and "Auf Deutsch mit TRA-Nummer." in texts
+    for outside in ("Uraltes", "Fremdes", "UniWar", "Noch offen", "Und die Betreffzeile?"):
+        assert outside not in texts
+    assert [v["role"] for v in history] == ["user", "agent"]
 
 
 async def test_chat_history_kept_separate_per_agent(db):
@@ -337,14 +337,14 @@ async def test_chat_history_kept_separate_per_agent(db):
                       meta={"chat_text": "UniWar-Frage", "agent": "uniwar-operator"}, result="A2"),
     ])
     await db.commit()
-    laufend = AssistantTask(owner_user_id=u.id, kind="chat", status="approved", title="c",
+    running = AssistantTask(owner_user_id=u.id, kind="chat", status="approved", title="c",
                             meta={"chat_text": "Weiter", "agent": "uniwar-operator"})
-    db.add(laufend)
+    db.add(running)
     await db.commit()
-    await db.refresh(laufend)
+    await db.refresh(running)
 
-    texte = " | ".join(v["body"] for v in await _chat_history(db, laufend))
-    assert "UniWar-Frage" in texte and "Assistenten-Frage" not in texte
+    texts = " | ".join(v["body"] for v in await _chat_history(db, running))
+    assert "UniWar-Frage" in texts and "Assistenten-Frage" not in texts
 
 
 # ── Review ───────────────────────────────────────────────────────────────────
@@ -374,7 +374,7 @@ async def test_the_review_remembers_and_counts_tokens(db, monkeypatch):
     await db.commit()
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "# Mensch\n\n"})
 
-    antworten = [
+    replies = [
         FakeResp(tool_calls=[FakeCall("erinnere_dich",
                                       {"bereich": "mensch", "text": "Deutsche Commits."})]),
         FakeResp(text="nichts"),
@@ -385,7 +385,7 @@ async def test_the_review_remembers_and_counts_tokens(db, monkeypatch):
         assert {t["function"]["name"] for t in kw["tools"]} == {
             "erinnere_dich", "vergiss", "gedaechtnis_suchen"}, "only memory tools"
         seen.append(list(kw["messages"]))
-        return antworten.pop(0)
+        return replies.pop(0)
 
     monkeypatch.setattr(runtime.router, "chat", fake_chat)
     agent = AgentDef(id=None, name="developer", role="developer", system_prompt="", provider="p",
@@ -394,18 +394,18 @@ async def test_the_review_remembers_and_counts_tokens(db, monkeypatch):
                      can_code=False, can_read_code=False, can_delegate=False, web_search=False,
                      allowed_tools=[], allowed_skills=[], autoload_skills=[], delegate_to=[])
 
-    protokoll: list[tuple] = []
+    log_line: list[tuple] = []
 
     async def log(role, tool, content):
-        protokoll.append((role, tool, content))
+        log_line.append((role, tool, content))
 
     ein, aus, cache = await _reflect(db=db, mcp=mcp, agent=agent, owner_id=u.id,
                                      project_key="", messages=[{"role": "user", "content": "x"}],
-                                     summary="Habe alles erledigt.", protokoll=log,
+                                     summary="Habe alles erledigt.", log_line=log,
                                      tokens={}, base_urls={})
     assert (ein, aus, cache) == (20, 10, 0)          # two turns
     assert "Deutsche Commits." in mcp.notes[f"{ROOT}/Mensch.md"]
-    assert any(t == "erinnere_dich" for _r, t, _c in protokoll)
+    assert any(t == "erinnere_dich" for _r, t, _c in log_line)
 
     # The assignment has to stand as a user turn at the end: role=system would be rebuilt
     # into a system block at Anthropic and would no longer stand at the end of the
@@ -439,7 +439,7 @@ async def test_a_review_without_a_lesson_writes_nothing(db, monkeypatch):
         pass
 
     await _reflect(db=db, mcp=mcp, agent=agent, owner_id=u.id, project_key="",
-                   messages=[], summary="", protokoll=log, tokens={}, base_urls={})
+                   messages=[], summary="", log_line=log, tokens={}, base_urls={})
     assert mcp.calls == []
 
 
@@ -452,11 +452,11 @@ async def test_the_review_refuses_foreign_tools(db, monkeypatch):
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp()
-    antworten = [FakeResp(tool_calls=[FakeCall("traccoon_create_issue", {"summary": "x"})]),
+    replies = [FakeResp(tool_calls=[FakeCall("traccoon_create_issue", {"summary": "x"})]),
                  FakeResp(text="ok")]
 
     async def fake_chat(**kw):
-        return antworten.pop(0)
+        return replies.pop(0)
 
     monkeypatch.setattr(runtime.router, "chat", fake_chat)
     agent = AgentDef(id=None, name="a", role="a", system_prompt="", provider="p", model="m",
@@ -465,14 +465,14 @@ async def test_the_review_refuses_foreign_tools(db, monkeypatch):
                      can_read_code=False, can_delegate=False, web_search=False,
                      allowed_tools=["traccoon_*"], allowed_skills=[], autoload_skills=[],
                      delegate_to=[])
-    gemeldet: list[str] = []
+    reported: list[str] = []
 
     async def log(role, tool, content):
-        gemeldet.append(content)
+        reported.append(content)
 
     await _reflect(db=db, mcp=mcp, agent=agent, owner_id=u.id, project_key="",
-                   messages=[], summary="", protokoll=log, tokens={}, base_urls={})
-    assert any("FEHLER" in g for g in gemeldet)
+                   messages=[], summary="", log_line=log, tokens={}, base_urls={})
+    assert any("FEHLER" in g for g in reported)
     assert mcp.calls == []
 
 

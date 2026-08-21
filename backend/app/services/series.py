@@ -1,18 +1,18 @@
-"""Punkte aufnehmen — und merken, wenn dabei ein Ort betreten oder verlassen wird.
+"""Take points in — and notice when a place is entered or left in the process.
 
-Der Aufbau folgt `services/metrics.erfassen`: eine duenne Schicht, die schreibt und den
-denormalisierten Stand nachzieht. Drei Dinge kommen bei Standorten dazu, und jedes davon hat
+The structure follows `services/metrics.erfassen`: a thin layer that writes and updates the
+denormalised state. Three things are added for locations, and each of them has
 einen handfesten Grund:
 
-1. **Verwerfen statt Werfen.** Ein Telefon meldet auch mal eine Position mit 2 km
-   Ungenauigkeit oder einen Zeitstempel aus der Zukunft. Das ist kein Fehler des Absenders,
-   sondern der Alltag von GPS — der Aufruf gelingt, der Punkt faellt weg.
-2. **Ruhefilter.** Ohne ihn waechst die Tabelle nachts am Schreibtisch genauso schnell wie
-   auf der Autobahn: Ein Geraet, das alle vier Minuten dieselbe Koordinate schickt, erzeugt
-   375 Zeilen am Tag, die nichts erzaehlen.
-3. **Geozaun.** Nach dem Schreiben wird verglichen, in welchen Orten das Geraet jetzt steht
-   und in welchen vorher. Die Differenz wird als Ereignis gemeldet — und damit ist ein
-   Standort das, wofuer er hier ueberhaupt gespeichert wird: ein Ausloeser wie eine Mail.
+1. **Discarding instead of raising.** A phone occasionally reports a position with 2 km of
+   inaccuracy or a timestamp from the future. That is not a fault of the sender but the daily
+   life of GPS — the call succeeds, the point is dropped.
+2. **Rest filter.** Without it the table grows just as fast at the desk at night as on the
+   motorway: a device that sends the same coordinate every four minutes produces 375 rows a
+   day that tell nothing.
+3. **Geofence.** After writing, a comparison is made between the places the device stands in
+   now and the ones from before. The difference is reported as an event — and with that a
+   location is what it is stored for here at all: a trigger like a mail.
 """
 from __future__ import annotations
 
@@ -31,87 +31,87 @@ from .events import emit
 
 log = logging.getLogger("series")
 
-# Vorgaben eines Standort-Geraets. Sie stehen in `Series.settings` und lassen sich je Reihe
+# Defaults of a location device. They sit in `Series.settings` and can be overridden per
 # aendern; ein Auto darf enger takten als ein Telefon.
-VORGABEN_LOCATION = {
-    "min_distance_m": 25,     # Naeher am letzten Punkt: nicht schreiben …
-    "min_interval_s": 300,    # … es sei denn, es ist so lange her.
+DEFAULTS_LOCATION = {
+    "min_distance_m": 25,     # Closer to the last point: do not write …
+    "min_interval_s": 300,    # … unless it has been this long.
     "max_accuracy_m": 500,    # Ungenauer: verwerfen.
 }
-# Erst so weit draussen gilt ein Ort als verlassen. Ohne diesen Zuschlag flattert ein Geraet
-# am Rand eines Zauns zwischen "drin" und "draussen" und loest jedesmal einen Ablauf aus.
+# Only this far out does a place count as left. Without this margin a device at the edge of a
+# fence flutters between "in" and "out" and fires a flow every time.
 HYSTERESIS_M = 50
-# Weiter als das in der Zukunft ist kein Zeitstempel, sondern eine kaputte Uhr.
-ZUKUNFT_TOLERANZ = dt.timedelta(minutes=5)
+# Further into the future than this is not a timestamp but a broken clock.
+FUTURE_TOLERANCE = dt.timedelta(minutes=5)
 
 
 def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
 
-def _mit_zone(value: dt.datetime | None) -> dt.datetime | None:
-    """Naive Zeitstempel als UTC lesen (SQLite in den Tests liefert sie ohne Zone)."""
+def _with_zone(value: dt.datetime | None) -> dt.datetime | None:
+    """Read naive timestamps as UTC (SQLite in the tests returns them without a zone)."""
     if value is None or value.tzinfo:
         return value
     return value.replace(tzinfo=dt.timezone.utc)
 
 
-def setting(reihe: Series, name: str) -> int:
-    return int((reihe.settings or {}).get(name, VORGABEN_LOCATION.get(name, 0)))
+def setting(series: Series, name: str) -> int:
+    return int((series.settings or {}).get(name, DEFAULTS_LOCATION.get(name, 0)))
 
 
 # ── Token ────────────────────────────────────────────────────────────────────
 
-def token_hash(roh: str) -> str:
-    """Der Suchschluessel zu einem Token.
+def token_hash(raw: str) -> str:
+    """The lookup key for a token.
 
     sha256 statt eines Vergleichs ueber alle Reihen: Bei zwei Geraeten waere beides gleich
-    schnell, aber der Aufnahmepfad ist der eine, der oefter laeuft als alles andere im Haus.
+    fast, but the ingest path is the one that runs more often than anything else in the house.
     """
-    return hashlib.sha256(roh.encode()).hexdigest()
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def neuer_token(reihe: Series) -> str:
-    """Ein frisches Token setzen und im Klartext zurueckgeben — einmalig."""
-    roh = "trk_" + secrets.token_urlsafe(24)
-    reihe.token_hash = token_hash(roh)
-    reihe.token_enc = encrypt_secret(roh)
-    return roh
+def new_token(series: Series) -> str:
+    """Set a fresh token and return it in the clear — once."""
+    raw = "trk_" + secrets.token_urlsafe(24)
+    series.token_hash = token_hash(raw)
+    series.token_enc = encrypt_secret(raw)
+    return raw
 
 
 # ── Sichtbarkeit ─────────────────────────────────────────────────────────────
 
-def visible(user_id: int, ist_admin: bool = False):
+def visible(user_id: int, is_admin: bool = False):
     """Filter fuer Reihen, die dieser Mensch sehen darf: eigene, geteilte, globale."""
-    if ist_admin:
+    if is_admin:
         return True
-    geteilt = select(SeriesShare.series_id).where(SeriesShare.user_id == user_id)
+    shared = select(SeriesShare.series_id).where(SeriesShare.user_id == user_id)
     return or_(Series.owner_user_id == user_id, Series.owner_user_id.is_(None),
-               Series.id.in_(geteilt))
+               Series.id.in_(shared))
 
 
-async def may_update(db: AsyncSession, reihe: Series, user_id: int,
-                       ist_admin: bool = False) -> bool:
-    if ist_admin or reihe.owner_user_id == user_id:
+async def may_update(db: AsyncSession, series: Series, user_id: int,
+                       is_admin: bool = False) -> bool:
+    if is_admin or series.owner_user_id == user_id:
         return True
     grant = (await db.execute(select(SeriesShare).where(
-        SeriesShare.series_id == reihe.id, SeriesShare.user_id == user_id))).scalar_one_or_none()
+        SeriesShare.series_id == series.id, SeriesShare.user_id == user_id))).scalar_one_or_none()
     return bool(grant and grant.level == "manage")
 
 
 # ── Finden und Anlegen ───────────────────────────────────────────────────────
 
-async def reihe(db: AsyncSession, owner_id: int | None, key: str, *, kind: str = "location",
-                create: bool = False, name: str = "", farbe: str = "") -> Series | None:
-    """Eine Reihe holen — auf Wunsch mit Anlegen beim ersten Punkt.
+async def series(db: AsyncSession, owner_id: int | None, key: str, *, kind: str = "location",
+                create: bool = False, name: str = "", color: str = "") -> Series | None:
+    """Fetch a series — on request creating it with the first point.
 
-    Wie bei den Messreihen: Ein Ablauf soll eine Reihe nicht erst von Hand angelegt bekommen
-    muessen. Wer eine Position wegschreibt, meint damit auch, dass es diese Reihe geben soll.
+    As with the metric series: a flow should not have to get a series created by hand first.
+    Whoever writes a position away also means that this series is to exist.
     """
     r = (await db.execute(select(Series).where(
         Series.owner_user_id == owner_id, Series.key == key))).scalar_one_or_none()
     if r is None and create:
-        r = Series(owner_user_id=owner_id, key=key, kind=kind, name=name or key, color=farbe)
+        r = Series(owner_user_id=owner_id, key=key, kind=kind, name=name or key, color=color)
         db.add(r)
         await db.flush()
     return r
@@ -119,51 +119,51 @@ async def reihe(db: AsyncSession, owner_id: int | None, key: str, *, kind: str =
 
 # ── Aufnehmen ────────────────────────────────────────────────────────────────
 
-async def ingest(db: AsyncSession, reihe: Series, points: list[dict],
+async def ingest(db: AsyncSession, series: Series, points: list[dict],
                     source: str = "") -> dict:
     """Punkte anhaengen — welche Art, entscheidet die Reihe.
 
-    Das Anhaengen selbst ist fuer alle Arten dasselbe: Zeitstempel, Werte, Stand nachziehen.
-    Verschieden ist nur, was einen Punkt ausmacht (eine Zahl, ein Ort, ein Text) und was
-    dabei zusaetzlich passiert — der Ruhefilter und die Geozaeune gibt es nur bei Standorten,
-    weil nur dort dieselbe Angabe hundertmal hintereinander kommt.
+    Appending itself is the same for all kinds: timestamp, values, update the state. What
+    differs is only what makes up a point (a number, a place, a text) and what additionally
+    happens along the way — the rest filter and the geofences exist for locations only, because
+    only there does the same entry arrive a hundred times in a row.
     """
-    if reihe.kind == "location":
-        return await _locations_ingest(db, reihe, points, source)
-    return await _values_ingest(db, reihe, points, source)
+    if series.kind == "location":
+        return await _locations_ingest(db, series, points, source)
+    return await _values_ingest(db, series, points, source)
 
 
-async def _values_ingest(db: AsyncSession, reihe: Series, points: list[dict],
+async def _values_ingest(db: AsyncSession, series: Series, points: list[dict],
                            source: str) -> dict:
-    """Zahlen und Texte: schreiben, Stand nachziehen, bei Texten aufraeumen.
+    """Numbers and texts: write, update the state, prune with texts.
 
-    Kein Ruhefilter: Ein Messwert, der sich nicht geaendert hat, ist trotzdem eine Aussage
-    ("das Geraet lebt und meldet 22 %"), und ein Text ist ohnehin jedesmal ein neuer.
+    No rest filter: a measurement that has not changed is still a statement ("the device is
+    alive and reports 22 %"), and a text is a new one every time anyway.
     """
-    grenzen = reihe.settings or {}
-    unten, oben = grenzen.get("min"), grenzen.get("max")
-    written, verworfen = 0, 0
+    limits = series.settings or {}
+    below, above = limits.get("min"), limits.get("max")
+    written, discarded = 0, 0
     last, last_ts = None, None
 
     for p in sorted(points, key=lambda x: x.get("ts") or _now()):
-        ts = _mit_zone(p.get("ts")) or _now()
-        entry = SeriesPoint(series_id=reihe.id, ts=ts, source=p.get("source") or source,
+        ts = _with_zone(p.get("ts")) or _now()
+        entry = SeriesPoint(series_id=series.id, ts=ts, source=p.get("source") or source,
                               context=p.get("context") or {})
-        if reihe.kind == "number":
+        if series.kind == "number":
             value = p.get("value")
             if value is None:
-                verworfen += 1
+                discarded += 1
                 continue
-            # Plausibilitaetsgrenzen wie beim Messwert: Geraete melden Unsinn, wenn sie
-            # etwas nicht wissen — und ein Ausreisser verzieht jede Auswertung danach.
-            if (unten is not None and value < unten) or (oben is not None and value > oben):
-                verworfen += 1
+            # Plausibility limits as with the measurement: devices report nonsense when they
+            # do not know something — and an outlier warps every evaluation afterwards.
+            if (below is not None and value < below) or (above is not None and value > above):
+                discarded += 1
                 continue
             entry.value = float(value)
         else:
             text = str(p.get("body") or "")
             if not text.strip():
-                verworfen += 1
+                discarded += 1
                 continue
             entry.title = str(p.get("title") or "")[:200]
             entry.body = text
@@ -172,179 +172,179 @@ async def _values_ingest(db: AsyncSession, reihe: Series, points: list[dict],
         written += 1
         last, last_ts = entry, ts
 
-    reihe.points = (reihe.points or 0) + written
+    series.points = (series.points or 0) + written
     if last is not None:
-        bisher = _mit_zone(reihe.last_at)
-        if bisher is None or last_ts >= bisher:
-            state = dict(reihe.state or {})
-            if reihe.kind == "number":
+        sofar = _with_zone(series.last_at)
+        if sofar is None or last_ts >= sofar:
+            state = dict(series.state or {})
+            if series.kind == "number":
                 state["value"] = last.value
             else:
                 state["title"] = last.title
-            reihe.state = state
-            reihe.last_at = last_ts
-            reihe.still_at = None
-        await _prune(db, reihe)
+            series.state = state
+            series.last_at = last_ts
+            series.still_at = None
+        await _prune(db, series)
 
-    return {"accepted": written, "skipped": verworfen, "still": 0,
+    return {"accepted": written, "skipped": discarded, "still": 0,
             "betreten": [], "verlassen": []}
 
 
-async def _prune(db: AsyncSession, reihe: Series) -> None:
-    """Alte Eintraege wegwerfen, wenn die Reihe eine Obergrenze nennt.
+async def _prune(db: AsyncSession, series: Series) -> None:
+    """Throw old entries away when the series names an upper limit.
 
-    Nur nach Anzahl und nur, wenn `keep` gesetzt ist. Eine Zeitgrenze waere bei Standorten
-    das Falsche (ein Jahr Spur ist der Sinn der Sache), und ohne Angabe wird nichts geloescht
+    Only by count and only when `keep` is set. A time limit would be the wrong thing for
+    locations (a year of trace is the whole point), and without an entry nothing is deleted
     — stilles Verschwinden von Daten will niemand geerbt bekommen.
     """
-    limit = int((reihe.settings or {}).get("keep") or 0)
+    limit = int((series.settings or {}).get("keep") or 0)
     if limit <= 0:
         return
-    alte = (await db.execute(select(SeriesPoint).where(SeriesPoint.series_id == reihe.id)
+    old = (await db.execute(select(SeriesPoint).where(SeriesPoint.series_id == series.id)
                              .order_by(SeriesPoint.id.desc()).offset(limit))).scalars().all()
-    for e in alte:
+    for e in old:
         await db.delete(e)
-    if alte:
-        reihe.points = max(0, (reihe.points or 0) - len(alte))
+    if old:
+        series.points = max(0, (series.points or 0) - len(old))
 
 
-async def _locations_ingest(db: AsyncSession, reihe: Series, points: list[dict],
+async def _locations_ingest(db: AsyncSession, series: Series, points: list[dict],
                                source: str = "") -> dict:
-    """Standorte: mit Ruhefilter und Geozaun."""
-    genau_genug = setting(reihe, "max_accuracy_m")
-    min_m = setting(reihe, "min_distance_m")
-    min_s = setting(reihe, "min_interval_s")
-    zukunft = _now() + ZUKUNFT_TOLERANZ
+    """Locations: with a rest filter and a geofence."""
+    exactly_enough = setting(series, "max_accuracy_m")
+    min_m = setting(series, "min_distance_m")
+    min_s = setting(series, "min_interval_s")
+    future = _now() + FUTURE_TOLERANCE
 
-    state = dict(reihe.state or {})
-    last_ts = _mit_zone(reihe.last_at)
+    state = dict(series.state or {})
+    last_ts = _with_zone(series.last_at)
     last_lat, last_lon = state.get("lat"), state.get("lon")
-    written, verworfen, geruht = 0, 0, 0
+    written, discarded, rested = 0, 0, 0
     last_point = None
-    # Die zuletzt *gesehene* gueltige Position — unabhaengig davon, ob sie auch gespeichert
-    # wurde. Der Ruhefilter entscheidet ueber das Speichern, nicht darueber, wo das Geraet
-    # ist: Wer zu Fuss ueber eine Zaungrenze geht, legt in fuenf Minuten keine 25 m zurueck
-    # und wuerde sonst erst viel spaeter als angekommen gelten.
+    # The last *seen* valid position — regardless of whether it was stored as well. The rest
+    # filter decides about the storing, not about where the device is: whoever walks across a
+    # fence boundary on foot does not cover 25 m in five minutes and would otherwise count as
+    # having arrived much later.
     seen: tuple[float, float, dt.datetime] | None = None
 
-    # Nach Zeit sortiert einspielen: Ein Stapel kommt nicht zwingend geordnet an, und der
-    # Ruhefilter vergleicht immer mit dem zuletzt geschriebenen Punkt.
+    # Feed in sorted by time: a batch does not necessarily arrive ordered, and the rest filter
+    # always compares against the last written point.
     for p in sorted(points, key=lambda x: x.get("ts") or _now()):
         lat, lon = p.get("lat"), p.get("lon")
-        ts = _mit_zone(p.get("ts")) or _now()
-        genauigkeit = (p.get("extra") or {}).get("accuracy")
+        ts = _with_zone(p.get("ts")) or _now()
+        accuracy = (p.get("extra") or {}).get("accuracy")
 
         if lat is None or lon is None or (lat == 0 and lon == 0):
-            verworfen += 1
+            discarded += 1
             continue
         if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-            verworfen += 1
+            discarded += 1
             continue
-        if genau_genug and genauigkeit is not None and genauigkeit > genau_genug:
-            verworfen += 1
+        if exactly_enough and accuracy is not None and accuracy > exactly_enough:
+            discarded += 1
             continue
-        if ts > zukunft:
-            verworfen += 1
+        if ts > future:
+            discarded += 1
             continue
 
         seen = (lat, lon, ts)
 
-        # Ruhefilter: nah dran UND kurz her -> nicht schreiben.
+        # Rest filter: close by AND recent -> do not write.
         if last_lat is not None and last_lon is not None:
-            weg = geo.distance_m(last_lat, last_lon, lat, lon)
-            alt = (ts - last_ts).total_seconds() if last_ts else None
-            if weg < min_m and (alt is None or 0 <= alt < min_s):
-                geruht += 1
+            path = geo.distance_m(last_lat, last_lon, lat, lon)
+            old = (ts - last_ts).total_seconds() if last_ts else None
+            if path < min_m and (old is None or 0 <= old < min_s):
+                rested += 1
                 continue
 
-        punkt = SeriesPoint(
-            series_id=reihe.id, ts=ts, lat=lat, lon=lon,
+        point = SeriesPoint(
+            series_id=series.id, ts=ts, lat=lat, lon=lon,
             extra=p.get("extra") or {}, source=p.get("source") or source,
             context={})
-        db.add(punkt)
+        db.add(point)
         written += 1
-        last_point = punkt
+        last_point = point
         last_lat, last_lon, last_ts = lat, lon, ts
 
-    reihe.points = (reihe.points or 0) + written
+    series.points = (series.points or 0) + written
 
-    orte = {"betreten": [], "verlassen": []}
+    places = {"betreten": [], "verlassen": []}
     if last_point is not None:
-        # Den Stand nur nachziehen, wenn der neue Punkt wirklich der neuere ist: Ein
-        # Nachtrag aus dem Vorjahr darf nicht als aktuelle Position gelten.
-        bisher = _mit_zone(reihe.last_at)
-        if bisher is None or last_ts >= bisher:
+        # Update the state only when the new point really is the more recent one: a backfill
+        # from last year must not count as the current position.
+        sofar = _with_zone(series.last_at)
+        if sofar is None or last_ts >= sofar:
             extra = last_point.extra or {}
             state = {**state, "lat": last_lat, "lon": last_lon,
                      "accuracy": extra.get("accuracy"), "battery": extra.get("battery"),
                      "speed": extra.get("speed")}
-            reihe.state = state
-            reihe.last_at = last_ts
-            reihe.still_at = None
+            series.state = state
+            series.last_at = last_ts
+            series.still_at = None
 
     if seen is not None:
         lat, lon, ts = seen
-        # `seen_at` steht neben `last_at`: gemeldet hat sich das Geraet gerade, gespeichert
-        # wurde vielleicht seit einer Stunde nichts. Beides ist eine eigene Auskunft — die
-        # Karte zeigt den letzten Punkt, die Ueberwachung will wissen, ob noch etwas kommt.
-        reihe.state = {**state, "seen_at": ts.isoformat()}
-        reihe.still_at = None
-        bisher = _mit_zone(reihe.last_at)
-        # Zaeune nur an der neuesten bekannten Stelle pruefen: Ein Nachtrag von gestern darf
-        # nicht melden, dass man gerade angekommen sei.
-        if bisher is None or ts >= bisher:
-            orte = await _fences_check(db, reihe, lat, lon, ts)
+        # `seen_at` stands next to `last_at`: the device reported just now, while maybe nothing
+        # has been stored for an hour. Both are pieces of information of their own — the map
+        # shows the last point, the monitoring wants to know whether anything still arrives.
+        series.state = {**state, "seen_at": ts.isoformat()}
+        series.still_at = None
+        sofar = _with_zone(series.last_at)
+        # Check fences only at the most recent known spot: a backfill from yesterday must not
+        # report that one has just arrived.
+        if sofar is None or ts >= sofar:
+            places = await _fences_check(db, series, lat, lon, ts)
 
-    return {"accepted": written, "skipped": verworfen, "still": geruht, **orte}
+    return {"accepted": written, "skipped": discarded, "still": rested, **places}
 
 
-async def _fences_check(db: AsyncSession, reihe: Series, lat: float, lon: float,
+async def _fences_check(db: AsyncSession, series: Series, lat: float, lon: float,
                           ts: dt.datetime) -> dict:
-    """Welche Orte sind dazugekommen, welche verlassen — und Ereignisse dafuer melden."""
-    orte = (await db.execute(select(SeriesPlace).where(
-        SeriesPlace.owner_user_id == reihe.owner_user_id,
-        or_(SeriesPlace.series_id.is_(None), SeriesPlace.series_id == reihe.id),
+    """Which places have been added, which left — and report events for that."""
+    places = (await db.execute(select(SeriesPlace).where(
+        SeriesPlace.owner_user_id == series.owner_user_id,
+        or_(SeriesPlace.series_id.is_(None), SeriesPlace.series_id == series.id),
     ))).scalars().all()
-    if not orte:
+    if not places:
         return {"betreten": [], "verlassen": []}
 
-    vorher = set((reihe.state or {}).get("places") or [])
+    before = set((series.state or {}).get("places") or [])
     now: set[str] = set()
-    for ort in orte:
-        weg = geo.distance_m(lat, lon, ort.lat, ort.lon)
-        # Hinein ab dem Radius, hinaus erst spaeter — sonst flattert es am Rand.
-        drin = weg <= ort.radius_m if ort.key not in vorher else weg <= ort.radius_m + HYSTERESIS_M
-        if drin:
-            now.add(ort.key)
+    for place in places:
+        path = geo.distance_m(lat, lon, place.lat, place.lon)
+        # In from the radius on, out only later — otherwise it flutters at the edge.
+        inside = path <= place.radius_m if place.key not in before else path <= place.radius_m + HYSTERESIS_M
+        if inside:
+            now.add(place.key)
 
-    betreten = [o for o in orte if o.key in now - vorher]
-    verlassen = [o for o in orte if o.key in vorher - now]
-    reihe.state = {**(reihe.state or {}), "places": sorted(now)}
+    enter = [o for o in places if o.key in now - before]
+    leave = [o for o in places if o.key in before - now]
+    series.state = {**(series.state or {}), "places": sorted(now)}
 
-    for ort, name in ((o, "series.enter") for o in betreten):
-        await _report(db, reihe, ort, name, lat, lon, ts)
-    for ort, name in ((o, "series.leave") for o in verlassen):
-        await _report(db, reihe, ort, name, lat, lon, ts)
+    for place, name in ((o, "series.enter") for o in enter):
+        await _report(db, series, place, name, lat, lon, ts)
+    for place, name in ((o, "series.leave") for o in leave):
+        await _report(db, series, place, name, lat, lon, ts)
 
-    return {"betreten": [o.key for o in betreten], "verlassen": [o.key for o in verlassen]}
+    return {"betreten": [o.key for o in enter], "verlassen": [o.key for o in leave]}
 
 
-async def _report(db: AsyncSession, reihe: Series, ort: SeriesPlace, ereignis: str,
+async def _report(db: AsyncSession, series: Series, place: SeriesPlace, event: str,
                   lat: float, lon: float, ts: dt.datetime) -> None:
-    """Ein Ereignis abgeben — ohne dass ein Fehler dabei die Aufnahme umwirft.
+    """Emit an event — without an error in it toppling the intake.
 
-    Ein Punkt ist erst einmal ein Punkt. Wenn ein Ablauf daran scheitert, soll trotzdem in
-    der Datenbank stehen, wo das Geraet war.
+    A point is a point first of all. If a flow fails on it, the database should still hold
+    where the device was.
     """
-    if not ort.notify:
+    if not place.notify:
         return
     try:
-        await emit(db, ereignis, payload={
-            "series": {"key": reihe.key, "name": reihe.name, "id": reihe.id},
-            "place": {"key": ort.key, "name": ort.name or ort.key,
-                      "lat": ort.lat, "lon": ort.lon, "radius_m": ort.radius_m},
+        await emit(db, event, payload={
+            "series": {"key": series.key, "name": series.name, "id": series.id},
+            "place": {"key": place.key, "name": place.name or place.key,
+                      "lat": place.lat, "lon": place.lon, "radius_m": place.radius_m},
             "lat": lat, "lon": lon, "ts": ts.isoformat(),
-        }, actor_id=reihe.owner_user_id)
+        }, actor_id=series.owner_user_id)
     except Exception as exc:  # noqa: BLE001
         log.warning("Ereignis %s fuer %s/%s nicht gemeldet: %s",
-                    ereignis, reihe.key, ort.key, exc)
+                    event, series.key, place.key, exc)

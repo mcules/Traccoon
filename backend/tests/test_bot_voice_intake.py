@@ -7,7 +7,7 @@ in `test_bot_media.py`: FakeBot and FakeMessage instead of a network, small dumm
 """
 import pytest
 
-from app.bot.__main__ import _voice_transkript
+from app.bot.__main__ import _voice_transcript
 import app.bot.__main__ as bot_main
 
 
@@ -17,25 +17,25 @@ class FakeFile:
 
 
 class FakeBuffer:
-    def __init__(self, roh: bytes):
-        self._roh = roh
+    def __init__(self, raw: bytes):
+        self._raw = raw
 
     def read(self):
-        return self._roh
+        return self._raw
 
 
 class FakeBot:
-    def __init__(self, roh: bytes = b"fake-ogg-bytes", lade_error: Exception | None = None):
-        self.roh = roh
-        self.lade_error = lade_error
+    def __init__(self, raw: bytes = b"fake-ogg-bytes", load_error: Exception | None = None):
+        self.raw = raw
+        self.load_error = load_error
 
     async def get_file(self, file_id):
-        if self.lade_error:
-            raise self.lade_error
+        if self.load_error:
+            raise self.load_error
         return FakeFile()
 
     async def download_file(self, file_path):
-        return FakeBuffer(self.roh)
+        return FakeBuffer(self.raw)
 
 
 class FakeMedia:
@@ -53,115 +53,115 @@ class FakeMessage:
         self.voice = voice
         self.audio = audio
         self.video_note = video_note
-        self.antworten: list[str] = []
+        self.replies: list[str] = []
 
     async def answer(self, text, **kw):
-        self.antworten.append(text)
+        self.replies.append(text)
 
 
 async def test_no_voice_message_yields_none():
     m = FakeMessage()
-    assert await _voice_transkript(FakeBot(), m) is None
+    assert await _voice_transcript(FakeBot(), m) is None
 
 
 async def test_success_yields_a_transcript_and_reports_it_visibly(monkeypatch):
-    async def fake_transkribieren(audio, medienart="voice", mime_type=None):
+    async def fake_transcribe(audio, mediakind="voice", mime_type=None):
         assert audio == b"fake-ogg-bytes"
-        assert medienart == "voice"
+        assert mediakind == "voice"
         return "was liegt heute an"
 
-    monkeypatch.setattr(bot_main, "_transkribieren", fake_transkribieren)
+    monkeypatch.setattr(bot_main, "_transcribe", fake_transcribe)
     m = FakeMessage(voice=FakeMedia())
 
-    text = await _voice_transkript(FakeBot(), m)
+    text = await _voice_transcript(FakeBot(), m)
 
     assert text == "was liegt heute an"
-    assert any("verstanden" in a and "was liegt heute an" in a for a in m.antworten)
+    assert any("verstanden" in a and "was liegt heute an" in a for a in m.replies)
 
 
 async def test_too_long_a_duration_is_refused_without_transcribing(monkeypatch):
-    def may_nicht_laufen(*a, **kw):
+    def may_not_run(*a, **kw):
         raise AssertionError("the transcription should never have started")
 
-    monkeypatch.setattr(bot_main, "_transkribieren", may_nicht_laufen)
+    monkeypatch.setattr(bot_main, "_transcribe", may_not_run)
     monkeypatch.setattr(bot_main, "VOICE_MAX_SECONDS", 600)
     m = FakeMessage(voice=FakeMedia(duration=700, file_size=10_000))
 
-    text = await _voice_transkript(FakeBot(), m)
+    text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("zu lang" in a for a in m.antworten)
+    assert any("zu lang" in a for a in m.replies)
 
 
 async def test_too_large_a_file_is_refused_without_transcribing(monkeypatch):
-    def may_nicht_laufen(*a, **kw):
+    def may_not_run(*a, **kw):
         raise AssertionError("the transcription should never have started")
 
-    monkeypatch.setattr(bot_main, "_transkribieren", may_nicht_laufen)
+    monkeypatch.setattr(bot_main, "_transcribe", may_not_run)
     monkeypatch.setattr(bot_main, "VOICE_MAX_BYTES", 1000)
     m = FakeMessage(voice=FakeMedia(duration=5, file_size=5_000_000))
 
-    text = await _voice_transkript(FakeBot(), m)
+    text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("zu groß" in a for a in m.antworten)
+    assert any("zu groß" in a for a in m.replies)
 
 
 async def test_without_duration_and_size_it_refuses_instead_of_loading_unchecked():
     m = FakeMessage(voice=FakeMedia(duration=0, file_size=0))
 
-    text = await _voice_transkript(FakeBot(), m)
+    text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("nicht bestimmbar" in a for a in m.antworten)
+    assert any("nicht bestimmbar" in a for a in m.replies)
 
 
 async def test_an_unloadable_file_is_refused_honestly():
     m = FakeMessage(voice=FakeMedia())
 
-    text = await _voice_transkript(FakeBot(lade_error=RuntimeError("kaputt")), m)
+    text = await _voice_transcript(FakeBot(load_error=RuntimeError("kaputt")), m)
 
     assert text == ""
-    assert any("nicht geladen" in a for a in m.antworten)
+    assert any("nicht geladen" in a for a in m.replies)
 
 
 async def test_a_transcription_error_is_refused_honestly_with_a_reason(monkeypatch):
-    async def kaputt(audio, medienart="voice", mime_type=None):
+    async def broken(audio, mediakind="voice", mime_type=None):
         raise RuntimeError("no WHISPER_URL configured")
 
-    monkeypatch.setattr(bot_main, "_transkribieren", kaputt)
+    monkeypatch.setattr(bot_main, "_transcribe", broken)
     m = FakeMessage(voice=FakeMedia())
 
-    text = await _voice_transkript(FakeBot(), m)
+    text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("Transkription nicht möglich" in a for a in m.antworten)
+    assert any("Transkription nicht möglich" in a for a in m.replies)
 
 
 async def test_an_empty_transcript_is_refused_honestly(monkeypatch):
-    async def leer(audio, medienart="voice", mime_type=None):
+    async def empty(audio, mediakind="voice", mime_type=None):
         return ""
 
-    monkeypatch.setattr(bot_main, "_transkribieren", leer)
+    monkeypatch.setattr(bot_main, "_transcribe", empty)
     m = FakeMessage(voice=FakeMedia())
 
-    text = await _voice_transkript(FakeBot(), m)
+    text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("keine Sprache erkennen" in a for a in m.antworten)
+    assert any("keine Sprache erkennen" in a for a in m.replies)
 
 
 async def test_a_video_note_is_recognised_and_its_media_kind_passed_on(monkeypatch):
     seen = {}
 
-    async def merken(audio, medienart="voice", mime_type=None):
-        seen["medienart"] = medienart
+    async def remember(audio, mediakind="voice", mime_type=None):
+        seen["medienart"] = mediakind
         return "hallo"
 
-    monkeypatch.setattr(bot_main, "_transkribieren", merken)
+    monkeypatch.setattr(bot_main, "_transcribe", remember)
     m = FakeMessage(video_note=FakeMedia())
 
-    text = await _voice_transkript(FakeBot(), m)
+    text = await _voice_transcript(FakeBot(), m)
 
     assert text == "hallo"
     assert seen["medienart"] == "video_note"

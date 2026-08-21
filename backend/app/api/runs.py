@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi import HTTPException
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.agents import Run, RunStep
 from ..models.project import Project
@@ -102,18 +102,18 @@ async def run_steps(run_id: int, user: User = Depends(get_current_user),
     # Access only for project members of the ticket the run belongs to (404 instead of a leak).
     run = await db.get(Run, run_id)
     if run is None:
-        raise Fehler(404, "err.run_not_found", "Run not found")
+        raise Error(404, "err.run_not_found", "Run not found")
     issue = await db.get(Issue, run.issue_id) if run.issue_id else None
     project = await db.get(Project, issue.project_id) if issue else None
     if project is None:
         # Job run without a ticket: admins only (the job owner binding is missing on the run).
         if user.global_role.value != "admin":
-            raise Fehler(404, "err.run_not_found", "Run not found")
+            raise Error(404, "err.run_not_found", "Run not found")
     else:
         access = await build_access(project, user, db)
         from ..models.enums import ProjectRole
         if not access.has_role(ProjectRole.viewer):
-            raise Fehler(404, "err.run_not_found", "Run not found")
+            raise Error(404, "err.run_not_found", "Run not found")
     rows = (await db.execute(select(RunStep).where(RunStep.run_id == run_id)
                              .order_by(RunStep.seq))).scalars().all()
     return [{"seq": s.seq, "role": s.role, "tool": s.tool_name, "content": s.content[:1500]} for s in rows]

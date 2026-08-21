@@ -33,7 +33,7 @@ from .assistant_gate import gate_check
 from .tools_memory import (
     MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLEXION_PROMPT, call_memory_tool, memory_root, read_memory,
 )
-from .compaction import kompaktiere as _kompaktiere
+from .compaction import compact as _compact
 from .compaction import handover as _handover
 from .tools_traccoon import (
     TRACCOON_GATED_TOOLS,
@@ -197,18 +197,18 @@ FS_TOOL_NAMES = {"fs_read", "fs_list", "fs_write", "fs_edit"}
 RESULT_TOOLS = {"execute": {"fs_write", "fs_edit"}, "plan": {"submit_plan"}}
 # After which share of the iteration or time budget without a result a reminder follows.
 # Twice, then enough: one reminder gets overlooked, three are nagging.
-REMINDER_BEI = (0.35, 0.65)
+REMINDER_AT = (0.35, 0.65)
 
 
-def ermahnungen_due(verbraucht: float, bereits: int) -> int:
+def reminders_due(used: float, already: int) -> int:
     """How many reminders should have been given at this point of the budget."""
-    n = bereits
-    while n < len(REMINDER_BEI) and verbraucht >= REMINDER_BEI[n]:
+    n = already
+    while n < len(REMINDER_AT) and used >= REMINDER_AT[n]:
         n += 1
     return n
 
 
-def reminder_text(mode: str, verbraucht: float, scharf: bool) -> str:
+def reminder_text(mode: str, used: float, sharp: bool) -> str:
     """Remind a run that spends its budget without delivering anything.
 
     The tone rises once: first a request to check, then a demand. Both name the same point:
@@ -218,26 +218,26 @@ def reminder_text(mode: str, verbraucht: float, scharf: bool) -> str:
     """
     if mode == "plan":
         was = "noch keinen Plan eingereicht"
-        bleibt = "ein eingereichter Plan schon"
-        nachsatz = ("Reiche JETZT einen Plan ein (`submit_plan`), auch wenn Details offen "
+        stays = "ein eingereichter Plan schon"
+        postscript = ("Reiche JETZT einen Plan ein (`submit_plan`), auch wenn Details offen "
                     "sind — benenne die offenen Punkte darin. Nur bei echter Blockade: "
                     "`ask_human`."
-                    if scharf else
+                    if sharp else
                     "Prüfe, ob du genug weißt, um den Plan zu schreiben — im Zweifel ja: "
                     "ein Plan mit benannten Unsicherheiten ist mehr wert als keiner.")
     else:
         was = "noch keine Änderung geschrieben"
-        bleibt = "eine begonnene Änderung schon"
-        nachsatz = ("Fang JETZT mit der kleinsten sinnvollen Änderung an, statt weiterzulesen. "
+        stays = "eine begonnene Änderung schon"
+        postscript = ("Fang JETZT mit der kleinsten sinnvollen Änderung an, statt weiterzulesen. "
                     "Fehlt dir eine Entscheidung, die du nicht selbst treffen kannst: "
                     "`ask_human`. Kannst du wirklich nur übergeben: `continue_later` mit "
                     "allem, was du weißt."
-                    if scharf else
+                    if sharp else
                     "Prüfe, ob du genug weißt, um anzufangen — im Zweifel ja: die kleinste "
                     "sinnvolle Änderung zuerst, den Rest danach.")
-    return (f"⚠️ {int(verbraucht * 100)} % deines Budgets für diesen Lauf sind weg und du hast "
+    return (f"⚠️ {int(used * 100)} % deines Budgets für diesen Lauf sind weg und du hast "
             f"{was}. Recherche allein überlebt das Ende des Laufs nicht — "
-            f"{bleibt}.\n{nachsatz}")
+            f"{stays}.\n{postscript}")
 
 
 # ---------- FS-Tools ----------
@@ -340,7 +340,7 @@ async def _do_check(ws_root: str | None, verify_command: str) -> str:
         return f"❌ CHECK-FEHLER: {exc}"
 
 
-def deploy_gesperrt(stack_dir: str) -> str:
+def deploy_locked(stack_dir: str) -> str:
     """Why a deploy is not even queued here, empty when it is possible.
 
     The deployer rejects a request without a stack directory of its own on principle (an
@@ -366,7 +366,7 @@ def deploy_gesperrt(stack_dir: str) -> str:
 async def _do_deploy(db: AsyncSession, issue_id: int, project_id: int, stack_dir: str,
                      worktree: str | None, check_only: bool = False) -> str:
     """Queue a deployment (deployments table) and wait for the result of the deployer sidecar."""
-    if not check_only and (reason := deploy_gesperrt(stack_dir)):
+    if not check_only and (reason := deploy_locked(stack_dir)):
         return f"❌ NICHT MÖGLICH\n{reason}"
     from ..models.ops import Deployment
     dep = Deployment(issue_id=issue_id, project_id=project_id, stack_dir=stack_dir,
@@ -535,9 +535,9 @@ async def _start_run(db: AsyncSession, issue_id: int, agent: str, phase: str, pr
     # (a joint key for the office) and starts WHILE the parent runs, so that one must under no
     # circumstances be cleared away here.
     if task_id and parent_run_id is None and not spawn_depth:
-        alt = (await db.execute(select(Run).where(
+        old = (await db.execute(select(Run).where(
             Run.task_id == task_id, Run.status == "running"))).scalars().all()
-        for r in alt:
+        for r in old:
             r.status = "failed"
             r.finished_at = _now()
             r.error = ((r.error or "") + " Abgebrochen: derselbe Auftrag wurde neu "
@@ -710,9 +710,9 @@ def _read_conventions(ws_root: str | None) -> str:
 
 
 def _build_system_prompt(agent: AgentDef) -> str:
-    heute = dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
+    today = dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     parts = [agent.system_prompt or f"Du bist {agent.role}.",
-             f"Aktuelles Datum/Zeit: {heute}.",
+             f"Aktuelles Datum/Zeit: {today}.",
              "Arbeite den Auftrag eigenständig ab. Nutze Tools, wenn nötig. Bist du fertig, antworte mit "
              "einer kurzen Zusammenfassung OHNE Tool-Call. Frage nur bei echten Blockern mit `ask_human`."]
     return "\n\n".join(parts)
@@ -849,7 +849,7 @@ MAX_REFLEXION_TURNS = 2
 
 
 async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | None,
-                   project_key: str, messages: list[dict[str, Any]], summary: str, protokoll,
+                   project_key: str, messages: list[dict[str, Any]], summary: str, log_line,
                    tokens: dict, base_urls: dict) -> tuple[int, int, int]:
     """Look back after a successful run: what lasts goes into the memory (TRA-30).
 
@@ -894,7 +894,7 @@ async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | No
             # Deliberately stays one summarised row without a `kind`: the look back is the
             # wrap up of the run, not work on the assignment, and it should not fill the room
             # with tools. The old data path still splits it cleanly while reading.
-            await protokoll("tool", call.name,
+            await log_line("tool", call.name,
                       f"Rückschau: args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {out[:500]}")
             msgs.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                          "content": out[:2000]})
@@ -937,7 +937,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     # could not be counted on there.
     ctx = office.RunCtx.from_run(run, issue_key=str(issue.get("key") or ""))
 
-    async def protokoll(role: str, tool: str | None, content: str, *, kind: str = "",
+    async def log_line(role: str, tool: str | None, content: str, *, kind: str = "",
                         **fields: Any) -> None:
         await _add_step(db, ctx, role, tool, content, kind=kind, **fields)
 
@@ -958,9 +958,9 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     # First the house rules from the repository, then the project hints: the database has the
     # last word, because that is where what applies ONLY here stands (worktree instead of the
     # live folder, `check` instead of host commands, no deploy by hand).
-    konventionen = _read_conventions(ws_root)
-    if konventionen:
-        messages.append({"role": "system", "content": konventionen})
+    conventions = _read_conventions(ws_root)
+    if conventions:
+        messages.append({"role": "system", "content": conventions})
     if project.get("system_prompt"):
         messages.append({"role": "system", "content": project["system_prompt"]})
     if mode == "plan" and issue.get("plan"):
@@ -988,8 +988,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         # worktree already carries half the work. For an abort (worker restart, crash) the
         # handover can be built from the data: which files the predecessor touched stands in
         # its step rows. Costs no model turn.
-        if (abbruch := await _abbruch_handover(db, int(issue["id"]), run_id)):
-            messages.append({"role": "system", "content": abbruch})
+        if (abort := await _abort_handover(db, int(issue["id"]), run_id)):
+            messages.append({"role": "system", "content": abort})
     if comment_history:
         thread = "\n".join(f"- **{c['label']}** ({c['role']}): {c['body']}" for c in comment_history)
         messages.append({"role": "user", "content":
@@ -1039,7 +1039,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # of its own (or with Traccoon itself as the target) the deployer rejects
                     # every request. A tool that can only fail is an invitation to burn a turn
                     # on it.
-                    if not deploy_gesperrt(project.get("stack_dir", "")):
+                    if not deploy_locked(project.get("stack_dir", "")):
                         _maybe(DEPLOY_TOOL)
                     messages.append({"role": "system", "content": CODE_WORKFLOW})
             # Traccoon control tools: only with a user context (permission check) and
@@ -1087,22 +1087,22 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             empties = 0
             build_gate_fails = 0
             last_context = 0     # real context size of the last call (for the compaction)
-            frist = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
+            deadline = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
             # Has this run delivered anything yet (a change or a plan)? That decides whether a
             # reminder follows, not how much it has read.
             result_tools = RESULT_TOOLS["plan" if mode == "plan" else "execute"] & {
                 t["function"]["name"] for t in openai_tools}
-            result_da = False
-            ermahnt = 0
+            result_there = False
+            reminded = 0
             limit_reason = "Iterations-Limit erreicht."
             iteration = 0       # in case max_iterations is 0, the loop never runs
             for iteration in range(1, agent.max_iterations + 1):
-                if frist and asyncio.get_running_loop().time() > frist:
+                if deadline and asyncio.get_running_loop().time() > deadline:
                     # As with the token budget: `break` falls into the loop_exhausted ending.
-                    gelaufen = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - frist)
-                    limit_reason = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(MAX_RUN_SECONDS)}s)."
-                    log.warning("Run %s: time limit reached (%ds), loop_exhausted", run_id, gelaufen)
-                    await protokoll("system", None,
+                    ran = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - deadline)
+                    limit_reason = f"Zeitlimit erreicht ({ran}s, Grenze {int(MAX_RUN_SECONDS)}s)."
+                    log.warning("Run %s: time limit reached (%ds), loop_exhausted", run_id, ran)
+                    await log_line("system", None,
                               f"⚠️ {limit_reason} → loop_exhausted (Fortsetzung in frischem Run)",
                               kind="system")
                     break
@@ -1113,28 +1113,28 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 # Remind while it still helps: budget spent without any result at all. On
                 # 2026-08-07 UNI-12 read 190 files across three runs and wrote not a line. The
                 # only reminder came at round 78 of 80, long after the time was gone.
-                if result_tools and not result_da:
-                    verbraucht = max(
+                if result_tools and not result_there:
+                    used = max(
                         iteration / max(1, agent.max_iterations),
-                        ((MAX_RUN_SECONDS - (frist - asyncio.get_running_loop().time()))
-                         / MAX_RUN_SECONDS) if frist else 0.0)
-                    due = ermahnungen_due(verbraucht, ermahnt)
-                    while ermahnt < due:
-                        ermahnt += 1
-                        text = reminder_text(mode, verbraucht, scharf=ermahnt >= len(REMINDER_BEI))
+                        ((MAX_RUN_SECONDS - (deadline - asyncio.get_running_loop().time()))
+                         / MAX_RUN_SECONDS) if deadline else 0.0)
+                    due = reminders_due(used, reminded)
+                    while reminded < due:
+                        reminded += 1
+                        text = reminder_text(mode, used, sharp=reminded >= len(REMINDER_AT))
                         messages.append({"role": "system", "content": text})
-                        await protokoll("system", None,
-                                        f"⚠️ {int(verbraucht * 100)} % Budget ohne Ergebnis — nachgehakt",
+                        await log_line("system", None,
+                                        f"⚠️ {int(used * 100)} % Budget ohne Ergebnis — nachgehakt",
                                         kind="system")
                 # Shorten the context BEFORE it bursts the provider. What is measured is the
                 # real context size of the last call; without `max_context_tokens` nothing happens.
                 if agent.max_context_tokens and last_context:
-                    _new = await _kompaktiere(
+                    _new = await _compact(
                         db, messages=messages, limit_tokens=agent.max_context_tokens,
-                        gemessen=last_context, owner_id=owner_id, agent=agent,
+                        measured=last_context, owner_id=owner_id, agent=agent,
                         tokens=tokens, base_urls=base_urls)
                     if _new is not None:
-                        await protokoll("system", None,
+                        await log_line("system", None,
                                   f"Verlauf kompaktiert: {len(messages)} → {len(_new)} Nachrichten "
                                   f"(Kontext {last_context} von {agent.max_context_tokens}).",
                                   kind="system")
@@ -1148,7 +1148,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              web_search=agent.web_search, tokens=tokens,
                                              base_urls=base_urls, effort=agent.effort)
                 except ProviderError as exc:
-                    await protokoll("system", None, f"Provider-Fehler: {exc}", kind="system")
+                    await log_line("system", None, f"Provider-Fehler: {exc}", kind="system")
                     # The turns so far are paid for even when the last one failed. Without the
                     # tokens here a provider error lost the whole run from the cost calculation.
                     await _end_run(db, run_id, "failed", error=str(exc), iterations=iteration,
@@ -1173,7 +1173,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     limit_reason = f"Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS})."
                     log.warning("Run %s: token budget reached (%d >= %d), loop_exhausted",
                                 run_id, in_tok, MAX_RUN_INPUT_TOKENS)
-                    await protokoll("system", None,
+                    await log_line("system", None,
                               f"⚠️ Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS}) "
                               f"→ loop_exhausted (Fortsetzung in frischem Run)", kind="system")
                     break
@@ -1184,7 +1184,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 # said nothing and should say nothing in the room.
                 # Provider and model come from the ANSWER: on a fallback that is not the one
                 # configured on the agent, and with the wrong one the turn would be mispriced.
-                await protokoll("assistant", None, resp.text or "(Tool-Call)",
+                await log_line("assistant", None, resp.text or "(Tool-Call)",
                                 kind="agent_text" if (resp.text or "").strip() else "usage",
                                 in_tokens=int(resp.usage.get("input_tokens", 0) or 0),
                                 out_tokens=int(resp.usage.get("output_tokens", 0) or 0),
@@ -1226,11 +1226,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 _ri, _ro, _rc = await _reflect(
                                     db=db, mcp=mcp, agent=agent, owner_id=owner_id,
                                     project_key=project.get("key") or "", messages=messages,
-                                    summary=resp.text, protokoll=protokoll, tokens=tokens,
+                                    summary=resp.text, log_line=log_line, tokens=tokens,
                                     base_urls=base_urls)
                                 in_tok += _ri; out_tok += _ro; cache_read += _rc
                             except Exception as exc:  # noqa: BLE001
-                                await protokoll("system", None, f"Rückschau übersprungen: {exc}",
+                                await log_line("system", None, f"Rückschau übersprungen: {exc}",
                                                 kind="system")
                         await _end_run(db, run_id, "success", summary=resp.text, iterations=iteration,
                                        in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
@@ -1346,7 +1346,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # A monotonic clock, the same one as the runtime limit above: the wall
                     # clock may jump, a measured duration may not.
                     _t0 = asyncio.get_running_loop().time()
-                    await protokoll("tool", call.name, _args_json[:400], kind="tool_start",
+                    await log_line("tool", call.name, _args_json[:400], kind="tool_start",
                                     tool_use_id=call.id, target=_target)
 
                     if call.name == "open_tasks":
@@ -1394,7 +1394,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         # Delivered means what actually worked: a rejected write attempt must
                         # not switch the reminders off.
                         if call.name in result_tools and not result.startswith("FEHLER"):
-                            result_da = True
+                            result_there = True
                     elif call.name == "codegraph":
                         result = await _codegraph.query(
                             ws_root, (call.arguments.get("command") or "explore").strip(),
@@ -1427,7 +1427,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     if isinstance(result, list):
                         # An image or block result: the call came back, an error would have
                         # become a string, so success is proven here.
-                        await protokoll("tool", call.name, "(Bild/Block-Ergebnis)",
+                        await log_line("tool", call.name, "(Bild/Block-Ergebnis)",
                                         kind="tool_result", tool_use_id=call.id, target=_target,
                                         ok=True, duration_ms=_duration_ms)
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
@@ -1444,7 +1444,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         # prefix" counts as success, and only a proven True lets `step_events`
                         # derive a `file_edit` from it at all.
                         _ok = office.tool_ok(result)
-                        await protokoll("tool", call.name, result[:2000], kind="tool_result",
+                        await log_line("tool", call.name, result[:2000], kind="tool_result",
                                         tool_use_id=call.id, target=_target,
                                         ok=True if _ok is None else _ok, duration_ms=_duration_ms)
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
@@ -1474,10 +1474,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         return RunResult("failed", str(exc), 0, run_id=run_id)
 
 
-ABBRUCH_WINDOW_MIN = 120
+ABORT_WINDOW_MIN = 120
 
 
-async def _abbruch_handover(db: AsyncSession, issue_id: int, run_id: int) -> str:
+async def _abort_handover(db: AsyncSession, issue_id: int, run_id: int) -> str:
     """What the aborted predecessor already did, from the step rows and without a model turn.
 
     A run that ends in order hands over (`compaction.uebergabe`). An aborted one does not: at
@@ -1492,26 +1492,26 @@ async def _abbruch_handover(db: AsyncSession, issue_id: int, run_id: int) -> str
     import datetime as _dt
 
     from ..models.agents import Run, RunStep
-    limit = _dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=ABBRUCH_WINDOW_MIN)
-    vor = (await db.execute(
+    limit = _dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=ABORT_WINDOW_MIN)
+    before = (await db.execute(
         select(Run).where(Run.issue_id == issue_id, Run.id != run_id, Run.status == "failed",
                           Run.finished_at.isnot(None), Run.finished_at > limit)
         .order_by(Run.id.desc()).limit(1))).scalars().first()
-    if vor is None:
+    if before is None:
         return ""
     steps = (await db.execute(
         select(RunStep.tool_name, RunStep.target).where(
-            RunStep.run_id == vor.id, RunStep.kind == "tool_result",
+            RunStep.run_id == before.id, RunStep.kind == "tool_result",
             RunStep.tool_name.in_(("fs_write", "fs_edit")), RunStep.ok.is_(True)))).all()
     files = sorted({t for _, t in steps if t})
     if not files:
         return ""      # nothing written, nothing to hand over, the successor searches itself
-    zuege = (await db.scalar(select(func.count()).select_from(RunStep).where(
-        RunStep.run_id == vor.id, RunStep.role == "assistant"))) or 0
-    last = (vor.last_text or "").strip()[:600]
+    moves = (await db.scalar(select(func.count()).select_from(RunStep).where(
+        RunStep.run_id == before.id, RunStep.role == "assistant"))) or 0
+    last = (before.last_text or "").strip()[:600]
     return ("## Vorlauf abgebrochen — der Worktree trägt seine Arbeit bereits\n"
-            f"Der vorige Lauf (#{vor.id}) endete nach {zuege} Zügen unfreiwillig "
-            f"({(vor.error or 'ohne Meldung').strip()[:160]}).\n"
+            f"Der vorige Lauf (#{before.id}) endete nach {moves} Zügen unfreiwillig "
+            f"({(before.error or 'ohne Meldung').strip()[:160]}).\n"
             "Bereits geänderte Dateien (Stand liegt im Worktree, NICHT neu schreiben ohne "
             "vorher zu lesen):\n" + "\n".join(f"- {d}" for d in files[:40]) +
             (f"\n\nSein letzter Satz war:\n{last}" if last else "") +

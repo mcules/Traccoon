@@ -104,10 +104,10 @@ TOOLS: list[dict] = [
          "in_reply_to": {"type": "string"}},
          "required": ["account", "to"]}},
 ]
-NACH_NAME = {w["name"]: w for w in TOOLS}
+BY_NAME = {w["name"]: w for w in TOOLS}
 
 
-def ignoriert(name: str, pattern: list) -> bool:
+def ignores(name: str, pattern: list) -> bool:
     """Ist dieser Ordner für Werkzeuge unsichtbar? Muster wie `Privat*` oder `INBOX.Familie`."""
     for m in pattern or []:
         m = str(m).strip()
@@ -116,7 +116,7 @@ def ignoriert(name: str, pattern: list) -> bool:
     return False
 
 
-async def konten(db: AsyncSession, user: User) -> list[MailAccount]:
+async def accounts(db: AsyncSession, user: User) -> list[MailAccount]:
     rows = (await db.execute(select(MailAccount).where(
         MailAccount.owner_user_id == user.id,
         MailAccount.enabled.is_(True),
@@ -124,24 +124,24 @@ async def konten(db: AsyncSession, user: User) -> list[MailAccount]:
     return list(rows)
 
 
-async def werkzeugliste(db: AsyncSession, user: User) -> list[dict]:
+async def toollist(db: AsyncSession, user: User) -> list[dict]:
     """Was dieser Zugang anbieten darf: die Vereinigung der Freigaben aller Konten.
 
     Welches Konto welches Werkzeug erlaubt, entscheidet sich beim Aufruf — hier steht nur,
     was überhaupt existiert. Sonst müsste ein Agent raten, warum ein Werkzeug fehlt.
     """
-    frei = {"mail_accounts"}
-    for konto in await konten(db, user):
-        frei.update(konto.mcp_tools or [])
+    free = {"mail_accounts"}
+    for account in await accounts(db, user):
+        free.update(account.mcp_tools or [])
     return [{"name": w["name"], "description": w["beschreibung"], "inputSchema": w["schema"]}
-            for w in TOOLS if w["name"] in frei]
+            for w in TOOLS if w["name"] in free]
 
 
-async def anweisungen(db: AsyncSession, user: User) -> str:
+async def instructions(db: AsyncSession, user: User) -> str:
     """Die Hausregeln aller freigegebenen Postfächer, für das `instructions`-Feld des
     Protokolls: Es wird beim Verbinden gelesen, also noch bevor das erste Werkzeug läuft."""
     parts = []
-    for k in await konten(db, user):
+    for k in await accounts(db, user):
         if k.mcp_instructions:
             parts.append(f"Postfach „{k.name}\": {k.mcp_instructions.strip()}")
     if not parts:
@@ -150,24 +150,24 @@ async def anweisungen(db: AsyncSession, user: User) -> str:
             + "\n\n".join(parts))
 
 
-async def _konto(db: AsyncSession, user: User, name: str, tool: str) -> MailAccount:
-    for konto in await konten(db, user):
-        if konto.name == name:
-            if tool != "mail_accounts" and tool not in (konto.mcp_tools or []):
+async def _account(db: AsyncSession, user: User, name: str, tool: str) -> MailAccount:
+    for account in await accounts(db, user):
+        if account.name == name:
+            if tool != "mail_accounts" and tool not in (account.mcp_tools or []):
                 raise PermissionError(
                     f"Das Postfach „{name}\" gibt „{tool}\" nicht frei")
-            return konto
+            return account
     raise LookupError(f"Kein freigegebenes Postfach „{name}\"")
 
 
-async def ausfuehren(db: AsyncSession, user: User, name: str, args: dict) -> Any:
+async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
     """Ein Werkzeug ausführen. Alles, was hier ankommt, ist bereits durch die Freigaben."""
-    if name not in NACH_NAME:
+    if name not in BY_NAME:
         raise LookupError(f"Unbekanntes Werkzeug „{name}\"")
 
     if name == "mail_accounts":
         out = []
-        for k in await konten(db, user):
+        for k in await accounts(db, user):
             entry = {"name": k.name, "tools": sorted(k.mcp_tools or []),
                        "ignored_folders": list(k.mcp_ignore_folders or [])}
             # Die Hausregeln des Postfachs gehören an die Stelle, an der ein Agent es
@@ -177,33 +177,33 @@ async def ausfuehren(db: AsyncSession, user: User, name: str, args: dict) -> Any
             out.append(entry)
         return out
 
-    konto = await _konto(db, user, str(args.get("account") or ""), name)
+    account = await _account(db, user, str(args.get("account") or ""), name)
     folder = str(args.get("folder") or "INBOX")
-    if name != "mail_folders" and ignoriert(folder, konto.mcp_ignore_folders):
+    if name != "mail_folders" and ignores(folder, account.mcp_ignore_folders):
         raise PermissionError(f"Der Ordner „{folder}\" ist für Werkzeuge gesperrt")
 
     if name == "mail_folders":
-        alle = await mailbox.folder(konto, count=True)
-        return [o for o in alle if not ignoriert(o["name"], konto.mcp_ignore_folders)]
+        alle = await mailbox.folder(account, count=True)
+        return [o for o in alle if not ignores(o["name"], account.mcp_ignore_folders)]
 
     if name == "mail_search":
-        return await mailbox.listing(konto, folder, str(args.get("query") or ""),
+        return await mailbox.listing(account, folder, str(args.get("query") or ""),
                                    int(args.get("offset") or 0),
                                    max(1, min(int(args.get("limit") or 25), 100)))
 
     if name == "mail_get":
-        return await mailbox.message(konto, folder, int(args["uid"]))
+        return await mailbox.message(account, folder, int(args["uid"]))
 
     if name == "mail_attachment":
         import base64
-        file, kind, daten = await mailbox.attachment(konto, folder, int(args["uid"]),
+        file, kind, data = await mailbox.attachment(account, folder, int(args["uid"]),
                                                  int(args["index"]))
-        return {"filename": file, "content_type": kind, "size": len(daten),
-                "base64": base64.b64encode(daten).decode()}
+        return {"filename": file, "content_type": kind, "size": len(data),
+                "base64": base64.b64encode(data).decode()}
 
     if name == "mail_flag":
-        flagge = "\\\\Seen" if str(args.get("flag") or "seen") == "seen" else "\\\\Flagged"
-        await mailbox.flag(konto, folder, int(args["uid"]), flagge,
+        flag = "\\\\Seen" if str(args.get("flag") or "seen") == "seen" else "\\\\Flagged"
+        await mailbox.flag(account, folder, int(args["uid"]), flag,
                            bool(args.get("on", True)))
         return {"ok": True}
 
@@ -211,23 +211,23 @@ async def ausfuehren(db: AsyncSession, user: User, name: str, args: dict) -> Any
         target = str(args["target"])
         # Ein gesperrter Ordner ist auch kein Ziel — sonst wäre die Ignorierliste ein
         # Sichtschutz, durch den man Post schieben kann.
-        if ignoriert(target, konto.mcp_ignore_folders):
+        if ignores(target, account.mcp_ignore_folders):
             raise PermissionError(f"Der Ordner „{target}\" ist für Werkzeuge gesperrt")
-        await mailbox.move(konto, folder, int(args["uid"]), target)
+        await mailbox.move(account, folder, int(args["uid"]), target)
         return {"ok": True, "folder": target}
 
     if name == "mail_archive":
-        return {"ok": True, "folder": await mailbox.archivieren(konto, folder,
+        return {"ok": True, "folder": await mailbox.archive(account, folder,
                                                                 int(args["uid"]))}
 
     if name == "mail_spam":
-        if not konto.folder_junk:
+        if not account.folder_junk:
             raise ValueError("Dieses Postfach hat keinen Spam-Ordner")
-        await mailbox.move(konto, folder, int(args["uid"]), konto.folder_junk)
-        return {"ok": True, "folder": konto.folder_junk}
+        await mailbox.move(account, folder, int(args["uid"]), account.folder_junk)
+        return {"ok": True, "folder": account.folder_junk}
 
     if name in ("mail_send", "mail_draft"):
-        ident = await _identity(db, konto, str(args.get("identity") or ""))
+        ident = await _identity(db, account, str(args.get("identity") or ""))
         fields = {"to": list(args.get("to") or []), "cc": list(args.get("cc") or []),
                   "subject": str(args.get("subject") or ""),
                   "text": str(args.get("text") or ""),
@@ -235,23 +235,23 @@ async def ausfuehren(db: AsyncSession, user: User, name: str, args: dict) -> Any
         if not fields["to"]:
             raise ValueError("Ohne Empfänger geht nichts raus")
         if name == "mail_draft":
-            await mailbox.entwurf_speichern(konto, ident, fields)
+            await mailbox.draft_save(account, ident, fields)
             return {"ok": True, "draft": True}
-        await mailbox.senden(konto, ident, fields)
-        log.info("MCP: Mail von %s über Konto %s an %s", user.id, konto.name, fields["to"])
+        await mailbox.send(account, ident, fields)
+        log.info("MCP: Mail von %s über Konto %s an %s", user.id, account.name, fields["to"])
         return {"ok": True, "sent": True}
 
     raise LookupError(f"Unbekanntes Werkzeug „{name}\"")
 
 
-async def _identity(db: AsyncSession, konto: MailAccount, wunsch: str) -> MailIdentity:
+async def _identity(db: AsyncSession, account: MailAccount, wish: str) -> MailIdentity:
     rows = (await db.execute(select(MailIdentity).where(
-        MailIdentity.account_id == konto.id))).scalars().all()
+        MailIdentity.account_id == account.id))).scalars().all()
     if not rows:
-        raise ValueError(f"Das Postfach „{konto.name}\" hat keine Identität")
-    if wunsch:
+        raise ValueError(f"Das Postfach „{account.name}\" hat keine Identität")
+    if wish:
         for i in rows:
-            if i.email.lower() == wunsch.lower():
+            if i.email.lower() == wish.lower():
                 return i
-        raise ValueError(f"Keine Identität „{wunsch}\" an diesem Postfach")
+        raise ValueError(f"Keine Identität „{wish}\" an diesem Postfach")
     return next((i for i in rows if i.is_default), rows[0])

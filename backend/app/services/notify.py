@@ -32,25 +32,25 @@ log = logging.getLogger("traccoon.notify")
 CHANNELS = ("telegram", "email", "ziel")
 
 
-def _mit_zone(ts: dt.datetime) -> dt.datetime:
+def _with_zone(ts: dt.datetime) -> dt.datetime:
     """Read a naive timestamp as UTC. SQLite hands them back without a zone."""
     return ts if ts.tzinfo is not None else ts.replace(tzinfo=dt.timezone.utc)
 
 
-def kanal_adresse(user: User | None, kanal: str) -> str:
+def channel_address(user: User | None, channel: str) -> str:
     """The address this channel uses for this person, empty when there is none."""
     if user is None:
-        return OWNER_CHAT if kanal == "telegram" else ""
-    if kanal == "telegram":
+        return OWNER_CHAT if channel == "telegram" else ""
+    if channel == "telegram":
         return user.telegram_chat_id or ""
-    if kanal == "email":
+    if channel == "email":
         return (user.notify_email or user.email or "").strip()
-    if kanal == "ziel":
+    if channel == "ziel":
         return str(user.notify_destination_id or "")
     return ""
 
 
-def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
+def choose_channel(user: User | None, wanted: str = "") -> str:
     """Which channel is actually used.
 
     The sender's choice beats the person's default. If that channel has no address on
@@ -58,13 +58,13 @@ def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
     that reaches nobody is the worst outcome, worse than one on the second favourite
     channel.
     """
-    reihenfolge = [k for k in (gewuenscht, (user.notify_default if user else ""), "telegram")
+    order = [k for k in (wanted, (user.notify_default if user else ""), "telegram")
                    if k in CHANNELS]
-    reihenfolge += [k for k in CHANNELS if k not in reihenfolge]
-    for kanal in reihenfolge:
-        if kanal_adresse(user, kanal):
-            return kanal
-    return reihenfolge[0]
+    order += [k for k in CHANNELS if k not in order]
+    for channel in order:
+        if channel_address(user, channel):
+            return channel
+    return order[0]
 
 
 # What a notification can hang off besides project and ticket. The bot decides by `kind`
@@ -72,10 +72,10 @@ def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
 REFERENCES = ("issue_id", "assistant_task_id", "spam_verdict_id", "project_id")
 
 
-async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: str = "",
-                    body: str = "", kanal: str = "", project_id: int | None = None,
+async def deliver(db: AsyncSession, *, user: User | None, kind: str, title: str = "",
+                    body: str = "", channel: str = "", project_id: int | None = None,
                     issue_id: int | None = None,
-                    drossel_key: str = "", drossel_minutes: float = 0,
+                    throttle_key: str = "", throttle_minutes: float = 0,
                     title_key: str = "", body_key: str = "",
                     values: dict[str, object] | None = None,
                     reference: dict[str, int] | None = None) -> dict:
@@ -96,21 +96,21 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
     messages. It stays traceable anyway, because the step in the flow records that it was
     throttled.
     """
-    if drossel_key and drossel_minutes > 0:
-        limit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=drossel_minutes)
+    if throttle_key and throttle_minutes > 0:
+        limit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=throttle_minutes)
         last = (await db.execute(
             select(Notification.created_at)
-            .where(Notification.drossel_key == drossel_key,
+            .where(Notification.throttle_key == throttle_key,
                    # Separated by recipient: two people using the same key must not
                    # mute each other.
                    Notification.user_id == (user.id if user else None),
                    Notification.created_at >= limit)
             .order_by(Notification.created_at.desc()).limit(1))).scalars().first()
         if last is not None:
-            wieder = _mit_zone(last) + dt.timedelta(minutes=drossel_minutes)
-            log.info("throttled: %s (open again at %s)", drossel_key, wieder.isoformat())
-            return {"kanal": "gedrosselt", "unterdrueckt": True, "drossel_key": drossel_key,
-                    "wieder_ab": wieder.isoformat()}
+            again = _with_zone(last) + dt.timedelta(minutes=throttle_minutes)
+            log.info("throttled: %s (open again at %s)", throttle_key, again.isoformat())
+            return {"kanal": "gedrosselt", "unterdrueckt": True, "drossel_key": throttle_key,
+                    "wieder_ab": again.isoformat()}
 
     if title_key or body_key:
         from .i18n import tr
@@ -120,12 +120,12 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
         if body_key:
             body = await tr(db, body_key, language, **(values or {}))
 
-    gewaehlt = waehle_kanal(user, kanal)
-    target = kanal_adresse(user, gewaehlt)
+    chosen = choose_channel(user, channel)
+    target = channel_address(user, chosen)
     n = Notification(user_id=(user.id if user else None), project_id=project_id,
                      issue_id=issue_id, kind=kind, title=title[:500], body=(body or "")[:4000],
-                     drossel_key=(drossel_key or None),
-                     chat_id=(target or OWNER_CHAT or None) if gewaehlt == "telegram" else None)
+                     throttle_key=(throttle_key or None),
+                     chat_id=(target or OWNER_CHAT or None) if chosen == "telegram" else None)
     # A reference makes the message actionable: only with it does the bot know WHICH verdict
     # its "get it back" button undoes. Unknown keys are ignored instead of failing — the
     # sender is a flow, and a typo there must not tear down the notification.
@@ -134,7 +134,7 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
             setattr(n, field, int(value))
     db.add(n)
 
-    if gewaehlt == "ziel":
+    if chosen == "ziel":
         # Was hinausgeht, ist die Nachricht selbst als JSON. Wer ein anderes Format braucht,
         # hängt es am Ziel auf (Pfad, Kopfzeilen, Anmeldung) — genau dafür gibt es Ziele.
         from ..models.destination import Destination
@@ -155,7 +155,7 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
             log.warning("destination %s failed (%s), stays in the bell", dest.name, e)
             return {"kanal": "ziel", "ziel": dest.name, "ok": False}
 
-    if gewaehlt == "email":
+    if chosen == "email":
         if not target:
             log.warning("no email address for user %s, bell only",
                         user.id if user else None)

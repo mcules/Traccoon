@@ -24,7 +24,7 @@ from typing import Any
 _MS_LIMIT = 100_000_000_000
 
 
-def _zahl(value: Any) -> float | None:
+def _number(value: Any) -> float | None:
     """Eine Zahl aus dem, was ankommt — oder nichts.
 
     Geraete schicken Zahlen als Text, mit Komma, mit Einheit dahinter, oder leer. Ein
@@ -50,13 +50,13 @@ def moment(value: Any) -> dt.datetime | None:
     if value is None:
         return None
     if isinstance(value, (int, float)) or (isinstance(value, str) and value.strip().isdigit()):
-        zahl = float(value)
-        if zahl <= 0:
+        number = float(value)
+        if number <= 0:
             return None
-        if zahl > _MS_LIMIT:
-            zahl /= 1000.0
+        if number > _MS_LIMIT:
+            number /= 1000.0
         try:
-            return dt.datetime.fromtimestamp(zahl, tz=dt.timezone.utc)
+            return dt.datetime.fromtimestamp(number, tz=dt.timezone.utc)
         except (OverflowError, OSError, ValueError):
             return None
     text = str(value).strip()
@@ -64,67 +64,67 @@ def moment(value: Any) -> dt.datetime | None:
         return None
     try:
         # `Z` kennt fromisoformat erst ab 3.11 sicher; das Ersetzen kostet nichts.
-        gelesen = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+        read = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
-    return gelesen if gelesen.tzinfo else gelesen.replace(tzinfo=dt.timezone.utc)
+    return read if read.tzinfo else read.replace(tzinfo=dt.timezone.utc)
 
 
-def _akku(value: Any) -> float | None:
+def _battery(value: Any) -> float | None:
     """Akkustand in Prozent.
 
     OwnTracks meldet 0–100, andere melden 0–1 als Bruchteil. Ein Wert unter 1 ist deshalb
     zweideutig — hier gilt er als Bruchteil, weil ein Telefon mit 0,8 % Akku laengst aus
     waere. Genau diese Verwechslung hat beim Weg nach dawarich schon einmal 8200 % ergeben.
     """
-    zahl = _zahl(value)
-    if zahl is None:
+    number = _number(value)
+    if number is None:
         return None
-    if 0 < zahl <= 1:
-        zahl *= 100
-    return max(0.0, min(100.0, zahl))
+    if 0 < number <= 1:
+        number *= 100
+    return max(0.0, min(100.0, number))
 
 
 def _fix(lat: Any, lon: Any, ts: Any, *, accuracy=None, altitude=None, speed=None,
-         course=None, battery=None, source: str = "", roh: Any = None) -> dict | None:
+         course=None, battery=None, source: str = "", raw: Any = None) -> dict | None:
     """Ein Punkt in Traccoons Form — oder nichts, wenn keine Koordinate drinsteckt."""
-    la, lo = _zahl(lat), _zahl(lon)
+    la, lo = _number(lat), _number(lon)
     if la is None or lo is None:
         return None
-    extra = {"accuracy": _zahl(accuracy), "altitude": _zahl(altitude),
-              "speed": _zahl(speed), "course": _zahl(course), "battery": _akku(battery)}
+    extra = {"accuracy": _number(accuracy), "altitude": _number(altitude),
+              "speed": _number(speed), "course": _number(course), "battery": _battery(battery)}
     return {
         "lat": la, "lon": lo, "ts": moment(ts),
         # Leere Felder fliegen raus: Sonst stuende in jedem Punkt fuenfmal `null`, und bei
         # einer Million Punkten ist das ein spuerbarer Teil der Tabelle.
         "extra": {n: w for n, w in extra.items() if w is not None},
         "source": source,
-        "raw": roh,
+        "raw": raw,
     }
 
 
 def normalise(payload: Any, query: dict | None = None) -> list[dict]:
     """Alles, was ankommt, als Liste von Punkten. Unverstaendliches ergibt eine leere Liste."""
     query = {k.lower(): v for k, v in (query or {}).items()}
-    daten = payload if isinstance(payload, dict) else {}
+    data = payload if isinstance(payload, dict) else {}
 
     # Overland: ein Stapel GeoJSON-Features.
-    if isinstance(daten.get("locations"), list):
-        return _overland(daten["locations"])
+    if isinstance(data.get("locations"), list):
+        return _overland(data["locations"])
 
     # OwnTracks: meldet auch Wegpunkte und Statusnachrichten — nur Standorte interessieren.
-    if daten.get("_type"):
-        if daten["_type"] not in ("location", "transition"):
+    if data.get("_type"):
+        if data["_type"] not in ("location", "transition"):
             return []
-        p = _fix(daten.get("lat"), daten.get("lon"), daten.get("tst"),
-                 accuracy=daten.get("acc"), altitude=daten.get("alt"),
-                 speed=daten.get("vel"), course=daten.get("cog"),
-                 battery=daten.get("batt"), source="owntracks", roh=daten)
+        p = _fix(data.get("lat"), data.get("lon"), data.get("tst"),
+                 accuracy=data.get("acc"), altitude=data.get("alt"),
+                 speed=data.get("vel"), course=data.get("cog"),
+                 battery=data.get("batt"), source="owntracks", raw=data)
         return [p] if p else []
 
     # Traccar/OsmAnd: alles in der Adresse. Erkennbar daran, dass der Rumpf nichts hergibt,
     # die Adresse aber Koordinaten traegt.
-    if not daten and ("lat" in query or "latitude" in query):
+    if not data and ("lat" in query or "latitude" in query):
         p = _fix(query.get("lat") or query.get("latitude"),
                  query.get("lon") or query.get("longitude"),
                  query.get("timestamp") or query.get("ts"),
@@ -132,19 +132,19 @@ def normalise(payload: Any, query: dict | None = None) -> list[dict]:
                  altitude=query.get("altitude") or query.get("altitude_m"),
                  speed=query.get("speed"), course=query.get("bearing") or query.get("heading"),
                  battery=query.get("batt") or query.get("battery"),
-                 source="traccar", roh=dict(query))
+                 source="traccar", raw=dict(query))
         return [p] if p else []
 
     # Flach — Home Assistant und alles Selbstgebaute.
-    p = _fix(daten.get("lat", daten.get("latitude")),
-             daten.get("lon", daten.get("lng", daten.get("longitude"))),
-             daten.get("ts", daten.get("timestamp", daten.get("time"))),
-             accuracy=daten.get("accuracy", daten.get("gps_accuracy", daten.get("acc"))),
-             altitude=daten.get("altitude", daten.get("alt")),
-             speed=daten.get("speed"),
-             course=daten.get("course", daten.get("bearing", daten.get("heading"))),
-             battery=daten.get("battery", daten.get("batt", daten.get("battery_level"))),
-             source=str(daten.get("source") or "api"), roh=daten)
+    p = _fix(data.get("lat", data.get("latitude")),
+             data.get("lon", data.get("lng", data.get("longitude"))),
+             data.get("ts", data.get("timestamp", data.get("time"))),
+             accuracy=data.get("accuracy", data.get("gps_accuracy", data.get("acc"))),
+             altitude=data.get("altitude", data.get("alt")),
+             speed=data.get("speed"),
+             course=data.get("course", data.get("bearing", data.get("heading"))),
+             battery=data.get("battery", data.get("batt", data.get("battery_level"))),
+             source=str(data.get("source") or "api"), raw=data)
     return [p] if p else []
 
 
@@ -153,15 +153,15 @@ def _overland(entries: list) -> list[dict]:
     for e in entries:
         if not isinstance(e, dict):
             continue
-        koord = ((e.get("geometry") or {}).get("coordinates") or [])
+        coord = ((e.get("geometry") or {}).get("coordinates") or [])
         eig = e.get("properties") or {}
-        if len(koord) < 2:
+        if len(coord) < 2:
             continue
         # GeoJSON zaehlt lon zuerst. Wer das vertauscht, landet mitten im Indischen Ozean.
-        p = _fix(koord[1], koord[0], eig.get("timestamp"),
+        p = _fix(coord[1], coord[0], eig.get("timestamp"),
                  accuracy=eig.get("horizontal_accuracy"), altitude=eig.get("altitude"),
                  speed=eig.get("speed"), course=eig.get("course"),
-                 battery=eig.get("battery_level"), source="overland", roh=eig)
+                 battery=eig.get("battery_level"), source="overland", raw=eig)
         if p:
             points.append(p)
     return points

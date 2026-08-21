@@ -35,26 +35,26 @@ from app.db import SessionLocal                                 # noqa: E402
 from app.models.series import Series, SeriesPoint               # noqa: E402
 
 # Welcher `tracker_id` in welche Reihe wandert, und wie sie heisst.
-REIHEN = {
+SERIES = {
     "s26-ultra": ("tracker.s26-ultra", "S26 Ultra", "#3b82f6"),
     "google-verlauf": ("tracker.google-verlauf", "Google-Verlauf (Archiv)", "#6b7280"),
 }
 STAPEL = 500
 
 
-def _kennung(ts, lat, lon) -> tuple:
+def _ident(ts, lat, lon) -> tuple:
     """Woran ein Punkt wiedererkannt wird: Sekunde und Ort.
 
     Auf sechs Nachkommastellen gerundet — das sind gut 10 cm, feiner als jedes GPS, und
     gleichzeitig unempfindlich gegen die letzte Stelle, die beim Weg durch zwei Datenbanken
     schon einmal kippt.
     """
-    genau = ts.replace(tzinfo=None) if ts else None
-    return (genau, round(lat, 6) if lat is not None else None,
+    exactly = ts.replace(tzinfo=None) if ts else None
+    return (exactly, round(lat, 6) if lat is not None else None,
             round(lon, 6) if lon is not None else None)
 
 
-def _zahl(text: str) -> float | None:
+def _number(text: str) -> float | None:
     text = (text or "").strip()
     if not text:
         return None
@@ -64,104 +64,104 @@ def _zahl(text: str) -> float | None:
         return None
 
 
-async def hole_reihe(db, besitzer: int, key: str, name: str, farbe: str) -> Series:
-    reihe = (await db.execute(select(Series).where(
-        Series.owner_user_id == besitzer, Series.key == key))).scalar_one_or_none()
-    if reihe is None:
-        reihe = Series(owner_user_id=besitzer, key=key, kind="location", name=name,
-                       color=farbe, settings={})
-        db.add(reihe)
+async def fetch_series(db, owner: int, key: str, name: str, color: str) -> Series:
+    series = (await db.execute(select(Series).where(
+        Series.owner_user_id == owner, Series.key == key))).scalar_one_or_none()
+    if series is None:
+        series = Series(owner_user_id=owner, key=key, kind="location", name=name,
+                       color=color, settings={})
+        db.add(series)
         await db.flush()
         print(f"  Reihe {key} angelegt")
-    return reihe
+    return series
 
 
-async def lauf(csv_pfad: str, besitzer: int, trocken: bool) -> None:
-    with open(csv_pfad, newline="") as f:
-        zeilen = list(csv.reader(f))
-    print(f"{len(zeilen)} Zeilen gelesen")
+async def run_import(csv_path: str, owner: int, dry: bool) -> None:
+    with open(csv_path, newline="") as f:
+        rows = list(csv.reader(f))
+    print(f"{len(rows)} Zeilen gelesen")
 
     async with SessionLocal() as db:
-        reihen: dict[str, Series] = {}
+        series: dict[str, Series] = {}
         # Was schon drin liegt, damit ein zweiter Lauf nichts verdoppelt. Als Kennung dient
         # Zeitstempel **und** Position: Der Zeitstempel allein waere naheliegend, verschluckt
         # aber echte Punkte — im Google-Bestand stehen vier Paare, die dieselbe Sekunde
         # tragen und trotzdem an verschiedenen Orten liegen.
-        bekannt: dict[str, set] = {}
-        gezaehlt = {"neu": 0, "doppelt": 0, "kaputt": 0}
+        known: dict[str, set] = {}
+        counted = {"neu": 0, "doppelt": 0, "kaputt": 0}
 
-        for i, zeile in enumerate(zeilen):
-            if len(zeile) < 4:
-                gezaehlt["kaputt"] += 1
+        for i, row in enumerate(rows):
+            if len(row) < 4:
+                counted["kaputt"] += 1
                 continue
-            geraet, ts_roh, lat_roh, lon_roh = zeile[0], zeile[1], zeile[2], zeile[3]
-            if geraet not in REIHEN:
-                gezaehlt["kaputt"] += 1
+            device, ts_raw, lat_raw, lon_raw = row[0], row[1], row[2], row[3]
+            if device not in SERIES:
+                counted["kaputt"] += 1
                 continue
 
-            key, name, farbe = REIHEN[geraet]
-            if key not in reihen:
-                reihen[key] = await hole_reihe(db, besitzer, key, name, farbe)
-                vorhanden = (await db.execute(select(
+            key, name, color = SERIES[device]
+            if key not in series:
+                series[key] = await fetch_series(db, owner, key, name, color)
+                existing = (await db.execute(select(
                     SeriesPoint.ts, SeriesPoint.lat, SeriesPoint.lon).where(
-                    SeriesPoint.series_id == reihen[key].id))).all()
-                bekannt[key] = {_kennung(t, la, lo) for t, la, lo in vorhanden if t}
+                    SeriesPoint.series_id == series[key].id))).all()
+                known[key] = {_ident(t, la, lo) for t, la, lo in existing if t}
 
-            lat, lon, ts_zahl = _zahl(lat_roh), _zahl(lon_roh), _zahl(ts_roh)
-            if lat is None or lon is None or ts_zahl is None:
-                gezaehlt["kaputt"] += 1
+            lat, lon, ts_number = _number(lat_raw), _number(lon_raw), _number(ts_raw)
+            if lat is None or lon is None or ts_number is None:
+                counted["kaputt"] += 1
                 continue
-            ts = dt.datetime.fromtimestamp(ts_zahl, tz=dt.timezone.utc)
-            kennung = _kennung(ts, lat, lon)
-            if kennung in bekannt[key]:
-                gezaehlt["doppelt"] += 1
+            ts = dt.datetime.fromtimestamp(ts_number, tz=dt.timezone.utc)
+            ident = _ident(ts, lat, lon)
+            if ident in known[key]:
+                counted["doppelt"] += 1
                 continue
-            bekannt[key].add(kennung)
+            known[key].add(ident)
 
             extra = {}
-            for feld, spalte in (("accuracy", 4), ("altitude", 5), ("battery", 6),
+            for feld, column in (("accuracy", 4), ("altitude", 5), ("battery", 6),
                                  ("speed", 7)):
-                wert = _zahl(zeile[spalte]) if len(zeile) > spalte else None
-                if wert is not None:
-                    extra[feld] = wert
+                value = _number(row[column]) if len(row) > column else None
+                if value is not None:
+                    extra[feld] = value
 
-            if not trocken:
-                db.add(SeriesPoint(series_id=reihen[key].id, ts=ts, lat=lat, lon=lon,
+            if not dry:
+                db.add(SeriesPoint(series_id=series[key].id, ts=ts, lat=lat, lon=lon,
                                    extra=extra, source="import", context={"aus": "dawarich"}))
-            gezaehlt["neu"] += 1
-            if not trocken and gezaehlt["neu"] % STAPEL == 0:
+            counted["neu"] += 1
+            if not dry and counted["neu"] % STAPEL == 0:
                 await db.flush()
-                print(f"  {gezaehlt['neu']} …")
+                print(f"  {counted['neu']} …")
 
-        if trocken:
-            print(f"TROCKEN: {gezaehlt}")
+        if dry:
+            print(f"TROCKEN: {counted}")
             return
 
         # Zaehler und letzten Stand nachziehen — sonst zeigt die Uebersicht null Punkte.
-        for key, reihe in reihen.items():
-            punkte = (await db.execute(select(SeriesPoint).where(
-                SeriesPoint.series_id == reihe.id)
+        for key, series in series.items():
+            points = (await db.execute(select(SeriesPoint).where(
+                SeriesPoint.series_id == series.id)
                 .order_by(SeriesPoint.ts.desc()).limit(1))).scalars().all()
-            reihe.points = len((await db.execute(select(SeriesPoint.id).where(
-                SeriesPoint.series_id == reihe.id))).scalars().all())
-            if punkte:
-                letzter = punkte[0]
-                ts = letzter.ts if letzter.ts.tzinfo else letzter.ts.replace(
+            series.points = len((await db.execute(select(SeriesPoint.id).where(
+                SeriesPoint.series_id == series.id))).scalars().all())
+            if points:
+                last = points[0]
+                ts = last.ts if last.ts.tzinfo else last.ts.replace(
                     tzinfo=dt.timezone.utc)
-                if reihe.last_at is None or ts >= (
-                        reihe.last_at if reihe.last_at.tzinfo
-                        else reihe.last_at.replace(tzinfo=dt.timezone.utc)):
-                    reihe.state = {**(reihe.state or {}), "lat": letzter.lat,
-                                   "lon": letzter.lon, **(letzter.extra or {})}
-                    reihe.last_at = ts
-            print(f"  {key}: {reihe.points} Punkte, zuletzt {reihe.last_at}")
+                if series.last_at is None or ts >= (
+                        series.last_at if series.last_at.tzinfo
+                        else series.last_at.replace(tzinfo=dt.timezone.utc)):
+                    series.state = {**(series.state or {}), "lat": last.lat,
+                                   "lon": last.lon, **(last.extra or {})}
+                    series.last_at = ts
+            print(f"  {key}: {series.points} Punkte, zuletzt {series.last_at}")
 
         await db.commit()
-        print(f"fertig: {gezaehlt}")
+        print(f"fertig: {counted}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print(__doc__)
         raise SystemExit(2)
-    asyncio.run(lauf(sys.argv[1], int(sys.argv[2]), "--trocken" in sys.argv))
+    asyncio.run(run_import(sys.argv[1], int(sys.argv[2]), "--trocken" in sys.argv))

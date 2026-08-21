@@ -42,32 +42,32 @@ async def test_the_page_keeps_its_size_and_reports_older_ones(db, client):
         "newest last, so that the conversation reads from top to bottom"
     assert page["more"] is True
 
-    aelteste = page["messages"][0]["id"]
-    davor = (await client.get(f"/assistant/chat?limit=10&vor={aelteste}", headers=auth(anna))).json()
-    assert [n["text"] for n in davor["messages"]] == [f"Frage {i}" for i in range(5, 15)]
-    assert davor["more"] is True
+    oldest = page["messages"][0]["id"]
+    before = (await client.get(f"/assistant/chat?limit=10&before={oldest}", headers=auth(anna))).json()
+    assert [n["text"] for n in before["messages"]] == [f"Frage {i}" for i in range(5, 15)]
+    assert before["more"] is True
 
-    anfang = (await client.get(f"/assistant/chat?limit=10&vor={davor['messages'][0]['id']}",
+    start = (await client.get(f"/assistant/chat?limit=10&before={before['messages'][0]['id']}",
                                headers=auth(anna))).json()
-    assert len(anfang["messages"]) == 5
-    assert anfang["more"] is False, "nothing lies before the first message"
+    assert len(start["messages"]) == 5
+    assert start["more"] is False, "nothing lies before the first message"
 
 
 async def test_an_archived_message_disappears_from_the_history(db, client):
     anna = await make_user(db, "anna")
-    (eine, andere) = await _chat(db, anna, 2)
+    (one, different) = await _chat(db, anna, 2)
 
-    await client.post(f"/assistant/chat/{eine.id}/archive", headers=auth(anna))
-    verlauf = (await client.get("/assistant/chat", headers=auth(anna))).json()
-    assert [n["id"] for n in verlauf["messages"]] == [andere.id]
+    await client.post(f"/assistant/chat/{one.id}/archive", headers=auth(anna))
+    history = (await client.get("/assistant/chat", headers=auth(anna))).json()
+    assert [n["id"] for n in history["messages"]] == [different.id]
 
-    archiv = (await client.get("/assistant/chat?archiv=1", headers=auth(anna))).json()
-    assert [n["id"] for n in archiv["messages"]] == [eine.id]
+    archive = (await client.get("/assistant/chat?archive=1", headers=auth(anna))).json()
+    assert [n["id"] for n in archive["messages"]] == [one.id]
 
     # Out of the view, not out of the world: it comes back.
-    await client.post(f"/assistant/chat/{eine.id}/unarchive", headers=auth(anna))
-    verlauf = (await client.get("/assistant/chat", headers=auth(anna))).json()
-    assert {n["id"] for n in verlauf["messages"]} == {eine.id, andere.id}
+    await client.post(f"/assistant/chat/{one.id}/unarchive", headers=auth(anna))
+    history = (await client.get("/assistant/chat", headers=auth(anna))).json()
+    assert {n["id"] for n in history["messages"]} == {one.id, different.id}
 
 
 async def test_a_running_message_stays(db, client):
@@ -80,9 +80,9 @@ async def test_a_running_message_stays(db, client):
 
     r = await client.post("/assistant/chat/archive-all", headers=auth(anna))
     assert r.json()["archived"] == 1
-    verlauf = (await client.get("/assistant/chat", headers=auth(anna))).json()
-    assert [n["id"] for n in verlauf["messages"]] == [running.id]
-    assert done.id not in [n["id"] for n in verlauf["messages"]]
+    history = (await client.get("/assistant/chat", headers=auth(anna))).json()
+    assert [n["id"] for n in history["messages"]] == [running.id]
+    assert done.id not in [n["id"] for n in history["messages"]]
 
 
 async def test_the_inbox_shows_no_chat_messages(db, client):
@@ -102,6 +102,6 @@ async def test_the_inbox_shows_no_chat_messages(db, client):
     mail.archived_at = dt.datetime.now(tz=dt.timezone.utc)
     await db.commit()
     assert (await client.get("/assistant/inbox", headers=auth(anna))).json() == []
-    archiv = (await client.get("/assistant/inbox?archiv=1", headers=auth(anna))).json()
-    assert [e["id"] for e in archiv] == [mail.id]
+    archive = (await client.get("/assistant/inbox?archive=1", headers=auth(anna))).json()
+    assert [e["id"] for e in archive] == [mail.id]
     assert (await db.execute(select(AssistantTask.id).where(AssistantTask.id == mail.id))).scalar_one()

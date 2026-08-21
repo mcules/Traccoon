@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.enums import (
     HoldReason, TicketAgentStatus, WorkflowNodeType, WorkflowStepStatus,
@@ -31,7 +31,7 @@ router = APIRouter(tags=["lifecycle"])
 
 def _require_ai(access: Access) -> None:
     if not access.ai_assign:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.ai_right_ai_assign_required",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.ai_right_ai_assign_required",
                      "The AI right (ai_assign) is required")
 
 
@@ -43,7 +43,7 @@ async def _waiting_approval(db: AsyncSession, issue: Issue) -> tuple[int, Workfl
     """Open approval in the lifecycle of the ticket, otherwise a 409 with a clear message."""
     inst = await live_instance(db, issue)
     if inst is None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.no_process_for_ticket",
+        raise Error(status.HTTP_409_CONFLICT, "err.no_process_for_ticket",
                      "No process is running for this ticket, please assign an agent")
     step = (await db.execute(
         select(WorkflowStepRun).where(
@@ -52,7 +52,7 @@ async def _waiting_approval(db: AsyncSession, issue: Issue) -> tuple[int, Workfl
             WorkflowStepRun.node_type == WorkflowNodeType.approval,
         ).order_by(WorkflowStepRun.id.desc()))).scalars().first()
     if step is None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.no_approval_waiting_right_now",
+        raise Error(status.HTTP_409_CONFLICT, "err.no_approval_waiting_right_now",
                      "No approval is waiting right now")
     return inst.id, step
 
@@ -91,13 +91,13 @@ async def start_planning(
     issue, access = pair
     _require_ai(access)
     if issue.assigned_agent is None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.no_agent_assigned", "No agent assigned")
+        raise Error(status.HTTP_409_CONFLICT, "err.no_agent_assigned", "No agent assigned")
     from ..services.artifacts import set_ticket_status
     await set_ticket_status(db, issue, TicketAgentStatus.planning)
     await db.commit()
     inst = await start_lifecycle(db, issue, access.user.id, entry="plan", restart=True)
     if inst is None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.no_published_lifecycle_process_project",
+        raise Error(status.HTTP_409_CONFLICT, "err.no_published_lifecycle_process_project",
                      "No published lifecycle process for this project")
     await db.commit()
     await db.refresh(issue)
@@ -112,10 +112,10 @@ async def approve_plan(
     issue, access = pair
     _require_ai(access)
     if issue.agent_status != TicketAgentStatus.plan_review:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.ticket_not_plan_approval",
+        raise Error(status.HTTP_409_CONFLICT, "err.ticket_not_plan_approval",
                      "The ticket is not in plan approval")
     if not issue.plan:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.no_plan_present", "No plan present")
+        raise Error(status.HTTP_409_CONFLICT, "err.no_plan_present", "No plan present")
     await add_system_comment(db, issue.id, f"✅ Plan freigegeben von {_who(access)}")
     await _decide(db, issue, "approved")
     return issue
@@ -128,7 +128,7 @@ async def approve_split(pair: tuple[Issue, Access] = Depends(get_issue_access),
     issue, access = pair
     _require_ai(access)
     if issue.hold_reason != HoldReason.plan_split:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.no_splitting_proposal_approve",
+        raise Error(status.HTTP_409_CONFLICT, "err.no_splitting_proposal_approve",
                      "No splitting proposal to approve")
     await add_system_comment(db, issue.id, f"✅ Aufteilung freigegeben von {_who(access)}")
     await _decide(db, issue, "approved")
@@ -136,7 +136,7 @@ async def approve_split(pair: tuple[Issue, Access] = Depends(get_issue_access),
         select(Issue).where(Issue.parent_ticket_id == issue.id).order_by(Issue.split_order)
     )).scalars().all()
     if not children:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.process_created_no_sub_tasks_check_plan",
+        raise Error(status.HTTP_409_CONFLICT, "err.process_created_no_sub_tasks_check_plan",
                      "The process created no sub-tasks, check the plan")
     return list(children)
 
@@ -149,7 +149,7 @@ async def reject_plan(
     issue, access = pair
     _require_ai(access)
     if issue.agent_status != TicketAgentStatus.plan_review:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.ticket_not_plan_approval",
+        raise Error(status.HTTP_409_CONFLICT, "err.ticket_not_plan_approval",
                      "The ticket is not in plan approval")
     issue.plan = None
     await add_system_comment(db, issue.id, f"✖ Plan abgelehnt von {_who(access)}")
@@ -171,7 +171,7 @@ async def complete(
     _require_ai(access)
     if issue.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing,
                                   TicketAgentStatus.hold):
-        raise Fehler(status.HTTP_409_CONFLICT, "err.ticket_not_ready_acceptance",
+        raise Error(status.HTTP_409_CONFLICT, "err.ticket_not_ready_acceptance",
                      "The ticket is not ready for acceptance")
     await add_system_comment(db, issue.id, f"✅ Abnahme durch {_who(access)}")
     await _decide(db, issue, "approved")

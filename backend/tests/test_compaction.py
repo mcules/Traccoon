@@ -6,10 +6,10 @@ The tests guard above all the two ways such a thing goes wrong: cutting in the w
 """
 import pytest
 from app.worker import compaction
-from app.worker.compaction import kompaktiere, plan
+from app.worker.compaction import compact, plan
 
 
-def _lauf(n: int) -> list[dict]:
+def _run(n: int) -> list[dict]:
     """System + Auftrag + n Wortwechsel."""
     m = [{"role": "system", "content": "Du bist ein Agent."},
          {"role": "user", "content": "Der Auftrag."}]
@@ -20,24 +20,24 @@ def _lauf(n: int) -> list[dict]:
 
 
 def test_below_the_threshold_nothing_happens():
-    assert plan(_lauf(20), limit_tokens=100_000, gemessen=50_000) is None
+    assert plan(_run(20), limit_tokens=100_000, measured=50_000) is None
 
 
 def test_without_a_limit_nothing_happens():
     """No `max_context_tokens` means the behaviour as before, no matter how large the context."""
-    assert plan(_lauf(20), limit_tokens=0, gemessen=10_000_000) is None
+    assert plan(_run(20), limit_tokens=0, measured=10_000_000) is None
 
 
 def test_above_the_threshold_the_middle_part_is_picked():
-    m = _lauf(20)
-    von, bis = plan(m, limit_tokens=100_000, gemessen=85_000)
+    m = _run(20)
+    von, to = plan(m, limit_tokens=100_000, measured=85_000)
     assert von == 2                      # system plus assignment stay untouched
-    assert bis <= len(m) - compaction.BEHALTEN + 1
-    assert bis - von >= compaction.MIN_BLOCK
+    assert to <= len(m) - compaction.KEEP + 1
+    assert to - von >= compaction.MIN_BLOCK
 
 
 def test_a_short_history_is_not_worth_it():
-    assert plan(_lauf(1), limit_tokens=1000, gemessen=999) is None
+    assert plan(_run(1), limit_tokens=1000, measured=999) is None
 
 
 def test_the_cut_never_separates_a_tool_call_from_its_answer():
@@ -49,11 +49,11 @@ def test_the_cut_never_separates_a_tool_call_from_its_answer():
         m.append({"role": "assistant", "content": "", "tool_calls": [
             {"id": f"c{i}", "function": {"name": "lies", "arguments": "{}"}}]})
         m.append({"role": "tool", "tool_call_id": f"c{i}", "name": "lies", "content": "Ergebnis"})
-    von, bis = plan(m, limit_tokens=1000, gemessen=900)
-    assert m[bis]["role"] != "tool"          # never cut before a tool answer
-    assert "tool_call_id" not in m[bis]
+    von, to = plan(m, limit_tokens=1000, measured=900)
+    assert m[to]["role"] != "tool"          # never cut before a tool answer
+    assert "tool_call_id" not in m[to]
     # And the rest stays a valid interplay: no `tool` without its `assistant`.
-    remainder = m[bis:]
+    remainder = m[to:]
     for i, message in enumerate(remainder):
         if message.get("role") == "tool":
             assert remainder[i - 1].get("tool_calls"), "a tool answer without its call"
@@ -64,8 +64,8 @@ async def test_the_summary_replaces_the_middle_part(db, monkeypatch):
         return "- Schritt A erledigt\n- Entscheidung B getroffen"
 
     monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
-    m = _lauf(20)
-    new = await kompaktiere(db, messages=m, limit_tokens=100_000, gemessen=90_000,
+    m = _run(20)
+    new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
     assert new is not None and len(new) < len(m)
     assert new[0] == m[0] and new[1] == m[1]              # system plus assignment unchanged
@@ -80,15 +80,15 @@ async def test_without_aux_it_still_shortens_but_says_so(db, monkeypatch):
         return None
 
     monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
-    m = _lauf(20)
-    new = await kompaktiere(db, messages=m, limit_tokens=100_000, gemessen=90_000,
+    m = _run(20)
+    new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
     assert new is not None and len(new) < len(m)
     assert "nicht möglich" in new[2]["content"] and "verloren" in new[2]["content"]
 
 
 async def test_nothing_to_do_returns_none(db):
-    assert await kompaktiere(db, messages=_lauf(3), limit_tokens=100_000, gemessen=10,
+    assert await compact(db, messages=_run(3), limit_tokens=100_000, measured=10,
                              owner_id=1, agent=None, tokens={}, base_urls={}) is None
 
 
@@ -119,7 +119,7 @@ async def test_a_large_history_is_summarised_in_chunks(db, monkeypatch):
     for i in range(200):
         m.append({"role": "assistant", "content": f"Schritt {i} " + "x" * 1500})
         m.append({"role": "user", "content": f"Weiter {i}"})
-    new = await kompaktiere(db, messages=m, limit_tokens=100_000, gemessen=90_000,
+    new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
     assert new is not None
     # Not a single assignment blows the aux model …
@@ -129,7 +129,7 @@ async def test_a_large_history_is_summarised_in_chunks(db, monkeypatch):
     assert len(seen["laengen"]) > 1
     assert "gefasst" in new[2]["content"]
     # The most recent stays verbatim: the agent does not lose its working thread.
-    assert len(new) > compaction.BEHALTEN
+    assert len(new) > compaction.KEEP
 
 
 async def test_a_pure_tool_history_keeps_the_header_and_the_newest(db, monkeypatch):
@@ -147,14 +147,14 @@ async def test_a_pure_tool_history_keeps_the_header_and_the_newest(db, monkeypat
         m.append({"role": "tool", "tool_call_id": f"c{i}", "name": "fs_read",
                   "content": "Dateiinhalt " * 200})
 
-    new = await kompaktiere(db, messages=m, limit_tokens=100_000, gemessen=90_000,
+    new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
 
     assert new is not None
     assert new[0] == m[0] and new[1] == m[1]                  # the assignment survives
     assert "Dateien X und Y" in new[2]["content"]             # echte Zusammenfassung
     # And explicitly NOT only the head plus the summary: the most recent working context stays.
-    assert len(new) >= 3 + compaction.BEHALTEN - 1
+    assert len(new) >= 3 + compaction.KEEP - 1
     assert new[-1] == m[-1]
     # The rest has to stay a valid interplay; otherwise the provider answers with a 400.
     for i, message in enumerate(new):

@@ -31,7 +31,7 @@ VAULT_ROOT = os.getenv("VAULT_PATH", "/vault")
 # Folders with people and companies. Deliberately a fixed list: the rest of the vault
 # contains addresses from invoices, error messages and clipboards, and those do not belong
 # on an acquittal list.
-KONTAKT_FOLDER = (
+CONTACT_FOLDER = (
     "03 Bereiche/Personen",
     "03 Bereiche/Kontakte",
     "03 Bereiche/Firmen",
@@ -46,7 +46,7 @@ _IGNORIEREN = re.compile(
     r"(^|@)(example\.(com|org|net)|test\.|localhost|domain\.tld|deine?-?domain)", re.IGNORECASE)
 
 
-def _frontmatter_und_body(text: str) -> tuple[list[str], str]:
+def _frontmatter_and_body(text: str) -> tuple[list[str], str]:
     """Note to (frontmatter lines, rest). Without frontmatter: ([], the whole text)."""
     if not text.startswith("---"):
         return [], text
@@ -57,14 +57,14 @@ def _frontmatter_und_body(text: str) -> tuple[list[str], str]:
     return [], text
 
 
-def adressen_aus_notiz(text: str) -> list[tuple[str, str]]:
+def addresses_from_note(text: str) -> list[tuple[str, str]]:
     """[(address, origin)]; origin is 'frontmatter' or 'body'.
 
     Frontmatter addresses are declared contact data and are good for an acquittal. Addresses
     in the running text are weaker: the address of a third party who is being written about
     stands there sometimes. Both are stored but weighted differently.
     """
-    fm, body = _frontmatter_und_body(text)
+    fm, body = _frontmatter_and_body(text)
     out: list[tuple[str, str]] = []
     in_mail_block = False
     for line in fm:
@@ -83,13 +83,13 @@ def adressen_aus_notiz(text: str) -> list[tuple[str, str]]:
     for m in _EMAIL_RE.finditer(body):
         out.append((m.group(0).lower(), "body"))
     # The frontmatter wins when the same address turns up in both.
-    beste: dict[str, str] = {}
-    for adresse, herkunft in out:
-        if _IGNORIEREN.search(adresse):
+    best: dict[str, str] = {}
+    for address, origin in out:
+        if _IGNORIEREN.search(address):
             continue
-        if beste.get(adresse) != "frontmatter":
-            beste[adresse] = herkunft
-    return sorted(beste.items())
+        if best.get(address) != "frontmatter":
+            best[address] = origin
+    return sorted(best.items())
 
 
 def _title(path: Path) -> str:
@@ -109,8 +109,8 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
         log.warning("Vault not reachable (%s), contact reconciliation skipped", root)
         return 0, 0
 
-    gefunden: dict[str, tuple[str, str, str]] = {}  # adresse → (name, pfad, herkunft)
-    for folder in KONTAKT_FOLDER:
+    found: dict[str, tuple[str, str, str]] = {}  # adresse → (name, pfad, herkunft)
+    for folder in CONTACT_FOLDER:
         directory = root / folder
         if not directory.is_dir():
             log.info("Contact folder missing in the vault: %s", folder)
@@ -122,49 +122,49 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
                 log.warning("Contact note %s not readable: %s", file, exc)
                 continue
             rel = str(file.relative_to(root))
-            for adresse, herkunft in adressen_aus_notiz(text):
-                vorher = gefunden.get(adresse)
-                if vorher is None or (vorher[2] == "body" and herkunft == "frontmatter"):
-                    gefunden[adresse] = (_title(file), rel, herkunft)
+            for address, origin in addresses_from_note(text):
+                before = found.get(address)
+                if before is None or (before[2] == "body" and origin == "frontmatter"):
+                    found[address] = (_title(file), rel, origin)
 
-    if not gefunden:
+    if not found:
         log.warning("The vault reconciliation found no address at all, the existing set stays untouched")
         return 0, 0
 
     # Only the vault part is mirrored: addresses from the sent folder (`source_kind='sent'`)
     # stand in the same table but have a different source, so they must be neither updated
     # nor cleared away by this reconciliation.
-    bestand = {
+    stock = {
         row.email: row for row in (await db.execute(select(AssistantContact).where(
             AssistantContact.owner_user_id == owner_id,
             AssistantContact.source_kind.in_(("frontmatter", "body"))))).scalars().all()
     }
     changed = 0
-    for adresse, (name, path, herkunft) in gefunden.items():
-        row = bestand.pop(adresse, None)
+    for address, (name, path, origin) in found.items():
+        row = stock.pop(address, None)
         if row is None:
             db.add(AssistantContact(
-                owner_user_id=owner_id, email=adresse,
-                domain=adresse.split("@", 1)[1] if "@" in adresse else "",
-                name=name[:300], source_path=path[:500], source_kind=herkunft))
+                owner_user_id=owner_id, email=address,
+                domain=address.split("@", 1)[1] if "@" in address else "",
+                name=name[:300], source_path=path[:500], source_kind=origin))
             changed += 1
-        elif (row.name, row.source_path, row.source_kind) != (name[:300], path[:500], herkunft):
-            row.name, row.source_path, row.source_kind = name[:300], path[:500], herkunft
+        elif (row.name, row.source_path, row.source_kind) != (name[:300], path[:500], origin):
+            row.name, row.source_path, row.source_kind = name[:300], path[:500], origin
             changed += 1
-    for row in bestand.values():   # no longer present in the vault
+    for row in stock.values():   # no longer present in the vault
         await db.delete(row)
-    entfernt = len(bestand)
+    removed = len(stock)
     await db.commit()
     log.info("Vault contacts reconciled: %d addresses, %d changed, %d removed",
-             len(gefunden), changed, entfernt)
-    return changed, entfernt
+             len(found), changed, removed)
+    return changed, removed
 
 
 _TITLE_RE = re.compile(r"^\s*(herr|frau|dr\.?|prof\.?|dipl\.?-?\w*|mr\.?|mrs\.?|ms\.?)\s+",
                        re.IGNORECASE)
 
 
-def _namensform(name: str) -> str:
+def _nameform(name: str) -> str:
     """Bring a display name into a comparable form (salutation and title away, lower case).
 
     Deliberately without folding umlauts: "Müller" and "Mueller" are different spellings of
@@ -172,19 +172,19 @@ def _namensform(name: str) -> str:
     """
     name = (name or "").strip().strip("\"'")
     while True:
-        gekuerzt = _TITLE_RE.sub("", name)
-        if gekuerzt == name:
+        shortened = _TITLE_RE.sub("", name)
+        if shortened == name:
             break
-        name = gekuerzt
+        name = shortened
     # „Beispiel, Rainer" → „Rainer Beispiel"
     if name.count(",") == 1:
-        hinten, vorne = (t.strip() for t in name.split(","))
-        if hinten and vorne:
-            name = f"{vorne} {hinten}"
+        back, front = (t.strip() for t in name.split(","))
+        if back and front:
+            name = f"{front} {back}"
     return " ".join(name.lower().split())
 
 
-async def bekannte_domains(db: AsyncSession, owner_id: int | None) -> frozenset[str]:
+async def known_domains(db: AsyncSession, owner_id: int | None) -> frozenset[str]:
     """Domains I actually have to do with.
 
     They turn a foreign brand in the sender into a signal: if `sparkasse.de` stands in my
@@ -199,7 +199,7 @@ async def bekannte_domains(db: AsyncSession, owner_id: int | None) -> frozenset[
     return frozenset(d.lower() for d in rows if d)
 
 
-async def namens_kollision(db: AsyncSession, owner_id: int | None, anzeigename: str,
+async def named_collision(db: AsyncSession, owner_id: int | None, displayname: str,
                            sender_email: str) -> str:
     """The display name is a known contact but the address is not theirs. Returns the name.
 
@@ -211,20 +211,20 @@ async def namens_kollision(db: AsyncSession, owner_id: int | None, anzeigename: 
     Requires at least two name parts: "info" or "support" are not people, and a single part
     name would match by chance constantly.
     """
-    form = _namensform(anzeigename)
+    form = _nameform(displayname)
     if not form or len(form.split()) < 2:
         return ""
     rows = (await db.execute(select(AssistantContact).where(
         AssistantContact.owner_user_id == owner_id))).scalars().all()
-    passende = [r for r in rows if _namensform(r.name) == form]
-    if not passende:
+    matching = [r for r in rows if _nameform(r.name) == form]
+    if not matching:
         return ""
-    if any((r.email or "").lower() == (sender_email or "").lower() for r in passende):
+    if any((r.email or "").lower() == (sender_email or "").lower() for r in matching):
         return ""       # derselbe Mensch, alles in Ordnung
-    return passende[0].name
+    return matching[0].name
 
 
-async def kontakt_hits(db: AsyncSession, owner_id: int | None,
+async def contact_hits(db: AsyncSession, owner_id: int | None,
                           sender_email: str, sender_domain: str) -> str:
     """'frontmatter' | 'body' | 'domain' | '': how well the sender is known.
 

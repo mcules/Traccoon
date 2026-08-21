@@ -16,7 +16,7 @@ import app.services.workflow_engine as enginemod
 from conftest import add_member, auth, make_project, make_user
 
 
-async def _projekt_mit_ticket(db, agent_status=TicketAgentStatus.planning):
+async def _project_with_ticket(db, agent_status=TicketAgentStatus.planning):
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     m = await add_member(db, proj, owner, ProjectRole.owner)
@@ -50,7 +50,7 @@ async def _steps(db, node_id: str) -> list[WorkflowStepRun]:
 
 async def test_planning_runs_until_the_approval(db, seeded, redis_stub):
     """Assign, the agent plans, the ticket waits for the plan approval (human sovereignty)."""
-    owner, proj, issue, _ = await _projekt_mit_ticket(db)
+    owner, proj, issue, _ = await _project_with_ticket(db)
     redis_stub["*"] = {"status": "planned", "output": "Der Plan.", "summary": "Plan"}
 
     from app.services.lifecycle_flow import start_lifecycle
@@ -61,14 +61,14 @@ async def test_planning_runs_until_the_approval(db, seeded, redis_stub):
     assert issue.plan == "Der Plan."
     assert issue.agent_status == TicketAgentStatus.plan_review
     assert issue.hold_reason == HoldReason.plan_review
-    wartend = (await db.execute(select(WorkflowStepRun).where(
+    waiting = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.status == WorkflowStepStatus.waiting))).scalars().all()
-    assert [s.node_id for s in wartend] == ["approve_plan"]
+    assert [s.node_id for s in waiting] == ["approve_plan"]
 
 
 async def test_a_split_is_marked_as_such(db, seeded, redis_stub):
     """A plan with <subtickets> gives another approval (plan_split), otherwise the same way."""
-    owner, proj, issue, _ = await _projekt_mit_ticket(db)
+    owner, proj, issue, _ = await _project_with_ticket(db)
     redis_stub["*"] = {"status": "planned", "summary": "Plan",
                        "output": '<subtickets>[{"summary":"Teil A"}]</subtickets>'}
 
@@ -86,7 +86,7 @@ async def test_continuation_does_not_run_in_circles(db, seeded, redis_stub):
     again and again instead of executing it anew, and the run would turn without ever
     starting an agent. Here every round has to produce a NEW step.
     """
-    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
+    owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     await db.commit()
     # First an interim state (continuation), then finished; otherwise the process would turn up to the cap.
@@ -107,7 +107,7 @@ async def test_continuation_does_not_run_in_circles(db, seeded, redis_stub):
 
 async def test_a_stuck_run_halts_instead_of_carrying_on(db, seeded, redis_stub):
     """The same worktree fingerprint as before means stuck: halt, do not continue."""
-    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
+    owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     db.add(Run(issue_id=issue.id, agent="developer", phase="execution",
                worktree_fingerprint="gleich"))
@@ -130,7 +130,7 @@ async def test_the_runaway_brake_applies_inside_the_graph_too(db, seeded, redis_
     """Above the cap NO agent run may start any more, no matter what the process draws."""
     from app.services import agent_gate
 
-    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
+    owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     for _ in range(agent_gate.MAX_RUNS_PER_TICKET):
         db.add(Run(issue_id=issue.id, agent="developer", phase="execution"))
@@ -154,7 +154,7 @@ async def test_the_runaway_brake_applies_inside_the_graph_too(db, seeded, redis_
 
 async def test_a_comment_continues_a_waiting_flow(client, db, seeded, redis_stub):
     """A question from the agent makes the ticket wait; a comment picks the process up again."""
-    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
+    owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     await db.commit()
     redis_stub["*"] = {"status": "blocked", "summary": "Wie soll X aussehen?",
@@ -174,14 +174,14 @@ async def test_a_comment_continues_a_waiting_flow(client, db, seeded, redis_stub
     assert r.status_code in (200, 201), r.text
     await enginemod.drain()
 
-    ereignis = await _steps(db, "wait_exec")
-    assert ereignis and ereignis[0].decision == "comment"
+    event = await _steps(db, "wait_exec")
+    assert event and event[0].decision == "comment"
     assert len(await _steps(db, "exec")) >= 2
 
 
 async def test_approval_stays_reserved_for_a_human(client, db, seeded, redis_stub):
     """A comment must NOT skip a waiting approval."""
-    owner, proj, issue, _ = await _projekt_mit_ticket(db)
+    owner, proj, issue, _ = await _project_with_ticket(db)
     redis_stub["*"] = {"status": "planned", "output": "Plan", "summary": "Plan"}
     from app.services.lifecycle_flow import start_lifecycle
     await start_lifecycle(db, issue, owner.id)
@@ -209,7 +209,7 @@ async def test_planning_does_not_run_in_endless_circles(db, seeded, redis_stub):
     """
     from app.services.workflow_seed import PLAN_CONTINUATIONS
 
-    owner, proj, issue, _ = await _projekt_mit_ticket(db)
+    owner, proj, issue, _ = await _project_with_ticket(db)
     redis_stub["*"] = {"status": "loop_exhausted", "summary": "komme nicht weiter"}
 
     from app.services.lifecycle_flow import start_lifecycle
@@ -221,15 +221,15 @@ async def test_planning_does_not_run_in_endless_circles(db, seeded, redis_stub):
     assert len(plan_steps) <= PLAN_CONTINUATIONS + 1, "the planning turns unbraked"
     assert issue.continuation_count >= PLAN_CONTINUATIONS
     assert issue.agent_status == TicketAgentStatus.hold      # waits for a human
-    wartend = (await db.execute(select(WorkflowStepRun).where(
+    waiting = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.status == WorkflowStepStatus.waiting))).scalars().all()
-    assert [s.node_id for s in wartend] == ["wait_plan"]
+    assert [s.node_id for s in waiting] == ["wait_plan"]
 
 
 async def test_an_approval_resets_the_continuation_count(db, seeded, redis_stub):
     """Planning and implementation share a counter: a tough planning must not eat the
     implementation's budget before it has written the first line."""
-    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
+    owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     issue.continuation_count = 7
     await db.commit()
@@ -254,7 +254,7 @@ async def test_assigning_through_the_assistant_starts_the_flow(db, seeded, redis
     and only a backend restart would ever catch it again (TRA-32 on 2026-08-07)."""
     from app.services.lifecycle_flow import live_instance, start_lifecycle
 
-    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.planning)
+    owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.planning)
     assert await live_instance(db, issue) is None
 
     inst = await start_lifecycle(db, issue, owner.id, advance_now=False, entry="plan")
@@ -273,7 +273,7 @@ async def test_an_orphaned_ticket_is_collected_on_the_tick(db, seeded, redis_stu
     """The safety net: what stands there without an instance is fetched by the tick, not only by the restart."""
     from app.services.lifecycle_flow import adopt_orphans, live_instance
 
-    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.planning)
+    owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.planning)
     redis_stub["*"] = {"status": "planned", "output": "Plan", "summary": "Plan"}
     assert await live_instance(db, issue) is None
 
@@ -287,7 +287,7 @@ async def test_an_orphaned_ticket_is_collected_on_the_tick(db, seeded, redis_stu
 async def test_a_starting_agent_lifts_an_outdated_hold(db, seeded, redis_stub):
     """If an agent is running again, the old hold reason is history; otherwise the board
     shows "hold - merge" while work is going on."""
-    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.hold)
+    owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.hold)
     issue.hold_reason = HoldReason.merge
     issue.plan = "Plan"
     await db.commit()

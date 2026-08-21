@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.agents import CostEntry
 from ..core.security import decrypt_secret
@@ -150,7 +150,7 @@ async def delete_model(model_id: int, _: User = Depends(require_admin),
     finished amount, not the catalog reference."""
     m = await db.get(ProviderModel, model_id)
     if m is None:
-        raise Fehler(404, "err.model_not_found", "Model not found")
+        raise Error(404, "err.model_not_found", "Model not found")
     await db.delete(m)
     await db.commit()
     return {"ok": True}
@@ -195,7 +195,7 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
                                                             ProviderModel.model))).scalars().all()
     changed: list[dict] = []
     unknown: list[str] = []
-    unchanged = kontexte = 0
+    unchanged = contexts = 0
     for row in rows:
         entry = _modelsdev_entry(catalog, row.provider, row.model)
         cost = (entry or {}).get("cost")
@@ -204,7 +204,7 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
             continue
         new = (float(cost.get("input") or 0.0), float(cost.get("output") or 0.0),
                float(cost.get("cache_read") or 0.0))
-        alt = (row.price_input, row.price_output, row.price_cache_read)
+        old = (row.price_input, row.price_output, row.price_cache_read)
         if not row.display_name and entry.get("name"):
             row.display_name = str(entry["name"])[:150]
         # Only set the context window when it is still missing or has changed: a value
@@ -213,17 +213,17 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
         context = ((entry.get("limit") or {}).get("context")) if isinstance(entry.get("limit"), dict) else None
         if context and row.context_tokens != int(context):
             row.context_tokens = int(context)
-            kontexte += 1
-        if alt == new:
+            contexts += 1
+        if old == new:
             unchanged += 1
             continue
         row.price_input, row.price_output, row.price_cache_read = new
         changed.append({"provider": row.provider, "model": row.model,
-                        "from": {"input": alt[0], "output": alt[1], "cache_read": alt[2]},
+                        "from": {"input": old[0], "output": old[1], "cache_read": old[2]},
                         "to": {"input": new[0], "output": new[1], "cache_read": new[2]}})
     await db.commit()
     return {"source": "models.dev", "updated": changed, "unchanged": unchanged,
-            "context_set": kontexte, "unknown": unknown}
+            "context_set": contexts, "unknown": unknown}
 
 
 # Non-chat models that OpenAI-compatible endpoints (LiteLLM, Ollama, vLLM …) deliver as well.

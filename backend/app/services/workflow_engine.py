@@ -38,7 +38,7 @@ from ..models.enums import (
 from ..models.workflow import (
     WorkflowDefinition, WorkflowInstance, WorkflowStepRun, WorkflowToken, WorkflowVersion,
 )
-from ..core.redis import GNADENFRIST, enqueue_task, peek_result, publish_event, wait_result
+from ..core.redis import GRACE, enqueue_task, peek_result, publish_event, wait_result
 from .jsonlogic import ALLOWED_OPS, JsonLogicError, collect_operators, safe_eval
 
 log = logging.getLogger("workflow_engine")
@@ -308,7 +308,7 @@ PROBE_KEY = "_probe"
 PROBE_ALLOWED = ("set_context", "refresh_facts", "noop")
 
 
-def _ist_probe(inst) -> bool:
+def _is_probe(inst) -> bool:
     return bool((inst.context or {}).get(PROBE_KEY))
 
 
@@ -330,13 +330,13 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
     # reach its next step at all (`abbrechen`). Silently skipping in the second case would
     # be the dangerous one, so the mode is explicit and there is no default guessing.
     if cfg.get("deaktiviert") and ntype not in ("start", "end"):
-        modus = str(cfg.get("deaktiviert_modus") or "ueberspringen")
+        mode = str(cfg.get("deaktiviert_modus") or "ueberspringen")
         label = cfg.get("label") or node["id"]
         db.add(WorkflowStepRun(
             instance_id=inst.id, token_id=token.id, node_id=node["id"],
             node_type=NType(ntype), status=SStatus.skipped, completed_at=_now(),
-            result={"deaktiviert": True, "modus": modus}))
-        if modus == "abbrechen":
+            result={"deaktiviert": True, "modus": mode}))
+        if mode == "abbrechen":
             log.info("Instance %s: switched off step %s ends the run",
                      inst.id, node["id"])
             return Outcome(terminal=True, instance_status="cancelled",
@@ -364,14 +364,14 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
         return Outcome(handle=cfg.get("default_handle", "default"))
 
     if ntype == "human_task":
-        if _ist_probe(inst):
+        if _is_probe(inst):
             _probe_step(db, inst, node, token, ntype, "würde auf einen Menschen warten")
             return Outcome(handle="out")
         await _ensure_wait_step(db, inst, node, ntype, token, "human_task")
         return Outcome(wait=True, waiting_for="human_task")
 
     if ntype == "approval":
-        if _ist_probe(inst):
+        if _is_probe(inst):
             # The dry run takes the approved path, which is the one you want to see. The
             # rejected one deserves a trial of its own and is not checked in secret.
             _probe_step(db, inst, node, token, ntype,
@@ -383,7 +383,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
 
     if ntype == "auto_action":
         from .workflow_actions import run_action
-        if _ist_probe(inst):
+        if _is_probe(inst):
             from .workflow_actions import _normalize_action
             name, params = _normalize_action(cfg)
             if name not in PROBE_ALLOWED:
@@ -433,22 +433,22 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
             # usually not one of the matter but of the moment: far side briefly gone,
             # network briefly gone. Without a delay the retry would be pointless (same
             # second, same error), so it waits on the same alarm clock a timer uses.
-            versuche = int(cfg.get("wiederholungen") or 0)
-            if versuche > 0:
+            attempts = int(cfg.get("wiederholungen") or 0)
+            if attempts > 0:
                 counter = dict((inst.context or {}).get("_versuche") or {})
-                bisher = int(counter.get(node["id"], 0))
-                if bisher < versuche:
-                    counter[node["id"]] = bisher + 1
+                sofar = int(counter.get(node["id"], 0))
+                if sofar < attempts:
+                    counter[node["id"]] = sofar + 1
                     inst.context = {**(inst.context or {}), "_versuche": counter}
-                    warte = float(cfg.get("warte_sek") or 30)
+                    wait = float(cfg.get("warte_sek") or 30)
                     db.add(WorkflowStepRun(
                         instance_id=inst.id, token_id=token.id, node_id=node["id"],
                         node_type=NType.timer, status=SStatus.waiting,
-                        result={"faellig": (_now() + dt.timedelta(seconds=warte)).isoformat(),
-                                "versuch": bisher + 1, "von": versuche}))
+                        result={"faellig": (_now() + dt.timedelta(seconds=wait)).isoformat(),
+                                "versuch": sofar + 1, "von": attempts}))
                     await db.flush()
                     log.info("Instance %s: %s fails (%d/%d), new attempt in %.0fs",
-                             inst.id, node["id"], bisher + 1, versuche, warte)
+                             inst.id, node["id"], sofar + 1, attempts, wait)
                     return Outcome(wait=True, waiting_for="timer")
                 # Used up: the counter has to go, otherwise the next attempt (loop,
                 # restart) would continue from the old count.
@@ -460,7 +460,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                            error=f"auto_action '{node['id']}' fehlgeschlagen: {e}")
 
     if ntype == "agent_task":
-        if _ist_probe(inst):
+        if _is_probe(inst):
             _probe_step(db, inst, node, token, ntype,
                            f"würde den Agenten „{cfg.get('agent_role') or '?'}\" starten",
                            decision="done")
@@ -468,14 +468,14 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
         return await _start_agent_task(db, inst, node, token, cfg, spawn_after)
 
     if ntype == "wait_event":
-        if _ist_probe(inst):
+        if _is_probe(inst):
             _probe_step(db, inst, node, token, ntype,
                            f"würde warten auf: {', '.join(_accepted_events(cfg))}")
             return Outcome(handle="out")
         return await _wait_for_event(db, inst, node, token, cfg)
 
     if ntype == "subflow":
-        if _ist_probe(inst):
+        if _is_probe(inst):
             _probe_step(db, inst, node, token, ntype,
                            f"würde den Ablauf „{cfg.get('slot') or '?'}\" aufrufen",
                            decision="completed")
@@ -483,12 +483,12 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
         return await _start_subflow(db, inst, node, token, cfg)
 
     if ntype == "loop":
-        return await _schleife(db, inst, node, token, cfg)
+        return await _loop(db, inst, node, token, cfg)
 
     if ntype == "timer":
-        if _ist_probe(inst):
-            bis = cfg.get("bis") or f"{cfg.get('dauer', '?')} {cfg.get('einheit', 'm')}"
-            _probe_step(db, inst, node, token, ntype, f"würde warten: {bis}")
+        if _is_probe(inst):
+            to = cfg.get("bis") or f"{cfg.get('dauer', '?')} {cfg.get('einheit', 'm')}"
+            _probe_step(db, inst, node, token, ntype, f"würde warten: {to}")
             return Outcome(handle="out")
         return await _timer(db, inst, node, token, cfg)
 
@@ -592,11 +592,11 @@ async def _timer(db, inst, node, token, cfg) -> Outcome:
     The wake-up happens in the engine's 30 second tick (`_faellige_timer`), not in a
     sleeping task: a backend restart must not forget a waiting run.
     """
-    vorhanden = await _latest_step(db, inst.id, node["id"])
-    if vorhanden is not None and vorhanden.status == SStatus.waiting:
+    existing = await _latest_step(db, inst.id, node["id"])
+    if existing is not None and existing.status == SStatus.waiting:
         return Outcome(wait=True, waiting_for="timer")
 
-    due = _due_ab(cfg, inst.context or {})
+    due = _due_from(cfg, inst.context or {})
     db.add(WorkflowStepRun(
         instance_id=inst.id, token_id=token.id, node_id=node["id"],
         node_type=NType.timer, status=SStatus.waiting,
@@ -606,7 +606,7 @@ async def _timer(db, inst, node, token, cfg) -> Outcome:
     return Outcome(wait=True, waiting_for="timer")
 
 
-def _due_ab(cfg: dict, ctx: dict) -> dt.datetime:
+def _due_from(cfg: dict, ctx: dict) -> dt.datetime:
     """When the run continues: a duration from now or a fixed point in time.
 
     The point in time may come from the context (`{{…}}` is already filled here when the
@@ -614,17 +614,17 @@ def _due_ab(cfg: dict, ctx: dict) -> dt.datetime:
     never.
     """
     now = _now()
-    bis = str(cfg.get("bis") or "").strip()
-    if bis:
+    to = str(cfg.get("bis") or "").strip()
+    if to:
         from .workflow_expr import fill
-        roh = fill(bis, ctx) if "{{" in bis else bis
+        raw = fill(to, ctx) if "{{" in to else to
         try:
-            target = dt.datetime.fromisoformat(roh.replace("Z", "+00:00"))
+            target = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
             if target.tzinfo is None:
                 target = target.replace(tzinfo=dt.timezone.utc)
             return max(target, now)
         except ValueError:
-            log.warning("Timer: %r is not a point in time, nothing is waited for", roh)
+            log.warning("Timer: %r is not a point in time, nothing is waited for", raw)
             return now
     amount = float(cfg.get("dauer") or 0)
     unit = str(cfg.get("einheit") or "m")[:1].lower()
@@ -635,10 +635,10 @@ def _due_ab(cfg: dict, ctx: dict) -> dt.datetime:
     return now + min(delta, dt.timedelta(days=90))
 
 
-async def faellige_timer() -> int:
+async def due_timer() -> int:
     """Wake expired timers, returns the number of runs woken (called from the tick)."""
     now = _now()
-    geweckt = 0
+    woken = 0
     async with SessionLocal() as db:
         rows = (await db.execute(
             select(WorkflowStepRun, WorkflowToken)
@@ -648,9 +648,9 @@ async def faellige_timer() -> int:
                    WorkflowToken.state == TState.waiting))).all()
         due: list[int] = []
         for step, tok in rows:
-            wann = (step.result or {}).get("faellig")
+            when = (step.result or {}).get("faellig")
             try:
-                if wann and dt.datetime.fromisoformat(wann) > now:
+                if when and dt.datetime.fromisoformat(when) > now:
                     continue
             except ValueError:
                 pass                      # unreadable stamp, better wake than hang
@@ -664,10 +664,10 @@ async def faellige_timer() -> int:
                              .where(WorkflowInstance.id.in_(due))
                              .values(status=IStatus.running))
             await db.commit()
-            geweckt = len(due)
+            woken = len(due)
     for iid in set(due):
         await advance(iid)
-    return geweckt
+    return woken
 
 
 # -- loop: a list item by item -----------------------------------------------
@@ -678,7 +678,7 @@ LOOPS_KEY = "_schleifen"
 LOOP_MAX = 500
 
 
-async def _schleife(db, inst, node, token, cfg) -> Outcome:
+async def _loop(db, inst, node, token, cfg) -> Outcome:
     """One pass through a list, sequential, over a back edge.
 
     The node is entered again on every pass (synchronous nodes are re-executed on re-entry,
@@ -691,45 +691,45 @@ async def _schleife(db, inst, node, token, cfg) -> Outcome:
     """
     ctx = dict(inst.context or {})
     state = dict(ctx.get(LOOPS_KEY) or {})
-    meins = dict(state.get(node["id"]) or {})
+    mine = dict(state.get(node["id"]) or {})
 
     path = str(cfg.get("liste") or cfg.get("list") or "").strip()
     element_key = str(cfg.get("element") or "element")
     index_key = str(cfg.get("index") or "i")
-    sammel_path = str(cfg.get("sammle") or "").strip()
+    batch_path = str(cfg.get("sammle") or "").strip()
     result_key = str(cfg.get("ergebnisse") or "ergebnisse")
     limit = min(int(cfg.get("max") or LOOP_MAX), LOOP_MAX)
 
-    if not meins:
-        roh = _dig_ctx(ctx, path) if path else None
-        listing = roh if isinstance(roh, list) else ([] if roh is None else [roh])
-        meins = {"i": 0, "gesamt": len(listing), "werte": listing[:limit], "ergebnisse": []}
+    if not mine:
+        raw = _dig_ctx(ctx, path) if path else None
+        listing = raw if isinstance(raw, list) else ([] if raw is None else [raw])
+        mine = {"i": 0, "gesamt": len(listing), "werte": listing[:limit], "ergebnisse": []}
     else:
         # Back from the loop body: collect first, then count on.
-        if sammel_path:
-            meins["ergebnisse"] = [*meins.get("ergebnisse", []), _dig_ctx(ctx, sammel_path)]
-        meins["i"] = int(meins.get("i", 0)) + 1
+        if batch_path:
+            mine["ergebnisse"] = [*mine.get("ergebnisse", []), _dig_ctx(ctx, batch_path)]
+        mine["i"] = int(mine.get("i", 0)) + 1
 
-    values = meins.get("werte") or []
-    i = int(meins.get("i", 0))
+    values = mine.get("werte") or []
+    i = int(mine.get("i", 0))
     if i >= len(values):
         # Done: drop the counter (an outer loop would otherwise not restart the same
         # inner one), collected results stay.
         state.pop(node["id"], None)
         ctx[LOOPS_KEY] = state
         ctx.pop(element_key, None)
-        ctx[result_key] = meins.get("ergebnisse", [])
-        ctx[f"{index_key}_gesamt"] = meins.get("gesamt", 0)
+        ctx[result_key] = mine.get("ergebnisse", [])
+        ctx[f"{index_key}_gesamt"] = mine.get("gesamt", 0)
         inst.context = ctx
         db.add(WorkflowStepRun(
             instance_id=inst.id, token_id=token.id, node_id=node["id"],
             node_type=NType.loop, status=SStatus.done, completed_at=_now(),
-            result={"durchgaenge": len(values), "gesamt": meins.get("gesamt", 0)}))
+            result={"durchgaenge": len(values), "gesamt": mine.get("gesamt", 0)}))
         return Outcome(handle="fertig")
 
     ctx[element_key] = values[i]
     ctx[index_key] = i
-    state[node["id"]] = meins
+    state[node["id"]] = mine
     ctx[LOOPS_KEY] = state
     inst.context = ctx
     return Outcome(handle="element")
@@ -780,24 +780,24 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
                        error=f"subflow zu tief verschachtelt (> {MAX_SUBFLOW_DEPTH})")
 
     # A subprocess follows the issue type of the ticket it hangs off as well.
-    vorgangsart = None
+    casekind = None
     if inst.issue_id:
         from ..models.ticket import Issue
         issue = await db.get(Issue, inst.issue_id)
-        vorgangsart = issue.type_id if issue else None
+        casekind = issue.type_id if issue else None
     # A slot is resolved per project (own customization beats set beats default), an
     # explicitly named flow is exactly that one, including a free-standing one. Without
     # this second way "other flow" would only be usable for the five shipped slots, and
     # custom flows could not be nested into each other.
     if def_id:
         definition = await db.get(WorkflowDefinition, int(def_id))
-        wofuer = f"Ablauf #{def_id}"
+        whatfor = f"Ablauf #{def_id}"
     else:
-        definition = await resolve_definition(db, inst.project_id, slot, vorgangsart)
-        wofuer = f"Slot '{slot}'"
+        definition = await resolve_definition(db, inst.project_id, slot, casekind)
+        whatfor = f"Slot '{slot}'"
     if definition is None or definition.current_version_id is None:
         return Outcome(terminal=True, instance_status="failed",
-                       error=f"Kein veröffentlichter Ablauf für {wofuer}")
+                       error=f"Kein veröffentlichter Ablauf für {whatfor}")
     if definition.id == inst.definition_id:
         return Outcome(terminal=True, instance_status="failed",
                        error=f"subflow-Knoten '{node['id']}' ruft sich selbst auf")
@@ -1023,7 +1023,7 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
     return Outcome(wait=True, waiting_for="agent")
 
 
-async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dict]:
+async def _wait(task_id: str, timeout: int, was: str) -> tuple[dict | None, dict]:
     """Wait for a worker result and, on failure, name WHAT went wrong.
 
     Without a result a substitute result comes back carrying the reason ("run vanished"
@@ -1031,8 +1031,8 @@ async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dic
     "no result (timeout)", which read in the ticket as "failed: unknown error" although
     nothing had failed at all.
     """
-    uhr = asyncio.get_running_loop().time
-    start = uhr()
+    clock = asyncio.get_running_loop().time
+    start = clock()
     try:
         result = await wait_result(task_id, timeout=timeout or None)
     except Exception:  # noqa: BLE001
@@ -1040,12 +1040,12 @@ async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dic
         result = None
     if result is not None:
         return result, result
-    duration = int(uhr() - start)
+    duration = int(clock() - start)
     if timeout and duration >= timeout:
         text = (f"Zeitgrenze dieses Schrittes erreicht ({duration}s ≥ {timeout}s). "
                 "Der Lauf selbst kann noch arbeiten.")
     else:
-        text = (f"Lauf verschwunden — seit {int(GNADENFRIST / 60)} Minuten kein Lebenszeichen "
+        text = (f"Lauf verschwunden — seit {int(GRACE / 60)} Minuten kein Lebenszeichen "
                 "(kein Worker-Puls, nicht mehr in der Warteschlange).")
     log.warning("Watchdog %s (%s) without a result after %ds: %s", task_id, was, duration, text)
     return None, {"status": "failed", "success": False, "output": text, "summary": text,
@@ -1076,17 +1076,17 @@ async def _job_result(db, inst: WorkflowInstance) -> None:
     if not str(inst.source or "").startswith("job:"):
         return
     from ..models.ops import JobRun
-    lauf = (await db.execute(select(JobRun).where(
+    run = (await db.execute(select(JobRun).where(
         JobRun.workflow_instance_id == inst.id))).scalars().first()
-    if lauf is None:
+    if run is None:
         return
     text = job_answer_text(inst)
     if text:
-        lauf.output = text[:20000]
+        run.output = text[:20000]
     if inst.status == IStatus.failed:
-        lauf.status = "error"
-        lauf.error = (inst.error or "Der Ablauf ist fehlgeschlagen")[:2000]
-    lauf.finished_at = _now()
+        run.status = "error"
+        run.error = (inst.error or "Der Ablauf ist fehlgeschlagen")[:2000]
+    run.finished_at = _now()
 
 
 async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: str,
@@ -1108,7 +1108,7 @@ async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: 
 
 async def _await_action_inner(instance_id: int, token_id: int, step_id: int, task_id: str,
                               timeout: int, context_key: str, outcomes_map: dict) -> None:
-    result, replacement = await _warte(task_id, timeout, "Aktion")
+    result, replacement = await _wait(task_id, timeout, "Aktion")
     status = (result or {}).get("status", "failed")
 
     async with SessionLocal() as db:
@@ -1222,7 +1222,7 @@ async def _await_agent(instance_id: int, token_id: int, step_id: int, task_id: s
 
 async def _await_agent_inner(instance_id: int, token_id: int, step_id: int, task_id: str,
                              outcomes_map: dict, timeout: int) -> None:
-    result, replacement = await _warte(task_id, timeout, "Agent")
+    result, replacement = await _wait(task_id, timeout, "Agent")
     status = (result or {}).get("status", "failed")
 
     async with SessionLocal() as db:
@@ -1397,7 +1397,7 @@ async def resume_instance(instance_id: int) -> None:
     await advance(instance_id)
 
 
-async def entscheide_genehmigung(db, inst: WorkflowInstance, decision: str, *,
+async def decide_approval(db, inst: WorkflowInstance, decision: str, *,
                                  actor_id: int | None = None, reason: str | None = None,
                                  context: dict | None = None) -> bool:
     """Decide the waiting approval step of an instance, without HTTP.
@@ -1768,7 +1768,7 @@ async def _retry_gated() -> list[int]:
     return ids
 
 
-async def nachzuegler_einsammeln() -> None:
+async def stragglers_collect() -> None:
     """Collect results that arrive AFTER the watcher gave up.
 
     The watcher only gives up when a run has demonstrably vanished, but "gone" does not
@@ -1781,16 +1781,16 @@ async def nachzuegler_einsammeln() -> None:
     returned to its node and the same watcher is attached again. It finds the result in
     Redis right away and continues as if nothing had happened.
     """
-    wieder: list[tuple] = []
+    again: list[tuple] = []
     async with SessionLocal() as db:
-        kandidaten = (await db.execute(
+        candidates = (await db.execute(
             select(WorkflowStepRun)
             .join(WorkflowInstance, WorkflowInstance.id == WorkflowStepRun.instance_id)
             .where(WorkflowStepRun.status == SStatus.done,
                    WorkflowStepRun.node_type.in_([NType.agent_task, NType.auto_action]),
                    WorkflowInstance.status.in_([IStatus.running, IStatus.waiting]))
             .order_by(WorkflowStepRun.id.desc()).limit(200))).scalars().all()
-        for s in kandidaten:
+        for s in candidates:
             res = s.result or {}
             if not res.get("verloren"):
                 continue
@@ -1842,15 +1842,15 @@ async def nachzuegler_einsammeln() -> None:
                     "— der Prozess läuft an dieser Stelle weiter.", author_label="Workflow")
             omap = dict(cfg.get("outcomes_map") or {})
             if s.node_type == NType.agent_task:
-                wieder.append(("agent", s.instance_id, token.id, s.id, task_id, omap,
+                again.append(("agent", s.instance_id, token.id, s.id, task_id, omap,
                                int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT), ""))
             else:
-                wieder.append(("aktion", s.instance_id, token.id, s.id, task_id, omap,
+                again.append(("aktion", s.instance_id, token.id, s.id, task_id, omap,
                                int(cfg.get("timeout_sec") or ACTION_DEFAULT_TIMEOUT),
                                str(res.get("context_key") or "action")))
-        if wieder:
+        if again:
             await db.commit()
-    for kind, iid, tok_id, step_id, task_id, omap, timeout, ckey in wieder:
+    for kind, iid, tok_id, step_id, task_id, omap, timeout, ckey in again:
         log.info("Straggler: the result for %s is there after all, step %s is booked",
                  task_id, step_id)
         if kind == "agent":
@@ -1859,7 +1859,7 @@ async def nachzuegler_einsammeln() -> None:
             _spawn(_await_action(iid, tok_id, step_id, task_id, timeout, ckey, omap))
 
 
-async def tote_runs_schliessen() -> int:
+async def dead_runs_close() -> int:
     """Close runs nobody stands behind any more.
 
     A run normally ends on its own, unless the process driving it dies where it can no
@@ -1875,17 +1875,17 @@ async def tote_runs_schliessen() -> int:
     """
     import datetime as _dt
 
-    from ..core.redis import GNADENFRIST, lauf_lebt
+    from ..core.redis import GRACE, run_alive
     from ..models.agents import Run
 
-    limit = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=GNADENFRIST)
-    geschlossen = 0
+    limit = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=GRACE)
+    closed = 0
     async with SessionLocal() as db:
         offen = (await db.execute(select(Run).where(
             Run.status == "running", Run.finished_at.is_(None),
             Run.started_at < limit))).scalars().all()
         for run in offen:
-            if await lauf_lebt(run.task_id):
+            if await run_alive(run.task_id):
                 continue
             run.status = "failed"
             run.finished_at = _dt.datetime.now(_dt.UTC)
@@ -1894,17 +1894,17 @@ async def tote_runs_schliessen() -> int:
                          "abmelden zu können (z. B. Absturz beim Schreiben).").strip()
             log.warning("Run %s (%s, assignment %s) closed without a sign of life",
                         run.id, run.agent, run.task_id)
-            geschlossen += 1
-        if geschlossen:
+            closed += 1
+        if closed:
             await db.commit()
-    return geschlossen
+    return closed
 
 
 async def _engine_tick() -> None:
     # Close the dead ones first, then reconcile: otherwise a run that only exists on paper
     # keeps its ticket in progress through the board rule.
     try:
-        await tote_runs_schliessen()
+        await dead_runs_close()
     except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Closing dead runs failed")
 
@@ -1929,12 +1929,12 @@ async def _engine_tick() -> None:
     # Wake expired timers before the latecomers run: a woken run is not a latecomer, and a
     # waiting timer should not count as stuck either.
     try:
-        await faellige_timer()
+        await due_timer()
     except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Waking due timers failed")
 
     try:
-        await nachzuegler_einsammeln()
+        await stragglers_collect()
     except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Fetching stragglers failed")
 

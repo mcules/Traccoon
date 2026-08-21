@@ -31,7 +31,7 @@ def insert(text: str, values: dict[str, str]) -> str:
     return text
 
 
-class Fehler(HTTPException):
+class Error(HTTPException):
     """An HTTPException that names its text."""
 
     def __init__(self, status_code: int, key: str, text: str, **values: Any) -> None:
@@ -40,10 +40,10 @@ class Fehler(HTTPException):
         super().__init__(status_code, insert(text, self.values))
 
 
-async def error_handler(_request: Request, exc: Fehler) -> JSONResponse:
+async def error_handler(_request: Request, exc: Error) -> JSONResponse:
     """Put the key beside the text. Everything else stays as FastAPI would send it."""
-    inhalt: dict[str, Any] = {"detail": exc.detail, "key": exc.key}
+    content: dict[str, Any] = {"detail": exc.detail, "key": exc.key}
     if exc.values:
-        inhalt["werte"] = exc.values
-    return JSONResponse(status_code=exc.status_code, content=inhalt,
+        content["werte"] = exc.values
+    return JSONResponse(status_code=exc.status_code, content=content,
                         headers=getattr(exc, "headers", None))

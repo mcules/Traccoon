@@ -77,7 +77,7 @@ async def upsert_policy(db: AsyncSession, owner_id: int | None, *, match_kind: s
     return p
 
 
-async def agent_running_lokal(db: AsyncSession, owner_id: int | None, role: str) -> bool:
+async def agent_running_local(db: AsyncSession, owner_id: int | None, role: str) -> bool:
     """Does this agent run on a model in one's own house?
 
     The distinguishing feature is not the provider name but the endpoint URL of the token:

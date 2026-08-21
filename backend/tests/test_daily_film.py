@@ -30,49 +30,49 @@ from conftest import make_project
 
 # The window of all tests: one full day in UTC. Deliberately hard wired: a window derived
 # from the clock would make the test depend on the time of day.
-VON = dt.datetime(2026, 8, 5, 0, 0, tzinfo=dt.timezone.utc)
-BIS = dt.datetime(2026, 8, 6, 0, 0, tzinfo=dt.timezone.utc)
+FROM = dt.datetime(2026, 8, 5, 0, 0, tzinfo=dt.timezone.utc)
+TO = dt.datetime(2026, 8, 6, 0, 0, tzinfo=dt.timezone.utc)
 MITTAG = dt.datetime(2026, 8, 5, 12, 0, tzinfo=dt.timezone.utc)
 
 
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
-async def ticket(db, projekt, nummer: int, summary: str = "Tu was") -> Issue:
-    kind = IssueType(project_id=projekt.id, name=f"Aufgabe {nummer}")
-    status = WorkflowStatus(project_id=projekt.id, name=f"To Do {nummer}",
+async def ticket(db, project, number: int, summary: str = "Tu was") -> Issue:
+    kind = IssueType(project_id=project.id, name=f"Aufgabe {number}")
+    status = WorkflowStatus(project_id=project.id, name=f"To Do {number}",
                             category=StatusCategory.todo)
     db.add_all([kind, status])
     await db.commit()
-    i = Issue(project_id=projekt.id, number=nummer, key=f"{projekt.key}-{nummer}",
+    i = Issue(project_id=project.id, number=number, key=f"{project.key}-{number}",
               type_id=kind.id, status_id=status.id, summary=summary, reporter_id=1, rank="1")
     db.add(i)
     await db.commit()
     return i
 
 
-async def lauf(db, *, issue=None, projekt=None, agent="developer", status="success",
-               start=None, ende=None) -> Run:
+async def make_run(db, *, issue=None, project=None, agent="developer", status="success",
+               start=None, end=None) -> Run:
     r = Run(issue_id=issue.id if issue else None,
-            project_id=projekt.id if projekt else (issue.project_id if issue else None),
+            project_id=project.id if project else (issue.project_id if issue else None),
             agent=agent, phase="execute", provider="claude_code", model="sonnet",
             status=status, started_at=start or MITTAG,
-            finished_at=ende if ende is not None else (
+            finished_at=end if end is not None else (
                 None if status == "running" else MITTAG + dt.timedelta(minutes=5)))
     db.add(r)
     await db.commit()
     return r
 
 
-async def step(db, run: Run, *, kind: str = "agent_text", wann=None, text="hallo") -> RunStep:
+async def step(db, run: Run, *, kind: str = "agent_text", when=None, text="hallo") -> RunStep:
     s = RunStep(run_id=run.id, seq=1, role="assistant", kind=kind, content=text,
-                created_at=wann or MITTAG)
+                created_at=when or MITTAG)
     db.add(s)
     await db.commit()
     return s
 
 
-def kinds(ereignisse: list[dict], kind: str) -> list[dict]:
-    return [e for e in ereignisse if e["kind"] == kind]
+def kinds(events: list[dict], kind: str) -> list[dict]:
+    return [e for e in events if e["kind"] == kind]
 
 
 # ── The window ───────────────────────────────────────────────────────────────
@@ -85,22 +85,22 @@ async def test_two_sessions_yield_one_ascending_sequence(db):
     figures in the film would jump back and forth.
     """
     p = await make_project(db, "TRA", "Traccoon")
-    a = await lauf(db, issue=await ticket(db, p, 1, "Erstes"))
-    b = await lauf(db, issue=await ticket(db, p, 2, "Zweites"))
+    a = await make_run(db, issue=await ticket(db, p, 1, "Erstes"))
+    b = await make_run(db, issue=await ticket(db, p, 2, "Zweites"))
     for i, run in enumerate((a, b, a, b)):
-        await step(db, run, wann=MITTAG + dt.timedelta(seconds=i))
+        await step(db, run, when=MITTAG + dt.timedelta(seconds=i))
 
-    ereignisse, roster, bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
+    events, roster, balance = await of.daily_events(db, von=FROM, to=TO)
 
-    seqs = [e["seq"] for e in ereignisse]
+    seqs = [e["seq"] for e in events]
     assert seqs == sorted(seqs)
     assert len(set(seqs)) == len(seqs)          # no two events on the same step
-    assert len({e["sid"] for e in ereignisse}) == 2
-    assert bilanz.runs == 2 and bilanz.sitzungen == 2
+    assert len({e["sid"] for e in events}) == 2
+    assert balance.runs == 2 and balance.sessions == 2
     assert len(roster) == 2
     # Trap 3: the read API sets one header per room. Twenty of them would be twenty titles
     # for one day, so the film carries chapter cards.
-    assert kinds(ereignisse, "session_seen") == []
+    assert kinds(events, "session_seen") == []
 
 
 async def test_consecutive_runs_do_not_collide_on_the_same_seq(db):
@@ -115,23 +115,23 @@ async def test_consecutive_runs_do_not_collide_on_the_same_seq(db):
     p = await make_project(db, "TRA", "Traccoon")
     last = None
     for n in range(1, 6):
-        r = await lauf(db, issue=await ticket(db, p, n),
+        r = await make_run(db, issue=await ticket(db, p, n),
                        start=MITTAG + dt.timedelta(minutes=n),
-                       ende=MITTAG + dt.timedelta(minutes=n, seconds=30))
-        last = await step(db, r, wann=MITTAG + dt.timedelta(minutes=n))
+                       end=MITTAG + dt.timedelta(minutes=n, seconds=30))
+        last = await step(db, r, when=MITTAG + dt.timedelta(minutes=n))
         assert last is not None
 
-    ereignisse, _r, _b = await of.tages_ereignisse(db, von=VON, bis=BIS)
+    events, _r, _b = await of.daily_events(db, von=FROM, to=TO)
 
-    seqs = [e["seq"] for e in ereignisse]
+    seqs = [e["seq"] for e in events]
     assert len(set(seqs)) == len(seqs), "duplicate seq, the recorder discards the second one"
     assert seqs == sorted(seqs)
     # All five agents come in AND leave again.
-    assert len(kinds(ereignisse, "run_start")) == 5
-    assert len(kinds(ereignisse, "run_end")) == 5
+    assert len(kinds(events, "run_start")) == 5
+    assert len(kinds(events, "run_end")) == 5
     # And on a tie the end goes before the start: first the seat becomes free.
-    reihe = [e["kind"] for e in ereignisse if e["kind"] in ("run_start", "run_end")]
-    assert reihe[1:3] == ["run_end", "run_start"]
+    series = [e["kind"] for e in events if e["kind"] in ("run_start", "run_end")]
+    assert series[1:3] == ["run_end", "run_start"]
 
 
 async def test_a_run_before_the_window_clamps_the_start_to_the_window_begin(db):
@@ -142,27 +142,27 @@ async def test_a_run_before_the_window_clamps_the_start_to_the_window_begin(db):
     an engine bug.
     """
     p = await make_project(db, "TRA", "Traccoon")
-    r = await lauf(db, issue=await ticket(db, p, 1),
-                   start=VON - dt.timedelta(hours=4), ende=MITTAG)
-    await step(db, r, wann=MITTAG)
+    r = await make_run(db, issue=await ticket(db, p, 1),
+                   start=FROM - dt.timedelta(hours=4), end=MITTAG)
+    await step(db, r, when=MITTAG)
 
-    ereignisse, _roster, _bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
+    events, _roster, _balance = await of.daily_events(db, von=FROM, to=TO)
 
-    starts = kinds(ereignisse, "run_start")
+    starts = kinds(events, "run_start")
     assert len(starts) == 1
-    assert starts[0]["ts"] == of._iso_ms(VON)
+    assert starts[0]["ts"] == of._iso_ms(FROM)
     # And the boundary stays at the front: the agent comes in before it speaks.
-    assert starts[0]["seq"] < min(e["seq"] for e in kinds(ereignisse, "agent_text"))
+    assert starts[0]["seq"] < min(e["seq"] for e in kinds(events, "agent_text"))
 
 
 async def test_a_start_inside_the_window_stays_untouched(db):
     """Only what lies outside is clamped; otherwise every run would begin at midnight."""
     p = await make_project(db, "TRA", "Traccoon")
-    r = await lauf(db, issue=await ticket(db, p, 1), start=MITTAG, ende=MITTAG + dt.timedelta(minutes=5))
-    await step(db, r, wann=MITTAG + dt.timedelta(minutes=1))
+    r = await make_run(db, issue=await ticket(db, p, 1), start=MITTAG, end=MITTAG + dt.timedelta(minutes=5))
+    await step(db, r, when=MITTAG + dt.timedelta(minutes=1))
 
-    ereignisse, _r, _b = await of.tages_ereignisse(db, von=VON, bis=BIS)
-    assert kinds(ereignisse, "run_start")[0]["ts"] == of._iso_ms(MITTAG)
+    events, _r, _b = await of.daily_events(db, von=FROM, to=TO)
+    assert kinds(events, "run_start")[0]["ts"] == of._iso_ms(MITTAG)
 
 
 async def test_a_run_past_the_window_loses_its_end(db):
@@ -173,67 +173,67 @@ async def test_a_run_past_the_window_loses_its_end(db):
     running run gets none). The run in the window beside it keeps its own.
     """
     p = await make_project(db, "TRA", "Traccoon")
-    ueber = await lauf(db, issue=await ticket(db, p, 1), start=MITTAG,
-                       ende=BIS + dt.timedelta(hours=9))
-    drin = await lauf(db, issue=await ticket(db, p, 2), start=MITTAG,
-                      ende=MITTAG + dt.timedelta(minutes=5))
-    await step(db, ueber, wann=MITTAG)
-    await step(db, drin, wann=MITTAG)
+    over = await make_run(db, issue=await ticket(db, p, 1), start=MITTAG,
+                       end=TO + dt.timedelta(hours=9))
+    inside = await make_run(db, issue=await ticket(db, p, 2), start=MITTAG,
+                      end=MITTAG + dt.timedelta(minutes=5))
+    await step(db, over, when=MITTAG)
+    await step(db, inside, when=MITTAG)
 
-    ereignisse, _roster, _bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
+    events, _roster, _balance = await of.daily_events(db, von=FROM, to=TO)
 
-    enden = kinds(ereignisse, "run_end")
-    assert [e["run_id"] for e in enden] == [drin.id]
+    ends = kinds(events, "run_end")
+    assert [e["run_id"] for e in ends] == [inside.id]
     # The run is in the film regardless: it did work, it only does not stop today.
-    assert ueber.id in {e["run_id"] for e in ereignisse}
+    assert over.id in {e["run_id"] for e in events}
 
 
 async def test_steps_outside_the_window_are_missing(db):
     """The window cuts the steps, not the runs."""
     p = await make_project(db, "TRA", "Traccoon")
-    r = await lauf(db, issue=await ticket(db, p, 1), start=VON - dt.timedelta(days=1),
-                   ende=MITTAG)
-    await step(db, r, wann=VON - dt.timedelta(hours=2), text="gestern")
-    await step(db, r, wann=MITTAG, text="heute")
+    r = await make_run(db, issue=await ticket(db, p, 1), start=FROM - dt.timedelta(days=1),
+                   end=MITTAG)
+    await step(db, r, when=FROM - dt.timedelta(hours=2), text="gestern")
+    await step(db, r, when=MITTAG, text="heute")
 
-    ereignisse, _r, bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
-    texte = [e["text"] for e in kinds(ereignisse, "agent_text")]
-    assert texte == ["heute"]
-    assert bilanz.ereignisse == len(ereignisse)
+    events, _r, balance = await of.daily_events(db, von=FROM, to=TO)
+    texts = [e["text"] for e in kinds(events, "agent_text")]
+    assert texts == ["heute"]
+    assert balance.events == len(events)
 
 
 async def test_the_balance_counts_failures_questions_and_cost(db):
     """Failure and question are two things: an open question is not a failure."""
     p = await make_project(db, "TRA", "Traccoon")
-    schlecht = await lauf(db, issue=await ticket(db, p, 1), status="failed")
-    question = await lauf(db, issue=await ticket(db, p, 2), status="blocked")
-    gut = await lauf(db, issue=await ticket(db, p, 3), status="success")
-    for r in (schlecht, question, gut):
+    bad = await make_run(db, issue=await ticket(db, p, 1), status="failed")
+    question = await make_run(db, issue=await ticket(db, p, 2), status="blocked")
+    good = await make_run(db, issue=await ticket(db, p, 3), status="success")
+    for r in (bad, question, good):
         await step(db, r)
     # `priced=None` is the existing data: 411 of 411 cost entries. Without a catalog entry
     # the sum stays a lower bound, hence the "≥".
-    db.add(CostEntry(run_id=gut.id, provider="claude_code", model="sonnet",
+    db.add(CostEntry(run_id=good.id, provider="claude_code", model="sonnet",
                      cost_usd=1.83, priced=None))
     await db.commit()
 
-    _e, _r, bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
-    assert (bilanz.fehlschlaege, bilanz.rueckfragen) == (1, 1)
-    assert bilanz.kosten_usd == pytest.approx(1.83)
-    assert bilanz.kosten_partial is True
+    _e, _r, balance = await of.daily_events(db, von=FROM, to=TO)
+    assert (balance.failures, balance.questions) == (1, 1)
+    assert balance.cost_usd == pytest.approx(1.83)
+    assert balance.cost_partial is True
 
 
 # ── Bildunterschrift ─────────────────────────────────────────────────────────
 
-def bilanz(**fields) -> of.Tagesbilanz:
-    return of.Tagesbilanz(datum="Mi 05.08.", **fields)
+def balance(**fields) -> of.Dailybalance:
+    return of.Dailybalance(date="Mi 05.08.", **fields)
 
 
 def test_a_caption_for_a_full_day():
-    text = of.bildunterschrift(
-        bilanz(runs=19, sitzungen=19, ereignisse=609, fehlschlaege=2, rueckfragen=1,
-               kosten_usd=1.83, kosten_partial=True,
-               laengster={"key": "TRA-412", "titel": "Büro aufräumen", "minuten": 47}),
-        kapitel=8, inseln=67, seconds=24, gekappt=False)
+    text = of.caption(
+        balance(runs=19, sessions=19, events=609, failures=2, questions=1,
+               cost_usd=1.83, cost_partial=True,
+               longest={"key": "TRA-412", "titel": "Büro aufräumen", "minuten": 47}),
+        chapter=8, islands=67, seconds=24, capped=False)
     assert text == ("🎬 Feierabend · Mi 05.08.\n"
                     "19 Läufe in 19 Sitzungen · 609 Ereignisse\n"
                     "2 Fehlschläge · 1 Rückfrage · ≥ 1,83 $\n"
@@ -243,9 +243,9 @@ def test_a_caption_for_a_full_day():
 
 def test_a_caption_in_the_singular():
     """One run, one session, one event, one failure, one scene."""
-    text = of.bildunterschrift(
-        bilanz(runs=1, sitzungen=1, ereignisse=1, fehlschlaege=1, rueckfragen=1),
-        kapitel=1, inseln=1, seconds=3, gekappt=False)
+    text = of.caption(
+        balance(runs=1, sessions=1, events=1, failures=1, questions=1),
+        chapter=1, islands=1, seconds=3, capped=False)
     assert "1 Lauf in 1 Sitzung · 1 Ereignis" in text
     assert "1 Fehlschlag · 1 Rückfrage" in text
     assert "1 von 1 Szene · 3 s" in text
@@ -254,9 +254,9 @@ def test_a_caption_in_the_singular():
 def test_a_caption_leaves_empty_statements_out():
     """0 failures, $0.00 and no longest run: then nothing of that stands there either.
     "0 failures · $0.00" is not news but noise."""
-    text = of.bildunterschrift(
-        bilanz(runs=3, sitzungen=2, ereignisse=40), kapitel=2, inseln=5, seconds=10,
-        gekappt=False)
+    text = of.caption(
+        balance(runs=3, sessions=2, events=40), chapter=2, islands=5, seconds=10,
+        capped=False)
     assert text.splitlines() == ["🎬 Feierabend · Mi 05.08.",
                                  "3 Läufe in 2 Sitzungen · 40 Ereignisse",
                                  "2 von 5 Szenen · 10 s"]
@@ -264,12 +264,12 @@ def test_a_caption_leaves_empty_statements_out():
 
 
 def test_a_caption_reports_truncation_and_stays_below_1024():
-    lang = {"key": "TRA-1", "titel": "x" * 400, "minuten": 2190}
-    text = of.bildunterschrift(bilanz(runs=900, sitzungen=900, ereignisse=99999,
-                                      laengster=lang),
-                               kapitel=8, inseln=140, seconds=25, gekappt=True)
+    long = {"key": "TRA-1", "titel": "x" * 400, "minuten": 2190}
+    text = of.caption(balance(runs=900, sessions=900, events=99999,
+                                      longest=long),
+                               chapter=8, islands=140, seconds=25, capped=True)
     assert text.endswith("· gekappt")
-    assert len(text) <= of.UNTERTITEL_MAX
+    assert len(text) <= of.SUBTITLE_MAX
     assert "36,5 h" in text          # 2190 min liest niemand
 
 
@@ -357,11 +357,11 @@ async def test_the_film_is_built_and_stored_as_media(db, filmer, monkeypatch, tm
     (not `video`, not `photo`: Telegram shows only those as an animation)."""
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
     p = await make_project(db, "TRA", "Traccoon")
-    r = await lauf(db, issue=await ticket(db, p, 412, "Büro aufräumen"))
+    r = await make_run(db, issue=await ticket(db, p, 412, "Büro aufräumen"))
     await step(db, r)
     job, jr = await film_job(db)
 
-    monkeypatch.setattr(of, "_window", lambda opt: (VON, BIS))
+    monkeypatch.setattr(of, "_window", lambda opt: (FROM, TO))
     await of.run_film_job(db, job, jr)
     await db.commit()
 
@@ -393,10 +393,10 @@ async def test_an_unreachable_filmer_does_not_topple_the_tick(db, filmer, monkey
     on. If the exception flew out, all other due jobs of the same round would drop out with
     it, for one film."""
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
-    monkeypatch.setattr(of, "_window", lambda opt: (VON, BIS))
+    monkeypatch.setattr(of, "_window", lambda opt: (FROM, TO))
     filmer["fehler"] = httpx.ConnectError("Verbindung abgelehnt")
     p = await make_project(db, "TRA", "Traccoon")
-    await step(db, await lauf(db, issue=await ticket(db, p, 1)))
+    await step(db, await make_run(db, issue=await ticket(db, p, 1)))
     await film_job(db)
 
     # The whole tick, not only the branch: that is the place where it would hurt.
@@ -423,15 +423,15 @@ async def test_prune_deletes_only_old_films(monkeypatch, tmp_path):
     schedule that stands differently at some point."""
     import os
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
-    alt, new, fremd = (tmp_path / "buero-2026-07-01.gif", tmp_path / "buero-2026-08-05.gif",
+    old, new, foreign = (tmp_path / "buero-2026-07-01.gif", tmp_path / "buero-2026-08-05.gif",
                        tmp_path / "notizen.txt")
-    for f in (alt, new, fremd):
+    for f in (old, new, foreign):
         f.write_bytes(b"x")
-    vorgestern = dt.datetime.now().timestamp() - 30 * 86400
-    os.utime(alt, (vorgestern, vorgestern))
-    os.utime(fremd, (vorgestern, vorgestern))
+    daybeforeyesterday = dt.datetime.now().timestamp() - 30 * 86400
+    os.utime(old, (daybeforeyesterday, daybeforeyesterday))
+    os.utime(foreign, (daybeforeyesterday, daybeforeyesterday))
 
     assert of._prune(14) == 1
-    assert not alt.exists() and new.exists() and fremd.exists()
+    assert not old.exists() and new.exists() and foreign.exists()
     # 0 days = never delete, the same reading as `run_retention_days`.
     assert of._prune(0) == 0

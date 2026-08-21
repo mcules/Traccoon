@@ -79,9 +79,9 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.func.now()),
     )
-    for spalte in ("owner_user_id", "assistant_task_id", "sender_email", "sender_domain",
+    for column in ("owner_user_id", "assistant_task_id", "sender_email", "sender_domain",
                    "recipient", "score", "status", "digest_batch"):
-        op.create_index(f"ix_spam_verdicts_{spalte}", "spam_verdicts", [spalte])
+        op.create_index(f"ix_spam_verdicts_{column}", "spam_verdicts", [column])
 
     op.create_table(
         "spam_feature_stats",
@@ -117,9 +117,9 @@ def downgrade() -> None:
     op.drop_index("ix_spam_feature_stats_owner_user_id", table_name="spam_feature_stats")
     op.drop_table("spam_feature_stats")
 
-    for spalte in ("owner_user_id", "assistant_task_id", "sender_email", "sender_domain",
+    for column in ("owner_user_id", "assistant_task_id", "sender_email", "sender_domain",
                    "recipient", "score", "status", "digest_batch"):
-        op.drop_index(f"ix_spam_verdicts_{spalte}", table_name="spam_verdicts")
+        op.drop_index(f"ix_spam_verdicts_{column}", table_name="spam_verdicts")
     op.drop_table("spam_verdicts")
 
     op.drop_constraint("uq_assistant_contact", "assistant_contacts", type_="unique")

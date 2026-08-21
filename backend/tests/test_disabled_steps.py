@@ -35,7 +35,7 @@ def _graph(cfg: dict) -> dict:
                   {"id": "k3", "source": "danach", "target": "e"}]}
 
 
-async def _lauf(db, cfg: dict) -> WorkflowInstance:
+async def _run(db, cfg: dict) -> WorkflowInstance:
     anna = await make_user(db, "anna")
     d = WorkflowDefinition(project_id=None, key="schalter", name="Schalter",
                            created_by=anna.id, subject_kind=WorkflowSubjectKind.standalone)
@@ -59,13 +59,13 @@ async def _steps(db, inst) -> dict:
 
 
 async def test_active_step_behaves_as_before(db):
-    inst = await _lauf(db, {})
+    inst = await _run(db, {})
     assert inst.status.value == "completed"
     assert inst.context["a"] == "1" and inst.context["b"] == "2"
 
 
 async def test_skipped_lets_the_rest_run(db):
-    inst = await _lauf(db, {"deaktiviert": True, "deaktiviert_modus": "ueberspringen"})
+    inst = await _run(db, {"deaktiviert": True, "deaktiviert_modus": "ueberspringen"})
     assert inst.status.value == "completed"
     assert "a" not in inst.context, "the disabled action must not have done anything"
     assert inst.context["b"] == "2", "it has to continue after that"
@@ -75,7 +75,7 @@ async def test_skipped_lets_the_rest_run(db):
 
 
 async def test_abort_ends_the_run(db):
-    inst = await _lauf(db, {"deaktiviert": True, "deaktiviert_modus": "abbrechen"})
+    inst = await _run(db, {"deaktiviert": True, "deaktiviert_modus": "abbrechen"})
     assert inst.status.value == "cancelled"
     assert "abgeschaltet" in (inst.error or "")
     assert "a" not in inst.context and "b" not in inst.context
@@ -85,7 +85,7 @@ async def test_abort_ends_the_run(db):
 
 async def test_without_mode_it_is_skipped(db):
     """The harmless case is the default; the dangerous one has to be named."""
-    inst = await _lauf(db, {"deaktiviert": True})
+    inst = await _run(db, {"deaktiviert": True})
     assert inst.status.value == "completed" and inst.context["b"] == "2"
 
 

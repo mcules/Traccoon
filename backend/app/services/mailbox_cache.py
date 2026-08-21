@@ -27,61 +27,61 @@ PREFIX = "traccoon:mailbox"
 # Ordner ändern sich selten, Listen dauernd. Beides überlebt einen Klick, keines eine Pause.
 TTL_FOLDER = 120
 TTL_LISTING = 45
-TTL_UNGELESEN = 60
+TTL_UNREAD = 60
 
 
-async def _generation(konto_id: int) -> int:
+async def _generation(account_id: int) -> int:
     try:
-        value = await get_redis().get(f"{PREFIX}:{konto_id}:gen")
+        value = await get_redis().get(f"{PREFIX}:{account_id}:gen")
         return int(value) if value else 0
     except Exception:  # noqa: BLE001 — ohne Redis läuft alles wie vorher, nur langsamer
         return -1
 
 
-async def entwerten(konto_id: int) -> None:
+async def invalidate(account_id: int) -> None:
     """Alles zu diesem Konto vergessen. Ein INCR, kein Suchen nach Schlüsseln."""
     try:
-        await get_redis().incr(f"{PREFIX}:{konto_id}:gen")
+        await get_redis().incr(f"{PREFIX}:{account_id}:gen")
     except Exception:  # noqa: BLE001
-        log.debug("Cache für Konto %s nicht entwertet", konto_id)
+        log.debug("Cache für Konto %s nicht entwertet", account_id)
 
 
-async def hole(konto_id: int, part: str):
-    gen = await _generation(konto_id)
+async def fetch_part(account_id: int, part: str):
+    gen = await _generation(account_id)
     if gen < 0:
         return None
     try:
-        roh = await get_redis().get(f"{PREFIX}:{konto_id}:{gen}:{part}")
-        return json.loads(roh) if roh else None
+        raw = await get_redis().get(f"{PREFIX}:{account_id}:{gen}:{part}")
+        return json.loads(raw) if raw else None
     except Exception:  # noqa: BLE001
         return None
 
 
-async def lege(konto_id: int, part: str, value, ttl: int) -> None:
-    gen = await _generation(konto_id)
+async def put(account_id: int, part: str, value, ttl: int) -> None:
+    gen = await _generation(account_id)
     if gen < 0:
         return
     try:
-        await get_redis().set(f"{PREFIX}:{konto_id}:{gen}:{part}",
+        await get_redis().set(f"{PREFIX}:{account_id}:{gen}:{part}",
                               json.dumps(value, ensure_ascii=False), ex=ttl)
     except Exception:  # noqa: BLE001
-        log.debug("Cache für Konto %s nicht geschrieben (%s)", konto_id, part)
+        log.debug("Cache für Konto %s nicht geschrieben (%s)", account_id, part)
 
 
-async def gecacht(konto_id: int, part: str, ttl: int, fetch):
+async def cached(account_id: int, part: str, ttl: int, fetch):
     """Aus dem Cache, sonst holen und hinlegen.
 
     `holen` ist die teure Frage ans Postfach; sie läuft nur, wenn der Cache nichts hat.
     """
-    vorhanden = await hole(konto_id, part)
-    if vorhanden is not None:
-        return vorhanden
-    frisch = await fetch()
-    await lege(konto_id, part, frisch, ttl)
-    return frisch
+    existing = await fetch_part(account_id, part)
+    if existing is not None:
+        return existing
+    fresh = await fetch()
+    await put(account_id, part, fresh, ttl)
+    return fresh
 
 
-async def vorwaermen(konto) -> None:
+async def prewarm(account) -> None:
     """Den Stand holen, bevor jemand danach fragt.
 
     Ohne das wäre der Cache genau dann kalt, wenn er gebraucht wird: Eine neue Mail entwertet
@@ -95,14 +95,14 @@ async def vorwaermen(konto) -> None:
 
     from . import mailbox
 
-    async def eins(part: str, ttl: int, fetch):
+    async def one(part: str, ttl: int, fetch):
         try:
-            await lege(konto.id, part, await fetch(), ttl)
+            await put(account.id, part, await fetch(), ttl)
         except Exception:  # noqa: BLE001
-            log.debug("Vorwärmen (%s) für Konto %s ging nicht", part, konto.id)
+            log.debug("Vorwärmen (%s) für Konto %s ging nicht", part, account.id)
 
     await asyncio.gather(
-        eins("folders:1", TTL_FOLDER, lambda: mailbox.folder(konto, True)),
-        eins("list:INBOX:0:50", TTL_LISTING, lambda: mailbox.listing(konto, "INBOX", "", 0, 50)),
-        eins("unread", TTL_UNGELESEN, lambda: mailbox.ungelesen(konto)),
+        one("folders:1", TTL_FOLDER, lambda: mailbox.folder(account, True)),
+        one("list:INBOX:0:50", TTL_LISTING, lambda: mailbox.listing(account, "INBOX", "", 0, 50)),
+        one("unread", TTL_UNREAD, lambda: mailbox.unread(account)),
     )

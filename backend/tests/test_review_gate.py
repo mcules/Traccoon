@@ -7,38 +7,38 @@ invented task that costs one of the two correction rounds and afterwards ends in
 """
 import app.worker.__main__ as worker
 from app.worker.runtime import RunResult
-from test_lifecycle_process import _projekt_mit_ticket
+from test_lifecycle_process import _project_with_ticket
 
 
 class _Ctx:
     pass
 
 
-async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x", runden=0):
-    _, proj, issue, _ = await _projekt_mit_ticket(db)
-    if runden:
-        issue.review_rounds = runden
+async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x", rounds=0):
+    _, proj, issue, _ = await _project_with_ticket(db)
+    if rounds:
+        issue.review_rounds = rounds
         await db.commit()
     runs = []
 
     async def fake_run_agent(**kw):
-        rolle = kw["agent"].role
-        runs.append(rolle)
-        if rolle != "code_reviewer":
+        role_name = kw["agent"].role
+        runs.append(role_name)
+        if role_name != "code_reviewer":
             return RunResult("done", "korrigiert")
         # First reviewer run: the case it is all about. From the second on it passes cleanly,
         # because otherwise the counter-check turns two full rounds and no longer checks what it should.
         return rev if runs.count("code_reviewer") == 1 else RunResult("done", "<review-ok/>")
 
-    runden = {"n": 0}
+    rounds = {"n": 0}
 
     async def fake_diff(_ctx):
         # A correction that takes effect changes the diff; otherwise the standstill detection
         # (rightly) takes hold, and that has a test of its own.
         if not diff:
             return diff
-        runden["n"] += 1
-        return f"{diff}\n+runde {runden['n']}\n"
+        rounds["n"] += 1
+        return f"{diff}\n+runde {rounds['n']}\n"
 
     async def fake_load_agent(_db, role, *a, **k):
         class A:
@@ -70,9 +70,9 @@ async def test_an_aborted_reviewer_produces_no_task(db, monkeypatch):
     assert result.status == "done"
     from app.models.ticket import Comment
     from sqlalchemy import select
-    texte = [c.body for c in (await db.execute(select(Comment).where(
+    texts = [c.body for c in (await db.execute(select(Comment).where(
         Comment.issue_id == issue.id))).scalars().all()]
-    assert any("UNGEPRÜFT" in t for t in texte), "the human does not learn that nobody checked"
+    assert any("UNGEPRÜFT" in t for t in texts), "the human does not learn that nobody checked"
 
 
 async def test_real_findings_still_trigger_a_correction(db, monkeypatch):
@@ -100,7 +100,7 @@ async def test_used_rounds_survive_the_restart(db, monkeypatch):
     is supposed to fetch the human was never reached.
     """
     result, runs, _ = await _gate(
-        db, monkeypatch, RunResult("done", "1. Befund"), runden=worker.REVIEW_RUNDEN)
+        db, monkeypatch, RunResult("done", "1. Befund"), rounds=worker.REVIEW_ROUNDS)
 
     assert runs == [], "used up rounds must not start another run"
     assert result.blocker_kind == "review"
@@ -126,12 +126,12 @@ async def test_open_findings_land_on_the_ticket(db, monkeypatch):
     from app.models.ticket import Comment
 
     result, _, issue = await _gate(db, monkeypatch, RunResult("done", "1. Der Timeout ist zu kurz."),
-                                     runden=worker.REVIEW_RUNDEN - 1)
+                                     rounds=worker.REVIEW_ROUNDS - 1)
 
     assert result.blocker_kind == "review"
-    texte = [c.body for c in (await db.execute(
+    texts = [c.body for c in (await db.execute(
         select(Comment).where(Comment.issue_id == issue.id))).scalars().all()]
-    assert any("Der Timeout ist zu kurz." in t for t in texte), "the findings are missing on the ticket"
+    assert any("Der Timeout ist zu kurz." in t for t in texts), "the findings are missing on the ticket"
 
 
 async def test_standstill_ends_the_gate_rather_than_the_round_count(db, monkeypatch):
@@ -142,7 +142,7 @@ async def test_standstill_ends_the_gate_rather_than_the_round_count(db, monkeypa
     """
     from app.worker.runtime import RunResult
 
-    _, proj, issue, _ = await _projekt_mit_ticket(db)
+    _, proj, issue, _ = await _project_with_ticket(db)
     runs = []
 
     async def fake_run_agent(**kw):
@@ -177,14 +177,14 @@ async def test_standstill_ends_the_gate_rather_than_the_round_count(db, monkeypa
     assert "Stillstand" in (result.text or "")
     # Check, correct, the diff is unchanged, stop. NOT only after REVIEW_RUNDEN, and no
     # second check on the same state.
-    assert runs.count("code_reviewer") == 1 < worker.REVIEW_RUNDEN
+    assert runs.count("code_reviewer") == 1 < worker.REVIEW_ROUNDS
 
 
 async def test_progress_may_carry_on(db, monkeypatch):
     """Counter-check: as long as the diff changes, the gate runs on, until it passes."""
     from app.worker.runtime import RunResult
 
-    _, proj, issue, _ = await _projekt_mit_ticket(db)
+    _, proj, issue, _ = await _project_with_ticket(db)
     runde = {"n": 0}
 
     async def fake_run_agent(**kw):
@@ -231,7 +231,7 @@ async def test_breakdown_notices_do_not_reach_the_prompt(db):
     from app.models.ticket import Comment
     from app.services.workflow_engine import _agent_note
 
-    _, _, issue, _ = await _projekt_mit_ticket(db)
+    _, _, issue, _ = await _project_with_ticket(db)
     await _agent_note(db, issue.id, "failed", "Worker-Neustart: der Lauf war nicht zu Ende", False)
     await _agent_note(db, issue.id, "loop_exhausted", "Erkenntnisse: der Job-Pfad hat eine Wanduhr", False)
     await db.commit()
@@ -243,6 +243,6 @@ async def test_breakdown_notices_do_not_reach_the_prompt(db):
     assert "agent_fail" in kinds and "Worker-Neustart" in kinds["agent_fail"]
     assert "agent" in kinds and "Erkenntnisse" in kinds["agent"]
     # The prompt history filters exactly on `kind == "agent"` (see worker/__main__.py).
-    verlauf = [c.body for c in rows if c.kind == "agent"]
-    assert not any("Worker-Neustart" in b for b in verlauf)
-    assert any("Erkenntnisse" in b for b in verlauf)
+    history = [c.body for c in rows if c.kind == "agent"]
+    assert not any("Worker-Neustart" in b for b in history)
+    assert any("Erkenntnisse" in b for b in history)

@@ -66,13 +66,13 @@ def test_numbers_also_arrive_contaminated():
 
 
 def test_timestamps_in_all_common_shapes():
-    soll = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
-    assert moment(1787227200) == soll
-    assert moment(1787227200000) == soll        # Millisekunden
-    assert moment("2026-08-20T12:00:00Z") == soll
-    assert moment("2026-08-20T14:00:00+02:00") == soll
+    should = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
+    assert moment(1787227200) == should
+    assert moment(1787227200000) == should        # Millisekunden
+    assert moment("2026-08-20T12:00:00Z") == should
+    assert moment("2026-08-20T14:00:00+02:00") == should
     # Ohne Zone gilt UTC — sonst haengt das Ergebnis an der Zone des Servers.
-    assert moment("2026-08-20T12:00:00") == soll
+    assert moment("2026-08-20T12:00:00") == should
     assert moment("") is None and moment(None) is None and moment("gestern") is None
 
 

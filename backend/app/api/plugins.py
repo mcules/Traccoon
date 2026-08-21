@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.plugins import Plugin, PluginData, PluginFile
 from ..models.user import User
@@ -71,24 +71,24 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     try:
         zf = zipfile.ZipFile(io.BytesIO(raw))
     except zipfile.BadZipFile:
-        raise Fehler(400, "err.not_valid_zip_file", "Not a valid zip file")
+        raise Error(400, "err.not_valid_zip_file", "Not a valid zip file")
     # Manifest finden (flachstes gewinnt)
     manifests = [n for n in zf.namelist() if n.endswith("manifest.json")]
     if not manifests:
-        raise Fehler(400, "err.manifest_json_missing", "manifest.json is missing")
+        raise Error(400, "err.manifest_json_missing", "manifest.json is missing")
     manifests.sort(key=lambda n: n.count("/"))
     base = manifests[0].rsplit("manifest.json", 1)[0]
     try:
         manifest = json.loads(zf.read(manifests[0]))
     except json.JSONDecodeError:
-        raise Fehler(400, "err.manifest_json_invalid", "manifest.json is invalid")
+        raise Error(400, "err.manifest_json_invalid", "manifest.json is invalid")
     slug = manifest.get("slug") or manifest.get("id")
     if not slug or not all(c.isalnum() or c in "-_" for c in slug):
-        raise Fehler(400, "err.invalid_slug", "invalid slug")
+        raise Error(400, "err.invalid_slug", "invalid slug")
 
     total = sum(i.file_size for i in zf.infolist())
     if total > MAX_UNZIP:
-        raise Fehler(400, "err.plugin_too_large_mb", "Plugin too large (>25MB)")
+        raise Error(400, "err.plugin_too_large_mb", "Plugin too large (>25MB)")
 
     plugin = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if plugin is None:
@@ -103,12 +103,12 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     plugin.allowed_hosts = manifest.get("allowed_hosts", [])
     plugin.contributions = manifest.get("contributions", [])
     plugin.csp = manifest.get("csp", {}) or {}
-    gefordert = [str(r) for r in (manifest.get("reads") or [])]
+    requested = [str(r) for r in (manifest.get("reads") or [])]
     # Eine neue Fassung darf sich nicht selbst mehr erlauben: Bestehende Freigaben bleiben,
     # aber nur solange sie noch gefordert werden. Alles Neue faengt bei "nicht erlaubt" an
     # und braucht wieder einen Menschen.
-    plugin.reads_granted = [r for r in (plugin.reads_granted or []) if r in gefordert]
-    plugin.reads = gefordert
+    plugin.reads_granted = [r for r in (plugin.reads_granted or []) if r in requested]
+    plugin.reads = requested
     await db.flush()
     # Alte Dateien ersetzen. Das `flush` danach ist nicht kosmetisch: Ohne es fuehrt
     # SQLAlchemy erst die neuen INSERTs und dann die DELETEs aus, und der eindeutige Index
@@ -133,7 +133,7 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
 
 # Der Dateityp muss stimmen: Ausgeliefert wird mit `nosniff`, ein Stylesheet als
 # `octet-stream` wuerde der Browser gar nicht erst anwenden.
-TYPEN = {
+TYPES = {
     ".html": "text/html", ".js": "application/javascript", ".mjs": "application/javascript",
     ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml",
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
@@ -144,8 +144,8 @@ TYPEN = {
 
 
 def _ctype(path: str) -> str:
-    punkt = path.rfind(".")
-    return TYPEN.get(path[punkt:].lower(), "application/octet-stream") if punkt >= 0 \
+    point = path.rfind(".")
+    return TYPES.get(path[point:].lower(), "application/octet-stream") if point >= 0 \
         else "application/octet-stream"
 
 
@@ -154,7 +154,7 @@ def _ctype(path: str) -> str:
 CSP_DIRECTIONS = ("img-src", "style-src", "font-src", "media-src")
 
 
-def _herkunft(request: Request) -> str:
+def _origin(request: Request) -> str:
     """Die eigene Adresse fuer die CSP — als Rechnername mit offenem Port.
 
     Sie muss ausgeschrieben dort stehen: Ein iframe ohne `allow-same-origin` hat die Herkunft
@@ -187,21 +187,21 @@ def _csp(request: Request, plugin: Plugin) -> str:
     ueber den `allowed_hosts`-Proxy. Was es darueber hinaus laden darf (Kacheln einer Karte
     etwa), steht im Manifest und nur dort.
     """
-    ich = _herkunft(request)
+    me = _origin(request)
     extra = plugin.csp or {}
     parts = [
         "default-src 'none'",
-        f"script-src {ich} 'unsafe-inline'",
-        f"style-src {ich} 'unsafe-inline'",
+        f"script-src {me} 'unsafe-inline'",
+        f"style-src {me} 'unsafe-inline'",
         "connect-src 'none'",
         "frame-ancestors *",
     ]
-    for richtung in CSP_DIRECTIONS:
-        quellen = [q for q in (extra.get(richtung) or []) if isinstance(q, str) and " " not in q]
-        if richtung == "img-src":
-            parts.append(" ".join([f"img-src {ich}", "data:", *quellen]))
-        elif quellen:
-            parts.append(" ".join([f"{richtung} {ich}", *quellen]))
+    for direction in CSP_DIRECTIONS:
+        sources = [q for q in (extra.get(direction) or []) if isinstance(q, str) and " " not in q]
+        if direction == "img-src":
+            parts.append(" ".join([f"img-src {me}", "data:", *sources]))
+        elif sources:
+            parts.append(" ".join([f"{direction} {me}", *sources]))
     return "; ".join(parts)
 
 
@@ -216,13 +216,13 @@ async def serve_file(slug: str, path: str, request: Request,
     """
     plugin = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if plugin is None:
-        raise Fehler(404, "err.plugin_not_found", "Plugin not found")
+        raise Error(404, "err.plugin_not_found", "Plugin not found")
     if not plugin.enabled:
-        raise Fehler(404, "err.plugin_not_found", "Plugin not found")
+        raise Error(404, "err.plugin_not_found", "Plugin not found")
     f = (await db.execute(select(PluginFile).where(PluginFile.plugin_id == plugin.id,
                                                    PluginFile.path == (path or plugin.entry)))).scalar_one_or_none()
     if f is None:
-        raise Fehler(404, "err.file_not_found", "File not found")
+        raise Error(404, "err.file_not_found", "File not found")
     return Response(content=f.data, media_type=f.content_type, headers={
         "Cache-Control": "no-cache",
         "Content-Security-Policy": _csp(request, plugin),
@@ -230,7 +230,7 @@ async def serve_file(slug: str, path: str, request: Request,
     })
 
 
-class RechteIn(BaseModel):
+class RightsIn(BaseModel):
     """Was ein Mensch an einem Plugin entscheidet."""
     reads_granted: list[str] | None = None
     enabled: bool | None = None
@@ -239,7 +239,7 @@ class RechteIn(BaseModel):
 
 
 @router.put("/{slug}/rechte")
-async def set_rechte(slug: str, data: RechteIn, _: User = Depends(require_admin),
+async def set_rights(slug: str, data: RightsIn, _: User = Depends(require_admin),
                      db: AsyncSession = Depends(get_session)):
     """Freigaben und Sichtbarkeit setzen.
 
@@ -248,11 +248,11 @@ async def set_rechte(slug: str, data: RechteIn, _: User = Depends(require_admin)
     """
     plugin = await _plugin(db, slug)
     if data.reads_granted is not None:
-        gefordert = set(plugin.reads or [])
-        unbekannt = [r for r in data.reads_granted if r not in gefordert]
-        if unbekannt:
-            raise Fehler(400, "err.right_not_requested",
-                         "The plugin does not ask for the right '{recht}'", recht=unbekannt[0])
+        requested = set(plugin.reads or [])
+        unknown = [r for r in data.reads_granted if r not in requested]
+        if unknown:
+            raise Error(400, "err.right_not_requested",
+                         "The plugin does not ask for the right '{recht}'", right=unknown[0])
         plugin.reads_granted = list(data.reads_granted)
     if data.enabled is not None:
         plugin.enabled = data.enabled
@@ -292,14 +292,14 @@ async def delete_plugin(slug: str, _: User = Depends(require_admin), db: AsyncSe
 async def _plugin(db: AsyncSession, slug: str) -> Plugin:
     p = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if p is None:
-        raise Fehler(404, "err.plugin_not_found", "Plugin not found")
+        raise Error(404, "err.plugin_not_found", "Plugin not found")
     return p
 
 
 def _validate_row(plugin: Plugin, table: str, row: dict) -> dict:
     schema = (plugin.table_schema or {}).get(table)
     if schema is None:
-        raise Fehler(400, "err.table_not_plugin_schema",
+        raise Error(400, "err.table_not_plugin_schema",
                      "The table '{name}' is not in the plugin schema", name=table)
     allowed = set(schema.keys())
     return {k: v for k, v in row.items() if k in allowed}
@@ -368,11 +368,11 @@ async def fetch_proxy(slug: str, data: FetchIn, _: User = Depends(get_current_us
                       db: AsyncSession = Depends(get_session)):
     plugin = await _plugin(db, slug)
     if not _ssrf_ok(data.url, plugin.allowed_hosts or []):
-        raise Fehler(400, "err.url_not_allowed",
+        raise Error(400, "err.url_not_allowed",
                      "URL not allowed (SSRF protection / allowed_hosts)")
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
             r = await client.request(data.method, data.url, headers=data.headers, content=data.body)
         return {"status": r.status_code, "body": r.text[:5 * 1024 * 1024]}
     except Exception as exc:  # noqa: BLE001
-        raise Fehler(502, "err.fetch_error", "Fetch error: {reason}", reason=exc)
+        raise Error(502, "err.fetch_error", "Fetch error: {reason}", reason=exc)

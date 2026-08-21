@@ -36,31 +36,31 @@ STATUS_ERWARTUNG = [
 
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
-async def ticket(db, projekt, nummer: int = 1) -> Issue:
-    kind = IssueType(project_id=projekt.id, name="Aufgabe")
-    status = WorkflowStatus(project_id=projekt.id, name="To Do", category=StatusCategory.todo)
-    db.add_all([kind, status, IssueCounter(project_id=projekt.id, last_number=0)])
+async def ticket(db, project, number: int = 1) -> Issue:
+    kind = IssueType(project_id=project.id, name="Aufgabe")
+    status = WorkflowStatus(project_id=project.id, name="To Do", category=StatusCategory.todo)
+    db.add_all([kind, status, IssueCounter(project_id=project.id, last_number=0)])
     await db.commit()
-    i = Issue(project_id=projekt.id, number=nummer, key=f"{projekt.key}-{nummer}",
+    i = Issue(project_id=project.id, number=number, key=f"{project.key}-{number}",
               type_id=kind.id, status_id=status.id, summary="Tu was", reporter_id=1, rank="1")
     db.add(i)
     await db.commit()
     return i
 
 
-async def deploy(db, *, projekt=None, issue=None, status="ok", log="",
-                 alter_hours: int = 1, wartet_seconds: float | None = 3.0,
+async def deploy(db, *, project=None, issue=None, status="ok", log="",
+                 age_hours: int = 1, waits_seconds: float | None = 3.0,
                  duration_seconds: float | None = 12.5, self_deploy=False, check_only=False,
                  source="", stack_dir="/opt/docker/stacks/traccoon") -> Deployment:
     """One deployment row. `wartet_sekunden=None` means "never picked up" (no `started_at`),
     `dauer_sekunden=None` means "never finished" (no `finished_at`), exactly the two holes
     the existing data has."""
-    created = NOW - dt.timedelta(hours=alter_hours)
-    started = None if wartet_seconds is None else created + dt.timedelta(seconds=wartet_seconds)
+    created = NOW - dt.timedelta(hours=age_hours)
+    started = None if waits_seconds is None else created + dt.timedelta(seconds=waits_seconds)
     finished = (None if (duration_seconds is None or started is None)
                 else started + dt.timedelta(seconds=duration_seconds))
     d = Deployment(
-        project_id=projekt.id if projekt else None,
+        project_id=project.id if project else None,
         issue_id=issue.id if issue else None,
         stack_dir=stack_dir, status=status, log=log, source=source,
         self_deploy=self_deploy, check_only=check_only,
@@ -80,12 +80,12 @@ async def test_a_foreign_project_is_404_not_403(db, client):
     project exists, you are only not allowed", exactly the statement a deployment list owes nobody.
     Deployment-Liste niemandem schuldet."""
     owner = await make_user(db, "besitzer")
-    fremder = await make_user(db, "fremder")
-    projekt = await make_project(db, "TRA", "Traccoon", inherit_members=False)
-    await add_member(db, projekt, owner, ProjectRole.owner)
-    await deploy(db, projekt=projekt)
+    foreign = await make_user(db, "fremder")
+    project = await make_project(db, "TRA", "Traccoon", inherit_members=False)
+    await add_member(db, project, owner, ProjectRole.owner)
+    await deploy(db, project=project)
 
-    r = await client.get(f"/projects/{projekt.id}/deployments", headers=auth(fremder))
+    r = await client.get(f"/projects/{project.id}/deployments", headers=auth(foreign))
     assert r.status_code == 404
 
 
@@ -93,16 +93,16 @@ async def test_a_foreign_project_is_404_not_403(db, client):
 async def test_viewer_is_enough(db, client):
     """Whoever merged wants to know whether it is out there, and is not necessarily a
     `maintainer`. The lowest role is enough for the list and the detail."""
-    seher = await make_user(db, "seher")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, seher, ProjectRole.viewer)
-    d = await deploy(db, projekt=projekt, log="fertig")
+    seer = await make_user(db, "seher")
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, seer, ProjectRole.viewer)
+    d = await deploy(db, project=project, log="fertig")
 
-    listing = await client.get(f"/projects/{projekt.id}/deployments", headers=auth(seher))
+    listing = await client.get(f"/projects/{project.id}/deployments", headers=auth(seer))
     assert listing.status_code == 200
     assert listing.json()["count"] == 1
 
-    detail = await client.get(f"/deployments/{d.id}", headers=auth(seher))
+    detail = await client.get(f"/deployments/{d.id}", headers=auth(seer))
     assert detail.status_code == 200
     assert detail.json()["log"] == "fertig"
 
@@ -113,16 +113,16 @@ async def test_detail_for_a_non_member_is_404(db, client):
     loaded row. A non-member must not be able to read off the 404 whether the row exists:
     "is not yours" and "does not exist" answer identically."""
     owner = await make_user(db, "besitzer")
-    fremder = await make_user(db, "fremder")
-    projekt = await make_project(db, "TRA", "Traccoon", inherit_members=False)
-    await add_member(db, projekt, owner, ProjectRole.owner)
-    d = await deploy(db, projekt=projekt)
+    foreign = await make_user(db, "fremder")
+    project = await make_project(db, "TRA", "Traccoon", inherit_members=False)
+    await add_member(db, project, owner, ProjectRole.owner)
+    d = await deploy(db, project=project)
 
-    vorhanden = await client.get(f"/deployments/{d.id}", headers=auth(fremder))
-    erfunden = await client.get(f"/deployments/{d.id + 999}", headers=auth(fremder))
-    assert vorhanden.status_code == 404
-    assert erfunden.status_code == 404
-    assert vorhanden.json() == erfunden.json()
+    existing = await client.get(f"/deployments/{d.id}", headers=auth(foreign))
+    invented = await client.get(f"/deployments/{d.id + 999}", headers=auth(foreign))
+    assert existing.status_code == 404
+    assert invented.status_code == 404
+    assert existing.json() == invented.json()
 
 
 @pytest.mark.asyncio
@@ -131,21 +131,21 @@ async def test_a_project_less_line_is_admin_only(db, client):
     on the `owner_id`; the deployment has no such field (`requested_by` is filled on 0 of 186
     rows). An ownerless deployment therefore belongs to nobody."""
     admin = await make_user(db, "admin", admin=True)
-    mitglied = await make_user(db, "mitglied")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, mitglied, ProjectRole.owner)
-    eigen = await deploy(db, projekt=projekt)
-    herrenlos = await deploy(db, projekt=None, stack_dir="")
+    member = await make_user(db, "mitglied")
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, member, ProjectRole.owner)
+    own = await deploy(db, project=project)
+    ownerless = await deploy(db, project=None, stack_dir="")
 
-    fuer_admin = (await client.get("/deployments", headers=auth(admin))).json()
-    assert {i["id"] for i in fuer_admin["items"]} == {eigen.id, herrenlos.id}
+    for_admin = (await client.get("/deployments", headers=auth(admin))).json()
+    assert {i["id"] for i in for_admin["items"]} == {own.id, ownerless.id}
 
-    fuer_mitglied = (await client.get("/deployments", headers=auth(mitglied))).json()
-    assert {i["id"] for i in fuer_mitglied["items"]} == {eigen.id}
+    for_member = (await client.get("/deployments", headers=auth(member))).json()
+    assert {i["id"] for i in for_member["items"]} == {own.id}
 
-    assert (await client.get(f"/deployments/{herrenlos.id}",
-                             headers=auth(mitglied))).status_code == 404
-    assert (await client.get(f"/deployments/{herrenlos.id}",
+    assert (await client.get(f"/deployments/{ownerless.id}",
+                             headers=auth(member))).status_code == 404
+    assert (await client.get(f"/deployments/{ownerless.id}",
                              headers=auth(admin))).status_code == 200
 
 
@@ -155,23 +155,23 @@ async def test_the_project_id_filter_narrows_and_does_not_authorise(db, client):
     place. Entering a foreign project yields an empty list: no access and explicitly no 403,
     which would be a proof of existence."""
     user = await make_user(db, "nutzer")
-    meins = await make_project(db, "TRA", "Traccoon")
-    fremd = await make_project(db, "UNI", "Uniwar", inherit_members=False)
-    await add_member(db, meins, user, ProjectRole.owner)
-    eigen = await deploy(db, projekt=meins)
-    await deploy(db, projekt=fremd)
+    mine = await make_project(db, "TRA", "Traccoon")
+    foreign = await make_project(db, "UNI", "Uniwar", inherit_members=False)
+    await add_member(db, mine, user, ProjectRole.owner)
+    own = await deploy(db, project=mine)
+    await deploy(db, project=foreign)
 
-    ohne = (await client.get("/deployments", headers=auth(user))).json()
-    assert [i["id"] for i in ohne["items"]] == [eigen.id]
+    without = (await client.get("/deployments", headers=auth(user))).json()
+    assert [i["id"] for i in without["items"]] == [own.id]
 
-    verengt = await client.get(f"/deployments?project_id={meins.id}", headers=auth(user))
-    assert [i["id"] for i in verengt.json()["items"]] == [eigen.id]
+    narrows = await client.get(f"/deployments?project_id={mine.id}", headers=auth(user))
+    assert [i["id"] for i in narrows.json()["items"]] == [own.id]
 
-    fremdgefiltert = await client.get(f"/deployments?project_id={fremd.id}",
+    foreignfiltered = await client.get(f"/deployments?project_id={foreign.id}",
                                       headers=auth(user))
-    assert fremdgefiltert.status_code == 200
-    assert fremdgefiltert.json()["items"] == []
-    assert fremdgefiltert.json()["by_status"] == {}
+    assert foreignfiltered.status_code == 200
+    assert foreignfiltered.json()["items"] == []
+    assert foreignfiltered.json()["by_status"] == {}
 
 
 # ── Log: the head in the list, the full text only in the detail ─────────────
@@ -183,20 +183,20 @@ async def test_the_log_only_in_the_detail_header_capped_exactly(db, client):
     outside regardless: an `ok` log is around 1 kB, and with 200 rows the list would be
     twenty times as large for no reason."""
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    langer_log = "x" * 1000
-    d = await deploy(db, projekt=projekt, status="failed", log=langer_log)
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    long_log = "x" * 1000
+    d = await deploy(db, project=project, status="failed", log=long_log)
 
-    line = (await client.get(f"/projects/{projekt.id}/deployments",
+    line = (await client.get(f"/projects/{project.id}/deployments",
                               headers=auth(user))).json()["items"][0]
     assert "log" not in line
     assert len(line["log_head"]) == LOG_HEAD_CHARS
-    assert line["log_head"] == langer_log[:LOG_HEAD_CHARS]
+    assert line["log_head"] == long_log[:LOG_HEAD_CHARS]
     assert line["log_bytes"] == 1000
 
     detail = (await client.get(f"/deployments/{d.id}", headers=auth(user))).json()
-    assert detail["log"] == langer_log
+    assert detail["log"] == long_log
     assert detail["log_head"] == line["log_head"]
     assert detail["log_bytes"] == line["log_bytes"]
 
@@ -205,13 +205,13 @@ async def test_the_log_only_in_the_detail_header_capped_exactly(db, client):
 async def test_a_short_log_is_not_padded(db, client):
     """The head is a truncation, not a fixed width: shorter than 240 stays shorter."""
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    await deploy(db, projekt=projekt, status="ok", log="kurz")
-    await deploy(db, projekt=projekt, status="cancelled", log="",
-                 wartet_seconds=None, duration_seconds=None)
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    await deploy(db, project=project, status="ok", log="kurz")
+    await deploy(db, project=project, status="cancelled", log="",
+                 waits_seconds=None, duration_seconds=None)
 
-    items = (await client.get(f"/projects/{projekt.id}/deployments",
+    items = (await client.get(f"/projects/{project.id}/deployments",
                               headers=auth(user))).json()["items"]
     header = {i["status"]: (i["log_head"], i["log_bytes"]) for i in items}
     assert header["ok"] == ("kurz", 4)
@@ -220,7 +220,7 @@ async def test_a_short_log_is_not_padded(db, client):
 
 # ── `ok` is three valued ─────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("status,phase,ok", STATUS_ERWARTUNG)
+@pytest.mark.parametrize("status, phase, ok", STATUS_ERWARTUNG)
 @pytest.mark.asyncio
 async def test_ok_has_three_values(db, client, status, phase, ok):
     """The same rule as `services/office.tool_ok`: **never a guessed result**. Open and
@@ -229,11 +229,11 @@ async def test_ok_has_three_values(db, client, status, phase, ok):
     wrote, and counting as `done` would mean claiming something had come to an end.
     """
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    await deploy(db, projekt=projekt, status=status)
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    await deploy(db, project=project, status=status)
 
-    line = (await client.get(f"/projects/{projekt.id}/deployments",
+    line = (await client.get(f"/projects/{project.id}/deployments",
                               headers=auth(user))).json()["items"][0]
     assert line["status"] == status, "the raw status passes through unembellished"
     assert line["phase"] == phase
@@ -245,11 +245,11 @@ async def test_an_unknown_status_counts_as_aborted(db, client):
     """A status this file does not know is not a finished deploy but one about which nothing
     is known: `aborted`, not `done`."""
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    await deploy(db, projekt=projekt, status="wasauchimmer")
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    await deploy(db, project=project, status="wasauchimmer")
 
-    line = (await client.get(f"/projects/{projekt.id}/deployments",
+    line = (await client.get(f"/projects/{project.id}/deployments",
                               headers=auth(user))).json()["items"][0]
     assert line["phase"] == "aborted"
     assert line["ok"] is None
@@ -263,28 +263,28 @@ async def test_durations_are_none_without_timestamps(db, client):
     would claim a deploy that took no time instead of one whose time nobody wrote down.
     """
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    ganz = await deploy(db, projekt=projekt, status="ok",
-                        wartet_seconds=3.0, duration_seconds=12.5)
-    ohne_ende = await deploy(db, projekt=projekt, status="building",
-                             wartet_seconds=3.0, duration_seconds=None)
-    nie_gestartet = await deploy(db, projekt=projekt, status="cancelled",
-                                 wartet_seconds=None, duration_seconds=None)
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    whole = await deploy(db, project=project, status="ok",
+                        waits_seconds=3.0, duration_seconds=12.5)
+    without_end = await deploy(db, project=project, status="building",
+                             waits_seconds=3.0, duration_seconds=None)
+    never_started = await deploy(db, project=project, status="cancelled",
+                                 waits_seconds=None, duration_seconds=None)
 
     items = {i["id"]: i for i in (await client.get(
-        f"/projects/{projekt.id}/deployments", headers=auth(user))).json()["items"]}
+        f"/projects/{project.id}/deployments", headers=auth(user))).json()["items"]}
 
-    assert items[ganz.id]["wait_ms"] == 3000
-    assert items[ganz.id]["duration_ms"] == 12500
-    assert items[ganz.id]["finished_at"] is not None
+    assert items[whole.id]["wait_ms"] == 3000
+    assert items[whole.id]["duration_ms"] == 12500
+    assert items[whole.id]["finished_at"] is not None
 
-    assert items[ohne_ende.id]["wait_ms"] == 3000
-    assert items[ohne_ende.id]["duration_ms"] is None
+    assert items[without_end.id]["wait_ms"] == 3000
+    assert items[without_end.id]["duration_ms"] is None
 
-    assert items[nie_gestartet.id]["wait_ms"] is None
-    assert items[nie_gestartet.id]["duration_ms"] is None
-    assert items[nie_gestartet.id]["started_at"] is None
+    assert items[never_started.id]["wait_ms"] is None
+    assert items[never_started.id]["duration_ms"] is None
+    assert items[never_started.id]["started_at"] is None
 
 
 # ── Zeilenform ──────────────────────────────────────────────────────────────
@@ -296,12 +296,12 @@ async def test_row_shape_and_empty_origin(db, client):
     `requested_by`/`chat_id` turn up nowhere: they are filled on 0 of 186 rows.
     """
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    t = await ticket(db, projekt, 7)
-    await deploy(db, projekt=projekt, issue=t, status="ok")
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    t = await ticket(db, project, 7)
+    await deploy(db, project=project, issue=t, status="ok")
 
-    line = (await client.get(f"/projects/{projekt.id}/deployments",
+    line = (await client.get(f"/projects/{project.id}/deployments",
                               headers=auth(user))).json()["items"][0]
     assert set(line) == {
         "id", "project_id", "project_key", "issue_id", "issue_key", "status", "phase",
@@ -318,10 +318,10 @@ async def test_kind_tells_self_check_and_stack_apart(db, client):
     """`self` beats `check`: a self-deploy is never a mere check, and `check_only` alone says
     nothing about whose stack is meant."""
     admin = await make_user(db, "admin", admin=True)
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await deploy(db, projekt=projekt, self_deploy=True, status="ok")
-    await deploy(db, projekt=projekt, check_only=True, status="ok")
-    await deploy(db, projekt=projekt, status="ok")
+    project = await make_project(db, "TRA", "Traccoon")
+    await deploy(db, project=project, self_deploy=True, status="ok")
+    await deploy(db, project=project, check_only=True, status="ok")
+    await deploy(db, project=project, status="ok")
 
     items = (await client.get("/deployments", headers=auth(admin))).json()["items"]
     assert [i["kind"] for i in items] == ["stack", "check", "self"]  # neueste zuerst
@@ -330,13 +330,13 @@ async def test_kind_tells_self_check_and_stack_apart(db, client):
 @pytest.mark.asyncio
 async def test_the_issue_filter_narrows(db, client):
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    t = await ticket(db, projekt, 7)
-    mit = await deploy(db, projekt=projekt, issue=t, status="ok")
-    await deploy(db, projekt=projekt, status="ok")
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    t = await ticket(db, project, 7)
+    mit = await deploy(db, project=project, issue=t, status="ok")
+    await deploy(db, project=project, status="ok")
 
-    r = await client.get(f"/projects/{projekt.id}/deployments?issue_id={t.id}",
+    r = await client.get(f"/projects/{project.id}/deployments?issue_id={t.id}",
                          headers=auth(user))
     assert [i["id"] for i in r.json()["items"]] == [mit.id]
 
@@ -348,28 +348,28 @@ async def test_the_limit_is_clamped_and_truncation_reported(db, client):
     """Truncation happens at the newest end (`id DESC`), and the truncation is reported; a
     silent truncation would let the view believe it saw everything."""
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    ids = [(await deploy(db, projekt=projekt, status="ok")).id for _ in range(5)]
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    ids = [(await deploy(db, project=project, status="ok")).id for _ in range(5)]
 
-    zwei = (await client.get(f"/projects/{projekt.id}/deployments?limit=2",
+    two = (await client.get(f"/projects/{project.id}/deployments?limit=2",
                              headers=auth(user))).json()
-    assert [i["id"] for i in zwei["items"]] == ids[::-1][:2]
-    assert zwei["count"] == 2 and zwei["truncated"] is True
+    assert [i["id"] for i in two["items"]] == ids[::-1][:2]
+    assert two["count"] == 2 and two["truncated"] is True
 
-    alle = (await client.get(f"/projects/{projekt.id}/deployments?limit=5",
+    alle = (await client.get(f"/projects/{project.id}/deployments?limit=5",
                              headers=auth(user))).json()
     assert alle["count"] == 5 and alle["truncated"] is False
 
     # Below 1 it is clamped to 1, not to "everything" or "nothing".
-    null = (await client.get(f"/projects/{projekt.id}/deployments?limit=0",
+    null = (await client.get(f"/projects/{project.id}/deployments?limit=0",
                              headers=auth(user))).json()
     assert null["count"] == 1 and null["truncated"] is True
 
     # Beyond the upper bound it is clamped instead of rejected.
-    viel = await client.get(f"/projects/{projekt.id}/deployments?limit={LIMIT_MAX * 10}",
+    much = await client.get(f"/projects/{project.id}/deployments?limit={LIMIT_MAX * 10}",
                             headers=auth(user))
-    assert viel.status_code == 200 and viel.json()["count"] == 5
+    assert much.status_code == 200 and much.json()["count"] == 5
 
 
 @pytest.mark.asyncio
@@ -378,23 +378,23 @@ async def test_since_hours_is_clamped(db, client):
     an end (69 of 186) would fall out of every window and be reachable over no route any
     more. The upper bound is one year, even when more is requested."""
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
-    frisch = await deploy(db, projekt=projekt, status="ok", alter_hours=1)
-    halbjahr = await deploy(db, projekt=projekt, status="ok", alter_hours=24 * 180)
-    uralt = await deploy(db, projekt=projekt, status="cancelled", alter_hours=24 * 500,
-                         wartet_seconds=None, duration_seconds=None)
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
+    fresh = await deploy(db, project=project, status="ok", age_hours=1)
+    halfyear = await deploy(db, project=project, status="ok", age_hours=24 * 180)
+    ancient = await deploy(db, project=project, status="cancelled", age_hours=24 * 500,
+                         waits_seconds=None, duration_seconds=None)
 
-    voreinstellung = (await client.get(f"/projects/{projekt.id}/deployments",
+    default = (await client.get(f"/projects/{project.id}/deployments",
                                        headers=auth(user))).json()
-    assert [i["id"] for i in voreinstellung["items"]] == [frisch.id]
+    assert [i["id"] for i in default["items"]] == [fresh.id]
 
-    weit = (await client.get(
-        f"/projects/{projekt.id}/deployments?since_hours={SINCE_HOURS_MAX * 10}",
+    wide = (await client.get(
+        f"/projects/{project.id}/deployments?since_hours={SINCE_HOURS_MAX * 10}",
         headers=auth(user))).json()
     # Clamped to one year: the half year comes along, the 500 days stay outside.
-    assert {i["id"] for i in weit["items"]} == {frisch.id, halbjahr.id}
-    assert uralt.id not in {i["id"] for i in weit["items"]}
+    assert {i["id"] for i in wide["items"]} == {fresh.id, halfyear.id}
+    assert ancient.id not in {i["id"] for i in wide["items"]}
 
 
 @pytest.mark.asyncio
@@ -403,25 +403,25 @@ async def test_by_status_counts_the_window_not_the_listing(db, client):
     poisoning the list. It therefore counts against the **window**, not against the filtered
     list; otherwise it would be a tautology with `?status=ok`."""
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
     for _ in range(3):
-        await deploy(db, projekt=projekt, status="ok")
-    await deploy(db, projekt=projekt, status="failed", log="Abgelehnt: …")
+        await deploy(db, project=project, status="ok")
+    await deploy(db, project=project, status="failed", log="Abgelehnt: …")
     for _ in range(2):
-        await deploy(db, projekt=projekt, status="cancelled",
-                     wartet_seconds=None, duration_seconds=None)
+        await deploy(db, project=project, status="cancelled",
+                     waits_seconds=None, duration_seconds=None)
 
-    alles = (await client.get(f"/projects/{projekt.id}/deployments",
+    everything = (await client.get(f"/projects/{project.id}/deployments",
                               headers=auth(user))).json()
-    assert alles["by_status"] == {"ok": 3, "cancelled": 2, "failed": 1}
+    assert everything["by_status"] == {"ok": 3, "cancelled": 2, "failed": 1}
     # Descending by count: the view can take the order over.
-    assert list(alles["by_status"]) == ["ok", "cancelled", "failed"]
+    assert list(everything["by_status"]) == ["ok", "cancelled", "failed"]
 
-    nur_ok = (await client.get(f"/projects/{projekt.id}/deployments?status=ok",
+    only_ok = (await client.get(f"/projects/{project.id}/deployments?status=ok",
                                headers=auth(user))).json()
-    assert nur_ok["count"] == 3
-    assert nur_ok["by_status"] == alles["by_status"]
+    assert only_ok["count"] == 3
+    assert only_ok["by_status"] == everything["by_status"]
 
 
 @pytest.mark.asyncio
@@ -431,13 +431,13 @@ async def test_status_filter(db, client):
     picked the row up. `other` is the rest, today exactly the aborted ones.
     """
     user = await make_user(db, "nutzer")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, user, ProjectRole.owner)
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, user, ProjectRole.owner)
     for status, _phase, _ok in STATUS_ERWARTUNG:
-        await deploy(db, projekt=projekt, status=status)
+        await deploy(db, project=project, status=status)
 
     async def stati(filter_: str) -> set[str]:
-        r = await client.get(f"/projects/{projekt.id}/deployments?status={filter_}",
+        r = await client.get(f"/projects/{project.id}/deployments?status={filter_}",
                              headers=auth(user))
         assert r.status_code == 200
         return {i["status"] for i in r.json()["items"]}
@@ -448,9 +448,9 @@ async def test_status_filter(db, client):
     assert await stati("failed") == {"failed", "rolledback"}
     assert await stati("other") == {"cancelled"}
 
-    kaputt = await client.get(f"/projects/{projekt.id}/deployments?status=quatsch",
+    broken = await client.get(f"/projects/{project.id}/deployments?status=quatsch",
                               headers=auth(user))
-    assert kaputt.status_code == 400
+    assert broken.status_code == 400
 
 
 # ── The button: queueing by hand ────────────────────────────────────────────
@@ -458,13 +458,13 @@ async def test_status_filter(db, client):
 STACK = "/opt/docker/stacks/uniwar"
 
 
-async def mit_stack(db, projekt, path: str = STACK):
+async def with_stack(db, project, path: str = STACK):
     """Add the stack directory: `make_project` does not know it, and without it the button
     rightly refuses."""
-    projekt.workspace_dir = path
+    project.workspace_dir = path
     await db.commit()
-    await db.refresh(projekt)
-    return projekt
+    await db.refresh(project)
+    return project
 
 
 @pytest.mark.asyncio
@@ -473,25 +473,25 @@ async def test_the_button_needs_a_maintainer(db, client):
     button rebuilds and restarts a running stack. `viewer`/`member` get a 403, because they
     already know the project, so a 404 would be no discretion here but a lie. Only the
     **stranger** gets a 404, as everywhere in this file."""
-    fremder = await make_user(db, "fremder")
-    seher = await make_user(db, "seher")
-    mitglied = await make_user(db, "mitglied")
-    pfleger = await make_user(db, "pfleger")
-    projekt = await make_project(db, "TRA", "Traccoon", inherit_members=False)
-    await mit_stack(db, projekt)
-    await add_member(db, projekt, seher, ProjectRole.viewer)
-    await add_member(db, projekt, mitglied, ProjectRole.member)
-    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
-    path = f"/projects/{projekt.id}/deployments"
+    foreign = await make_user(db, "fremder")
+    seer = await make_user(db, "seher")
+    member = await make_user(db, "mitglied")
+    tender = await make_user(db, "pfleger")
+    project = await make_project(db, "TRA", "Traccoon", inherit_members=False)
+    await with_stack(db, project)
+    await add_member(db, project, seer, ProjectRole.viewer)
+    await add_member(db, project, member, ProjectRole.member)
+    await add_member(db, project, tender, ProjectRole.maintainer)
+    path = f"/projects/{project.id}/deployments"
 
-    assert (await client.post(path, json={}, headers=auth(fremder))).status_code == 404
-    assert (await client.post(path, json={}, headers=auth(seher))).status_code == 403
-    assert (await client.post(path, json={}, headers=auth(mitglied))).status_code == 403
+    assert (await client.post(path, json={}, headers=auth(foreign))).status_code == 404
+    assert (await client.post(path, json={}, headers=auth(seer))).status_code == 403
+    assert (await client.post(path, json={}, headers=auth(member))).status_code == 403
 
     # And the read route stays open for the viewer: the two rights are separate.
-    assert (await client.get(path, headers=auth(seher))).status_code == 200
+    assert (await client.get(path, headers=auth(seer))).status_code == 200
 
-    r = await client.post(path, json={}, headers=auth(pfleger))
+    r = await client.post(path, json={}, headers=auth(tender))
     assert r.status_code == 200
 
 
@@ -501,16 +501,16 @@ async def test_400_without_a_stack_directory(db, client):
     rejects that anyway, but the row would come into being regardless, and in the auto-deploy
     path exactly that was a deploy storm once (TRA-19). The button must not lead there in the
     first place: **no row**, a 400, and the message says where to enter the directory."""
-    pfleger = await make_user(db, "pfleger")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
+    tender = await make_user(db, "pfleger")
+    project = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, project, tender, ProjectRole.maintainer)
 
-    r = await client.post(f"/projects/{projekt.id}/deployments", json={},
-                          headers=auth(pfleger))
+    r = await client.post(f"/projects/{project.id}/deployments", json={},
+                          headers=auth(tender))
     assert r.status_code == 400
     assert "stack directory" in r.json()["detail"]
 
-    listing = await client.get(f"/projects/{projekt.id}/deployments", headers=auth(pfleger))
+    listing = await client.get(f"/projects/{project.id}/deployments", headers=auth(tender))
     assert listing.json()["items"] == [], "a rejected request leaves no row"
 
 
@@ -520,35 +520,35 @@ async def test_a_second_deploy_while_one_is_open_is_409(db, client):
     **open** statuses, not against "last built": a failure from earlier must not block the
     next attempt, because otherwise the button is dead after the first problem.
     """
-    pfleger = await make_user(db, "pfleger")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await mit_stack(db, projekt)
-    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
-    path = f"/projects/{projekt.id}/deployments"
+    tender = await make_user(db, "pfleger")
+    project = await make_project(db, "TRA", "Traccoon")
+    await with_stack(db, project)
+    await add_member(db, project, tender, ProjectRole.maintainer)
+    path = f"/projects/{project.id}/deployments"
 
-    first = await client.post(path, json={}, headers=auth(pfleger))
+    first = await client.post(path, json={}, headers=auth(tender))
     assert first.status_code == 200
     first_id = first.json()["id"]
 
-    zweite = await client.post(path, json={}, headers=auth(pfleger))
-    assert zweite.status_code == 409
-    assert f"#{first_id}" in zweite.json()["detail"], "the running row is named"
+    second = await client.post(path, json={}, headers=auth(tender))
+    assert second.status_code == 409
+    assert f"#{first_id}" in second.json()["detail"], "the running row is named"
 
     # Only one row has come into being.
-    assert (await client.get(path, headers=auth(pfleger))).json()["count"] == 1
+    assert (await client.get(path, headers=auth(tender))).json()["count"] == 1
 
     # Finished (failed as well) lifts the lock.
-    lauf = await db.get(Deployment, first_id)
-    lauf.status = "failed"
+    run = await db.get(Deployment, first_id)
+    run.status = "failed"
     await db.commit()
-    dritte = await client.post(path, json={}, headers=auth(pfleger))
-    assert dritte.status_code == 200
+    third = await client.post(path, json={}, headers=auth(tender))
+    assert third.status_code == 200
 
     # An open deploy of **another** project does not lock along.
-    anderes = await make_project(db, "UNI", "Uniwar")
-    await mit_stack(db, anderes, "/opt/docker/stacks/anderes")
-    await add_member(db, anderes, pfleger, ProjectRole.maintainer)
-    r = await client.post(f"/projects/{anderes.id}/deployments", json={}, headers=auth(pfleger))
+    different = await make_project(db, "UNI", "Uniwar")
+    await with_stack(db, different, "/opt/docker/stacks/anderes")
+    await add_member(db, different, tender, ProjectRole.maintainer)
+    r = await client.post(f"/projects/{different.id}/deployments", json={}, headers=auth(tender))
     assert r.status_code == 200
 
 
@@ -559,13 +559,13 @@ async def test_a_queued_line_is_pending_and_manual(db, client):
     to tell the human from the automation) and the stack directory **from the project**, not
     from the body. The answer has the shape of the list, so that the frontend can sort it in
     without a second fetch."""
-    pfleger = await make_user(db, "pfleger")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await mit_stack(db, projekt)
-    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
+    tender = await make_user(db, "pfleger")
+    project = await make_project(db, "TRA", "Traccoon")
+    await with_stack(db, project)
+    await add_member(db, project, tender, ProjectRole.maintainer)
 
-    r = await client.post(f"/projects/{projekt.id}/deployments", json={},
-                          headers=auth(pfleger))
+    r = await client.post(f"/projects/{project.id}/deployments", json={},
+                          headers=auth(tender))
     assert r.status_code == 200
     line = r.json()
 
@@ -583,15 +583,15 @@ async def test_a_queued_line_is_pending_and_manual(db, client):
     assert line["issue_id"] is None and line["issue_key"] == ""
     assert line["started_at"] is None and line["finished_at"] is None
 
-    gespeichert = await db.get(Deployment, line["id"])
-    assert gespeichert.status == "pending"
-    assert gespeichert.source == "manual"
-    assert gespeichert.stack_dir == STACK
-    assert gespeichert.self_deploy is False and gespeichert.check_only is False
+    stored = await db.get(Deployment, line["id"])
+    assert stored.status == "pending"
+    assert stored.source == "manual"
+    assert stored.stack_dir == STACK
+    assert stored.self_deploy is False and stored.check_only is False
 
     # And afterwards it stands in the same list the view reads from.
-    listing = await client.get(f"/projects/{projekt.id}/deployments?status=running",
-                             headers=auth(pfleger))
+    listing = await client.get(f"/projects/{project.id}/deployments?status=running",
+                             headers=auth(tender))
     assert [i["id"] for i in listing.json()["items"]] == [line["id"]]
 
 
@@ -601,14 +601,14 @@ async def test_the_issue_id_is_taken_over_a_foreign_ticket_is_404(db, client):
     without one it stays project wide. A ticket from **another** project is rejected;
     otherwise a row would stand in the list whose `issue_key` points at a project where it
     has no business."""
-    pfleger = await make_user(db, "pfleger")
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await mit_stack(db, projekt)
-    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
-    t = await ticket(db, projekt, 7)
+    tender = await make_user(db, "pfleger")
+    project = await make_project(db, "TRA", "Traccoon")
+    await with_stack(db, project)
+    await add_member(db, project, tender, ProjectRole.maintainer)
+    t = await ticket(db, project, 7)
 
-    r = await client.post(f"/projects/{projekt.id}/deployments", json={"issue_id": t.id},
-                          headers=auth(pfleger))
+    r = await client.post(f"/projects/{project.id}/deployments", json={"issue_id": t.id},
+                          headers=auth(tender))
     assert r.status_code == 200
     assert r.json()["issue_id"] == t.id
     assert r.json()["issue_key"] == "TRA-7"
@@ -619,12 +619,12 @@ async def test_the_issue_id_is_taken_over_a_foreign_ticket_is_404(db, client):
     done.status = "ok"
     await db.commit()
 
-    fremdes = await make_project(db, "UNI", "Uniwar")
-    ft = await ticket(db, fremdes, 1)
-    falsch = await client.post(f"/projects/{projekt.id}/deployments",
-                               json={"issue_id": ft.id}, headers=auth(pfleger))
-    assert falsch.status_code == 404
-    erfunden = await client.post(f"/projects/{projekt.id}/deployments",
-                                 json={"issue_id": ft.id + 999}, headers=auth(pfleger))
-    assert erfunden.status_code == 404
-    assert falsch.json() == erfunden.json()
+    foreign = await make_project(db, "UNI", "Uniwar")
+    ft = await ticket(db, foreign, 1)
+    wrong = await client.post(f"/projects/{project.id}/deployments",
+                               json={"issue_id": ft.id}, headers=auth(tender))
+    assert wrong.status_code == 404
+    invented = await client.post(f"/projects/{project.id}/deployments",
+                                 json={"issue_id": ft.id + 999}, headers=auth(tender))
+    assert invented.status_code == 404
+    assert wrong.json() == invented.json()

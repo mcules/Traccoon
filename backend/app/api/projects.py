@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.enums import IssueTypeCategory, ProjectRole, ResourceType, StatusCategory
 from ..models.hardware import HardwareAsset, Location
@@ -115,7 +115,7 @@ async def _gen_project_key(db: AsyncSession, name: str) -> str:
         cand = (base[: 3 - len(suf)] + suf)[:3]
         if await free(cand):
             return cand
-    raise Fehler(status.HTTP_409_CONFLICT, "err.no_free_project_key", "No free project key")
+    raise Error(status.HTTP_409_CONFLICT, "err.no_free_project_key", "No free project key")
 
 
 async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db: AsyncSession) -> None:
@@ -124,12 +124,12 @@ async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db
     if parent_id is None:
         return
     if await db.get(Project, parent_id) is None:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.parent_project_does_not_exist",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.parent_project_does_not_exist",
                      "The parent project does not exist")
     if project_id is None:
         return
     if parent_id == project_id:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.project_cannot_own_parent",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.project_cannot_own_parent",
                      "A project cannot be its own parent")
     # Walk up from the new parent: if the project itself turns up, it would be a cycle.
     seen: set[int] = set()
@@ -137,7 +137,7 @@ async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db
     while cur is not None and cur not in seen:
         seen.add(cur)
         if cur == project_id:
-            raise Fehler(status.HTTP_400_BAD_REQUEST, "err.parent_below_project",
+            raise Error(status.HTTP_400_BAD_REQUEST, "err.parent_below_project",
                          "The parent project lies below this project (cycle)")
         node = await db.get(Project, cur)
         cur = node.parent_id if node is not None else None
@@ -271,7 +271,7 @@ async def add_member(
 ):
     target = await db.get(User, data.user_id)
     if target is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.user_not_found", "User not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.user_not_found", "User not found")
     dup = (
         await db.execute(
             select(ProjectMember).where(
@@ -281,7 +281,7 @@ async def add_member(
         )
     ).scalar_one_or_none()
     if dup is not None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.already_member", "Already a member")
+        raise Error(status.HTTP_409_CONFLICT, "err.already_member", "Already a member")
     ai = data.ai_assign if data.ai_assign is not None else default_ai_assign(data.role)
     m = ProjectMember(project_id=access.project.id, user_id=data.user_id, role=data.role, ai_assign=ai)
     db.add(m)
@@ -306,7 +306,7 @@ async def update_member(
         )
     ).scalar_one_or_none()
     if m is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.not_member", "Not a member")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.not_member", "Not a member")
     if data.role is not None:
         m.role = data.role
         if data.ai_assign is None:
@@ -334,9 +334,9 @@ async def remove_member(
         )
     ).scalar_one_or_none()
     if m is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.not_member", "Not a member")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.not_member", "Not a member")
     if m.role == ProjectRole.owner and access.role != ProjectRole.owner:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.owner_may_only_removed_owner",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.owner_may_only_removed_owner",
                      "An owner may only be removed by an owner")
     await db.delete(m)
     await db.commit()
@@ -390,18 +390,18 @@ async def add_resource_grant(
     db: AsyncSession = Depends(get_session),
 ):
     if await db.get(User, data.user_id) is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.user_not_found", "User not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.user_not_found", "User not found")
     if data.resource_type == ResourceType.location:
         exists = await db.get(Location, data.resource_id)
     else:
         exists = await db.get(HardwareAsset, data.resource_id)
     if exists is None:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.object_does_not_exist",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.object_does_not_exist",
                      "The object does not exist")
     # The object has to belong to the granting project; otherwise a maintainer could hand out
     # grants for foreign locations or assets from other projects (privilege escalation).
     if exists.project_id != access.project.id:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.object_does_not_belong_project",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.object_does_not_belong_project",
                      "The object does not belong to this project")
     dup = (
         await db.execute(
@@ -413,7 +413,7 @@ async def add_resource_grant(
         )
     ).scalar_one_or_none()
     if dup is not None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.grant_already_exists",
+        raise Error(status.HTTP_409_CONFLICT, "err.grant_already_exists",
                      "The grant already exists")
     # `recursive` only makes sense with locations (inheritance to child locations). With
     # units it is normalised so that equivalent grants are not stored differently.
@@ -436,6 +436,6 @@ async def remove_resource_grant(
 ):
     g = await db.get(ResourceGrant, grant_id)
     if g is None or g.project_id != access.project.id:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.grant_not_found", "Grant not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.grant_not_found", "Grant not found")
     await db.delete(g)
     await db.commit()

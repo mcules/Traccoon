@@ -247,6 +247,6 @@ NODE: dict[str, list[dict]] = {
 }
 
 
-def katalog() -> dict:
+def catalog() -> dict:
     """The whole catalog, the way the editor needs it."""
     return {"base": BASIS, "triggers": TRIGGER, "actions": ACTIONS, "nodes": NODE}

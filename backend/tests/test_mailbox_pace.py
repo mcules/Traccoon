@@ -13,127 +13,127 @@ from app.services import mailbox, mailbox_cache as cache
 
 class FakeClient:
     """Ein Postfach, das mitzählt, wie oft man es tatsächlich gefragt hat."""
-    def __init__(self, kaputt_bei_noop: bool = False):
+    def __init__(self, broken_at_noop: bool = False):
         self.noops = 0
-        self.geschlossen = False
-        self.kaputt_bei_noop = kaputt_bei_noop
+        self.closed = False
+        self.broken_at_noop = broken_at_noop
 
     def noop(self):
         self.noops += 1
-        if self.kaputt_bei_noop:
+        if self.broken_at_noop:
             raise OSError("Verbindung weg")
 
     def logout(self):
-        self.geschlossen = True
+        self.closed = True
 
 
-class Konto:
+class Account:
     id = 4711
 
 
 @pytest.fixture(autouse=True)
-def leerer_pool():
-    mailbox.pool_leeren()
+def empty_pool():
+    mailbox.pool_empty()
     yield
-    mailbox.pool_leeren()
+    mailbox.pool_empty()
 
 
 def test_the_connection_is_reused(monkeypatch):
     """Anmelden kostet einen TLS-Handschlag; bei jedem Aufruf wäre das die halbe Wartezeit."""
-    gebaut = []
-    monkeypatch.setattr(mailbox, "_verbinden", lambda a: gebaut.append(FakeClient()) or gebaut[-1])
+    built = []
+    monkeypatch.setattr(mailbox, "_join", lambda a: built.append(FakeClient()) or built[-1])
 
-    with mailbox._imap(Konto()) as first:
+    with mailbox._imap(Account()) as first:
         pass
-    with mailbox._imap(Konto()) as zweite:
+    with mailbox._imap(Account()) as second:
         pass
 
-    assert len(gebaut) == 1 and first is zweite
+    assert len(built) == 1 and first is second
     assert first.noops == 1, "die liegende Verbindung wird angetippt, bevor sie jemand bekommt"
 
 
 def test_a_dead_connection_is_replaced(monkeypatch):
     """Server trennen nach ein paar Minuten Ruhe. Das darf niemand mitten in einer Antwort
     erfahren."""
-    gebaut = []
+    built = []
 
-    def verbinden(_a):
+    def join(_a):
         # Die erste ist tot, die zweite lebt.
-        client = FakeClient(kaputt_bei_noop=not gebaut)
-        gebaut.append(client)
+        client = FakeClient(broken_at_noop=not built)
+        built.append(client)
         return client
 
-    monkeypatch.setattr(mailbox, "_verbinden", verbinden)
-    with mailbox._imap(Konto()):
+    monkeypatch.setattr(mailbox, "_join", join)
+    with mailbox._imap(Account()):
         pass
-    with mailbox._imap(Konto()) as zweite:
+    with mailbox._imap(Account()) as second:
         pass
 
-    assert len(gebaut) == 2 and gebaut[0].geschlossen
-    assert zweite is gebaut[1]
+    assert len(built) == 2 and built[0].closed
+    assert second is built[1]
 
 
 def test_after_an_error_it_is_not_put_back(monkeypatch):
     """Nach einem Abbruch ist der Zustand unklar (halb gelesene Antwort). Eine solche
     zurückzulegen hieße, den Fehler an den nächsten Aufruf weiterzureichen."""
-    gebaut = []
-    monkeypatch.setattr(mailbox, "_verbinden", lambda a: gebaut.append(FakeClient()) or gebaut[-1])
+    built = []
+    monkeypatch.setattr(mailbox, "_join", lambda a: built.append(FakeClient()) or built[-1])
 
     with pytest.raises(ValueError):
-        with mailbox._imap(Konto()):
+        with mailbox._imap(Account()):
             raise ValueError("mittendrin")
-    assert gebaut[0].geschlossen
+    assert built[0].closed
 
-    with mailbox._imap(Konto()) as frisch:
+    with mailbox._imap(Account()) as fresh:
         pass
-    assert frisch is gebaut[1]
+    assert fresh is built[1]
 
 
 # ── Der Cache ────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_the_question_is_asked_only_once(redis_stub_echt):
-    fragen = []
+async def test_the_question_is_asked_only_once(redis_stub_real):
+    ask = []
 
     async def fetch():
-        fragen.append(1)
-        return {"stand": len(fragen)}
+        ask.append(1)
+        return {"stand": len(ask)}
 
-    first = await cache.gecacht(1, "folders:1", 60, fetch)
-    zweite = await cache.gecacht(1, "folders:1", 60, fetch)
-    assert first == zweite == {"stand": 1}
-    assert len(fragen) == 1
+    first = await cache.cached(1, "folders:1", 60, fetch)
+    second = await cache.cached(1, "folders:1", 60, fetch)
+    assert first == second == {"stand": 1}
+    assert len(ask) == 1
 
 
 @pytest.mark.asyncio
-async def test_what_has_changed_does_not_come_from_the_cache(redis_stub_echt):
+async def test_what_has_changed_does_not_come_from_the_cache(redis_stub_real):
     """Eine gelesene Mail, eine verschobene, eine neue: danach ist der alte Stand falsch."""
-    fragen = []
+    ask = []
 
     async def fetch():
-        fragen.append(1)
-        return {"stand": len(fragen)}
+        ask.append(1)
+        return {"stand": len(ask)}
 
-    await cache.gecacht(1, "unread", 60, fetch)
-    await cache.entwerten(1)
-    zweite = await cache.gecacht(1, "unread", 60, fetch)
+    await cache.cached(1, "unread", 60, fetch)
+    await cache.invalidate(1)
+    second = await cache.cached(1, "unread", 60, fetch)
 
-    assert zweite == {"stand": 2}, "nach dem Entwerten wird wieder gefragt"
+    assert second == {"stand": 2}, "nach dem Entwerten wird wieder gefragt"
 
 
 @pytest.mark.asyncio
 async def test_without_redis_everything_runs_as_before(monkeypatch):
     """Der Cache ist eine Bequemlichkeit, keine Bedingung."""
-    def kaputt():
+    def broken():
         raise OSError("kein Redis")
 
-    monkeypatch.setattr("app.services.mailbox_cache.get_redis", kaputt)
-    fragen = []
+    monkeypatch.setattr("app.services.mailbox_cache.get_redis", broken)
+    ask = []
 
     async def fetch():
-        fragen.append(1)
+        ask.append(1)
         return "frisch"
 
-    assert await cache.gecacht(1, "x", 60, fetch) == "frisch"
-    assert await cache.gecacht(1, "x", 60, fetch) == "frisch"
-    assert len(fragen) == 2, "ohne Cache wird eben jedes Mal gefragt"
+    assert await cache.cached(1, "x", 60, fetch) == "frisch"
+    assert await cache.cached(1, "x", 60, fetch) == "frisch"
+    assert len(ask) == 2, "ohne Cache wird eben jedes Mal gefragt"

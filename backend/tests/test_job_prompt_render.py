@@ -28,7 +28,7 @@ async def anna(db):
     return await make_user(db, "anna")
 
 
-async def _lauf(db, monkeypatch, job: Job) -> str:
+async def _run(db, monkeypatch, job: Job) -> str:
     """Den Job einmal auslösen; liefert den Auftrag, den der Agent bekommen hat."""
     tasks: list[dict] = []
 
@@ -56,7 +56,7 @@ async def test_the_prompt_is_filled_with_parameters(db, anna, monkeypatch, redis
     await db.commit()
     # Die Liste wird zur Aufzählung, nicht zu ihrer Schreibweise — dafür sorgt die
     # Umstellung, indem sie den Platzhalter um den Filter ergänzt.
-    assert await _lauf(db, monkeypatch, j) == "Berichte über Funk aus ARRL, DARC auf Deutsch."
+    assert await _run(db, monkeypatch, j) == "Berichte über Funk aus ARRL, DARC auf Deutsch."
 
 
 async def test_script_arguments_do_not_open_a_parameter_set(db, anna, redis_stub):
@@ -72,8 +72,8 @@ async def test_script_arguments_do_not_open_a_parameter_set(db, anna, redis_stub
 
     d = await db.get(WorkflowDefinition, j.workflow_definition_id)
     v = await db.get(WorkflowVersion, d.current_version_id)
-    arbeit = next(n for n in v.graph["nodes"] if n["id"] == "arbeit")
-    assert arbeit["data"]["config"]["action"]["params"]["task"] == "Unverändert {{thema}}"
+    work = next(n for n in v.graph["nodes"] if n["id"] == "arbeit")
+    assert work["data"]["config"]["action"]["params"]["task"] == "Unverändert {{thema}}"
 
 
 async def test_the_time_window_skips_broken_runs(db, anna, monkeypatch, redis_stub):
@@ -86,7 +86,7 @@ async def test_the_time_window_skips_broken_runs(db, anna, monkeypatch, redis_st
     db.add_all([JobRun(job_id=j.id, status="ok", started_at=_utc(2026, 7, 27, 6, 0)),
                 JobRun(job_id=j.id, status="error", started_at=_utc(2026, 7, 28, 6, 0))])
     await db.commit()
-    assert await _lauf(db, monkeypatch, j) == "2026-07-27 08:00"    # Europe/Berlin
+    assert await _run(db, monkeypatch, j) == "2026-07-27 08:00"    # Europe/Berlin
 
 
 async def test_the_run_stays_open_until_the_result_is_there(db, anna, monkeypatch, redis_stub):
@@ -94,7 +94,7 @@ async def test_the_run_stays_open_until_the_result_is_there(db, anna, monkeypatc
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news", prompt="x", args={})
     db.add(j)
     await db.commit()
-    await _lauf(db, monkeypatch, j)
+    await _run(db, monkeypatch, j)
     jr = (await db.execute(select(JobRun).order_by(JobRun.id.desc()))).scalars().first()
     assert jr.status == "ok" and jr.workflow_instance_id is not None
     assert jr.output.startswith("Workflow-Instanz")

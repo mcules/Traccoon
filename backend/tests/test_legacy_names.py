@@ -25,7 +25,7 @@ def _node(action: str, **params) -> dict:
             "data": {"config": {"action": {"action": action, "params": params}}}}
 
 
-async def _instanz(db, proj, subject, **bindung) -> WorkflowInstance:
+async def _instance(db, proj, subject, **binding) -> WorkflowInstance:
     """Instance with a minimal definition: the action needs only the binding."""
     from app.models.enums import WorkflowVersionStatus
     from app.models.workflow import WorkflowDefinition, WorkflowVersion
@@ -37,7 +37,7 @@ async def _instanz(db, proj, subject, **bindung) -> WorkflowInstance:
     db.add(v)
     await db.flush()
     inst = WorkflowInstance(definition_id=d.id, version_id=v.id, project_id=proj.id,
-                            subject_kind=subject, context={}, **bindung)
+                            subject_kind=subject, context={}, **binding)
     db.add(inst)
     await db.flush()
     return inst
@@ -75,7 +75,7 @@ async def test_old_ticket_name_still_sets_the_state(db):
     await kind.ensure_builtin_types(db)
     proj = await make_project(db, "ALT", "Alt")
     issue = await _ticket(db, proj)
-    inst = await _instanz(db, proj, WorkflowSubjectKind.issue, issue_id=issue.id)
+    inst = await _instance(db, proj, WorkflowSubjectKind.issue, issue_id=issue.id)
 
     await run_action(db, inst, _node("set_agent_status", status="plan_review",
                                        hold_reason="plan_split", notify=False))
@@ -92,7 +92,7 @@ async def test_old_hardware_name_still_sets_the_state(db):
     await kind.ensure_builtin_types(db)
     proj = await make_project(db, "ALTH", "AltH")
     asset = await make_asset(db, "Switch", project=proj)
-    inst = await _instanz(db, proj, WorkflowSubjectKind.hardware_asset,
+    inst = await _instance(db, proj, WorkflowSubjectKind.hardware_asset,
                           hardware_asset_id=asset.id)
 
     await run_action(db, inst, _node("set_purchase_status", status="ordered"))
@@ -106,7 +106,7 @@ async def test_old_hardware_name_still_sets_the_state(db):
 
 # ── Auffrischen maschinell erzeugter Beschaffungs-Ketten ─────────────────────
 
-def _alte_form(graph: dict) -> dict:
+def _old_form(graph: dict) -> dict:
     """The same graph in the old notation: a flat action, the old name."""
     aus = {"nodes": [], "edges": [dict(e) for e in graph["edges"]]}
     for n in graph["nodes"]:
@@ -133,7 +133,7 @@ async def test_old_chain_is_lifted(db):
     await db.flush()
     from app.services.hardware_workflow import _project_steps
     v = WorkflowVersion(definition_id=d.id, version=1,
-                        graph=_alte_form(build_hardware_graph(await _project_steps(db, proj.id))),
+                        graph=_old_form(build_hardware_graph(await _project_steps(db, proj.id))),
                         status=WorkflowVersionStatus.published)
     db.add(v)
     await db.flush()
@@ -162,7 +162,7 @@ async def test_customised_chain_stays_untouched(db):
                            subject_kind=WorkflowSubjectKind.hardware_asset)
     db.add(d)
     await db.flush()
-    graph = _alte_form(build_hardware_graph(await _project_steps(db, proj.id)))
+    graph = _old_form(build_hardware_graph(await _project_steps(db, proj.id)))
     graph["nodes"][1]["data"]["config"]["label"] = "Von Hand umbenannt"
     v = WorkflowVersion(definition_id=d.id, version=1, graph=graph,
                         status=WorkflowVersionStatus.published)
@@ -173,5 +173,5 @@ async def test_customised_chain_stays_untouched(db):
 
     assert await refresh_generated_definitions(db) == 0
     await db.refresh(d)
-    unveraendert = await db.get(WorkflowVersion, d.current_version_id)
-    assert unveraendert.graph["nodes"][1]["data"]["config"]["label"] == "Von Hand umbenannt"
+    unchanged = await db.get(WorkflowVersion, d.current_version_id)
+    assert unchanged.graph["nodes"][1]["data"]["config"]["label"] == "Von Hand umbenannt"

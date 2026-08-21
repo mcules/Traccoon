@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.metrics import MetricPoint, MetricSeries
 from ..models.user import User
@@ -26,8 +26,8 @@ def _series_out(r: MetricSeries, state: dict | None = None) -> dict:
     return {"id": r.id, "key": r.key, "name": r.name or r.key, "unit": r.unit,
             "description": r.description,
             "last_value": r.last_value,
-            "last_at": metrics._mit_zone(r.last_at).isoformat() if r.last_at else None,
-            "warned_at": metrics._mit_zone(r.warned_at).isoformat() if r.warned_at else None,
+            "last_at": metrics._with_zone(r.last_at).isoformat() if r.last_at else None,
+            "warned_at": metrics._with_zone(r.warned_at).isoformat() if r.warned_at else None,
             "trend": state}
 
 
@@ -54,15 +54,15 @@ async def series_points(key: str, days: int = Query(60, ge=1, le=3650),
     Otherwise the view draws a line that does not fit the visible points, and one doubts the
     number instead of the axis.
     """
-    r = await metrics.reihe(db, user.id, key)
+    r = await metrics.series(db, user.id, key)
     if r is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
+        raise Error(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
                      "Metric series not found")
-    seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days)
-    ps = await metrics.points(db, r.id, seit=seit)
+    since = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days)
+    ps = await metrics.points(db, r.id, since=since)
     return {**_series_out(r, await metrics.trend(db, r, target=target, window_days=days)),
             "target": target,
-            "points": [{"id": p.id, "ts": metrics._mit_zone(p.ts).isoformat(),
+            "points": [{"id": p.id, "ts": metrics._with_zone(p.ts).isoformat(),
                         "value": p.value, "context": p.context or {}} for p in ps]}
 
 
@@ -75,15 +75,15 @@ async def delete_point(key: str, point_id: int, user: User = Depends(get_current
     outlier bends the line and with it the forecast. Without this path the only option would
     be to throw the whole series away and the history with it.
     """
-    r = await metrics.reihe(db, user.id, key)
+    r = await metrics.series(db, user.id, key)
     if r is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
+        raise Error(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
                      "Metric series not found")
-    punkt = await db.get(MetricPoint, point_id)
-    if punkt is None or punkt.series_id != r.id:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.value_does_not_belong_series",
+    point = await db.get(MetricPoint, point_id)
+    if point is None or point.series_id != r.id:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.value_does_not_belong_series",
                      "The value does not belong to this series")
-    await db.delete(punkt)
+    await db.delete(point)
     await db.flush()
     # The head of the series points at the last value; if that was it, it has to move up.
     last = (await db.execute(
@@ -97,7 +97,7 @@ async def delete_point(key: str, point_id: int, user: User = Depends(get_current
 @router.delete("/metrics/{key:path}", status_code=204)
 async def delete_series(key: str, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    r = await metrics.reihe(db, user.id, key)
+    r = await metrics.series(db, user.id, key)
     if r is not None:
         await db.execute(MetricPoint.__table__.delete().where(MetricPoint.series_id == r.id))
         await db.delete(r)

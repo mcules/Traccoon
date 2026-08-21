@@ -203,7 +203,7 @@ class SpamVerdict(TimestampMixin, Base):
     # Findings of both sources in one shape: [{quelle, kennung, text}]. The rules have
     # carried key plus plain text forever (`RuleResult.treffer`), the model now delivers the
     # same. Card, note and statistics read from here.
-    befunde: Mapped[list] = mapped_column(JSON, default=list)
+    findings: Mapped[list] = mapped_column(JSON, default=list)
 
     # pending = waiting for the human · spam / ham = decided · skipped = expired
     # (mail no longer findable or similar).
@@ -267,5 +267,5 @@ class ChatSummary(TimestampMixin, Base):
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     agent: Mapped[str] = mapped_column(String(100), default="assistent")
-    bis_task_id: Mapped[int] = mapped_column(Integer, default=0)
+    to_task_id: Mapped[int] = mapped_column(Integer, default=0)
     text: Mapped[str] = mapped_column(Text, default="")

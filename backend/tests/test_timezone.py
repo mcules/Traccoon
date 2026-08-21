@@ -29,11 +29,11 @@ async def test_cron_means_the_persons_clock_not_utc():
     """Sommerzeit: 8 Uhr in Berlin sind 6 Uhr UTC. Vorher lief der Job um 10."""
     job = _job(last_run_at=dt.datetime(2026, 7, 1, 4, 0, tzinfo=dt.timezone.utc))
 
-    sechs_utc = dt.datetime(2026, 7, 1, 6, 1, tzinfo=dt.timezone.utc)
-    assert _due(job, sechs_utc, BERLIN) is True, "8 Uhr Berlin ist erreicht"
+    six_utc = dt.datetime(2026, 7, 1, 6, 1, tzinfo=dt.timezone.utc)
+    assert _due(job, six_utc, BERLIN) is True, "8 Uhr Berlin ist erreicht"
 
-    fuenf_utc = dt.datetime(2026, 7, 1, 5, 30, tzinfo=dt.timezone.utc)
-    assert _due(job, fuenf_utc, BERLIN) is False, "erst halb acht in Berlin"
+    five_utc = dt.datetime(2026, 7, 1, 5, 30, tzinfo=dt.timezone.utc)
+    assert _due(job, five_utc, BERLIN) is False, "erst halb acht in Berlin"
 
 
 async def test_the_same_spec_in_another_zone():
@@ -77,13 +77,13 @@ async def test_the_api_accepts_only_real_zones(db, client):
     from conftest import auth, make_user
     anna = await make_user(db, "anna")
 
-    schlecht = await client.put("/me/timezone", headers=auth(anna), json={"value": "Erde/Mitte"})
-    assert schlecht.status_code == 400
+    bad = await client.put("/me/timezone", headers=auth(anna), json={"value": "Erde/Mitte"})
+    assert bad.status_code == 400
 
-    gut = await client.put("/me/timezone", headers=auth(anna), json={"value": "Asia/Tokyo"})
-    assert gut.status_code == 204
+    good = await client.put("/me/timezone", headers=auth(anna), json={"value": "Asia/Tokyo"})
+    assert good.status_code == 204
     await db.refresh(anna)
     assert anna.timezone == "Asia/Tokyo"
 
-    mich = await client.get("/auth/me", headers=auth(anna))
-    assert mich.json()["timezone"] == "Asia/Tokyo"
+    me = await client.get("/auth/me", headers=auth(anna))
+    assert me.json()["timezone"] == "Asia/Tokyo"

@@ -37,9 +37,9 @@ class Notification(Base):
     # position, every few seconds in guard mode. Ten minutes of shaking would be around 120
     # identical messages. What counts as "the same message" is decided by the flow over the
     # key (device, class, whatever), not by Traccoon.
-    drossel_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    throttle_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
     read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # Telegram gesendet
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (Index("ix_notifications_drossel", "drossel_key", "created_at"),)
+    __table_args__ = (Index("ix_notifications_drossel", "throttle_key", "created_at"),)

@@ -29,21 +29,21 @@ def test_translation_happens_when_running():
 
 def test_paths_and_filters_are_carried_along():
     text = "Noch {{ messreihe.rest_tage }} Tage · {{ quellen | verbinde:\", \" }} · {{ zeitfenster }}"
-    assert terms._pfade_replace(text) == (
+    assert terms._paths_replace(text) == (
         "Noch {{ metric.days_left }} Tage · {{ quellen | join:\", \" }} · {{ window }}")
 
 
 def test_a_word_without_a_dot_belongs_to_the_person():
     """`{{ titel }}` ist ein Job-Parameter, kein Kontextname — der bleibt."""
-    assert terms._pfade_replace("{{ titel }} / {{ thema }}") == "{{ titel }} / {{ thema }}"
+    assert terms._paths_replace("{{ titel }} / {{ thema }}") == "{{ titel }} / {{ thema }}"
 
 
 def test_the_graph_is_rewritten():
     graph = _graph("messwert", {"reihe": "akku", "wert": "{{ payload.state }}",
                                 "context_key": "messreihe"},
                    guard={"<=": [{"var": "messreihe.rest_tage"}, 3]})
-    new, anders = terms.migrate_graph(graph)
-    assert anders
+    new, different = terms.migrate_graph(graph)
+    assert different
     action = new["nodes"][0]["data"]["config"]["action"]
     assert action["action"] == "metric_record"
     assert action["params"] == {"series": "akku", "value": "{{ payload.state }}",
@@ -55,13 +55,13 @@ def test_the_graph_is_rewritten():
 def test_rewriting_twice_does_not_turn_the_names_further():
     """`assistant_task` hieß früher der Mail-Eingang und heute der allgemeine Auftrag —
     ein zweiter Durchgang über das eigene Ergebnis würde ihn zurückbiegen."""
-    alt = _graph("assistent_auftrag", {"auftrag": "Mach was"})
-    einmal, _ = terms.migrate_graph(alt)
-    assert einmal["nodes"][0]["data"]["config"]["action"]["action"] == "assistant_task"
+    old = _graph("assistent_auftrag", {"auftrag": "Mach was"})
+    once, _ = terms.migrate_graph(old)
+    assert once["nodes"][0]["data"]["config"]["action"]["action"] == "assistant_task"
 
-    zweimal, anders = terms.migrate_graph(einmal)
-    assert anders is False
-    assert zweimal["nodes"][0]["data"]["config"]["action"]["action"] == "assistant_task"
+    twice, different = terms.migrate_graph(once)
+    assert different is False
+    assert twice["nodes"][0]["data"]["config"]["action"]["action"] == "assistant_task"
 
 
 def test_the_old_mail_path_keeps_its_meaning():
@@ -73,10 +73,10 @@ def test_the_old_mail_path_keeps_its_meaning():
 def test_a_follow_up_may_pull_in_new_words():
     """Kommt später ein Wort dazu, wird noch einmal gelesen — aber ohne die Namen, die
     ihre Bedeutung gewechselt haben."""
-    schon = _graph("assistant_task", {"task": "x", "titel": "Alt"})
-    schon[terms.MARKE] = "en"          # eine ältere Marke: der erste Durchgang war schon
-    new, anders = terms.migrate_graph(schon)
-    assert anders
+    already = _graph("assistant_task", {"task": "x", "titel": "Alt"})
+    already[terms.MARK] = "en"          # eine ältere Marke: der erste Durchgang war schon
+    new, different = terms.migrate_graph(already)
+    assert different
     action = new["nodes"][0]["data"]["config"]["action"]
     assert action["action"] == "assistant_task", "kein zweites Umbiegen"
     assert action["params"] == {"task": "x", "title": "Alt"}

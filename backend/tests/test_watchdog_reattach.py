@@ -24,13 +24,13 @@ async def _step(db, inst, token, *, task_id="wf-1-1-exec-a") -> WorkflowStepRun:
     return step
 
 
-async def test_an_orphaned_step_gets_a_watchdog_again(db, monkeypatch, prozess):
-    inst, token = prozess
+async def test_an_orphaned_step_gets_a_watchdog_again(db, monkeypatch, flow):
+    inst, token = flow
     step = await _step(db, inst, token)
-    gestartet: list[int] = []
+    started: list[int] = []
 
     async def fake_await_agent(instance_id, token_id, step_id, task_id, omap, timeout):
-        gestartet.append(step_id)
+        started.append(step_id)
 
     monkeypatch.setattr(we, "_await_agent", fake_await_agent)
     we._WATCHDOG.clear()
@@ -38,17 +38,17 @@ async def test_an_orphaned_step_gets_a_watchdog_again(db, monkeypatch, prozess):
     await we.recover_workflow_agents()
     await we.drain()
 
-    assert gestartet == [step.id]
+    assert started == [step.id]
 
 
-async def test_no_second_watchdog_on_the_same_result(db, monkeypatch, prozess):
+async def test_no_second_watchdog_on_the_same_result(db, monkeypatch, flow):
     """Two watchers on one result would both switch, and the step would run twice."""
-    inst, token = prozess
+    inst, token = flow
     step = await _step(db, inst, token)
-    gestartet: list[int] = []
+    started: list[int] = []
 
     async def fake_await_agent(instance_id, token_id, step_id, task_id, omap, timeout):
-        gestartet.append(step_id)
+        started.append(step_id)
 
     monkeypatch.setattr(we, "_await_agent", fake_await_agent)
     we._WATCHDOG.clear()
@@ -56,20 +56,20 @@ async def test_no_second_watchdog_on_the_same_result(db, monkeypatch, prozess):
     try:
         await we.recover_workflow_agents()
         await we.drain()
-        assert gestartet == []
+        assert started == []
     finally:
         we._WATCHDOG.clear()
 
 
-async def test_a_finished_step_gets_none(db, monkeypatch, prozess):
-    inst, token = prozess
+async def test_a_finished_step_gets_none(db, monkeypatch, flow):
+    inst, token = flow
     step = await _step(db, inst, token)
     step.status = SStatus.done
     await db.commit()
-    gestartet: list[int] = []
+    started: list[int] = []
 
     async def fake_await_agent(*a, **k):
-        gestartet.append(1)
+        started.append(1)
 
     monkeypatch.setattr(we, "_await_agent", fake_await_agent)
     we._WATCHDOG.clear()
@@ -77,14 +77,14 @@ async def test_a_finished_step_gets_none(db, monkeypatch, prozess):
     await we.recover_workflow_agents()
     await we.drain()
 
-    assert gestartet == []
+    assert started == []
 
 
 import pytest  # noqa: E402
 
 
 @pytest.fixture
-async def prozess(db):
+async def flow(db):
     """Minimal running instance with a token: reattaching needs no more."""
     from app.models.workflow import (WorkflowDefinition, WorkflowInstance, WorkflowToken,
                                      WorkflowVersion)

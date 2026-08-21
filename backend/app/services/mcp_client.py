@@ -30,17 +30,17 @@ class McpError(RuntimeError):
     """The server rejected the call or was unreachable."""
 
 
-def _entpacken(resp: httpx.Response) -> dict[str, Any]:
+def _unpack(resp: httpx.Response) -> dict[str, Any]:
     """Response to a JSON-RPC object. Streamable HTTP may answer with `application/json` OR as
     an event stream; both occur, depending on the server and the call."""
     ctype = resp.headers.get("content-type", "")
     if "text/event-stream" in ctype:
         for line in resp.text.splitlines():
             if line.startswith("data:"):
-                roh = line[5:].strip()
-                if roh:
+                raw = line[5:].strip()
+                if raw:
                     try:
-                        return json.loads(roh)
+                        return json.loads(raw)
                     except json.JSONDecodeError:
                         continue
         raise McpError("Event stream without a usable answer")
@@ -71,7 +71,7 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
             init.raise_for_status()
         except httpx.HTTPError as exc:
             raise McpError(f"{url} not reachable: {exc}") from exc
-        _entpacken(init)
+        _unpack(init)
         # The server assigns the session only here; all following calls have to carry it.
         session = init.headers.get("mcp-session-id")
         if session:
@@ -92,11 +92,11 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
         except httpx.HTTPError as exc:
             raise McpError(f"{tool} failed: {exc}") from exc
 
-    daten = _entpacken(resp)
-    if "error" in daten:
-        error = daten["error"]
+    data = _unpack(resp)
+    if "error" in data:
+        error = data["error"]
         raise McpError(f"{tool}: {error.get('message') or error}")
-    result = daten.get("result") or {}
+    result = data.get("result") or {}
     if result.get("isError"):
         raise McpError(f"{tool}: {_text(result)}")
     return result
@@ -120,14 +120,14 @@ def result_json(result: dict[str, Any]) -> dict | None:
     to compute with it instead of only reporting it takes this path; taking the text apart by
     hand again would be the same work in a second place.
     """
-    inhalt = result.get("structuredContent")
-    if isinstance(inhalt, dict):
-        return inhalt
+    content = result.get("structuredContent")
+    if isinstance(content, dict):
+        return content
     text = _text(result)
     if not text:
         return None
     try:
-        daten = json.loads(text)
+        data = json.loads(text)
     except (ValueError, TypeError):
         return None
-    return daten if isinstance(daten, dict) else None
+    return data if isinstance(data, dict) else None

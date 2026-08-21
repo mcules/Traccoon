@@ -65,18 +65,18 @@ async def test_an_empty_answer_falls_back_safely(db, anna, monkeypatch):
 def test_the_string_false_is_not_a_yes():
     """`bool("false")` is True. Small models answer with exactly that string, and without
     this helper every one of them would carry a mail over the auto threshold."""
-    from app.services.mail_classify import ja
+    from app.services.mail_classify import yes
 
-    assert ja(True) is True and ja("true") is True and ja("Ja") is True and ja(1) is True
-    assert ja("false") is False and ja("nein") is False and ja("0") is False
-    assert ja(None) is False and ja("") is False and ja(0) is False
+    assert yes(True) is True and yes("true") is True and yes("Ja") is True and yes(1) is True
+    assert yes("false") is False and yes("nein") is False and yes("0") is False
+    assert yes(None) is False and yes("") is False and yes(0) is False
 
 
 def test_features_are_normalised_and_capped():
     """The key is counted later, so an invented spelling would become a category of its own."""
-    from app.services.mail_classify import merkmale
+    from app.services.mail_classify import features
 
-    aus = merkmale([
+    aus = features([
         {"kennung": "Marke Fremde-Domain!", "text": "  gibt sich als N26 aus  "},
         {"kennung": "marke_fremde_domain", "text": "doppelt"},
         {"kennung": "", "text": "ohne Kennung"},
@@ -89,6 +89,6 @@ def test_features_are_normalised_and_capped():
 
 
 def test_features_without_a_list_stay_empty():
-    from app.services.mail_classify import merkmale
+    from app.services.mail_classify import features
 
-    assert merkmale(None) == [] and merkmale("phishing") == [] and merkmale({}) == []
+    assert features(None) == [] and features("phishing") == [] and features({}) == []

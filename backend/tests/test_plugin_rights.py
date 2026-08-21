@@ -18,12 +18,12 @@ from conftest import auth, make_user
 
 def _zip(manifest: dict, files: dict[str, str] | None = None) -> bytes:
     """Ein Plugin-Zip im Speicher."""
-    puffer = io.BytesIO()
-    with zipfile.ZipFile(puffer, "w") as zf:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
-        for path, inhalt in (files or {"index.html": "<h1>hi</h1>"}).items():
-            zf.writestr(path, inhalt)
-    return puffer.getvalue()
+        for path, content in (files or {"index.html": "<h1>hi</h1>"}).items():
+            zf.writestr(path, content)
+    return buffer.getvalue()
 
 
 MANIFEST = {
@@ -33,7 +33,7 @@ MANIFEST = {
 }
 
 
-async def _einspielen(client, admin, manifest=None, files=None):
+async def _feed(client, admin, manifest=None, files=None):
     return await client.post(
         "/plugins", headers=auth(admin),
         files={"file": ("p.zip", _zip(manifest or MANIFEST, files), "application/zip")})
@@ -44,7 +44,7 @@ async def _einspielen(client, admin, manifest=None, files=None):
 async def test_a_new_plugin_gets_nothing_for_free(client, db):
     """Was das Manifest fordert, ist noch lange nicht erlaubt."""
     admin = await make_user(db, "chef", admin=True)
-    r = await _einspielen(client, admin)
+    r = await _feed(client, admin)
     assert r.status_code == 201, r.text
 
     (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
@@ -53,8 +53,8 @@ async def test_a_new_plugin_gets_nothing_for_free(client, db):
 
 
 async def test_only_admins_install(client, db):
-    mensch = await make_user(db, "mensch")
-    r = await _einspielen(client, mensch)
+    person = await make_user(db, "mensch")
+    r = await _feed(client, person)
     assert r.status_code == 403
 
 
@@ -62,7 +62,7 @@ async def test_only_admins_install(client, db):
 
 async def test_a_grant_applies_and_can_be_withdrawn(client, db):
     admin = await make_user(db, "chef", admin=True)
-    await _einspielen(client, admin)
+    await _feed(client, admin)
 
     r = await client.put("/plugins/probe/rechte", headers=auth(admin),
                          json={"reads_granted": ["series:number"]})
@@ -78,7 +78,7 @@ async def test_an_unrequested_right_cannot_be_granted(client, db):
     """Sonst waere die Liste im Manifest nur Deko: Wer den Haken setzt, soll vorher gelesen
     haben, wonach gefragt wurde."""
     admin = await make_user(db, "chef", admin=True)
-    await _einspielen(client, admin)
+    await _feed(client, admin)
 
     r = await client.put("/plugins/probe/rechte", headers=auth(admin),
                          json={"reads_granted": ["series:location"]})
@@ -90,13 +90,13 @@ async def test_a_new_version_may_not_grant_itself_more(client, db):
     """Der gefaehrlichste Weg: ein harmloses Plugin einspielen, freigeben lassen und in der
     naechsten Fassung stillschweigend mehr fordern."""
     admin = await make_user(db, "chef", admin=True)
-    await _einspielen(client, admin)
+    await _feed(client, admin)
     await client.put("/plugins/probe/rechte", headers=auth(admin),
                      json={"reads_granted": ["series:number"]})
 
-    gierig = {**MANIFEST, "version": "2.0.0",
+    greedy = {**MANIFEST, "version": "2.0.0",
               "reads": ["series:number", "series:location", "series:text"]}
-    assert (await _einspielen(client, admin, gierig)).status_code == 201
+    assert (await _feed(client, admin, greedy)).status_code == 201
 
     (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
     assert p["reads"] == ["series:number", "series:location", "series:text"]
@@ -106,12 +106,12 @@ async def test_a_new_version_may_not_grant_itself_more(client, db):
 
 async def test_a_dropped_right_also_disappears_from_the_grant(client, db):
     admin = await make_user(db, "chef", admin=True)
-    await _einspielen(client, admin)
+    await _feed(client, admin)
     await client.put("/plugins/probe/rechte", headers=auth(admin),
                      json={"reads_granted": ["series:number"]})
 
-    schlank = {**MANIFEST, "version": "2.0.0", "reads": []}
-    await _einspielen(client, admin, schlank)
+    lean = {**MANIFEST, "version": "2.0.0", "reads": []}
+    await _feed(client, admin, lean)
 
     (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
     assert p["reads"] == [] and p["reads_granted"] == []
@@ -121,7 +121,7 @@ async def test_a_dropped_right_also_disappears_from_the_grant(client, db):
 
 async def test_a_disabled_plugin_is_neither_visible_nor_fetchable(client, db):
     admin = await make_user(db, "chef", admin=True)
-    await _einspielen(client, admin)
+    await _feed(client, admin)
     await client.put("/plugins/probe/rechte", headers=auth(admin), json={"enabled": False})
 
     assert (await client.get("/plugins", headers=auth(admin))).json() == []
@@ -131,16 +131,16 @@ async def test_a_disabled_plugin_is_neither_visible_nor_fetchable(client, db):
 
 async def test_only_released_people_see_it(client, db):
     admin = await make_user(db, "chef", admin=True)
-    gast = await make_user(db, "gast")
-    await _einspielen(client, admin)
+    guest = await make_user(db, "gast")
+    await _feed(client, admin)
     await client.put("/plugins/probe/rechte", headers=auth(admin),
                      json={"all_users": False, "allowed_user_ids": []})
 
-    assert (await client.get("/plugins", headers=auth(gast))).json() == []
+    assert (await client.get("/plugins", headers=auth(guest))).json() == []
 
     await client.put("/plugins/probe/rechte", headers=auth(admin),
-                     json={"allowed_user_ids": [gast.id]})
-    assert [p["slug"] for p in (await client.get("/plugins", headers=auth(gast))).json()] \
+                     json={"allowed_user_ids": [guest.id]})
+    assert [p["slug"] for p in (await client.get("/plugins", headers=auth(guest))).json()] \
         == ["probe"]
 
 
@@ -148,7 +148,7 @@ async def test_only_released_people_see_it(client, db):
 
 async def test_the_served_page_carries_its_fence(client, db):
     admin = await make_user(db, "chef", admin=True)
-    await _einspielen(client, admin)
+    await _feed(client, admin)
 
     r = await client.get("/plugins/probe/app/")
     assert r.status_code == 200
@@ -162,9 +162,9 @@ async def test_the_served_page_carries_its_fence(client, db):
 async def test_the_manifest_opens_only_the_declared_direction(client, db):
     """Ein Kachelserver darf als Bild geladen werden — Skripte bleiben trotzdem zu."""
     admin = await make_user(db, "chef", admin=True)
-    mit_karte = {**MANIFEST, "csp": {"img-src": ["https://tile.openstreetmap.org"],
+    with_map = {**MANIFEST, "csp": {"img-src": ["https://tile.openstreetmap.org"],
                                      "script-src": ["https://boeser.example"]}}
-    await _einspielen(client, admin, mit_karte)
+    await _feed(client, admin, with_map)
 
     csp = (await client.get("/plugins/probe/app/")).headers["content-security-policy"]
     assert "https://tile.openstreetmap.org" in csp
@@ -175,7 +175,7 @@ async def test_the_manifest_opens_only_the_declared_direction(client, db):
 async def test_the_file_types_are_right(client, db):
     """Mit `nosniff` wendet der Browser ein Stylesheet nur an, wenn der Typ stimmt."""
     admin = await make_user(db, "chef", admin=True)
-    await _einspielen(client, admin, files={
+    await _feed(client, admin, files={
         "index.html": "<h1>hi</h1>", "stil.css": "body{}", "app.js": "1",
         "bild.svg": "<svg/>"})
 

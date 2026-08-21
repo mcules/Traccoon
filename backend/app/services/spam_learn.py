@@ -44,10 +44,10 @@ _MIN_EVIDENZ_STARK = 1
 _MIN_EVIDENZ_SCHWACH = 2
 # Cap per feature in log odds. Without it a single often seen word ("rechnung") pulls the
 # overall verdict to itself.
-_MAX_GEWICHT = 1.6
+_MAX_WEIGHT = 1.6
 # From this many unanimous observations on, a sender counts as settled, and then the memory
 # decides alone and nobody is asked again.
-_SICHER_AB = 3
+_SAFE_FROM = 3
 
 # Kinds of feature that may carry on their own. A subject word never may.
 #
@@ -64,7 +64,7 @@ _STARKE_KINDS = ("from:", "dom:")
 _SCHWACHE_STARKE = ("to:",)
 
 
-def _mindestens(feature: str) -> int:
+def _atleast(feature: str) -> int:
     """How many observations this feature needs in order to have a say.
 
     Die eigene Empfängeradresse braucht mehr als ein Absender: Sie steht in JEDER Mail an
@@ -81,10 +81,10 @@ def _logodds(spam: int, ham: int, basis: float) -> float:
     """The weight of a feature in log odds, smoothed and capped."""
     p = (spam + _ALPHA * basis) / (spam + ham + _ALPHA)
     p = min(max(p, 1e-4), 1 - 1e-4)
-    return max(-_MAX_GEWICHT, min(_MAX_GEWICHT, math.log(p / (1 - p)) - math.log(basis / (1 - basis))))
+    return max(-_MAX_WEIGHT, min(_MAX_WEIGHT, math.log(p / (1 - p)) - math.log(basis / (1 - basis))))
 
 
-async def _basisrate(db: AsyncSession, owner_id: int | None) -> float:
+async def _baserate(db: AsyncSession, owner_id: int | None) -> float:
     """Share of spam among all decided cases, the starting point without any feature.
 
     Capped to [0.1, 0.9]: whoever has confirmed nothing but spam for two weeks should not end
@@ -99,8 +99,8 @@ async def _basisrate(db: AsyncSession, owner_id: int | None) -> float:
     return min(0.9, max(0.1, spam / len(rows)))
 
 
-async def bewerten(db: AsyncSession, owner_id: int | None,
-                   merkmale: list[str]) -> tuple[float, list[str], bool]:
+async def rate(db: AsyncSession, owner_id: int | None,
+                   features: list[str]) -> tuple[float, list[str], bool]:
     """(score, reasons, certain) from what has been learned.
 
     `score` 0..1 as with the other partial verdicts. `certain` means: a strong feature
@@ -110,46 +110,46 @@ async def bewerten(db: AsyncSession, owner_id: int | None,
     Without observations (base rate, [], False) comes back, so no opinion, not "innocent".
     The caller weights that accordingly.
     """
-    if not merkmale:
+    if not features:
         return 0.5, [], False
-    basis = await _basisrate(db, owner_id)
+    basis = await _baserate(db, owner_id)
     rows = (await db.execute(select(SpamFeatureStat).where(
         SpamFeatureStat.owner_user_id == owner_id,
-        SpamFeatureStat.feature.in_(merkmale)))).scalars().all()
+        SpamFeatureStat.feature.in_(features)))).scalars().all()
     if not rows:
         return basis, [], False
 
     sum_total = math.log(basis / (1 - basis))
-    beitraege: list[tuple[float, str]] = []
-    sicher = False
-    einig: list[SpamFeatureStat] = []
+    contributions: list[tuple[float, str]] = []
+    safe = False
+    agreed: list[SpamFeatureStat] = []
     for row in rows:
-        gesamt = (row.spam_count or 0) + (row.ham_count or 0)
-        if gesamt < _mindestens(row.feature):
+        total = (row.spam_count or 0) + (row.ham_count or 0)
+        if total < _atleast(row.feature):
             continue
-        gewicht = _logodds(row.spam_count or 0, row.ham_count or 0, basis)
-        sum_total += gewicht
-        if abs(gewicht) > 0.2:
-            beitraege.append((gewicht, _erklaerung(row)))
+        weight = _logodds(row.spam_count or 0, row.ham_count or 0, basis)
+        sum_total += weight
+        if abs(weight) > 0.2:
+            contributions.append((weight, _explanation(row)))
         # Unanimous verdict about a strong feature means settled.
-        if row.feature.startswith(_STARKE_KINDS) and gesamt >= _SICHER_AB:
+        if row.feature.startswith(_STARKE_KINDS) and total >= _SAFE_FROM:
             if row.ham_count == 0 or row.spam_count == 0:
-                sicher = True
-                einig.append(row)
+                safe = True
+                agreed.append(row)
 
     # „Sicher" heißt einig — und einig ist man nur, wenn niemand widerspricht. Zeigt ein
     # zweites starkes Merkmal in die Gegenrichtung (derselbe Absender 282-mal erwünscht,
     # während ein anderes Merkmal dreimal auf Spam steht), ist die Sache eben nicht klar.
-    if sicher and len(einig) > 1:
-        directions = {r.spam_count == 0 for r in einig}
+    if safe and len(agreed) > 1:
+        directions = {r.spam_count == 0 for r in agreed}
         if len(directions) > 1:
-            sicher = False
+            safe = False
     score = 1 / (1 + math.exp(-sum_total))
-    beitraege.sort(key=lambda b: abs(b[0]), reverse=True)
-    return round(score, 3), [text for _, text in beitraege[:4]], sicher
+    contributions.sort(key=lambda b: abs(b[0]), reverse=True)
+    return round(score, 3), [text for _, text in contributions[:4]], safe
 
 
-def _erklaerung(row: SpamFeatureStat) -> str:
+def _explanation(row: SpamFeatureStat) -> str:
     """Feature counters turned into a sentence that can stand in the Telegram card."""
     kind, _, value = (row.feature or "").partition(":")
     label = {
@@ -164,8 +164,8 @@ def _erklaerung(row: SpamFeatureStat) -> str:
     return f"{label}: {s}× Spam / {h}× erwünscht"
 
 
-async def absender_vertraut(db: AsyncSession, owner_id: int | None, absender: str,
-                            *, ab: int = 20, anteil: float = 0.95) -> bool:
+async def sender_trusted(db: AsyncSession, owner_id: int | None, sender: str,
+                            *, ab: int = 20, share: float = 0.95) -> bool:
     """Kennt dieses Postfach den Absender als erwünscht — deutlich und über lange Zeit?
 
     Nicht der gelernte Score, sondern die Erfahrung dahinter: „286-mal erwünscht" ist etwas
@@ -176,18 +176,18 @@ async def absender_vertraut(db: AsyncSession, owner_id: int | None, absender: st
     versehentliches „ist Spam", eine gefälschte Mail unter dem Namen — darf nicht 286 gute
     Beobachtungen aufheben. Genau daran scheiterte die erste Fassung dieser Bremse.
     """
-    if not absender:
+    if not sender:
         return False
     row = (await db.execute(select(SpamFeatureStat).where(
         SpamFeatureStat.owner_user_id == owner_id,
-        SpamFeatureStat.feature == f"from:{absender}"))).scalars().first()
+        SpamFeatureStat.feature == f"from:{sender}"))).scalars().first()
     if row is None:
         return False
     ham, spam = row.ham_count or 0, row.spam_count or 0
-    return ham >= ab and ham >= anteil * (ham + spam)
+    return ham >= ab and ham >= share * (ham + spam)
 
 
-async def schon_widersprochen(db: AsyncSession, owner_id: int | None, absender: str) -> bool:
+async def already_contradicted(db: AsyncSession, owner_id: int | None, sender: str) -> bool:
     """Hat ein Mensch für diesen Absender schon einmal ausdrücklich „kein Spam" gesagt?
 
     Das ist die stärkste Auskunft, die es gibt — stärker als jede Statistik und stärker als
@@ -199,67 +199,67 @@ async def schon_widersprochen(db: AsyncSession, owner_id: int | None, absender: 
     """
     from ..models.assistant import SpamVerdict
 
-    if not absender:
+    if not sender:
         return False
     row = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.owner_user_id == owner_id,
-        SpamVerdict.sender_email == absender,
+        SpamVerdict.sender_email == sender,
         SpamVerdict.status == "ham",
         SpamVerdict.decided_by.notin_(("auto", ""))).limit(1))).scalars().first()
     return row is not None
 
 
-async def merkmale_count(db: AsyncSession, owner_id: int | None, merkmale: list[str],
-                           ist_spam: bool, *, vorher: str = "") -> int:
+async def features_count(db: AsyncSession, owner_id: int | None, features: list[str],
+                           is_spam: bool, *, before: str = "") -> int:
     """Take features into the counters. Does NOT commit. Returns the number of counted features.
 
     Separated from `merken`, because not every piece of learning material comes from a
     question: what lies in the spam folder or has stood in the inbox for years is a decision
     of a human as well, only one that never went through Traccoon (see `spam_bootstrap`).
     """
-    merkmale = [m for m in merkmale if isinstance(m, str) and m]
-    if not merkmale:
+    features = [m for m in features if isinstance(m, str) and m]
+    if not features:
         return 0
     now = dt.datetime.now(tz=dt.timezone.utc)
-    vorhanden = {
+    existing = {
         row.feature: row for row in (await db.execute(select(SpamFeatureStat).where(
             SpamFeatureStat.owner_user_id == owner_id,
-            SpamFeatureStat.feature.in_(merkmale)))).scalars().all()
+            SpamFeatureStat.feature.in_(features)))).scalars().all()
     }
-    for merkmal in merkmale:
-        row = vorhanden.get(merkmal)
+    for feature in features:
+        row = existing.get(feature)
         if row is None:
-            row = SpamFeatureStat(owner_user_id=owner_id, feature=merkmal)
+            row = SpamFeatureStat(owner_user_id=owner_id, feature=feature)
             db.add(row)
-            vorhanden[merkmal] = row
-        if vorher == "spam":
+            existing[feature] = row
+        if before == "spam":
             row.spam_count = max(0, (row.spam_count or 0) - 1)
-        elif vorher == "ham":
+        elif before == "ham":
             row.ham_count = max(0, (row.ham_count or 0) - 1)
-        if ist_spam:
+        if is_spam:
             row.spam_count = (row.spam_count or 0) + 1
         else:
             row.ham_count = (row.ham_count or 0) + 1
         row.last_seen_at = now
-    return len(merkmale)
+    return len(features)
 
 
-async def merken(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool,
-                 *, vorher: str = "") -> None:
+async def remember(db: AsyncSession, verdict: SpamVerdict, is_spam: bool,
+                 *, before: str = "") -> None:
     """Take one decision into the counters. Does NOT commit.
 
     `vorher` is the previous status of the same row ('spam'/'ham'/''). If the human changes
     their mind, the old counting is taken back; otherwise the error would stay in the memory
     forever and have a say with every future mail.
     """
-    count = await merkmale_count(db, verdict.owner_user_id, list(verdict.features or []),
-                                    ist_spam, vorher=vorher)
+    count = await features_count(db, verdict.owner_user_id, list(verdict.features or []),
+                                    is_spam, before=before)
     if count:
         log.info("Spam memory: %d features from verdict #%s (%s)",
-                 count, verdict.id, "spam" if ist_spam else "ham")
+                 count, verdict.id, "spam" if is_spam else "ham")
 
 
-async def beispiele(db: AsyncSession, owner_id: int | None, limit: int = 6) -> list[str]:
+async def examples(db: AsyncSession, owner_id: int | None, limit: int = 6) -> list[str]:
     """Short example lines of the last decisions for the prompt of the local model.
 
     The counters above act on the features; the model sees nothing of them. So that its
@@ -274,6 +274,6 @@ async def beispiele(db: AsyncSession, owner_id: int | None, limit: int = 6) -> l
     ).order_by(SpamVerdict.decided_at.desc()).limit(limit))).scalars().all()
     out: list[str] = []
     for r in rows:
-        urteil = "SPAM" if r.status == "spam" else "KEIN SPAM"
-        out.append(f"- von {r.sender_email or '?'} · Betreff „{(r.subject or '')[:60]}“ → {urteil}")
+        verdict = "SPAM" if r.status == "spam" else "KEIN SPAM"
+        out.append(f"- von {r.sender_email or '?'} · Betreff „{(r.subject or '')[:60]}“ → {verdict}")
     return out

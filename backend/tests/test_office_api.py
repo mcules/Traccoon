@@ -35,23 +35,23 @@ def router_registriert():
 
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
-async def ticket(db, projekt, nummer: int = 1, summary: str = "Tu was") -> Issue:
-    kind = IssueType(project_id=projekt.id, name="Aufgabe")
-    status = WorkflowStatus(project_id=projekt.id, name="To Do", category=StatusCategory.todo)
-    db.add_all([kind, status, IssueCounter(project_id=projekt.id, last_number=0)])
+async def ticket(db, project, number: int = 1, summary: str = "Tu was") -> Issue:
+    kind = IssueType(project_id=project.id, name="Aufgabe")
+    status = WorkflowStatus(project_id=project.id, name="To Do", category=StatusCategory.todo)
+    db.add_all([kind, status, IssueCounter(project_id=project.id, last_number=0)])
     await db.commit()
-    i = Issue(project_id=projekt.id, number=nummer, key=f"{projekt.key}-{nummer}",
+    i = Issue(project_id=project.id, number=number, key=f"{project.key}-{number}",
               type_id=kind.id, status_id=status.id, summary=summary, reporter_id=1, rank="1")
     db.add(i)
     await db.commit()
     return i
 
 
-async def lauf(db, *, issue=None, projekt=None, owner=None, agent="developer",
+async def make_run(db, *, issue=None, project=None, owner=None, agent="developer",
                status="success", parent=None, spawn_depth=0, minutes=5) -> Run:
     r = Run(
         issue_id=issue.id if issue else None,
-        project_id=projekt.id if projekt else (issue.project_id if issue else None),
+        project_id=project.id if project else (issue.project_id if issue else None),
         owner_id=owner.id if owner else None,
         agent=agent, phase="execute", provider="claude_code", model="sonnet",
         status=status, parent_run_id=parent.id if parent else None, spawn_depth=spawn_depth,
@@ -89,7 +89,7 @@ async def test_the_project_listing_shows_only_this_project(client, db):
     await add_member(db, a, user, ProjectRole.member)
     await add_member(db, b, user, ProjectRole.member)
     ia, ib = await ticket(db, a), await ticket(db, b)
-    ra, rb = await lauf(db, issue=ia), await lauf(db, issue=ib)
+    ra, rb = await make_run(db, issue=ia), await make_run(db, issue=ib)
     await steps(db, ra, 3)
     await steps(db, rb, 3)
 
@@ -109,11 +109,11 @@ async def test_a_non_member_gets_404_instead_of_403(client, db):
     """A foreign project does not exist for the stranger. A 403 would be the statement "the
     project exists", exactly the one `deps.build_access` refuses everywhere."""
     owner = await make_user(db, "owner")
-    fremd = await make_user(db, "fremd")
+    foreign = await make_user(db, "fremd")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, owner, ProjectRole.owner)
 
-    r = await client.get(f"/projects/{proj.id}/office/sessions", headers=auth(fremd))
+    r = await client.get(f"/projects/{proj.id}/office/sessions", headers=auth(foreign))
     assert r.status_code == 404
 
 
@@ -128,16 +128,16 @@ async def test_the_global_listing_shows_own_projects_and_own_project_less_runs(c
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
     issue = await ticket(db, proj)
-    eigen = await lauf(db, issue=issue)
-    meins = await lauf(db, owner=anna, agent="assistant")
-    fremd = await lauf(db, owner=bert, agent="assistant")
-    for run in (eigen, meins, fremd):
+    own = await make_run(db, issue=issue)
+    mine = await make_run(db, owner=anna, agent="assistant")
+    foreign = await make_run(db, owner=bert, agent="assistant")
+    for run in (own, mine, foreign):
         await steps(db, run, 2)
 
     r = await client.get("/office/sessions", headers=auth(anna))
     assert r.status_code == 200, r.text
-    assert sids(r.json()) == {f"issue:{issue.id}", f"run:{meins.id}"}
-    assert f"run:{fremd.id}" not in sids(r.json())
+    assert sids(r.json()) == {f"issue:{issue.id}", f"run:{mine.id}"}
+    assert f"run:{foreign.id}" not in sids(r.json())
 
 
 async def test_an_admin_sees_everything(client, db):
@@ -145,8 +145,8 @@ async def test_an_admin_sees_everything(client, db):
     bert = await make_user(db, "bert")
     proj = await make_project(db, "AAA", "Alpha")
     issue = await ticket(db, proj)
-    a = await lauf(db, issue=issue)
-    b = await lauf(db, owner=bert, agent="assistant")
+    a = await make_run(db, issue=issue)
+    b = await make_run(db, owner=bert, agent="assistant")
     await steps(db, a, 2)
     await steps(db, b, 2)
 
@@ -157,16 +157,16 @@ async def test_an_admin_sees_everything(client, db):
 async def test_project_id_narrows_and_does_not_authorise(client, db):
     """`?project_id=` is a filter, not a key: entering a foreign project yields silence, no access."""
     anna = await make_user(db, "anna")
-    meins = await make_project(db, "AAA", "Alpha")
-    fremd = await make_project(db, "BBB", "Beta")
-    await add_member(db, meins, anna, ProjectRole.member)
-    i1, i2 = await ticket(db, meins), await ticket(db, fremd)
-    await steps(db, await lauf(db, issue=i1), 2)
-    await steps(db, await lauf(db, issue=i2), 2)
+    mine = await make_project(db, "AAA", "Alpha")
+    foreign = await make_project(db, "BBB", "Beta")
+    await add_member(db, mine, anna, ProjectRole.member)
+    i1, i2 = await ticket(db, mine), await ticket(db, foreign)
+    await steps(db, await make_run(db, issue=i1), 2)
+    await steps(db, await make_run(db, issue=i2), 2)
 
-    r = await client.get(f"/office/sessions?project_id={fremd.id}", headers=auth(anna))
+    r = await client.get(f"/office/sessions?project_id={foreign.id}", headers=auth(anna))
     assert r.status_code == 200 and r.json()["sessions"] == []
-    r = await client.get(f"/office/sessions?project_id={meins.id}", headers=auth(anna))
+    r = await client.get(f"/office/sessions?project_id={mine.id}", headers=auth(anna))
     assert sids(r.json()) == {f"issue:{i1.id}"}
 
 
@@ -177,7 +177,7 @@ async def test_events_strictly_by_seq_and_after_seq_excludes(client, db):
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
     issue = await ticket(db, proj)
-    run = await lauf(db, issue=issue)
+    run = await make_run(db, issue=issue)
     rows = await steps(db, run, 4)
 
     r = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(anna))
@@ -194,9 +194,9 @@ async def test_events_strictly_by_seq_and_after_seq_excludes(client, db):
     limit = rows[1].id * 4 + 1     # the main event of the second row
     r = await client.get(
         f"/office/sessions/issue/{issue.id}/events?after_seq={limit}", headers=auth(anna))
-    weiter = [e["seq"] for e in r.json()["events"]]
-    assert weiter and min(weiter) > limit
-    assert weiter == sorted(weiter)
+    onwards = [e["seq"] for e in r.json()["events"]]
+    assert onwards and min(onwards) > limit
+    assert onwards == sorted(onwards)
     # The header comes only with the full fetch; otherwise it would come into the recorder a
     # second time with a new `seq` while following up.
     assert "session_seen" not in [e["kind"] for e in r.json()["events"]]
@@ -210,26 +210,26 @@ async def test_capping_reports_truncated_and_keeps_the_roster(client, db):
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
     issue = await ticket(db, proj)
-    eltern = await lauf(db, issue=issue, agent="developer")
-    kind = await lauf(db, issue=issue, agent="reviewer", parent=eltern, spawn_depth=1)
-    alt = await steps(db, eltern, 3)
+    parent = await make_run(db, issue=issue, agent="developer")
+    kind = await make_run(db, issue=issue, agent="reviewer", parent=parent, spawn_depth=1)
+    old = await steps(db, parent, 3)
     await steps(db, kind, 3)
 
-    voll = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(anna))
-    aeltestes = min(e["seq"] for e in voll.json()["events"])
+    full = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(anna))
+    oldest = min(e["seq"] for e in full.json()["events"])
 
     r = await client.get(f"/office/sessions/issue/{issue.id}/events?limit=2",
                          headers=auth(anna))
     body = r.json()
     assert body["truncated"] is True
-    assert body["seq_from"] > aeltestes
+    assert body["seq_from"] > oldest
     assert all(e["seq"] >= body["seq_from"] for e in body["events"])
     # The truncated parent run can no longer be seen in the log (the header carries its
     # `run_id`, because it hangs off the root run: it is not a step of the run).
-    assert eltern.id not in {e["run_id"] for e in body["events"] if e["kind"] != "session_seen"}
-    assert alt[0].id * 4 + 1 < body["seq_from"]
+    assert parent.id not in {e["run_id"] for e in body["events"] if e["kind"] != "session_seen"}
+    assert old[0].id * 4 + 1 < body["seq_from"]
     # … but stands completely in the roster.
-    assert {a["run_id"] for a in body["agents"]} == {eltern.id, kind.id}
+    assert {a["run_id"] for a in body["agents"]} == {parent.id, kind.id}
     assert {a["agent"] for a in body["agents"]} == {"developer", "reviewer"}
 
 
@@ -238,28 +238,28 @@ async def test_run_session_for_owner_stranger_admin(client, db):
     nobody else does it exist."""
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
-    chef = await make_user(db, "chef", admin=True)
-    run = await lauf(db, owner=anna, agent="assistant")
+    boss = await make_user(db, "chef", admin=True)
+    run = await make_run(db, owner=anna, agent="assistant")
     await steps(db, run, 2)
 
     path = f"/office/sessions/run/{run.id}/events"
     assert (await client.get(path, headers=auth(anna))).status_code == 200
     assert (await client.get(path, headers=auth(bert))).status_code == 404
-    assert (await client.get(path, headers=auth(chef))).status_code == 200
+    assert (await client.get(path, headers=auth(boss))).status_code == 200
 
 
 async def test_a_child_run_is_not_addressable_on_its_own(client, db):
     """Only roots are a `run:` address. If a child run had one of its own, there would be two
     rooms for the same tree and the link would decide what one sees."""
     anna = await make_user(db, "anna")
-    wurzel = await lauf(db, owner=anna, agent="assistant")
-    kind = await lauf(db, owner=anna, agent="reviewer", parent=wurzel, spawn_depth=1)
+    root = await make_run(db, owner=anna, agent="assistant")
+    kind = await make_run(db, owner=anna, agent="reviewer", parent=root, spawn_depth=1)
     await steps(db, kind, 2)
 
     r = await client.get(f"/office/sessions/run/{kind.id}/events", headers=auth(anna))
     assert r.status_code == 404
-    r = await client.get(f"/office/sessions/run/{wurzel.id}/events", headers=auth(anna))
-    assert {a["run_id"] for a in r.json()["agents"]} == {wurzel.id, kind.id}
+    r = await client.get(f"/office/sessions/run/{root.id}/events", headers=auth(anna))
+    assert {a["run_id"] for a in r.json()["agents"]} == {root.id, kind.id}
 
 
 async def test_a_purged_session_reports_purged(client, db):
@@ -284,9 +284,9 @@ async def test_the_issue_sid_contains_delegated_child_runs(client, db):
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
     issue = await ticket(db, proj)
-    plan = await lauf(db, issue=issue, agent="planner", minutes=9)
-    exe = await lauf(db, issue=issue, agent="developer", minutes=7)
-    sub = await lauf(db, issue=issue, agent="reviewer", parent=exe, spawn_depth=1, minutes=6)
+    plan = await make_run(db, issue=issue, agent="planner", minutes=9)
+    exe = await make_run(db, issue=issue, agent="developer", minutes=7)
+    sub = await make_run(db, issue=issue, agent="reviewer", parent=exe, spawn_depth=1, minutes=6)
     for run in (plan, exe, sub):
         await steps(db, run, 2)
 
@@ -317,10 +317,10 @@ async def test_all_events_merge_sessions_into_one_log(client, db):
     await add_member(db, a, anna, ProjectRole.member)
     await add_member(db, b, anna, ProjectRole.member)
     ia, ib = await ticket(db, a), await ticket(db, b)
-    ra = await lauf(db, issue=ia, agent="developer")
-    rb = await lauf(db, issue=ib, agent="architect")
-    eigen = await lauf(db, owner=anna, agent="assistant")
-    for run in (ra, rb, eigen):
+    ra = await make_run(db, issue=ia, agent="developer")
+    rb = await make_run(db, issue=ib, agent="architect")
+    own = await make_run(db, owner=anna, agent="assistant")
+    for run in (ra, rb, own):
         await steps(db, run, 3)
 
     r = await client.get("/office/events", headers=auth(anna))
@@ -330,7 +330,7 @@ async def test_all_events_merge_sessions_into_one_log(client, db):
     seqs = [e["seq"] for e in body["events"]]
     assert seqs == sorted(seqs) and len(seqs) == len(set(seqs))
     assert {e["sid"] for e in body["events"]} == {
-        f"issue:{ia.id}", f"issue:{ib.id}", f"run:{eigen.id}"}
+        f"issue:{ia.id}", f"issue:{ib.id}", f"run:{own.id}"}
     assert body["sessions"] == 3 and body["runs"] == 3
     assert body["seq_from"] == seqs[0] and body["seq_to"] == seqs[-1]
     assert body["count"] == len(seqs) and body["truncated"] is False
@@ -342,17 +342,17 @@ async def test_all_events_merge_sessions_into_one_log(client, db):
     assert "session_seen" not in {e["kind"] for e in body["events"]}
     # Every figure comes in and leaves again, across all three sessions.
     assert {e["run_id"] for e in body["events"] if e["kind"] == "run_start"} == {
-        ra.id, rb.id, eigen.id}
+        ra.id, rb.id, own.id}
     assert {e["run_id"] for e in body["events"] if e["kind"] == "run_end"} == {
-        ra.id, rb.id, eigen.id}
+        ra.id, rb.id, own.id}
 
     roster = {a_["run_id"]: a_ for a_ in body["agents"]}
-    assert set(roster) == {ra.id, rb.id, eigen.id}
+    assert set(roster) == {ra.id, rb.id, own.id}
     # Without `project_key`/`issue_key` every figure would fall into "(without a project)" in
     # the header and the session tabs would stay invisible.
     assert roster[ra.id]["project_key"] == "AAA" and roster[ra.id]["issue_key"] == "AAA-1"
     assert roster[rb.id]["project_key"] == "BBB"
-    assert roster[eigen.id]["project_key"] == "" and roster[eigen.id]["project_id"] is None
+    assert roster[own.id]["project_key"] == "" and roster[own.id]["project_id"] is None
 
 
 async def test_all_events_show_only_what_is_permitted(client, db):
@@ -361,14 +361,14 @@ async def test_all_events_show_only_what_is_permitted(client, db):
     sees both."""
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
-    chef = await make_user(db, "chef", admin=True)
-    meins = await make_project(db, "AAA", "Alpha")
-    fremd = await make_project(db, "BBB", "Beta")
-    await add_member(db, meins, anna, ProjectRole.member)
-    i1, i2 = await ticket(db, meins), await ticket(db, fremd)
-    r1 = await lauf(db, issue=i1)
-    r2 = await lauf(db, issue=i2)
-    r3 = await lauf(db, owner=bert, agent="assistant")
+    boss = await make_user(db, "chef", admin=True)
+    mine = await make_project(db, "AAA", "Alpha")
+    foreign = await make_project(db, "BBB", "Beta")
+    await add_member(db, mine, anna, ProjectRole.member)
+    i1, i2 = await ticket(db, mine), await ticket(db, foreign)
+    r1 = await make_run(db, issue=i1)
+    r2 = await make_run(db, issue=i2)
+    r3 = await make_run(db, owner=bert, agent="assistant")
     for run in (r1, r2, r3):
         await steps(db, run, 2)
 
@@ -376,31 +376,31 @@ async def test_all_events_show_only_what_is_permitted(client, db):
     assert {e["run_id"] for e in body["events"]} == {r1.id}
     assert {a_["run_id"] for a_ in body["agents"]} == {r1.id}
 
-    alles = (await client.get("/office/events", headers=auth(chef))).json()
-    assert {a_["run_id"] for a_ in alles["agents"]} == {r1.id, r2.id, r3.id}
+    everything = (await client.get("/office/events", headers=auth(boss))).json()
+    assert {a_["run_id"] for a_ in everything["agents"]} == {r1.id, r2.id, r3.id}
 
 
 async def test_all_events_project_id_narrows_and_does_not_authorise(client, db):
     """`?project_id=` is a filter, not a key. A foreign project yields silence: no access and
     no 403 either, which would reveal its existence."""
     anna = await make_user(db, "anna")
-    meins = await make_project(db, "AAA", "Alpha")
-    fremd = await make_project(db, "BBB", "Beta")
-    await add_member(db, meins, anna, ProjectRole.member)
-    await add_member(db, fremd, anna, ProjectRole.member)
-    i1, i2 = await ticket(db, meins), await ticket(db, fremd)
-    r1, r2 = await lauf(db, issue=i1), await lauf(db, issue=i2)
+    mine = await make_project(db, "AAA", "Alpha")
+    foreign = await make_project(db, "BBB", "Beta")
+    await add_member(db, mine, anna, ProjectRole.member)
+    await add_member(db, foreign, anna, ProjectRole.member)
+    i1, i2 = await ticket(db, mine), await ticket(db, foreign)
+    r1, r2 = await make_run(db, issue=i1), await make_run(db, issue=i2)
     await steps(db, r1, 2)
     await steps(db, r2, 2)
 
-    beide = (await client.get("/office/events", headers=auth(anna))).json()
-    assert {a_["run_id"] for a_ in beide["agents"]} == {r1.id, r2.id}
+    both = (await client.get("/office/events", headers=auth(anna))).json()
+    assert {a_["run_id"] for a_ in both["agents"]} == {r1.id, r2.id}
 
-    eng = (await client.get(f"/office/events?project_id={meins.id}", headers=auth(anna))).json()
+    eng = (await client.get(f"/office/events?project_id={mine.id}", headers=auth(anna))).json()
     assert {a_["run_id"] for a_ in eng["agents"]} == {r1.id}
 
     bert = await make_user(db, "bert")
-    silence = await client.get(f"/office/events?project_id={meins.id}", headers=auth(bert))
+    silence = await client.get(f"/office/events?project_id={mine.id}", headers=auth(bert))
     assert silence.status_code == 200
     assert silence.json()["events"] == [] and silence.json()["agents"] == []
 
@@ -414,14 +414,14 @@ async def test_all_events_clamp_the_run_start_to_the_window_start(client, db):
     await add_member(db, proj, anna, ProjectRole.member)
     issue = await ticket(db, proj)
     # Starts 30 hours ago but is still working: the steps lie in the window.
-    alt = await lauf(db, issue=issue, minutes=30 * 60)
-    await steps(db, alt, 2)
+    old = await make_run(db, issue=issue, minutes=30 * 60)
+    await steps(db, old, 2)
 
     body = (await client.get("/office/events?since_hours=12", headers=auth(anna))).json()
     start = next(e for e in body["events"] if e["kind"] == "run_start")
-    geklemmt = dt.datetime.fromisoformat(start["ts"].replace("Z", "+00:00"))
-    assert geklemmt >= NOW - dt.timedelta(hours=12, minutes=2)
-    assert geklemmt < NOW - dt.timedelta(hours=11)
+    clamped = dt.datetime.fromisoformat(start["ts"].replace("Z", "+00:00"))
+    assert clamped >= NOW - dt.timedelta(hours=12, minutes=2)
+    assert clamped < NOW - dt.timedelta(hours=11)
 
 
 async def test_all_events_without_a_seq_collision_at_the_run_boundary(client, db):
@@ -435,21 +435,21 @@ async def test_all_events_without_a_seq_collision_at_the_run_boundary(client, db
     a = await make_project(db, "BBB", "Beta")
     await add_member(db, a, anna, ProjectRole.member)
     i1, i2 = await ticket(db, proj), await ticket(db, a)
-    erst = await lauf(db, issue=i1, agent="developer")
-    lines_erst = await steps(db, erst, 2)
-    zweit = await lauf(db, issue=i2, agent="architect")
-    lines_zweit = await steps(db, zweit, 2)
+    first = await make_run(db, issue=i1, agent="developer")
+    lines_first = await steps(db, first, 2)
+    second = await make_run(db, issue=i2, agent="architect")
+    lines_second = await steps(db, second, 2)
     # The setup has to produce the collision at all, because otherwise the test checks nothing.
-    assert lines_zweit[0].id == lines_erst[-1].id + 1
+    assert lines_second[0].id == lines_first[-1].id + 1
 
     body = (await client.get("/office/events", headers=auth(anna))).json()
     seqs = [e["seq"] for e in body["events"]]
     assert len(seqs) == len(set(seqs)) and seqs == sorted(seqs)
-    grenzen = [(e["kind"], e["run_id"]) for e in body["events"]
+    limits = [(e["kind"], e["run_id"]) for e in body["events"]
                if e["kind"] in ("run_start", "run_end")]
-    assert ("run_end", erst.id) in grenzen and ("run_start", zweit.id) in grenzen
+    assert ("run_end", first.id) in limits and ("run_start", second.id) in limits
     # The end precedes the next start: first somebody leaves, then the next one comes.
-    assert grenzen.index(("run_end", erst.id)) < grenzen.index(("run_start", zweit.id))
+    assert limits.index(("run_end", first.id)) < limits.index(("run_start", second.id))
 
 
 async def test_all_events_cap_from_the_oldest_end_and_keep_the_roster(client, db):
@@ -467,34 +467,34 @@ async def test_all_events_cap_from_the_oldest_end_and_keep_the_roster(client, db
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
-    zwei = await make_project(db, "BBB", "Beta")
-    drei = await make_project(db, "CCC", "Gamma")
-    await add_member(db, zwei, anna, ProjectRole.member)
-    await add_member(db, drei, anna, ProjectRole.member)
-    i1, i2, i3 = await ticket(db, proj), await ticket(db, zwei), await ticket(db, drei)
-    ganz_out = await lauf(db, issue=i1, agent="planner")
-    halb = await lauf(db, issue=i2, agent="developer")
-    new_ = await lauf(db, issue=i3, agent="architect")
-    await steps(db, ganz_out, 3)
-    lines_halb = await steps(db, halb, 3)
+    two = await make_project(db, "BBB", "Beta")
+    three = await make_project(db, "CCC", "Gamma")
+    await add_member(db, two, anna, ProjectRole.member)
+    await add_member(db, three, anna, ProjectRole.member)
+    i1, i2, i3 = await ticket(db, proj), await ticket(db, two), await ticket(db, three)
+    whole_out = await make_run(db, issue=i1, agent="planner")
+    half = await make_run(db, issue=i2, agent="developer")
+    new_ = await make_run(db, issue=i3, agent="architect")
+    await steps(db, whole_out, 3)
+    lines_half = await steps(db, half, 3)
     await steps(db, new_, 3)
 
-    voll = (await client.get("/office/events", headers=auth(anna))).json()
-    aeltestes = min(e["seq"] for e in voll["events"])
+    full = (await client.get("/office/events", headers=auth(anna))).json()
+    oldest = min(e["seq"] for e in full["events"])
 
     # Four rows: the last step of `halb` plus the three of `neu_`.
     body = (await client.get("/office/events?limit=4", headers=auth(anna))).json()
     assert body["truncated"] is True
-    assert body["seq_from"] > aeltestes
+    assert body["seq_from"] > oldest
     assert all(e["seq"] >= body["seq_from"] for e in body["events"])
-    assert lines_halb[0].id * 4 + 1 < body["seq_from"]
+    assert lines_half[0].id * 4 + 1 < body["seq_from"]
 
     # `halb` still has a visible step, so the figure comes in although its real `run_start`
     # lies below the truncation.
     assert {e["run_id"] for e in body["events"] if e["kind"] == "run_start"} == {
-        halb.id, new_.id}
-    assert {a_["run_id"] for a_ in body["agents"]} == {halb.id, new_.id}
-    assert ganz_out.id not in {e["run_id"] for e in body["events"]}
+        half.id, new_.id}
+    assert {a_["run_id"] for a_ in body["agents"]} == {half.id, new_.id}
+    assert whole_out.id not in {e["run_id"] for e in body["events"]}
 
 
 async def test_all_events_respect_the_window(client, db):
@@ -503,7 +503,7 @@ async def test_all_events_respect_the_window(client, db):
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
     issue = await ticket(db, proj)
-    run = await lauf(db, issue=issue)
+    run = await make_run(db, issue=issue)
     lines = await steps(db, run, 2)
     for line in lines:
         line.created_at = NOW - dt.timedelta(hours=30)
@@ -513,6 +513,6 @@ async def test_all_events_respect_the_window(client, db):
     eng = (await client.get("/office/events?since_hours=12", headers=auth(anna))).json()
     assert eng["events"] == [] and eng["agents"] == [] and eng["sessions"] == 0
 
-    weit = (await client.get("/office/events?since_hours=48", headers=auth(anna))).json()
-    assert {a_["run_id"] for a_ in weit["agents"]} == {run.id}
-    assert weit["since_hours"] == 48
+    wide = (await client.get("/office/events?since_hours=48", headers=auth(anna))).json()
+    assert {a_["run_id"] for a_ in wide["agents"]} == {run.id}
+    assert wide["since_hours"] == 48

@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from ..db import SessionLocal
 from ..models.ops import Job, JobRun
-from .job_modes import ALTE_KINDS
+from .job_modes import OLD_KINDS
 from ..models.notification import Notification
 from ..models.user import User
 
@@ -49,22 +49,22 @@ def _seconds(schedule: str) -> int:
     Jobs. Unlesbares ergibt eine Minute: Lieber zu oft als gar nicht, denn ein Job, der still
     nie laeuft, faellt niemandem auf.
     """
-    roh = (schedule or "").strip().removeprefix("interval:").strip()
-    return int(roh) if roh.isdigit() and int(roh) > 0 else 60
+    raw = (schedule or "").strip().removeprefix("interval:").strip()
+    return int(raw) if raw.isdigit() and int(raw) > 0 else 60
 
 
 # Was in `type` stehen darf. `kind` ist etwas anderes — die Art der Arbeit (workflow, film).
 # Die beiden zu verwechseln ist der naheliegende Fehler, und er faellt nicht auf: Ein Job mit
 # unbekanntem `type` ist einfach nie faellig, waehrend die Oberflaeche "eingeschaltet, alle
 # 15 Minuten" anzeigt. Genau so lag der Job "Hermes-Posteingang" 13 Tage still.
-ZEITPLAN_KINDS = ("cron", "interval", "once")
+SCHEDULE_KINDS = ("cron", "interval", "once")
 
 
 def _due(job: Job, now: dt.datetime, zone: ZoneInfo = STD_TZ) -> bool:
-    if job.type not in ZEITPLAN_KINDS:
+    if job.type not in SCHEDULE_KINDS:
         log.warning("Job %s (%s) hat den Zeitplan-Typ '%s' — erlaubt sind %s. Er laeuft "
                     "deshalb nie; gemeint war vermutlich `kind`.",
-                    job.id, job.name, job.type, "/".join(ZEITPLAN_KINDS))
+                    job.id, job.name, job.type, "/".join(SCHEDULE_KINDS))
         return False
     if job.type == "interval":
         secs = _seconds(job.schedule)
@@ -72,10 +72,10 @@ def _due(job: Job, now: dt.datetime, zone: ZoneInfo = STD_TZ) -> bool:
     if job.type == "cron":
         # In der Zone des Besitzers rechnen und erst danach wieder vergleichen: croniter
         # arbeitet mit der Wanduhr, die es bekommt.
-        now_lokal = now.astimezone(zone)
+        now_local = now.astimezone(zone)
         base = (job.last_run_at or (now - dt.timedelta(minutes=1))).astimezone(zone)
         try:
-            return croniter(job.schedule, base).get_next(dt.datetime) <= now_lokal
+            return croniter(job.schedule, base).get_next(dt.datetime) <= now_local
         except (ValueError, KeyError):
             return False
     if job.type == "once":
@@ -117,7 +117,7 @@ async def run_job_kind(db, job: Job, jr: JobRun) -> None:
     # Eine alte Art wird hier umgestellt, nicht abgewiesen: Sonst gäbe es ein Zeitfenster
     # (Eintrag von Hand in der Datenbank, Wiedereinspielen einer Sicherung), in dem ein Job
     # anders liefe, als am Bildschirm steht.
-    if job.kind in ALTE_KINDS:
+    if job.kind in OLD_KINDS:
         from .job_modes import as_flow
         await as_flow(db, job)
         await db.flush()
@@ -145,12 +145,12 @@ async def _tick() -> None:
         ).scalars().all()
         # Die Zonen einmal je Besitzer holen statt je Job: es sind wenige Menschen und viele
         # Jobs.
-        zonen: dict[int | None, ZoneInfo] = {}
+        zones: dict[int | None, ZoneInfo] = {}
         for job in jobs:
-            if job.user_id not in zonen:
+            if job.user_id not in zones:
                 owner = await db.get(User, job.user_id) if job.user_id else None
-                zonen[job.user_id] = zone_of(owner)
-            if not _due(job, now, zonen[job.user_id]):
+                zones[job.user_id] = zone_of(owner)
+            if not _due(job, now, zones[job.user_id]):
                 continue
             job.last_run_at = now
             jr = JobRun(job_id=job.id, status="running")
@@ -178,12 +178,12 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         # with prompt jobs (only an object counts, a list stays a script argument). Before,
         # `{}` stood here: the same flow for a second metric series would have needed a
         # second flow although only one word changes.
-        from .job_params import eingebaute_values, parameter
+        from .job_params import builtin_values, parameter
         # Die Zeitwerte gehören dazu, seit die Prompt-Jobs Abläufe sind: `{{ seit }}` und
         # `{{ zeitfenster }}` standen in ihren Aufträgen und kamen aus der Job-Welt. Nur
         # ERFOLGREICHE Läufe zählen — war der Job gestern kaputt, muss das Fenster die Lücke
         # mitnehmen, sonst fällt ein Tag lautlos unter den Tisch.
-        vorlauf = (await db.execute(
+        leadtime = (await db.execute(
             select(JobRun.started_at).where(JobRun.job_id == job.id, JobRun.id != jr.id,
                                             JobRun.status == "ok")
             .order_by(JobRun.id.desc()).limit(1))).scalar()
@@ -192,7 +192,7 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         # will seinen Namen nennen können, und der Digest-Link hängt an der Lauf-Nummer.
         inst = await start_workflow(
             db, definition, subject_kind=definition.subject_kind,
-            context={**eingebaute_values(last_lauf=vorlauf, zone=zone_of(owner)),
+            context={**builtin_values(last_run=leadtime, zone=zone_of(owner)),
                      **parameter(job.args),
                      "job": {"id": job.id, "name": job.name, "run_id": jr.id}},
             actor_id=job.user_id, source=f"job:{job.id}",
@@ -291,7 +291,7 @@ async def _spam_digest() -> None:
         await digest_due(db)
 
 
-async def _mailbox_lernen() -> None:
+async def _mailbox_learn() -> None:
     """Collect what the human decided themselves, without asking.
 
     Two paths, both without a question and without a model: mails they moved into the spam
@@ -299,7 +299,7 @@ async def _mailbox_lernen() -> None:
     The former is spam learning material, the latter an acquittal.
     """
     from ..models.ops import WebhookSub
-    from .spam_bootstrap import answer_kontakte, spam_rueckkopplung
+    from .spam_bootstrap import answer_contacts, spam_feedback
 
     async with SessionLocal() as db:
         owner_ids = (await db.execute(select(WebhookSub.owner_user_id).where(
@@ -307,13 +307,13 @@ async def _mailbox_lernen() -> None:
             WebhookSub.owner_user_id.isnot(None)).distinct())).scalars().all()
         for owner_id in owner_ids:
             try:
-                await spam_rueckkopplung(db, owner_id)
-                await answer_kontakte(db, owner_id)
+                await spam_feedback(db, owner_id)
+                await answer_contacts(db, owner_id)
             except Exception:  # noqa: BLE001
                 log.exception("Mailbox reconciliation for user %s failed", owner_id)
 
 
-async def _vault_kontakte() -> None:
+async def _vault_contacts() -> None:
     """Update known addresses from the vault (the acquittal list of the spam detection).
 
     Only for people who actually run a mail webhook; for everybody else there would be
@@ -347,8 +347,8 @@ async def run_scheduler() -> None:
                 await _purge_archived_runs()
             if loop.time() >= _vault_after:
                 _vault_after = loop.time() + 3600
-                await _vault_kontakte()
-                await _mailbox_lernen()
+                await _vault_contacts()
+                await _mailbox_learn()
         except Exception:  # noqa: BLE001
             log.exception("scheduler tick failed")
         await asyncio.sleep(INTERVAL)

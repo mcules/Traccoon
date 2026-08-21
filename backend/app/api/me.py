@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..core.redis import get_flag, get_user_flag, set_flag, set_user_flag
 from ..db import get_session
 from ..models.user import User
@@ -79,7 +79,7 @@ async def set_timezone(d: StrIn, u: User = Depends(get_current_user),
 
     name = (d.value or "").strip()
     if name not in available_timezones():
-        raise Fehler(400, "err.unknown_timezone", "Unknown time zone '{name}'", name=name)
+        raise Error(400, "err.unknown_timezone", "Unknown time zone '{name}'", name=name)
     ZoneInfo(name)   # lädt sie einmal, damit ein kaputter Datenstand hier auffällt
     u.timezone = name
     await db.commit()
@@ -129,12 +129,12 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
     from ..services.notify import CHANNELS
     if d.notify_default is not None:
         if d.notify_default not in CHANNELS:
-            raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_channel_possible",
-                         "Unknown channel, possible: {moeglich}", moeglich=', '.join(CHANNELS))
+            raise Error(status.HTTP_400_BAD_REQUEST, "err.unknown_channel_possible",
+                         "Unknown channel, possible: {moeglich}", possible=', '.join(CHANNELS))
         u.notify_default = d.notify_default
     if d.notify_email is not None:
-        roh = d.notify_email.strip()
-        u.notify_email = _valid_email(roh) if roh else None
+        raw = d.notify_email.strip()
+        u.notify_email = _valid_email(raw) if raw else None
     if d.telegram_chat_id is not None:
         u.telegram_chat_id = d.telegram_chat_id.strip() or None
     if d.notify_destination_id is not None:
@@ -145,7 +145,7 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
         if target_id is not None:
             allowed = {z.id for z in await visible(db, owner_id=u.id)}
             if target_id not in allowed:
-                raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_destination",
+                raise Error(status.HTTP_400_BAD_REQUEST, "err.unknown_destination",
                              "Unknown destination")
         u.notify_destination_id = target_id
     await db.commit()
@@ -178,7 +178,7 @@ async def set_email(d: StrIn, u: User = Depends(get_current_user), db: AsyncSess
     other = (await db.execute(
         select(User).where(User.email == email, User.id != u.id))).scalar_one_or_none()
     if other is not None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.e_mail_already_taken", "E-mail already taken")
+        raise Error(status.HTTP_409_CONFLICT, "err.e_mail_already_taken", "E-mail already taken")
     u.email = email
     await db.commit()
 
@@ -288,12 +288,12 @@ async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Dep
     done = {"claude_token": has_token, "runner": await runner_connected(),
               "project": bool(can_assign), "git": bool(git_ready),
               "verify": bool(verify_ready), "telegram": bool(u.telegram_chat_id)}
-    pflicht = {"claude_token", "runner", "project"}
+    required = {"claude_token", "runner", "project"}
     steps = [
         {"key": k,
          "title": await tr(db, f"server.onboarding.{k}", u.locale),
          "hint": await tr(db, f"server.onboarding.{k}_hinweis", u.locale),
-         "done": done[k], "required": k in pflicht}
+         "done": done[k], "required": k in required}
         for k in ("claude_token", "runner", "project", "git", "verify", "telegram")
     ]
     offen = [s for s in steps if not s["done"] and s["required"]]

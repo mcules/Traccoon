@@ -35,18 +35,18 @@ RENEW = 20 * 60
 # Wieviele Postfächer gleichzeitig beobachtet werden. Jedes ist eine offene Verbindung.
 MAX_WATCHDOG = int(os.getenv("MAIL_IDLE_MAX", "20"))
 
-_laufend: dict[int, asyncio.Task] = {}
-_aufseher: asyncio.Task | None = None
+_running: dict[int, asyncio.Task] = {}
+_overseer: asyncio.Task | None = None
 
 
-def _idle_runde(account: MailAccount, duration: int) -> list:
+def _idle_round(account: MailAccount, duration: int) -> list:
     """Eine Runde IDLE, blockierend — gehört deshalb in einen Thread."""
     # Bewusst eine EIGENE Verbindung, nicht die aus dem Vorrat: Diese hier steht zwanzig
     # Minuten in IDLE. Sie zurückzulegen hieße, dem nächsten Aufruf eine Leitung zu geben,
     # die auf eine Ankündigung wartet statt auf seine Frage.
-    from ..services.mailbox import _verbinden
+    from ..services.mailbox import _join
 
-    client = _verbinden(account)
+    client = _join(account)
     try:
         client.select_folder("INBOX", readonly=True)
         client.idle()
@@ -64,75 +64,75 @@ def _idle_runde(account: MailAccount, duration: int) -> list:
             pass
 
 
-async def _watchdog(konto_id: int, user_id: int) -> None:
-    from ..api.ws import personen
+async def _watchdog(account_id: int, user_id: int) -> None:
+    from ..api.ws import persons
 
     pause = 5
-    schon_gewaermt = False
+    already_warmed = False
     while True:
         try:
             async with SessionLocal() as db:
-                konto = await db.get(MailAccount, konto_id)
-                if konto is None or not konto.enabled:
+                account = await db.get(MailAccount, account_id)
+                if account is None or not account.enabled:
                     return
                 # Losgelöst von der Sitzung weiterbenutzen: der Thread darf nicht an einer
                 # Datenbankverbindung hängen, während er minutenlang wartet.
-                db.expunge(konto)
+                db.expunge(account)
 
-            if not personen.jemand_da(user_id):
+            if not persons.somebody_there(user_id):
                 await asyncio.sleep(20)
                 continue
 
-            if not schon_gewaermt:
+            if not already_warmed:
                 # Einmal beim Zusehen: Wer eingeloggt ist, hat den Wächter laufen, bevor er
                 # das Postfach überhaupt öffnet. Dann ist auch der erste Blick warm.
-                from .mailbox_cache import vorwaermen
-                asyncio.create_task(vorwaermen(konto))
-                schon_gewaermt = True
+                from .mailbox_cache import prewarm
+                asyncio.create_task(prewarm(account))
+                already_warmed = True
 
-            ereignisse = await asyncio.to_thread(_idle_runde, konto, RENEW)
+            events = await asyncio.to_thread(_idle_round, account, RENEW)
             pause = 5
             # EXISTS (neue Nachricht), EXPUNGE (weg), FETCH (Flag geändert) — welches davon,
             # ist der Oberfläche egal: sie holt sich den Stand ohnehin frisch.
-            if ereignisse:
+            if events:
                 # Erst vergessen, dann melden: Sonst fragt die Oberfläche im selben Moment
                 # nach und bekommt den Stand von vor der neuen Mail.
-                from .mailbox_cache import entwerten, vorwaermen
-                await entwerten(konto_id)
+                from .mailbox_cache import invalidate, prewarm
+                await invalidate(account_id)
                 # Und gleich neu holen: Die Meldung kommt beim Menschen an, während der
                 # Stand schon unterwegs ist — sonst wartet er auf die Sekunde, die wir
                 # gerade erst weggeworfen haben.
-                asyncio.create_task(vorwaermen(konto))
-                await personen.senden(user_id, {
+                asyncio.create_task(prewarm(account))
+                await persons.send(user_id, {
                     "type": "mail",
-                    "data": {"account_id": konto_id, "folder": "INBOX"},
+                    "data": {"account_id": account_id, "folder": "INBOX"},
                 })
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
             log.info("Wächter für Konto %s: %s — neuer Versuch in %ss",
-                     konto_id, str(exc)[:120], pause)
+                     account_id, str(exc)[:120], pause)
             await asyncio.sleep(pause)
             pause = min(pause * 2, 300)
 
 
-async def _aufseher_schleife() -> None:
+async def _overseer_loop() -> None:
     """Startet und beendet Wächter, wenn Postfächer dazukommen oder verschwinden."""
     while True:
         try:
             async with SessionLocal() as db:
-                konten = (await db.execute(select(MailAccount).where(
+                accounts = (await db.execute(select(MailAccount).where(
                     MailAccount.enabled.is_(True),
                     MailAccount.imap_host != ""))).scalars().all()
-                gewollt = {k.id: k.owner_user_id for k in konten[:MAX_WATCHDOG]}
+                wanted = {k.id: k.owner_user_id for k in accounts[:MAX_WATCHDOG]}
 
-            for kid, uid in gewollt.items():
-                task = _laufend.get(kid)
+            for kid, uid in wanted.items():
+                task = _running.get(kid)
                 if task is None or task.done():
-                    _laufend[kid] = asyncio.create_task(_watchdog(kid, uid))
-            for kid in list(_laufend):
-                if kid not in gewollt:
-                    _laufend.pop(kid).cancel()
+                    _running[kid] = asyncio.create_task(_watchdog(kid, uid))
+            for kid in list(_running):
+                if kid not in wanted:
+                    _running.pop(kid).cancel()
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
@@ -141,18 +141,18 @@ async def _aufseher_schleife() -> None:
 
 
 async def start() -> None:
-    global _aufseher
-    if not AN or _aufseher is not None:
+    global _overseer
+    if not AN or _overseer is not None:
         return
-    _aufseher = asyncio.create_task(_aufseher_schleife())
+    _overseer = asyncio.create_task(_overseer_loop())
     log.info("Postfach-Wächter (IMAP IDLE) gestartet")
 
 
 async def stop() -> None:
-    global _aufseher
-    if _aufseher is not None:
-        _aufseher.cancel()
-        _aufseher = None
-    for task in _laufend.values():
+    global _overseer
+    if _overseer is not None:
+        _overseer.cancel()
+        _overseer = None
+    for task in _running.values():
         task.cancel()
-    _laufend.clear()
+    _running.clear()

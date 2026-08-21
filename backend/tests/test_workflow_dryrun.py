@@ -52,26 +52,26 @@ def _graph() -> dict:
     }
 
 
-async def _flow(db, owner, graph=None, veroeffentlicht=False):
+async def _flow(db, owner, graph=None, published=False):
     d = WorkflowDefinition(project_id=None, key=f"probe{owner.id}", name="Probe",
                            created_by=owner.id, subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
     await db.flush()
     v = WorkflowVersion(definition_id=d.id, version=1, graph=graph or _graph(),
-                        status=(WorkflowVersionStatus.published if veroeffentlicht
+                        status=(WorkflowVersionStatus.published if published
                                 else WorkflowVersionStatus.draft))
     db.add(v)
     await db.flush()
-    if veroeffentlicht:
+    if published:
         d.current_version_id = v.id
     await db.commit()
     return d
 
 
 async def test_the_dry_run_runs_through_and_shows_what_it_would_do(client, db, monkeypatch):
-    gerufen = []
+    called = []
     monkeypatch.setattr(workflow_tools, "call",
-                        lambda *a, **k: gerufen.append(a) or {"ok": True, "text": ""})
+                        lambda *a, **k: called.append(a) or {"ok": True, "text": ""})
 
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
@@ -79,12 +79,12 @@ async def test_the_dry_run_runs_through_and_shows_what_it_would_do(client, db, m
                           json={"context": {"vorgang": {"titel": "Störung in der Halle",
                                                         "stufe": 5}}})
     assert r.status_code == 201, r.text
-    daten = r.json()
-    assert daten["status"] == WorkflowInstanceStatus.completed.value
+    data = r.json()
+    assert data["status"] == WorkflowInstanceStatus.completed.value
 
-    steps = {s["node_id"]: s for s in daten["steps"]}
+    steps = {s["node_id"]: s for s in data["steps"]}
     # The tool was NOT called: it only says what it would do.
-    assert gerufen == []
+    assert called == []
     assert "würde ausführen: tool_call" in steps["werkzeug"]["result"]["probe"]
     assert "obsidian__obsidian_append_to_note" in steps["werkzeug"]["result"]["probe"]
     # The branch really computed: level 5 >= 3, so the important path.
@@ -109,10 +109,10 @@ async def test_the_other_side_of_the_decision_can_be_checked_the_same_way(client
 async def test_the_dry_run_takes_the_draft_not_the_published_version(client, db):
     """What gets checked is what you just built."""
     anna = await make_user(db, "anna")
-    d = await _flow(db, anna, veroeffentlicht=True)
-    entwurf = _graph()
-    entwurf["nodes"][1]["data"]["config"]["action"]["params"]["tool"] = "neues__werkzeug"
-    db.add(WorkflowVersion(definition_id=d.id, version=2, graph=entwurf,
+    d = await _flow(db, anna, published=True)
+    draft = _graph()
+    draft["nodes"][1]["data"]["config"]["action"]["params"]["tool"] = "neues__werkzeug"
+    db.add(WorkflowVersion(definition_id=d.id, version=2, graph=draft,
                            status=WorkflowVersionStatus.draft))
     await db.commit()
 
@@ -128,9 +128,9 @@ async def test_the_dry_run_takes_the_draft_not_the_published_version(client, db)
 async def test_an_inconsistent_flow_is_not_played_through(client, db):
     """A trial run over a broken graph only creates confusion; better to say what is missing."""
     anna = await make_user(db, "anna")
-    kaputt = _graph()
-    kaputt["edges"] = [e for e in kaputt["edges"] if e.get("sourceHandle") != "ja"]
-    d = await _flow(db, anna, graph=kaputt)
+    broken = _graph()
+    broken["edges"] = [e for e in broken["edges"] if e.get("sourceHandle") != "ja"]
+    d = await _flow(db, anna, graph=broken)
     r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna), json={})
     assert r.status_code == 422 and "ja" in r.text
 
@@ -149,7 +149,7 @@ async def test_the_dry_run_checks_the_state_from_the_editor(client, db):
     from app.models.workflow import WorkflowInstance
 
     anna = await make_user(db, "anna")
-    d = await _flow(db, anna, veroeffentlicht=True)
+    d = await _flow(db, anna, published=True)
 
     editor = _graph()
     editor["nodes"][1]["data"]["config"]["action"]["params"]["tool"] = "gerade__gebaut"
@@ -162,6 +162,6 @@ async def test_the_dry_run_checks_the_state_from_the_editor(client, db):
 
     # The trial leaves nothing behind: no instance, no additional version.
     assert (await db.execute(select(WorkflowInstance))).scalars().all() == []
-    fassungen = (await db.execute(select(WorkflowVersion).where(
+    versions = (await db.execute(select(WorkflowVersion).where(
         WorkflowVersion.definition_id == d.id))).scalars().all()
-    assert [f.version for f in fassungen] == [1]
+    assert [f.version for f in versions] == [1]

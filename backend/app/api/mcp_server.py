@@ -30,19 +30,19 @@ from .deps import get_current_user
 log = logging.getLogger("mcp_server")
 router = APIRouter(tags=["mcp-server"])
 
-PROTOKOLL = "2024-11-05"
+LOG = "2024-11-05"
 
 
 async def _person(db: AsyncSession, header: str | None) -> User:
     """Die Person hinter dem Token. Verglichen wird in konstanter Zeit, nicht mit `==`."""
-    roh = (header or "").removeprefix("Bearer ").strip()
-    if not roh:
+    raw = (header or "").removeprefix("Bearer ").strip()
+    if not raw:
         raise PermissionError("kein Token")
     # Die Tokens liegen verschlüsselt; es sind wenige (eines je Person), also reicht das
     # Durchgehen. Ein Hash-Index wäre schneller und hier trotzdem nur Ballast.
     rows = (await db.execute(select(User).where(User.mail_mcp_token_enc != ""))).scalars().all()
     for u in rows:
-        if hmac.compare_digest(decrypt_secret(u.mail_mcp_token_enc), roh):
+        if hmac.compare_digest(decrypt_secret(u.mail_mcp_token_enc), raw):
             return u
     raise PermissionError("unbekanntes Token")
 
@@ -77,25 +77,25 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
 
     if methode == "initialize":
         result = {
-            "protocolVersion": PROTOKOLL,
+            "protocolVersion": LOG,
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "traccoon-mail", "version": "1"},
         }
         # `instructions` gehört zum Protokoll und wird beim Verbinden gelesen — also noch
         # bevor das erste Werkzeug läuft. Genau dort gehören Hausregeln hin.
-        hinweise = await mail_mcp.anweisungen(db, user)
+        hinweise = await mail_mcp.instructions(db, user)
         if hinweise:
             result["instructions"] = hinweise
         return _answer(id_, result)
 
     if methode == "tools/list":
-        return _answer(id_, {"tools": await mail_mcp.werkzeugliste(db, user)})
+        return _answer(id_, {"tools": await mail_mcp.toollist(db, user)})
 
     if methode == "tools/call":
         name = str(params.get("name") or "")
         args = params.get("arguments") or {}
         try:
-            result = await mail_mcp.ausfuehren(db, user, name, args)
+            result = await mail_mcp.execute(db, user, name, args)
         except PermissionError as exc:
             # Eine Sperre ist kein Absturz: der Agent soll lesen können, warum es nicht geht,
             # statt es als Serverfehler zu behandeln und wieder zu versuchen.
@@ -122,10 +122,10 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
 async def token_renew(user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
     """Erzeugt ein neues Token und zeigt es EINMAL. Ein altes wird damit ungültig."""
-    roh = "trmcp_" + secrets.token_urlsafe(32)
-    user.mail_mcp_token_enc = encrypt_secret(roh)
+    raw = "trmcp_" + secrets.token_urlsafe(32)
+    user.mail_mcp_token_enc = encrypt_secret(raw)
     await db.commit()
-    return {"token": roh}
+    return {"token": raw}
 
 
 @router.get("/mailbox/mcp-status")

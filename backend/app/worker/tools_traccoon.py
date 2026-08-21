@@ -159,8 +159,8 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
     moved non-existent. Reading is free, writing goes over the gate (TRACCOON_GATED_TOOLS).
     """
     from ..models.ops import Job, JobRun
-    from ..services.job_params import offene_platzhalter, parameter
-    from ..services.job_templates import JOB_TEMPLATES, anwenden, listing
+    from ..services.job_params import open_placeholder, parameter
+    from ..services.job_templates import JOB_TEMPLATES, apply, listing
 
     async def _job(jid) -> Job | None:
         j = await db.get(Job, int(jid or 0))
@@ -196,7 +196,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
                 f"Art {j.kind} · Agent {j.agent or '—'} · Meldung {j.notify_mode}\n"
                 + (f"Parameter: {p}\n" if p else "")
                 + (f"Offene Platzhalter (ohne Wert!): {', '.join(o)}\n"
-                   if (o := offene_platzhalter(j.prompt, j.args)) else "")
+                   if (o := open_placeholder(j.prompt, j.args)) else "")
                 + f"Prompt:\n{(j.prompt or '')[:2000]}\n"
                 + "Letzte Läufe: " + (", ".join(
                     f"{r.started_at:%Y-%m-%d %H:%M} {r.status}" for r in runs) or "keine"))
@@ -205,7 +205,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         fields: dict = {}
         if args.get("template"):
             try:
-                fields = anwenden(str(args["template"]), args.get("params") or {})
+                fields = apply(str(args["template"]), args.get("params") or {})
             except KeyError:
                 return (f"Vorlage '{args['template']}' gibt es nicht. Verfügbar: "
                         f"{', '.join(JOB_TEMPLATES)}.")
@@ -227,7 +227,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         db.add(j)
         await db.commit()
         await db.refresh(j)
-        offen = offene_platzhalter(j.prompt, j.args)
+        offen = open_placeholder(j.prompt, j.args)
         return (f"Job #{j.id} '{j.name}' angelegt ({j.type}:{j.schedule}, "
                 f"{'an' if j.enabled else 'aus'})."
                 + (f" ACHTUNG: Platzhalter ohne Wert: {', '.join(offen)}." if offen else ""))
@@ -314,11 +314,11 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
         for d in rows:
             if not await _allowed(d):
                 continue
-            projekt = "projektlos"
+            project_row = "projektlos"
             if d.project_id is not None:
                 p = await db.get(Project, d.project_id)
-                projekt = p.key if p else f"Projekt {d.project_id}"
-            lines.append(f"- id {d.id} · {d.key}: {d.name} ({projekt}, "
+                project_row = p.key if p else f"Projekt {d.project_id}"
+            lines.append(f"- id {d.id} · {d.key}: {d.name} ({project_row}, "
                           f"Gegenstand {d.subject_kind.value if hasattr(d.subject_kind, 'value') else d.subject_kind})")
         return "\n".join(lines) or "Keine startbaren Prozesse."
 
@@ -501,10 +501,10 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             # The approval is a STEP in the process, not a field on the ticket: the graph
             # stands on `approve_plan` and waits. Setting only the status made the ticket
             # look approved while nobody started.
-            from ..services.lifecycle_flow import entscheide_offene_genehmigung
-            entschieden = await entscheide_offene_genehmigung(db, iss, "approved", user.id)
+            from ..services.lifecycle_flow import decide_open_approval
+            decided = await decide_open_approval(db, iss, "approved", user.id)
             await db.commit()
-            if not entschieden:
+            if not decided:
                 return (f"{iss.key}: Status auf freigegeben gesetzt — im Prozess wartete "
                         "aber keine Genehmigung (läuft dort gerade etwas anderes?).")
             return f"{iss.key}: Plan freigegeben, der Prozess läuft weiter."
@@ -515,10 +515,10 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         # (exceptions: errors and chat).
         from ..models.notification import Notification
         title = str(args.get("title") or "").strip() or "Hinweis deines Assistenten"
-        dringend = str(args.get("urgency") or "").lower() == "high"
+        urgent = str(args.get("urgency") or "").lower() == "high"
         db.add(Notification(
             user_id=user.id, kind="assistant",
-            title=(("❗ " if dringend else "") + title)[:200],
+            title=(("❗ " if urgent else "") + title)[:200],
             body=str(args.get("text") or "")[:4000],
             chat_id=user.telegram_chat_id))
         if assistant_task_id:
@@ -554,14 +554,14 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         # because otherwise an agent would get only the beginning of a deliberately large
         # answer and would plan on truncated JSON without the cut being noticeable.
         max_chars = int(res.get("max_chars") or 4000)
-        inhalt = res.get("text")
-        if inhalt is None and "json" in res:
+        content = res.get("text")
+        if content is None and "json" in res:
             import json as _json
-            inhalt = _json.dumps(res["json"], ensure_ascii=False)
-        inhalt = inhalt or ""
-        if len(inhalt) > max_chars:
-            inhalt = inhalt[:max_chars] + f"\n… ABGESCHNITTEN bei {max_chars} Zeichen."
-        return f"{header}\n{inhalt}".strip()
+            content = _json.dumps(res["json"], ensure_ascii=False)
+        content = content or ""
+        if len(content) > max_chars:
+            content = content[:max_chars] + f"\n… ABGESCHNITTEN bei {max_chars} Zeichen."
+        return f"{header}\n{content}".strip()
 
     if name in ("traccoon_list_jobs", "traccoon_get_job", "traccoon_job_templates",
                 "traccoon_create_job", "traccoon_update_job", "traccoon_run_job"):

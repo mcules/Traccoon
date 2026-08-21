@@ -21,7 +21,7 @@ def _node(params: dict) -> dict:
             "data": {"config": {"action": {"action": "series_record", "params": params}}}}
 
 
-async def _lauf(db, user) -> WorkflowInstance:
+async def _run(db, user) -> WorkflowInstance:
     d = WorkflowDefinition(project_id=None, key="reihen", name="Reihen", created_by=user.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
@@ -44,23 +44,23 @@ async def _series(db, key) -> Series:
 
 async def test_writing_a_number_creates_the_series(db):
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
 
     aus = await run_action(db, inst, _node({
         "series": "akku.shelter", "kind": "number", "value": "25", "name": "Akku Shelter"}))
     await db.commit()
 
     assert aus["stored"] is True and aus["kind"] == "number"
-    reihe = await _series(db, "akku.shelter")
-    assert reihe.kind == "number" and reihe.points == 1
-    assert reihe.state["value"] == 25.0
+    series = await _series(db, "akku.shelter")
+    assert series.kind == "number" and series.points == 1
+    assert series.state["value"] == 25.0
     assert inst.context["series"]["value"] == 25.0
 
 
 async def test_writing_a_location_with_a_geofence(db):
     from app.models.series import SeriesPlace
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
     db.add(SeriesPlace(owner_user_id=user.id, key="zuhause", name="Zuhause",
                        lat=50.0825, lon=10.5663, radius_m=150))
     await db.flush()
@@ -77,7 +77,7 @@ async def test_writing_a_location_with_a_geofence(db):
 
 async def test_writing_text_takes_the_first_line_as_the_title(db):
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
 
     aus = await run_action(db, inst, _node({
         "series": "news.ki", "kind": "text", "body": "# Was heute war\n\nEiniges."}))
@@ -90,7 +90,7 @@ async def test_writing_text_takes_the_first_line_as_the_title(db):
 async def test_the_kind_comes_from_the_series_not_from_the_parameter(db):
     """Sonst zoege ein Ablauf einer bestehenden Reihe die Art unter den Fuessen weg."""
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
     await run_action(db, inst, _node({"series": "a.b", "kind": "number", "value": "1"}))
     await db.flush()
 
@@ -107,7 +107,7 @@ async def test_the_kind_comes_from_the_series_not_from_the_parameter(db):
 async def test_a_missing_value_is_not_an_error(db):
     """Ein Geraet meldet auch seinen Zustand, wenn es einen Wert gerade nicht kennt."""
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
 
     aus = await run_action(db, inst, _node({
         "series": "akku.shelter", "kind": "number", "value": "{{ gibt.es.nicht }}"}))
@@ -119,7 +119,7 @@ async def test_a_missing_value_is_not_an_error(db):
 
 async def test_required_makes_it_fail(db):
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
     try:
         await run_action(db, inst, _node({
             "series": "akku.shelter", "kind": "number", "value": "", "required": True}))
@@ -131,7 +131,7 @@ async def test_required_makes_it_fail(db):
 
 async def test_limits_throw_outliers_away(db):
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
     db.add(Series(owner_user_id=user.id, key="akku.x", kind="number",
                   settings={"min": 1, "max": 100}))
     await db.flush()
@@ -145,7 +145,7 @@ async def test_limits_throw_outliers_away(db):
 async def test_german_parameter_names_still_work(db):
     """`reihe`, `art`, `wert` bildet workflow_terms ohnehin ab."""
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
 
     aus = await run_action(db, inst, _node({"reihe": "temp.buero", "art": "number",
                                               "wert": "21.5", "quelle": "traccar"}))
@@ -155,7 +155,7 @@ async def test_german_parameter_names_still_work(db):
 
 async def test_a_text_series_prunes_by_keep(db):
     user = await make_user(db, "chef")
-    inst = await _lauf(db, user)
+    inst = await _run(db, user)
     db.add(Series(owner_user_id=user.id, key="news.kurz", kind="text",
                   settings={"keep": 2}))
     await db.flush()

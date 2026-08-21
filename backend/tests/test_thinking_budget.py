@@ -20,7 +20,7 @@ def _answer(text="fertig", *, stop="end_turn"):
             "usage": {"input_tokens": 10, "output_tokens": 5}}
 
 
-def _leer_abgeschnitten():
+def _empty_truncated():
     """The thinking used everything up: no text blocks, stop_reason=max_tokens."""
     return {"content": [], "stop_reason": "max_tokens",
             "usage": {"input_tokens": 10, "output_tokens": 4096}}
@@ -29,13 +29,13 @@ def _leer_abgeschnitten():
 class _Fake:
     """Collects the bodies and delivers given answers in order."""
 
-    def __init__(self, *antworten):
-        self.antworten = list(antworten)
+    def __init__(self, *replies):
+        self.replies = list(replies)
         self.bodies: list[dict] = []
 
     async def post(self, body, token):
         self.bodies.append(body)
-        return self.antworten.pop(0)
+        return self.replies.pop(0)
 
 
 async def _chat(monkeypatch, fake, **kw):
@@ -59,7 +59,7 @@ async def test_no_field_without_effort(monkeypatch):
 
 
 async def test_a_truncated_answer_is_rescued_without_thinking(monkeypatch):
-    fake = _Fake(_leer_abgeschnitten(), _answer("<review-ok/>"))
+    fake = _Fake(_empty_truncated(), _answer("<review-ok/>"))
     resp = await _chat(monkeypatch, fake, effort="medium")
     assert resp.text == "<review-ok/>"
     assert len(fake.bodies) == 2
@@ -71,13 +71,13 @@ async def test_a_truncated_answer_is_rescued_without_thinking(monkeypatch):
 
 async def test_a_high_level_is_dropped_on_the_rescue_attempt(monkeypatch):
     """`thinking: disabled` is a 400 above `high`: the level has to give way."""
-    fake = _Fake(_leer_abgeschnitten(), _answer())
+    fake = _Fake(_empty_truncated(), _answer())
     await _chat(monkeypatch, fake, effort="max")
     assert "output_config" not in fake.bodies[1]
 
 
 async def test_truncated_twice_reports_honestly(monkeypatch):
-    fake = _Fake(_leer_abgeschnitten(), _leer_abgeschnitten())
+    fake = _Fake(_empty_truncated(), _empty_truncated())
     with pytest.raises(ProviderError) as err:
         await _chat(monkeypatch, fake)
     assert "Even without thinking" in str(err.value)
@@ -87,10 +87,10 @@ async def test_truncated_twice_reports_honestly(monkeypatch):
 
 async def test_half_tool_arguments_count_as_truncated(monkeypatch):
     """The second case: text was already there, but the tool call stayed incomplete."""
-    halb = {"content": [{"type": "text", "text": "ich schaue mal"},
+    half = {"content": [{"type": "text", "text": "ich schaue mal"},
                         {"type": "tool_use", "id": "t1", "name": "mcp__fs_read", "input": {}}],
             "stop_reason": "max_tokens", "usage": {}}
-    fake = _Fake(halb, _answer())
+    fake = _Fake(half, _answer())
     resp = await _chat(monkeypatch, fake)
     assert resp.text == "fertig"
     assert fake.bodies[1]["thinking"] == {"type": "disabled"}

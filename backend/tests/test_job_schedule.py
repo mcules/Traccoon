@@ -13,7 +13,7 @@ import datetime as dt
 import pytest
 
 from app.models.ops import Job
-from app.services.scheduler import ZEITPLAN_KINDS, _due, _seconds
+from app.services.scheduler import SCHEDULE_KINDS, _due, _seconds
 from conftest import auth, make_user
 
 
@@ -81,7 +81,7 @@ async def test_a_job_with_a_kind_instead_of_a_schedule_is_rejected(client, db):
 
 async def test_a_correct_schedule_passes(client, db):
     user = await make_user(db, "chef")
-    for kind in ZEITPLAN_KINDS:
+    for kind in SCHEDULE_KINDS:
         plan = {"cron": "0 6 * * *", "interval": "900",
                 "once": "2026-12-24T18:00:00"}[kind]
         r = await client.post("/jobs", headers=auth(user), json={

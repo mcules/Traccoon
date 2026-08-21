@@ -7,7 +7,7 @@ Werten, verschachtelt) und dass die Umstellung nichts von dem verliert, was die 
 konnten.
 """
 import pytest
-from app.api.ops import _context, _referenz
+from app.api.ops import _context, _reference
 from app.models.assistant import AssistantTask
 from app.models.notification import Notification
 from app.models.ops import WebhookSub
@@ -15,7 +15,7 @@ from app.models.ticket import Issue
 from app.models.workflow import WorkflowDefinition
 from sqlalchemy import select
 
-from conftest import make_project, make_user, make_webhook, melde
+from conftest import make_project, make_user, make_webhook, report
 
 
 @pytest.fixture
@@ -54,11 +54,11 @@ def test_fixed_values_may_be_filled_from_the_payload():
 
 def test_a_reference_built_from_several_fields():
     """Ein fremdes System schickt selten eine eigene Id — dann setzt man sie zusammen."""
-    assert _referenz(_sub(ref_field="{account}:{uid}"), {"account": "privat", "uid": 4}) \
+    assert _reference(_sub(ref_field="{account}:{uid}"), {"account": "privat", "uid": 4}) \
         == "privat:4"
-    assert _referenz(_sub(ref_field="event.id"), {"event": {"id": 12}}) == "12"
-    assert _referenz(_sub(ref_field=""), {"a": 1}) is None
-    assert _referenz(_sub(ref_field="fehlt"), {"a": 1}) is None
+    assert _reference(_sub(ref_field="event.id"), {"event": {"id": 12}}) == "12"
+    assert _reference(_sub(ref_field=""), {"a": 1}) is None
+    assert _reference(_sub(ref_field="fehlt"), {"a": 1}) is None
 
 
 # ── Umstellung der alten Modi ────────────────────────────────────────────────
@@ -68,7 +68,7 @@ async def test_the_assistant_becomes_a_flow(db, owner, redis_stub):
                              auto_run=True, prompt_tmpl="Sensor {entity_id} ist leer.")
     assert sub.mode == "workflow" and sub.workflow_definition_id
 
-    await melde(db, sub, {"entity_id": "sensor.tuer"})
+    await report(db, sub, {"entity_id": "sensor.tuer"})
     task = (await db.execute(select(AssistantTask))).scalars().one()
     assert task.meta["agent"] == "hausmeister"
     # Der Prompt wird zum Auftragstext, und die Platzhalter füllt jetzt der Ablauf.
@@ -80,7 +80,7 @@ async def test_the_assistant_becomes_a_flow(db, owner, redis_stub):
 async def test_without_auto_run_the_task_waits(db, owner, redis_stub):
     sub = await make_webhook(db, owner, "post", mode="assistant", agent="assistent",
                              auto_run=False, prompt_tmpl="Schau dir {sache} an.")
-    await melde(db, sub, {"sache": "das Paket"})
+    await report(db, sub, {"sache": "das Paket"})
     task = (await db.execute(select(AssistantTask))).scalars().one()
     assert task.status == "new"
 
@@ -90,7 +90,7 @@ async def test_a_report_becomes_a_flow(db, owner):
                              title_template="Alarm {ort}", body_template="{text}")
     assert sub.mode == "workflow"
 
-    await melde(db, sub, {"ort": "Keller", "text": "Wasser"})
+    await report(db, sub, {"ort": "Keller", "text": "Wasser"})
     karte = (await db.execute(select(Notification))).scalars().one()
     assert karte.title == "Alarm Keller" and karte.body == "Wasser"
     assert karte.user_id == owner.id
@@ -100,22 +100,22 @@ async def test_a_ticket_becomes_a_flow(db, owner):
     from app.models.enums import StatusCategory
     from app.models.ticket import IssueCounter, IssueType, WorkflowStatus
 
-    projekt = await make_project(db, "WEB", "Web")
+    project = await make_project(db, "WEB", "Web")
     db.add_all([
-        IssueType(project_id=projekt.id, name="Aufgabe"),
-        WorkflowStatus(project_id=projekt.id, name="To Do", category=StatusCategory.todo,
+        IssueType(project_id=project.id, name="Aufgabe"),
+        WorkflowStatus(project_id=project.id, name="To Do", category=StatusCategory.todo,
                        order=0),
-        IssueCounter(project_id=projekt.id, last_number=0),
+        IssueCounter(project_id=project.id, last_number=0),
     ])
     await db.commit()
-    sub = await make_webhook(db, owner, "anfrage", mode="task", project_id=projekt.id,
+    sub = await make_webhook(db, owner, "anfrage", mode="task", project_id=project.id,
                              title_template="{betreff}", body_template="{text}")
     assert sub.mode == "workflow"
 
-    await melde(db, sub, {"betreff": "Seite kaputt", "text": "500 beim Speichern"})
+    await report(db, sub, {"betreff": "Seite kaputt", "text": "500 beim Speichern"})
     issue = (await db.execute(select(Issue))).scalars().one()
     assert issue.summary == "Seite kaputt" and issue.description == "500 beim Speichern"
-    assert issue.project_id == projekt.id
+    assert issue.project_id == project.id
 
 
 async def test_mail_reports_an_event_instead_of_acting(db, owner):
@@ -159,9 +159,9 @@ async def test_the_name_describes_the_matter_not_the_trigger(db, owner, redis_st
 
 async def test_the_key_dodges_a_collision(db, owner, redis_stub):
     first = await make_webhook(db, owner, "alarm", mode="notify", body_template="a")
-    zweite = await make_webhook(db, owner, "alarm", mode="notify", body_template="b")
+    second = await make_webhook(db, owner, "alarm", mode="notify", body_template="b")
     keys = {(await db.get(WorkflowDefinition, s.workflow_definition_id)).key
-            for s in (first, zweite)}
+            for s in (first, second)}
     assert keys == {"alarm", "alarm-2"}
 
 
@@ -180,8 +180,8 @@ async def test_a_taken_key_is_refused(client, db, owner):
     from conftest import auth
 
     first = await make_webhook(db, owner, "eins", mode="notify", body_template="x")
-    zweite = await make_webhook(db, owner, "zwei", mode="notify", body_template="x")
-    r = await client.put(f"/workflows/{zweite.workflow_definition_id}", headers=auth(owner),
+    second = await make_webhook(db, owner, "zwei", mode="notify", body_template="x")
+    r = await client.put(f"/workflows/{second.workflow_definition_id}", headers=auth(owner),
                          json={"key": "eins"})
     assert r.status_code == 400
     await db.refresh(await db.get(WorkflowDefinition, first.workflow_definition_id))

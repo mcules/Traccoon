@@ -61,19 +61,19 @@ async def resolve(db: AsyncSession, name: str, *, project_id: int | None = None,
     """Destination by name: project, user, system wide. Only enabled destinations."""
     if not name:
         return None
-    bereiche = [Destination.user_id.is_(None) & Destination.project_id.is_(None)]
+    areas = [Destination.user_id.is_(None) & Destination.project_id.is_(None)]
     if owner_id:
-        bereiche.append((Destination.user_id == owner_id) & Destination.project_id.is_(None))
+        areas.append((Destination.user_id == owner_id) & Destination.project_id.is_(None))
     if project_id:
-        bereiche.append(Destination.project_id == project_id)
+        areas.append(Destination.project_id == project_id)
     rows = (await db.execute(
         select(Destination).where(
-            Destination.name == name, Destination.enabled.is_(True), or_(*bereiche),
+            Destination.name == name, Destination.enabled.is_(True), or_(*areas),
         ))).scalars().all()
-    return sorted(rows, key=_rang)[0] if rows else None
+    return sorted(rows, key=_rank)[0] if rows else None
 
 
-def _rang(d: Destination) -> int:
+def _rank(d: Destination) -> int:
     """Precedence with the same name: project (0) before user (1) before system wide (2)."""
     if d.project_id is not None:
         return 0
@@ -84,19 +84,19 @@ async def visible(db: AsyncSession, *, project_id: int | None = None,
                   owner_id: int | None = None, agents_only: bool = False) -> list[Destination]:
     """All destinations callable in this context (the primary one per name)."""
     rows = (await db.execute(select(Destination).order_by(Destination.name))).scalars().all()
-    passend = [
+    matching = [
         d for d in rows
         if d.enabled
         and (d.project_id == project_id if d.project_id is not None
              else (d.user_id in (None, owner_id)))
         and (d.allow_agents or not agents_only)
     ]
-    beste: dict[str, Destination] = {}
-    for d in passend:
-        cur = beste.get(d.name)
-        if cur is None or _rang(d) < _rang(cur):
-            beste[d.name] = d
-    return sorted(beste.values(), key=lambda d: d.name)
+    best: dict[str, Destination] = {}
+    for d in matching:
+        cur = best.get(d.name)
+        if cur is None or _rank(d) < _rank(cur):
+            best[d.name] = d
+    return sorted(best.values(), key=lambda d: d.name)
 
 
 # ── Authentifizierung ────────────────────────────────────────────────────────
@@ -172,10 +172,10 @@ def build_url(base_url: str, path: str = "", query: dict | None = None) -> str:
     elif p:
         base = f"{base}{p}"
     if query:
-        sauber = {k: v for k, v in query.items() if v is not None}
-        if sauber:
-            trenner = "&" if "?" in base else "?"
-            base = f"{base}{trenner}{urlencode(sauber, doseq=True)}"
+        clean = {k: v for k, v in query.items() if v is not None}
+        if clean:
+            separator = "&" if "?" in base else "?"
+            base = f"{base}{separator}{urlencode(clean, doseq=True)}"
     return base
 
 
@@ -194,21 +194,21 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
     header = {**(dest.default_headers or {}), **(headers or {})}
     q = dict(query or {})
 
-    daten: bytes | None = None
+    data: bytes | None = None
     if verb not in BODYLESS and body is not None:
         if isinstance(body, (dict, list)):
-            daten = json.dumps(body).encode()
+            data = json.dumps(body).encode()
             header.setdefault("Content-Type", "application/json")
         else:
-            daten = str(body).encode()
+            data = str(body).encode()
             header.setdefault("Content-Type", "text/plain; charset=utf-8")
 
-    header, q, basic = await _apply_auth(db, dest, header, q, daten or b"")
+    header, q, basic = await _apply_auth(db, dest, header, q, data or b"")
     url = build_url(dest.base_url, path, q)
 
     async with httpx.AsyncClient(verify=dest.verify_tls, follow_redirects=True) as client:
         resp = await client.request(
-            verb, url, headers=header, content=daten, auth=basic,
+            verb, url, headers=header, content=data, auth=basic,
             timeout=timeout or dest.timeout_sec or 30)
 
     dest.last_used_at = _now()

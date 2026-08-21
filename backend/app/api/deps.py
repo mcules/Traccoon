@@ -9,7 +9,7 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..core.security import decode_access_token
 from ..db import get_session
 from ..models.enums import GlobalRole, ProjectRole, UserStatus
@@ -48,13 +48,13 @@ async def get_current_user(
         if iat < int(user.password_changed_at.timestamp()):
             raise _unauth("Token expired by password change")
     if user.status != UserStatus.active:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.account_not_active", "Account not active")
+        raise Error(status.HTTP_403_FORBIDDEN, "err.account_not_active", "Account not active")
     return user
 
 
 async def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.global_role != GlobalRole.admin:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.admin_required", "Admin required")
+        raise Error(status.HTTP_403_FORBIDDEN, "err.admin_required", "Admin required")
     return user
 
 
@@ -164,7 +164,7 @@ async def build_access(project: Project, user: User, db: AsyncSession) -> Access
     if user.global_role == GlobalRole.admin:
         return Access(user, project, ProjectRole.owner, True, False)
     # Strict isolation: a foreign project is a 404 (not a 403)
-    raise Fehler(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
+    raise Error(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
 
 
 def _find_inherited_membership_bulk(
@@ -224,15 +224,15 @@ async def get_project_access(
 ) -> Access:
     project = await db.get(Project, project_id)
     if project is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
     return await build_access(project, user, db)
 
 
 def require_role(minimum: ProjectRole):
     async def _dep(access: Access = Depends(get_project_access)) -> Access:
         if not access.has_role(minimum):
-            raise Fehler(status.HTTP_403_FORBIDDEN, "err.role_required",
-                         "Role {rolle} is required", rolle=minimum.value)
+            raise Error(status.HTTP_403_FORBIDDEN, "err.role_required",
+                         "Role {rolle} is required", role=minimum.value)
         return access
     return _dep
 
@@ -240,6 +240,6 @@ def require_role(minimum: ProjectRole):
 async def require_ai_assign(access: Access = Depends(get_project_access)) -> Access:
     """The AI right: the precondition for the PM chat and for assigning an agent."""
     if not access.ai_assign:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.ai_right_ai_assign_required",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.ai_right_ai_assign_required",
                      "The AI right (ai_assign) is required")
     return access

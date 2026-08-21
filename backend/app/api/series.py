@@ -15,13 +15,13 @@ from pydantic import BaseModel
 from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..core.security import decrypt_secret
 from ..db import get_session
 from ..models.enums import GlobalRole
 from ..models.series import KINDS, Series, SeriesPlace, SeriesPoint, SeriesShare
 from ..models.user import User
-from ..services import series as dienst
+from ..services import series as service
 from ..services import series_formats
 from .deps import get_current_user
 
@@ -30,22 +30,22 @@ router = APIRouter(tags=["series"])
 
 # ── Aufnahme ─────────────────────────────────────────────────────────────────
 
-async def _series_zum_token(db: AsyncSession, token: str) -> Series:
-    reihe = (await db.execute(select(Series).where(
-        Series.token_hash == dienst.token_hash(token)))).scalar_one_or_none()
-    if reihe is None or not reihe.active:
-        raise Fehler(404, "err.unknown_route", "Unknown route")
-    return reihe
+async def _series_to_token(db: AsyncSession, token: str) -> Series:
+    series = (await db.execute(select(Series).where(
+        Series.token_hash == service.token_hash(token)))).scalar_one_or_none()
+    if series is None or not series.active:
+        raise Error(404, "err.unknown_route", "Unknown route")
+    return series
 
 
 async def _ingest(db: AsyncSession, token: str, payload, query: dict) -> dict:
-    reihe = await _series_zum_token(db, token)
+    series = await _series_to_token(db, token)
     points = series_formats.normalise(payload, query)
     if not points:
         # Kein Fehler: Ein Geraet meldet auch mal seinen Zustand ohne Position, und eine 400
         # wuerde es in eine Wiederholungsschleife schicken.
         return {"accepted": 0, "skipped": 0, "still": 0, "ignored": True}
-    result = await dienst.ingest(db, reihe, points)
+    result = await service.ingest(db, series, points)
     await db.commit()
     return result
 
@@ -88,118 +88,118 @@ class SeriesPatch(BaseModel):
     active: bool | None = None
 
 
-def _ist_admin(user: User) -> bool:
+def _is_admin(user: User) -> bool:
     return user.global_role == GlobalRole.admin
 
 
-def _out(r: Series, *, owner: str = "", eigen: bool = True) -> dict:
+def _out(r: Series, *, owner: str = "", own: bool = True) -> dict:
     return {
         "id": r.id, "key": r.key, "kind": r.kind, "name": r.name or r.key,
         "description": r.description, "color": r.color, "settings": r.settings or {},
         "state": r.state or {}, "points": r.points or 0, "active": r.active,
         "expected_rows": r.expected_rows or 0, "store_id": r.store_id,
         "last_at": r.last_at.isoformat() if r.last_at else None,
-        "owner_user_id": r.owner_user_id, "own": eigen, "owner": owner,
+        "owner_user_id": r.owner_user_id, "own": own, "owner": owner,
         # Das Token selbst steht hier nie — nur, ob eins vergeben ist.
         "has_token": bool(r.token_hash),
     }
 
 
-async def _meine(db: AsyncSession, user: User, key: str) -> Series:
+async def _my(db: AsyncSession, user: User, key: str) -> Series:
     """Eine Reihe, die dieser Mensch sehen darf — sonst 404 statt 403 (nichts verraten)."""
-    reihe = (await db.execute(select(Series).where(
-        Series.key == key, dienst.visible(user.id, _ist_admin(user))))).scalar_one_or_none()
-    if reihe is None:
-        raise Fehler(404, "err.series_not_found", "Series '{reihe}' not found", reihe=key)
-    return reihe
+    series = (await db.execute(select(Series).where(
+        Series.key == key, service.visible(user.id, _is_admin(user))))).scalar_one_or_none()
+    if series is None:
+        raise Error(404, "err.series_not_found", "Series '{reihe}' not found", series=key)
+    return series
 
 
-async def _namen(db: AsyncSession, ids: set[int]) -> dict[int, str]:
+async def _names(db: AsyncSession, ids: set[int]) -> dict[int, str]:
     if not ids:
         return {}
     rows = (await db.execute(select(User.id, User.display_name, User.username)
                              .where(User.id.in_(ids)))).all()
-    return {i: (anzeige or user) for i, anzeige, user in rows}
+    return {i: (display or user) for i, display, user in rows}
 
 
 @router.get("/series")
 async def list_series(kind: str | None = Query(None), user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    question = select(Series).where(dienst.visible(user.id, _ist_admin(user)))
+    question = select(Series).where(service.visible(user.id, _is_admin(user)))
     if kind:
         question = question.where(Series.kind == kind)
     series = (await db.execute(question.order_by(Series.key))).scalars().all()
-    namen = await _namen(db, {r.owner_user_id for r in series
+    names = await _names(db, {r.owner_user_id for r in series
                               if r.owner_user_id and r.owner_user_id != user.id})
-    return [_out(r, eigen=r.owner_user_id == user.id,
-                 owner=namen.get(r.owner_user_id or 0, "")) for r in series]
+    return [_out(r, own=r.owner_user_id == user.id,
+                 owner=names.get(r.owner_user_id or 0, "")) for r in series]
 
 
 @router.post("/series", status_code=201)
 async def create_series(data: SeriesIn, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
     if data.kind not in KINDS:
-        raise Fehler(400, "err.unknown_series_kind", "Unknown kind '{kind}'", kind=data.kind)
+        raise Error(400, "err.unknown_series_kind", "Unknown kind '{kind}'", kind=data.kind)
     key = data.key.strip()
     if not key:
-        raise Fehler(400, "err.series_key_required", "A key is required")
-    doppelt = (await db.execute(select(Series).where(
+        raise Error(400, "err.series_key_required", "A key is required")
+    duplicate = (await db.execute(select(Series).where(
         Series.owner_user_id == user.id, Series.key == key))).scalar_one_or_none()
-    if doppelt is not None:
-        raise Fehler(409, "err.series_exists", "Series '{reihe}' already exists",
-                     reihe=key)
+    if duplicate is not None:
+        raise Error(409, "err.series_exists", "Series '{reihe}' already exists",
+                     series=key)
 
-    reihe = Series(owner_user_id=user.id, key=key, kind=data.kind, name=data.name,
+    series = Series(owner_user_id=user.id, key=key, kind=data.kind, name=data.name,
                    description=data.description, color=data.color,
                    expected_rows=data.expected_rows, settings=data.settings or {})
-    db.add(reihe)
+    db.add(series)
     await db.commit()
-    await db.refresh(reihe)
-    return _out(reihe)
+    await db.refresh(series)
+    return _out(series)
 
 
 @router.put("/series/{key:path}")
 async def update_series(key: str, data: SeriesPatch, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    reihe = await _meine(db, user, key)
-    if not await dienst.may_update(db, reihe, user.id, _ist_admin(user)):
-        raise Fehler(403, "err.series_read_only", "You may only read this series")
+    series = await _my(db, user, key)
+    if not await service.may_update(db, series, user.id, _is_admin(user)):
+        raise Error(403, "err.series_read_only", "You may only read this series")
     fields = data.model_dump(exclude_unset=True)
 
     # Umbenennen ist erlaubt, aber es ist kein harmloses Feld: Ablaeufe nennen die Reihe beim
     # Schluessel. Wer umbenennt, muss sie mitziehen — deshalb steht der Hinweis auch in der
     # Oberflaeche. Verhindert wird nur, was die Datenbank ohnehin nicht traegt.
-    neuer = (fields.pop("key", None) or "").strip()
-    if neuer and neuer != reihe.key:
-        belegt = (await db.execute(select(Series).where(
-            Series.owner_user_id == reihe.owner_user_id,
-            Series.key == neuer))).scalar_one_or_none()
-        if belegt is not None:
-            raise Fehler(409, "err.series_exists", "Series '{reihe}' already exists",
-                         reihe=neuer)
-        reihe.key = neuer
+    new = (fields.pop("key", None) or "").strip()
+    if new and new != series.key:
+        taken = (await db.execute(select(Series).where(
+            Series.owner_user_id == series.owner_user_id,
+            Series.key == new))).scalar_one_or_none()
+        if taken is not None:
+            raise Error(409, "err.series_exists", "Series '{reihe}' already exists",
+                         series=new)
+        series.key = new
 
     for field, value in fields.items():
-        setattr(reihe, field, value)
+        setattr(series, field, value)
     await db.commit()
-    await db.refresh(reihe)
-    return _out(reihe)
+    await db.refresh(series)
+    return _out(series)
 
 
 @router.post("/series/{key:path}/token")
-async def neues_token(key: str, user: User = Depends(get_current_user),
+async def new_token(key: str, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     """Ein frisches Aufnahme-Token. Das alte gilt ab sofort nicht mehr."""
-    reihe = await _meine(db, user, key)
-    if not await dienst.may_update(db, reihe, user.id, _ist_admin(user)):
-        raise Fehler(403, "err.series_read_only", "You may only read this series")
-    roh = dienst.neuer_token(reihe)
+    series = await _my(db, user, key)
+    if not await service.may_update(db, series, user.id, _is_admin(user)):
+        raise Error(403, "err.series_read_only", "You may only read this series")
+    raw = service.new_token(series)
     await db.commit()
-    return {"token": roh, "path": f"/api/ingest/{roh}"}
+    return {"token": raw, "path": f"/api/ingest/{raw}"}
 
 
 @router.get("/series/{key:path}/token")
-async def zeige_token(key: str, user: User = Depends(get_current_user),
+async def show_token(key: str, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     """Das vergebene Token noch einmal ansehen.
 
@@ -207,13 +207,13 @@ async def zeige_token(key: str, user: User = Depends(get_current_user),
     und "einmal sehen und dann nie wieder" heisst in der Praxis, dass man es jedesmal neu
     vergibt und dabei die alte Einrichtung abraeumt.
     """
-    reihe = await _meine(db, user, key)
-    if reihe.owner_user_id != user.id and not _ist_admin(user):
-        raise Fehler(403, "err.series_read_only", "You may only read this series")
-    if not reihe.token_enc:
-        raise Fehler(404, "err.no_token", "No token set")
-    roh = decrypt_secret(reihe.token_enc)
-    return {"token": roh, "path": f"/api/ingest/{roh}"}
+    series = await _my(db, user, key)
+    if series.owner_user_id != user.id and not _is_admin(user):
+        raise Error(403, "err.series_read_only", "You may only read this series")
+    if not series.token_enc:
+        raise Error(404, "err.no_token", "No token set")
+    raw = decrypt_secret(series.token_enc)
+    return {"token": raw, "path": f"/api/ingest/{raw}"}
 
 
 # ── Punkte ───────────────────────────────────────────────────────────────────
@@ -228,37 +228,37 @@ def _point_out(p: SeriesPoint, kind: str) -> dict:
 
 
 @router.get("/series/{key:path}/points")
-async def list_points(key: str, von: str | None = Query(None), bis: str | None = Query(None),
+async def list_points(key: str, von: str | None = Query(None), to: str | None = Query(None),
                       limit: int = Query(2000, ge=1, le=50000),
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    reihe = await _meine(db, user, key)
-    question = select(SeriesPoint).where(SeriesPoint.series_id == reihe.id)
+    series = await _my(db, user, key)
+    question = select(SeriesPoint).where(SeriesPoint.series_id == series.id)
     if von and (a := series_formats.moment(von)):
         question = question.where(SeriesPoint.ts >= a)
-    if bis and (b := series_formats.moment(bis)):
+    if to and (b := series_formats.moment(to)):
         question = question.where(SeriesPoint.ts <= b)
     # Neueste zuerst holen und dann drehen: Bei einer Begrenzung will man die juengsten
     # Punkte, gezeichnet werden sie aber in der Reihenfolge der Zeit.
     points = (await db.execute(
         question.order_by(SeriesPoint.ts.desc()).limit(limit))).scalars().all()
-    return {"series": _out(reihe, eigen=reihe.owner_user_id == user.id),
-            "points": [_point_out(p, reihe.kind) for p in reversed(points)]}
+    return {"series": _out(series, own=series.owner_user_id == user.id),
+            "points": [_point_out(p, series.kind) for p in reversed(points)]}
 
 
 @router.delete("/series/{key:path}/points/{point_id}", status_code=204)
 async def delete_point(key: str, point_id: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    reihe = await _meine(db, user, key)
-    if not await dienst.may_update(db, reihe, user.id, _ist_admin(user)):
-        raise Fehler(403, "err.series_read_only", "You may only read this series")
-    punkt = await db.get(SeriesPoint, point_id)
-    if punkt is None or punkt.series_id != reihe.id:
-        raise Fehler(404, "err.point_not_found", "Point not found")
-    await db.delete(punkt)
+    series = await _my(db, user, key)
+    if not await service.may_update(db, series, user.id, _is_admin(user)):
+        raise Error(403, "err.series_read_only", "You may only read this series")
+    point = await db.get(SeriesPoint, point_id)
+    if point is None or point.series_id != series.id:
+        raise Error(404, "err.point_not_found", "Point not found")
+    await db.delete(point)
     await db.flush()
-    reihe.points = (await db.execute(select(func.count()).select_from(SeriesPoint)
-                                     .where(SeriesPoint.series_id == reihe.id))).scalar() or 0
+    series.points = (await db.execute(select(func.count()).select_from(SeriesPoint)
+                                     .where(SeriesPoint.series_id == series.id))).scalar() or 0
     await db.commit()
 
 
@@ -272,11 +272,11 @@ async def live(kind: str = Query("location"), user: User = Depends(get_current_u
     """
     series = (await db.execute(select(Series).where(
         Series.kind == kind, Series.active.is_(True),
-        dienst.visible(user.id, _ist_admin(user))).order_by(Series.key))).scalars().all()
-    namen = await _namen(db, {r.owner_user_id for r in series
+        service.visible(user.id, _is_admin(user))).order_by(Series.key))).scalars().all()
+    names = await _names(db, {r.owner_user_id for r in series
                               if r.owner_user_id and r.owner_user_id != user.id})
-    return [_out(r, eigen=r.owner_user_id == user.id,
-                 owner=namen.get(r.owner_user_id or 0, "")) for r in series]
+    return [_out(r, own=r.owner_user_id == user.id,
+                 owner=names.get(r.owner_user_id or 0, "")) for r in series]
 
 
 # ── Orte ─────────────────────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ class PlaceIn(BaseModel):
     series_key: str | None = None
 
 
-def _ort_out(o: SeriesPlace, series_key: str = "") -> dict:
+def _place_out(o: SeriesPlace, series_key: str = "") -> dict:
     return {"id": o.id, "key": o.key, "name": o.name or o.key, "lat": o.lat, "lon": o.lon,
             "radius_m": o.radius_m, "color": o.color, "notify": o.notify,
             "series_key": series_key}
@@ -301,9 +301,9 @@ def _ort_out(o: SeriesPlace, series_key: str = "") -> dict:
 @router.get("/places")
 async def list_places(user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    orte = (await db.execute(select(SeriesPlace).where(
+    places = (await db.execute(select(SeriesPlace).where(
         SeriesPlace.owner_user_id == user.id).order_by(SeriesPlace.key))).scalars().all()
-    return [_ort_out(o) for o in orte]
+    return [_place_out(o) for o in places]
 
 
 @router.post("/places", status_code=201)
@@ -311,41 +311,41 @@ async def create_place(data: PlaceIn, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     series_id = None
     if data.series_key:
-        series_id = (await _meine(db, user, data.series_key)).id
-    doppelt = (await db.execute(select(SeriesPlace).where(
+        series_id = (await _my(db, user, data.series_key)).id
+    duplicate = (await db.execute(select(SeriesPlace).where(
         SeriesPlace.owner_user_id == user.id,
         SeriesPlace.key == data.key))).scalar_one_or_none()
-    if doppelt is not None:
-        raise Fehler(409, "err.place_exists", "Place '{ort}' already exists", ort=data.key)
-    ort = SeriesPlace(owner_user_id=user.id, series_id=series_id, key=data.key, name=data.name,
+    if duplicate is not None:
+        raise Error(409, "err.place_exists", "Place '{ort}' already exists", place=data.key)
+    place = SeriesPlace(owner_user_id=user.id, series_id=series_id, key=data.key, name=data.name,
                       lat=data.lat, lon=data.lon, radius_m=data.radius_m, color=data.color,
                       notify=data.notify)
-    db.add(ort)
+    db.add(place)
     await db.commit()
-    await db.refresh(ort)
-    return _ort_out(ort)
+    await db.refresh(place)
+    return _place_out(place)
 
 
 @router.put("/places/{place_id}")
 async def update_place(place_id: int, data: PlaceIn, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    ort = await db.get(SeriesPlace, place_id)
-    if ort is None or ort.owner_user_id != user.id:
-        raise Fehler(404, "err.place_not_found", "Place not found")
+    place = await db.get(SeriesPlace, place_id)
+    if place is None or place.owner_user_id != user.id:
+        raise Error(404, "err.place_not_found", "Place not found")
     for field in ("key", "name", "lat", "lon", "radius_m", "color", "notify"):
-        setattr(ort, field, getattr(data, field))
+        setattr(place, field, getattr(data, field))
     await db.commit()
-    await db.refresh(ort)
-    return _ort_out(ort)
+    await db.refresh(place)
+    return _place_out(place)
 
 
 @router.delete("/places/{place_id}", status_code=204)
 async def delete_place(place_id: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    ort = await db.get(SeriesPlace, place_id)
-    if ort is None or ort.owner_user_id != user.id:
-        raise Fehler(404, "err.place_not_found", "Place not found")
-    await db.delete(ort)
+    place = await db.get(SeriesPlace, place_id)
+    if place is None or place.owner_user_id != user.id:
+        raise Error(404, "err.place_not_found", "Place not found")
+    await db.delete(place)
     await db.commit()
 
 
@@ -359,36 +359,36 @@ class ShareIn(BaseModel):
 @router.get("/series/{key:path}/shares")
 async def list_shares(key: str, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    reihe = await _meine(db, user, key)
+    series = await _my(db, user, key)
     rows = (await db.execute(select(SeriesShare).where(
-        SeriesShare.series_id == reihe.id))).scalars().all()
-    namen = await _namen(db, {s.user_id for s in rows})
-    return [{"id": s.id, "user_id": s.user_id, "username": namen.get(s.user_id, ""),
+        SeriesShare.series_id == series.id))).scalars().all()
+    names = await _names(db, {s.user_id for s in rows})
+    return [{"id": s.id, "user_id": s.user_id, "username": names.get(s.user_id, ""),
              "level": s.level} for s in rows]
 
 
 @router.post("/series/{key:path}/shares", status_code=201)
 async def create_share(key: str, data: ShareIn, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    reihe = await _meine(db, user, key)
+    series = await _my(db, user, key)
     # Weiterreichen darf nur, wem sie gehoert: Sonst gaebe ein `manage` das Recht, die Reihe
     # an beliebig viele weitere Menschen zu verteilen.
-    if reihe.owner_user_id != user.id and not _ist_admin(user):
-        raise Fehler(403, "err.series_not_yours", "Only the owner may share this series")
+    if series.owner_user_id != user.id and not _is_admin(user):
+        raise Error(403, "err.series_not_yours", "Only the owner may share this series")
     if data.level not in ("view", "manage"):
-        raise Fehler(400, "err.unknown_level", "Unknown level '{level}'", level=data.level)
-    if data.user_id == reihe.owner_user_id:
-        raise Fehler(400, "err.share_to_owner", "The series already belongs to this person")
+        raise Error(400, "err.unknown_level", "Unknown level '{level}'", level=data.level)
+    if data.user_id == series.owner_user_id:
+        raise Error(400, "err.share_to_owner", "The series already belongs to this person")
     if await db.get(User, data.user_id) is None:
-        raise Fehler(404, "err.user_not_found", "User not found")
-    vorhanden = (await db.execute(select(SeriesShare).where(
-        SeriesShare.series_id == reihe.id,
+        raise Error(404, "err.user_not_found", "User not found")
+    existing = (await db.execute(select(SeriesShare).where(
+        SeriesShare.series_id == series.id,
         SeriesShare.user_id == data.user_id))).scalar_one_or_none()
-    if vorhanden is not None:
-        vorhanden.level = data.level
+    if existing is not None:
+        existing.level = data.level
         await db.commit()
-        return {"id": vorhanden.id, "user_id": vorhanden.user_id, "level": vorhanden.level}
-    grant = SeriesShare(series_id=reihe.id, user_id=data.user_id, level=data.level)
+        return {"id": existing.id, "user_id": existing.user_id, "level": existing.level}
+    grant = SeriesShare(series_id=series.id, user_id=data.user_id, level=data.level)
     db.add(grant)
     await db.commit()
     await db.refresh(grant)
@@ -398,11 +398,11 @@ async def create_share(key: str, data: ShareIn, user: User = Depends(get_current
 @router.delete("/series/{key:path}/shares/{share_id}", status_code=204)
 async def delete_share(key: str, share_id: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    reihe = await _meine(db, user, key)
-    if reihe.owner_user_id != user.id and not _ist_admin(user):
-        raise Fehler(403, "err.series_not_yours", "Only the owner may share this series")
+    series = await _my(db, user, key)
+    if series.owner_user_id != user.id and not _is_admin(user):
+        raise Error(403, "err.series_not_yours", "Only the owner may share this series")
     await db.execute(sa_delete(SeriesShare).where(
-        SeriesShare.id == share_id, SeriesShare.series_id == reihe.id))
+        SeriesShare.id == share_id, SeriesShare.series_id == series.id))
     await db.commit()
 
 
@@ -412,8 +412,8 @@ async def delete_share(key: str, share_id: int, user: User = Depends(get_current
 @router.delete("/series/{key:path}", status_code=204)
 async def delete_series(key: str, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    reihe = await _meine(db, user, key)
-    if reihe.owner_user_id != user.id and not _ist_admin(user):
-        raise Fehler(403, "err.series_read_only", "You may only read this series")
-    await db.delete(reihe)
+    series = await _my(db, user, key)
+    if series.owner_user_id != user.id and not _is_admin(user):
+        raise Error(403, "err.series_read_only", "You may only read this series")
+    await db.delete(series)
     await db.commit()

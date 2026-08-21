@@ -103,8 +103,8 @@ def test_no_two_nodes_on_the_same_spot(slot):
     if slot == "ticket_lifecycle":
         pytest.skip("cap_baseline/st_approved liegen aufeinander — Altbestand, eigener Fall")
     graph = BUILDERS[slot]()
-    stellen: dict[tuple, list[str]] = {}
+    spots: dict[tuple, list[str]] = {}
     for n in graph["nodes"]:
-        stellen.setdefault((n["position"]["x"], n["position"]["y"]), []).append(n["id"])
-    doppelt = {k: v for k, v in stellen.items() if len(v) > 1}
-    assert not doppelt, f"Knoten liegen aufeinander: {doppelt}"
+        spots.setdefault((n["position"]["x"], n["position"]["y"]), []).append(n["id"])
+    duplicate = {k: v for k, v in spots.items() if len(v) > 1}
+    assert not duplicate, f"Knoten liegen aufeinander: {duplicate}"

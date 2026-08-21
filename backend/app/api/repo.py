@@ -16,7 +16,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.enums import ProjectRole
 from ..worker import gitops
@@ -36,10 +36,10 @@ def _workdir(project) -> str:
 
 def _require_git(project) -> str:
     if not project.git_enabled:
-        raise Fehler(409, "err.git_not_active_project", "Git is not active for this project")
+        raise Error(409, "err.git_not_active_project", "Git is not active for this project")
     wd = _workdir(project)
     if not os.path.isdir(os.path.join(wd, ".git")):
-        raise Fehler(409, "err.repo_not_ready",
+        raise Error(409, "err.repo_not_ready",
                      "The repository is not ready yet (no clone or run yet)")
     return wd
 
@@ -49,10 +49,10 @@ def _safe_path(workdir: str, rel: str) -> str:
     root = os.path.realpath(workdir)
     full = os.path.realpath(os.path.join(root, (rel or "").lstrip("/")))
     if full != root and not full.startswith(root + os.sep):
-        raise Fehler(400, "err.invalid_path", "Invalid path")
+        raise Error(400, "err.invalid_path", "Invalid path")
     first = os.path.relpath(full, root).split(os.sep)[0]
     if first == ".git":
-        raise Fehler(400, "err.git_locked", ".git is locked")
+        raise Error(400, "err.git_locked", ".git is locked")
     return full
 
 
@@ -102,13 +102,13 @@ async def repo_read(path: str, access: Access = Depends(require_role(ProjectRole
                     db: AsyncSession = Depends(get_session)):
     full = _safe_path(_require_git(access.project), path)
     if not os.path.isfile(full):
-        raise Fehler(404, "err.file_not_found", "File not found")
+        raise Error(404, "err.file_not_found", "File not found")
     if os.path.getsize(full) > MAX_FILE_BYTES:
-        raise Fehler(413, "err.file_too_large_editor", "File too large for the editor")
+        raise Error(413, "err.file_too_large_editor", "File too large for the editor")
     try:
         content = open(full, encoding="utf-8").read()
     except UnicodeDecodeError:
-        raise Fehler(415, "err.binary_file_not_editable", "Binary file, not editable")
+        raise Error(415, "err.binary_file_not_editable", "Binary file, not editable")
     return {"path": path, "content": content}
 
 
@@ -118,9 +118,9 @@ async def repo_raw(path: str, access: Access = Depends(require_role(ProjectRole.
     """Raw file bytes (for an image preview) with a guessed content type."""
     full = _safe_path(_require_git(access.project), path)
     if not os.path.isfile(full):
-        raise Fehler(404, "err.file_not_found", "File not found")
+        raise Error(404, "err.file_not_found", "File not found")
     if os.path.getsize(full) > 5_000_000:
-        raise Fehler(413, "err.file_too_large_preview", "File too large for the preview")
+        raise Error(413, "err.file_too_large_preview", "File too large for the preview")
     ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
     with open(full, "rb") as fh:
         return Response(content=fh.read(), media_type=ctype)
@@ -151,17 +151,17 @@ async def repo_commit(data: CommitIn, access: Access = Depends(require_role(Proj
                       db: AsyncSession = Depends(get_session)):
     wd = _require_git(access.project)
     if not data.title.strip():
-        raise Fehler(400, "err.commit_title_missing", "Commit title missing")
+        raise Error(400, "err.commit_title_missing", "Commit title missing")
     await gitops._git(wd, "add", "-A")
     rc, _ = await gitops._git(wd, "diff", "--cached", "--quiet")
     if rc == 0:
-        raise Fehler(409, "err.nothing_commit", "Nothing to commit")
+        raise Error(409, "err.nothing_commit", "Nothing to commit")
     msg = data.title.strip()
     if data.description.strip():
         msg += "\n\n" + data.description.strip()
     rc, out = await gitops._git(wd, "commit", "-m", msg)
     if rc != 0:
-        raise Fehler(500, "err.commit_failed", "The commit failed: {reason}", reason=out[:200])
+        raise Error(500, "err.commit_failed", "The commit failed: {reason}", reason=out[:200])
     _, sha = await gitops._git(wd, "rev-parse", "HEAD")
     return {"ok": True, "commit": sha.strip()}
 
@@ -175,7 +175,7 @@ async def repo_commit_message(access: Access = Depends(require_role(ProjectRole.
     await gitops._git(wd, "add", "-A")
     _, diff = await gitops._git(wd, "diff", "--cached")
     if not diff.strip():
-        raise Fehler(409, "err.no_changes_describe", "No changes to describe")
+        raise Error(409, "err.no_changes_describe", "No changes to describe")
     # Prefer the project default subscription, otherwise the personal default.
     tok_name = p.default_token_name if p.default_provider == "claude_code" else ""
     token = await resolve_provider_token(db, access.user.id, "claude_code", tok_name)
@@ -191,7 +191,7 @@ async def repo_commit_message(access: Access = Depends(require_role(ProjectRole.
                                      temperature=0.2, max_tokens=500,
                                      tokens={"claude_code": token})
     except Exception as exc:  # noqa: BLE001
-        raise Fehler(502, "err.llm_error", "LLM error: {reason}", reason=str(exc)[:180])
+        raise Error(502, "err.llm_error", "LLM error: {reason}", reason=str(exc)[:180])
     text = resp.text.strip()
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if m:
@@ -216,7 +216,7 @@ async def repo_pull(access: Access = Depends(require_role(ProjectRole.maintainer
     rc, out = await gitops._git(wd, "pull", "--ff-only", url, branch)
     out = gitops._redact(out, token)
     if rc != 0:
-        raise Fehler(409, "err.pull_failed", "The pull failed: {reason}", reason=out[:300])
+        raise Error(409, "err.pull_failed", "The pull failed: {reason}", reason=out[:300])
     return {"ok": True, "output": out[:500]}
 
 
@@ -231,6 +231,6 @@ async def repo_push(access: Access = Depends(require_role(ProjectRole.maintainer
     ctx = gitops.GitCtx(workdir=wd, branch=branch, remote=p.github_repo, token=token,
                         main=p.merge_target or "main", enabled=True)
     if not await gitops._push(ctx, wd, branch):
-        raise Fehler(409, "err.push_failed_auth_network_conflict",
+        raise Error(409, "err.push_failed_auth_network_conflict",
                      "The push failed (auth, network or conflict)")
     return {"ok": True}

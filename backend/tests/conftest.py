@@ -76,7 +76,7 @@ async def seeded(db):
 
 
 @pytest.fixture(autouse=True)
-def kein_mcp(monkeypatch):
+def no_mcp(monkeypatch):
     """No test talks to a real MCP service.
 
     The mail inbox calls `imap-mcp` at the end and thereby moves real post. In the test that
@@ -86,16 +86,16 @@ def kein_mcp(monkeypatch):
     """
     import app.services.mcp_client as mcpmod
 
-    async def verboten(url, tool, arguments=None, **kw):
+    async def forbidden(url, tool, arguments=None, **kw):
         raise AssertionError(
             f"Test wollte {tool!r} an {url!r} rufen — im Test bitte ersetzen (monkeypatch).")
 
-    monkeypatch.setattr(mcpmod, "call_tool", verboten)
+    monkeypatch.setattr(mcpmod, "call_tool", forbidden)
     import importlib
     for modname in ("app.services.spam_review",):
         mod = importlib.import_module(modname)
         if hasattr(mod, "call_tool"):
-            monkeypatch.setattr(mod, "call_tool", verboten)
+            monkeypatch.setattr(mod, "call_tool", forbidden)
 
 
 @pytest.fixture(autouse=True)
@@ -123,10 +123,10 @@ def redis_stub(monkeypatch):
     async def enqueue_task(payload):
         return None
 
-    async def wait_result(task_id, timeout=None, poll=0.4, gnadenfrist=300.0):
+    async def wait_result(task_id, timeout=None, poll=0.4, grace=300.0):
         return _next(task_id)
 
-    async def lauf_lebt(task_id):
+    async def run_alive(task_id):
         return False
 
     async def peek_result(task_id):
@@ -147,7 +147,7 @@ def redis_stub(monkeypatch):
     stubs = {
         "publish_event": publish_event, "enqueue_task": enqueue_task,
         "wait_result": wait_result, "peek_result": peek_result, "get_flag": get_flag,
-        "lauf_lebt": lauf_lebt,
+        "lauf_lebt": run_alive,
         "get_user_flag": get_user_flag, "set_flag": set_flag, "publish_kill": publish_kill,
     }
     for name, fn in stubs.items():
@@ -266,14 +266,14 @@ async def make_webhook(db, owner: User, route: str, **fields) -> "WebhookSub":
     return sub
 
 
-async def melde(db, sub, payload: dict) -> list[int]:
+async def report(db, sub, payload: dict) -> list[int]:
     """Zustellung eines Webhooks ohne HTTP — Kontext und Referenz wie in `api/ops`."""
-    from app.api.ops import _context, _referenz
+    from app.api.ops import _context, _reference
     from app.models.workflow import WorkflowDefinition
     from app.services.events import emit
     from app.services.workflow_engine import start_workflow
 
-    ctx, ref = _context(sub, payload), _referenz(sub, payload)
+    ctx, ref = _context(sub, payload), _reference(sub, payload)
     if sub.mode == "event":
         ids = await emit(db, str(sub.event_name), project_id=sub.project_id, payload=ctx,
                          actor_id=sub.owner_user_id, source_ref=ref)
@@ -288,7 +288,7 @@ async def melde(db, sub, payload: dict) -> list[int]:
 
 
 @pytest.fixture
-def redis_stub_echt(monkeypatch):
+def redis_stub_real(monkeypatch):
     """Ein Redis, das wirklich etwas behält — im Speicher, nur für den Test.
 
     Der große `redis_stub` ersetzt die Warteschlange; hier geht es um den Cache, und der
@@ -296,7 +296,7 @@ def redis_stub_echt(monkeypatch):
     """
     store: dict[str, str] = {}
 
-    class Falsches:
+    class Wrong:
         async def get(self, key):
             return store.get(key)
 
@@ -307,7 +307,7 @@ def redis_stub_echt(monkeypatch):
             store[key] = str(int(store.get(key, 0)) + 1)
             return int(store[key])
 
-    monkeypatch.setattr("app.services.mailbox_cache.get_redis", lambda: Falsches())
+    monkeypatch.setattr("app.services.mailbox_cache.get_redis", lambda: Wrong())
     return store
 
 
@@ -318,16 +318,16 @@ def helpers():
         "make_user": staticmethod(make_user), "auth": staticmethod(auth),
         "make_project": staticmethod(make_project), "add_member": staticmethod(add_member),
         "make_location": staticmethod(make_location), "make_asset": staticmethod(make_asset),
-        "make_webhook": staticmethod(make_webhook), "melde": staticmethod(melde),
+        "make_webhook": staticmethod(make_webhook), "melde": staticmethod(report),
     })
 
 
 @pytest.fixture(autouse=True)
-def _i18n_frisch():
+def _i18n_fresh():
     """Translations come from a process wide cache (30 s), so that not every notification
     costs a query. Between two tests that is a bug: the text one test overwrites would keep
     applying in the next."""
-    from app.services.i18n import verwerfen
-    verwerfen()
+    from app.services.i18n import discard
+    discard()
     yield
-    verwerfen()
+    discard()

@@ -82,7 +82,7 @@ async def test_without_a_test_environment_flow_done_is_free(client, db):
     assert r.status_code == 200
 
 
-async def _bis_zur_acceptance(db, issue, merge_result, redis_stub):
+async def _to_acceptance(db, issue, merge_result, redis_stub):
     """Take the ticket into the lifecycle (it then stands at the acceptance) and give the merge
     result of the worker."""
     from app.services.lifecycle_flow import adopt_orphans
@@ -104,7 +104,7 @@ async def test_complete_does_not_set_done_on_a_merge_conflict(client, db, seeded
     issue.assigned_by_user_id = owner.id
     await db.commit()
 
-    await _bis_zur_acceptance(db, issue, {"status": "conflict", "error": "Merge-Konflikt: app.py",
+    await _to_acceptance(db, issue, {"status": "conflict", "error": "Merge-Konflikt: app.py",
                                        "escalate": True}, redis_stub)
 
     r = await client.post(f"/issues/{issue.key}/complete", headers=auth(owner))
@@ -128,7 +128,7 @@ async def test_complete_sets_done_on_a_clean_merge(client, db, seeded, redis_stu
     issue.assigned_by_user_id = owner.id
     await db.commit()
 
-    await _bis_zur_acceptance(db, issue, {"status": "merged"}, redis_stub)
+    await _to_acceptance(db, issue, {"status": "merged"}, redis_stub)
 
     r = await client.post(f"/issues/{issue.key}/complete", headers=auth(owner))
     assert r.status_code == 200, r.text

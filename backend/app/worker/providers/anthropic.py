@@ -17,7 +17,7 @@ from .base import ChatResponse, Provider, ProviderError, ToolCall
 log = logging.getLogger("traccoon.providers.claude")
 
 
-class _Abgeschnitten(ProviderError):
+class _Truncated(ProviderError):
     """The answer ran into `max_tokens` (the thinking ate the budget). Internal, so that the
     rescue attempt can tell it apart from real provider errors. To the outside it stays an
     ordinary (retryable) ProviderError."""
@@ -190,17 +190,17 @@ class AnthropicProvider(Provider):
         data = await self._post(body, auth_token)
         try:
             return self._parse(data)
-        except _Abgeschnitten:
+        except _Truncated:
             # Rescue attempt: the same budget but without thinking, so that it goes fully
             # into the visible answer. Better an answer without a thinking step than a run
             # that dies of a format error after 41 iterations.
-            zweiter = dict(body)                  # a body of its own: the first stays unchanged
-            zweiter["thinking"] = {"type": "disabled"}
+            second = dict(body)                  # a body of its own: the first stays unchanged
+            second["thinking"] = {"type": "disabled"}
             if effort in ("xhigh", "max"):
-                zweiter.pop("output_config", None)   # "disabled" is a 400 above `high`
+                second.pop("output_config", None)   # "disabled" is a 400 above `high`
             log.warning("claude: the answer was cut off at max_tokens (%d), second attempt without thinking",
                         max_tokens)
-            return self._parse(await self._post(zweiter, auth_token), gerettet=True)
+            return self._parse(await self._post(second, auth_token), rescued=True)
 
     async def _post(self, body: dict[str, Any], auth_token: str | None) -> dict[str, Any]:
         try:
@@ -223,7 +223,7 @@ class AnthropicProvider(Provider):
                                 status=resp.status_code, retryable=retryable, retry_after=retry_after)
         return resp.json()
 
-    def _parse(self, data: dict[str, Any], *, gerettet: bool = False) -> ChatResponse:
+    def _parse(self, data: dict[str, Any], *, rescued: bool = False) -> ChatResponse:
         text_parts: list[str] = []
         calls: list[ToolCall] = []
         oai_calls: list[dict[str, Any]] = []
@@ -248,11 +248,11 @@ class AnthropicProvider(Provider):
         # answer" but a truncated one, so report it clearly (retryable) instead of passing it
         # through silently as idling (which would misdiagnose as "empty model answer").
         if data.get("stop_reason") == "max_tokens" and (calls or not text.strip()):
-            raise _Abgeschnitten(
+            raise _Truncated(
                 "claude: the answer was cut off at max_tokens and is incomplete "
                 "(tool arguments or completely empty, the budget went into thinking)"
                 + (" Even without thinking. Raise max_tokens or cut the task smaller."
-                   if gerettet else "."), retryable=True)
+                   if rescued else "."), retryable=True)
         raw_msg: dict[str, Any] = {"role": "assistant", "content": text or None}
         if oai_calls:
             raw_msg["tool_calls"] = oai_calls

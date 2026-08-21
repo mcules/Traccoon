@@ -20,7 +20,7 @@ it, and that copy belongs to them.
 from __future__ import annotations
 
 from ..models.enums import WorkflowSubjectKind
-from .mail_actions import TASK_PARAMS, KARTE_PARAMS
+from .mail_actions import TASK_PARAMS, MAP_PARAMS
 
 _COL, _ROW = 260, 130
 
@@ -47,13 +47,13 @@ def _action(name: str, label: str, **cfg) -> dict:
     return {"label": label, "action": {"action": name, "params": params}, **remainder}
 
 
-def _ende(node_id: str, col: int, row: int, label: str, outcome: str = "completed") -> dict:
+def _end(node_id: str, col: int, row: int, label: str, outcome: str = "completed") -> dict:
     return _n(node_id, "end", col, row, {"label": label, "outcome": outcome})
 
 
 # -- 1) incoming report ------------------------------------------------------
 
-def _notice_von_aussen() -> dict:
+def _notice_from_outside() -> dict:
     """Webhook in, decision, message out.
 
     The sample payload on the start node is more than decoration: the editor builds the
@@ -78,8 +78,8 @@ def _notice_von_aussen() -> dict:
             "notify", "Bescheid geben",
             title="{{ titel }}",
             text="Von {{ quelle | default:extern }} gemeldet: {{ titel }}")),
-        _ende("end_ok", 0, 3, "Gemeldet"),
-        _ende("end_egal", 1, 2, "Nichts zu tun"),
+        _end("end_ok", 0, 3, "Gemeldet"),
+        _end("end_egal", 1, 2, "Nichts zu tun"),
     ]
     return {"nodes": nodes, "edges": [
         _e("start", "weiche"),
@@ -91,7 +91,7 @@ def _notice_von_aussen() -> dict:
 
 # -- 2) scheduled check with approval ----------------------------------------
 
-def _check_mit_grant() -> dict:
+def _check_with_grant() -> dict:
     """Fetch something, look at it, and act only after approval.
 
     The flow starts by hand or through a job (Settings, Jobs, kind `workflow`), which is
@@ -118,9 +118,9 @@ def _check_mit_grant() -> dict:
             "notify", "Handeln",
             title="Freigegeben — ausgeführt",
             text="Ergebnis: {{ tool.text | truncate:300 }}")),
-        _ende("end_ok", 0, 5, "Erledigt"),
-        _ende("end_nein", 1, 3, "Nichts Auffälliges"),
-        _ende("end_abgelehnt", 2, 4, "Abgelehnt"),
+        _end("end_ok", 0, 5, "Erledigt"),
+        _end("end_nein", 1, 3, "Nichts Auffälliges"),
+        _end("end_abgelehnt", 2, 4, "Abgelehnt"),
     ]
     return {"nodes": nodes, "edges": [
         _e("start", "holen"),
@@ -135,7 +135,7 @@ def _check_mit_grant() -> dict:
 
 # -- 3) Liste abarbeiten --------------------
 
-def _listing_abarbeiten() -> dict:
+def _listing_process() -> dict:
     """Fetch a list and do something with it item by item.
 
     The edge from the body back to the loop is the whole trick: it turns a straight flow
@@ -162,7 +162,7 @@ def _listing_abarbeiten() -> dict:
             "notify", "Zusammenfassung",
             title="Durchlauf fertig",
             text="{{ ergebnisse | count }} Elemente verarbeitet")),
-        _ende("end_ok", 0, 5, "Fertig"),
+        _end("end_ok", 0, 5, "Fertig"),
     ]
     return {"nodes": nodes, "edges": [
         _e("start", "holen"),
@@ -176,7 +176,7 @@ def _listing_abarbeiten() -> dict:
 
 # -- 4) Call with a retry ---------------------------
 
-def _call_mit_wiederholung() -> dict:
+def _call_with_repeat() -> dict:
     """Call outside, and do not give up at the first trouble.
 
     Two nets on top of each other: the node retries three times on its own (with a delay,
@@ -189,8 +189,8 @@ def _call_mit_wiederholung() -> dict:
         _n("rufen", "auto_action", 0, 1, _action(
             "http_request", "Ziel aufrufen",
             destination="", method="POST", path="/", fail_on_error=True,
-            wiederholungen=3, warte_sek=60)),
-        _ende("end_ok", 0, 2, "Durch"),
+            repeats=3, wait_sec=60)),
+        _end("end_ok", 0, 2, "Durch"),
         _n("warten", "timer", 1, 2, {"label": "Später erneut", "dauer": 30, "einheit": "m"}),
         _n("nochmal", "auto_action", 1, 3, _action(
             "http_request", "Letzter Versuch",
@@ -199,7 +199,7 @@ def _call_mit_wiederholung() -> dict:
             "notify", "Bescheid geben",
             title="Aufruf endgültig fehlgeschlagen",
             text="Auch der Nachzügler kam nicht durch.")),
-        _ende("end_fail", 2, 5, "Fehlgeschlagen", outcome="failed"),
+        _end("end_fail", 2, 5, "Fehlgeschlagen", outcome="failed"),
     ]
     return {"nodes": nodes, "edges": [
         _e("start", "rufen"),
@@ -346,7 +346,7 @@ def _mail_intake() -> dict:
         # `auto`). With a fixed value here the memory would book every human decision as
         # automatic.
         _n("weg", "auto_action", 2, 6,
-           _action("spam_apply", "In den Spam-Ordner", entscheidung="spam")),
+           _action("spam_apply", "In den Spam-Ordner", decision="spam")),
         # What the mail was recognised by belongs in the knowledge, not only in the log. The
         # path carries the kind, so a new kind (invoice fraud, sextortion, whatever comes)
         # writes its own note without anybody touching the flow.
@@ -357,7 +357,7 @@ def _mail_intake() -> dict:
         _n("end_spam", "end", 2, 8, {"label": "Als Spam weggeräumt", "outcome": "completed"}),
         # Stands on the way back to the middle: from here the mail runs into the assistant.
         _n("kein_spam", "auto_action", 1, 7,
-           _action("spam_apply", "Absender merken", entscheidung="ham")),
+           _action("spam_apply", "Absender merken", decision="ham")),
 
         # ── Normaler Weg: Assistent ──────────────────────────────────────────
         # Kein Mail-Sonderweg mehr: Der Eingang wird mit dem allgemeinen Knoten angelegt und
@@ -376,7 +376,7 @@ def _mail_intake() -> dict:
             "default_handle": "fragen",
         }),
         _n("freigabe_karte", "auto_action", 1, 10,
-           _action("notify", "Freigabekarte schicken", **KARTE_PARAMS)),
+           _action("notify", "Freigabekarte schicken", **MAP_PARAMS)),
         _n("end_item", "end", 0, 11, {"label": "Übergeben", "outcome": "completed"}),
     ]
 
@@ -419,7 +419,7 @@ def _mail_intake() -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-def _attachment_nach_paperless() -> dict:
+def _attachment_to_paperless() -> dict:
     """Ein Knopf an jedem Anhang: Rechnung ins Archiv, ohne Umweg über den Rechner.
 
     Zeigt den ganzen Weg einer Mail-Aktion — Anhang holen, Werkzeug rufen, Bescheid geben —
@@ -457,7 +457,7 @@ def _attachment_nach_paperless() -> dict:
 # Dieselbe Arbeit machen heute Knoten, die JEDER Ablauf benutzen kann; diese drei Vorlagen
 # sind der kurze Weg dorthin und zugleich das, worauf `webhook_modes` Bestehendes umstellt.
 
-def _webhook_assistent() -> dict:
+def _webhook_assistant() -> dict:
     """Auslöser von außen, und der Assistent arbeitet damit."""
     nodes = [
         _n("start", "start", 0, 0, {
@@ -471,7 +471,7 @@ def _webhook_assistent() -> dict:
             task="Kümmere dich um diese Meldung:\n\n{{ titel }}\n\nQuelle: "
                     "{{ quelle | default:Webhook }}",
             approval=False)),
-        _ende("fertig", 0, 2, "Beauftragt"),
+        _end("fertig", 0, 2, "Beauftragt"),
     ]
     return {"nodes": nodes, "edges": [_e("start", "auftrag"), _e("auftrag", "fertig")]}
 
@@ -486,7 +486,7 @@ def _webhook_report() -> dict:
             "notify", "Bescheid geben",
             title="{{ titel | default:Meldung }}",
             text="{{ message }}")),
-        _ende("fertig", 0, 2, "Gemeldet"),
+        _end("fertig", 0, 2, "Gemeldet"),
     ]
     return {"nodes": nodes, "edges": [_e("start", "melden"), _e("melden", "fertig")]}
 
@@ -501,7 +501,7 @@ def _webhook_ticket() -> dict:
         _n("ticket", "auto_action", 0, 1, _action(
             "create_ticket", "Ticket anlegen",
             summary="{{ title }}", description="{{ body }}")),
-        _ende("fertig", 0, 2, "Angelegt"),
+        _end("fertig", 0, 2, "Angelegt"),
     ]
     return {"nodes": nodes, "edges": [_e("start", "ticket"), _e("ticket", "fertig")]}
 
@@ -512,19 +512,19 @@ TEMPLATES: list[dict] = [
      "description": "Webhook rein, Weiche nach Dringlichkeit, Nachricht raus.",
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Beispiel-Nutzlast am Start anpassen — daraus entstehen die Kontextfelder.",
-     "build": _notice_von_aussen},
+     "build": _notice_from_outside},
     {"key": "pruefung-mit-freigabe",
      "name": "Geplante Prüfung mit Freigabe",
      "description": "Daten holen, hinsehen, und erst nach Freigabe handeln.",
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Werkzeug im Schritt „Daten holen\" wählen; Start über einen Job.",
-     "build": _check_mit_grant},
+     "build": _check_with_grant},
     {"key": "liste-abarbeiten",
      "name": "Liste Element für Element abarbeiten",
      "description": "Liste holen, durchlaufen, je Element etwas tun, am Ende berichten.",
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "In der Schleife den Pfad zur Liste eintragen (z. B. tool.json.items).",
-     "build": _listing_abarbeiten},
+     "build": _listing_process},
     {"key": "anhang-paperless",
      "name": "Anhang nach Paperless",
      "description": "Ein Knopf an jedem Anhang: holen, ablegen, Bescheid geben.",
@@ -532,7 +532,7 @@ TEMPLATES: list[dict] = [
      "hinweis": "Erscheint im Postfach an jedem Anhang. Das Werkzeug paperless__post_document "
                 "muss dem Ablauf freigegeben sein; Titel und Schlagworte im Schritt "
                 "„In Paperless ablegen\" anpassen.",
-     "build": _attachment_nach_paperless},
+     "build": _attachment_to_paperless},
     {"key": "mail-eingang",
      "name": "Mail-Eingang",
      "description": "Eingegangene Mail einordnen, auf Spam prüfen und entweder wegräumen "
@@ -549,7 +549,7 @@ TEMPLATES: list[dict] = [
      "hinweis": "Den Auftragstext im Knoten „Assistent beauftragen\" auf die eigene Nutzlast "
                 "anpassen ({{ feld }}). „Erst freigeben lassen\" an: der Auftrag wartet im "
                 "Eingang, statt sofort zu laufen.",
-     "build": _webhook_assistent},
+     "build": _webhook_assistant},
     {"key": "webhook-melden",
      "name": "Auslöser → Nachricht",
      "description": "Etwas kommt von außen, und es kommt eine Nachricht an.",
@@ -569,10 +569,10 @@ TEMPLATES: list[dict] = [
      "description": "Ziel aufrufen, bei Fehler wiederholen, später noch einmal, dann melden.",
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Ziel eintragen (Einstellungen → Ziele) — Basis-URL und Anmeldung stecken dort.",
-     "build": _call_mit_wiederholung},
+     "build": _call_with_repeat},
 ]
 
-_NACH_KEY = {v["key"]: v for v in TEMPLATES}
+_BY_KEY = {v["key"]: v for v in TEMPLATES}
 
 
 def listing() -> list[dict]:
@@ -584,15 +584,15 @@ def listing() -> list[dict]:
 
 def graph(key: str) -> dict | None:
     """The graph of a template, built fresh so nobody shares it by accident."""
-    template = _NACH_KEY.get(key)
+    template = _BY_KEY.get(key)
     return template["build"]() if template else None
 
 
 def template(key: str) -> dict | None:
-    return _NACH_KEY.get(key)
+    return _BY_KEY.get(key)
 
 
-async def freier_key(db, wunsch: str, projekt_id: int | None = None) -> str:
+async def free_key(db, wish: str, project_id: int | None = None) -> str:
     """Ein Schlüssel, den es hier noch nicht gibt — aus einem Namen gemacht.
 
     Namen und Schlüssel beschreiben die Sache, nicht ihren Auslöser: `ki-tech-news`, nicht
@@ -604,23 +604,23 @@ async def freier_key(db, wunsch: str, projekt_id: int | None = None) -> str:
     from ..core.slug import slug
     from ..models.workflow import WorkflowDefinition
 
-    basis = slug(wunsch, 50) or "ablauf"
-    bedingung = (WorkflowDefinition.project_id.is_(None) if projekt_id is None
-                 else WorkflowDefinition.project_id == projekt_id)
-    vergeben = set((await db.execute(select(WorkflowDefinition.key).where(
-        bedingung))).scalars().all())
-    if basis not in vergeben:
+    basis = slug(wish, 50) or "ablauf"
+    condition = (WorkflowDefinition.project_id.is_(None) if project_id is None
+                 else WorkflowDefinition.project_id == project_id)
+    grant = set((await db.execute(select(WorkflowDefinition.key).where(
+        condition))).scalars().all())
+    if basis not in grant:
         return basis
     for n in range(2, 100):
-        kandidat = f"{basis}-{n}"
-        if kandidat not in vergeben:
-            return kandidat
-    return f"{basis}-{len(vergeben)}"
+        candidate = f"{basis}-{n}"
+        if candidate not in grant:
+            return candidate
+    return f"{basis}-{len(grant)}"
 
 
 async def create(db, key: str, *, owner_id: int | None, def_key: str = "",
-                  name: str = "", veroeffentlicht: bool = True, graph: dict | None = None,
-                  projekt_id: int | None = None):
+                  name: str = "", published: bool = True, graph: dict | None = None,
+                  project_id: int | None = None):
     """Create a flow FROM a template — as somebody's own, not as a shipped one.
 
     The difference matters: what stands in a set is maintained by Traccoon and overwritten on
@@ -632,11 +632,11 @@ async def create(db, key: str, *, owner_id: int | None, def_key: str = "",
     from ..models.enums import WorkflowVersionStatus
     from ..models.workflow import WorkflowDefinition, WorkflowVersion
 
-    v = _NACH_KEY.get(key)
+    v = _BY_KEY.get(key)
     if v is None:
         raise ValueError(f"Unbekannte Vorlage '{key}'")
     d = WorkflowDefinition(
-        project_id=projekt_id, key=def_key or key, name=name or v["name"],
+        project_id=project_id, key=def_key or key, name=name or v["name"],
         description=v["description"], subject_kind=v["subject_kind"],
         enabled=True, created_by=owner_id)
     db.add(d)
@@ -645,12 +645,12 @@ async def create(db, key: str, *, owner_id: int | None, def_key: str = "",
         # `graph` erlaubt der Umstellung, die Vorlage mit den Werten des alten Webhooks zu
         # füllen (Agent, Auftragstext, Empfänger), statt sie hinterher zu patchen.
         definition_id=d.id, version=1, graph=graph or v["build"](), created_by=owner_id,
-        status=(WorkflowVersionStatus.published if veroeffentlicht
+        status=(WorkflowVersionStatus.published if published
                 else WorkflowVersionStatus.draft),
-        published_at=dt.datetime.now(tz=dt.timezone.utc) if veroeffentlicht else None,
+        published_at=dt.datetime.now(tz=dt.timezone.utc) if published else None,
         notes=f"Aus der Vorlage „{v['name']}“")
     db.add(version)
     await db.flush()
-    if veroeffentlicht:
+    if published:
         d.current_version_id = version.id
     return d

@@ -56,9 +56,9 @@ async def test_a_filter_from_the_payload(client, db):
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker2",
                     event_header="payload:event.attributes.alarm", event_filter="vibration")
-    zuendung = {"event": {"id": 7, "type": "ignitionOn", "attributes": {}},
+    ignition = {"event": {"id": 7, "type": "ignitionOn", "attributes": {}},
                 "device": {"name": "Shelter"}}
-    r = await _report(client, w, zuendung)
+    r = await _report(client, w, ignition)
     assert r.json()["ignored"] is True
     assert await _last(db) == []
 
@@ -82,13 +82,13 @@ async def test_the_same_report_only_once(client, db):
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker3", ref_field="event.id")
     assert (await _report(client, w)).status_code == 202
-    zweite = await _report(client, w)
-    assert zweite.json().get("duplicate") is True
+    second = await _report(client, w)
+    assert second.json().get("duplicate") is True
     assert len(await _last(db)) == 1
 
     # Another event is not a repetition.
-    anders = {**PAYLOAD, "event": {**PAYLOAD["event"], "id": 1892}}
-    assert (await _report(client, w, anders)).status_code == 202
+    different = {**PAYLOAD, "event": {**PAYLOAD["event"], "id": 1892}}
+    assert (await _report(client, w, different)).status_code == 202
     assert len(await _last(db)) == 2
 
 
@@ -127,8 +127,8 @@ async def test_workflow_mode_recognises_repetitions(client, db):
 
     first = await _report(client, w)
     assert first.status_code == 202 and not first.json().get("duplicate")
-    zweite = await _report(client, w)
-    assert zweite.json().get("duplicate") is True
+    second = await _report(client, w)
+    assert second.json().get("duplicate") is True
     runs = (await db.execute(select(WorkflowInstance))).scalars().all()
     assert len(runs) == 1
 
@@ -146,17 +146,17 @@ async def test_editing_keeps_the_context(client, db):
     assert r.status_code in (200, 201), r.text
     wid = r.json()["id"]
 
-    gelesen = [w for w in (await client.get("/webhooks", headers=auth(anna))).json()
+    read = [w for w in (await client.get("/webhooks", headers=auth(anna))).json()
                if w["id"] == wid][0]
-    assert gelesen["context_map"] == {"melder": "device.name"}
-    assert gelesen["context_fixed"] == {"quelle": "Tracker {device.id}"}
+    assert read["context_map"] == {"melder": "device.name"}
+    assert read["context_fixed"] == {"quelle": "Tracker {device.id}"}
 
     # That is exactly what the interface does: write read values back.
-    zurueck = await client.put(f"/webhooks/{wid}", headers=auth(anna), json={
-        "route": gelesen["route"], "mode": gelesen["mode"],
-        "context_map": gelesen["context_map"], "context_fixed": gelesen["context_fixed"]})
-    assert zurueck.status_code == 200
-    assert zurueck.json()["context_fixed"] == {"quelle": "Tracker {device.id}"}
+    back = await client.put(f"/webhooks/{wid}", headers=auth(anna), json={
+        "route": read["route"], "mode": read["mode"],
+        "context_map": read["context_map"], "context_fixed": read["context_fixed"]})
+    assert back.status_code == 200
+    assert back.json()["context_fixed"] == {"quelle": "Tracker {device.id}"}
 
 
 async def test_the_event_name_comes_back(client, db):
