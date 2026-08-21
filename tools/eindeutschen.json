@@ -243,7 +243,20 @@
   "eingabe": "input_value",
   "ausgabe": "output_value",
   "objekt": "obj",
-  "typ": "kind"
+  "typ": "kind",
+  "artefakt": "artifact",
+  "assistent": "assistant",
+  "vorgang": "case",
+  "anzeige": "display",
+  "verfuegbar": "available",
+  "zurueck": "back",
+  "weiter": "next",
+  "abbrechen": "cancel",
+  "schliessen": "close",
+  "oeffnen": "open_it",
+  "bezeichnung": "label",
+  "uebersetzung": "translation",
+  "uebersetzungen": "translations"
  },
  "_falsche_freunde": "Woerter, die in beiden Sprachen existieren und Verschiedenes meinen. `listen` ist deutsch der Plural von Liste und englisch ein Verb — die Redis-PubSub heisst listen(). Sie bleiben unangetastet."
 }

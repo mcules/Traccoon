@@ -13,18 +13,18 @@ import { useCanvasReadOnly } from "./canvasMode";
  * value from the edge id so that several back edges do not lie on top of each other. The
  * corners are slightly rounded, which reads more calmly than sharp angles.
  */
-function ruecklaufPfad(
+function ruecklaufPath(
   sx: number, sy: number, tx: number, ty: number, id: string,
   rand: { links: number; rechts: number },
 ): [string, number, number] {
   // The track lies OUTSIDE all nodes: only that way does it cross none of them for certain.
   // Several back edges per side are staggered so that they do not lie on top of each other.
   const versatz = (Math.abs(hash(id)) % 4) * 26;
-  const seite = sx >= tx ? 1 : -1;
-  const lane = seite > 0 ? rand.rechts + 48 + versatz : rand.links - 48 - versatz;
+  const page = sx >= tx ? 1 : -1;
+  const lane = page > 0 ? rand.rechts + 48 + versatz : rand.links - 48 - versatz;
   const runter = sy + 26;                 // erst ein Stück unter die Quelle
   const rauf = ty - 26;                   // und oberhalb des Ziels wieder herein
-  const r = 14 * seite;
+  const r = 14 * page;
   return [
     `M ${sx},${sy} L ${sx},${runter - 14} Q ${sx},${runter} ${sx + r},${runter} ` +
     `L ${lane - r},${runter} Q ${lane},${runter} ${lane},${runter - 14} ` +
@@ -77,7 +77,7 @@ export default function ConditionEdge({
   const [l, r] = randKey.split("|");
   const rand = { links: Number(l) || 0, rechts: Number(r) || 0 };
   const [path, labelX, labelY] = feedback
-    ? ruecklaufPfad(sourceX, sourceY, targetX, targetY, id, rand)
+    ? ruecklaufPath(sourceX, sourceY, targetX, targetY, id, rand)
     : getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const readOnly = useCanvasReadOnly();
   const { deleteElements } = useReactFlow();

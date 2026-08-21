@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { pluginApi, type PluginInfo } from "./api";
-import type { NavEintrag } from "./nav";
+import type { NavEntry } from "./nav";
 
 /**
  * Die Plugins, die dieser Mensch sehen darf.
@@ -20,15 +20,15 @@ export function usePlugins(): PluginInfo[] {
 }
 
 /** Was die Plugins an Seiten beisteuern, als Eintraege der Bereichsschiene. */
-export function pluginNav(plugins: PluginInfo[]): NavEintrag[] {
-  const raus: NavEintrag[] = [];
+export function pluginNav(plugins: PluginInfo[]): NavEntry[] {
+  const out: NavEntry[] = [];
   for (const p of plugins) {
     for (const b of p.contributions || []) {
       if (b.typ !== "seite") continue;
       // Mehrere Seiten eines Plugins landen als Anker hinter derselben Adresse: Der Wirt
       // reicht ihn an das iframe weiter, und das Plugin entscheidet selbst, was es zeigt.
       const anker = (b.pfad || "").replace(/^\//, "");
-      raus.push({
+      out.push({
         key: `plugin:${p.slug}:${anker}`,
         label: b.label || p.name,
         icon: b.icon || p.icon || "\u{1F9E9}",
@@ -36,5 +36,5 @@ export function pluginNav(plugins: PluginInfo[]): NavEintrag[] {
       });
     }
   }
-  return raus;
+  return out;
 }

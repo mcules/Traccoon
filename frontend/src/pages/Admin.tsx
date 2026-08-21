@@ -7,8 +7,8 @@ import { usePageChrome } from "../pageChrome";
 import ArtifactTypesPanel from "../components/ArtifactTypesPanel";
 import { SystemSchalterPanel } from "../components/KontoPanels";
 import {
-  Aktionen, Bereich, BestaetigenDialog, Dialog, DialogFuss, EINGABE, Etikett, Feld,
-  Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile, KNOPF } from "../components/ui";
+  Actions, Area, ConfirmDialog, Dialog, DialogFuss, INPUT_VALUE, Etikett, Field,
+  Fehlerzeile, ICON, IconButton, Listing, ListingLeer, ListenLine, BUTTON } from "../components/ui";
 import ProviderModelsPanel from "../components/ProviderModelsPanel";
 import TranslationsPanel from "../components/TranslationsPanel";
 
@@ -58,7 +58,7 @@ function MailConfig() {
     },
   });
   return (
-    <div className="max-w-xl"><Bereich>
+    <div className="max-w-xl"><Area>
       <p className="text-xs text-muted">
         SMTP-Server für ausgehende Mails (z. B. Projekt-Einladungen). Ohne Host wird nicht
         versendet — nur geloggt.
@@ -90,9 +90,9 @@ function MailConfig() {
           onChange={(e) => setForm({ ...form, smtp_use_tls: e.target.checked })} />
         STARTTLS verwenden
       </label>
-      <button onClick={() => save.mutate()} className={KNOPF.haupt}>{tr("admin.speichern")}</button>
+      <button onClick={() => save.mutate()} className={BUTTON.haupt}>{tr("admin.speichern")}</button>
       {msg && <span className="ml-3 text-sm text-green-400">{msg}</span>}
-    </Bereich></div>
+    </Area></div>
   );
 }
 
@@ -107,7 +107,7 @@ function Maintenance() {
   });
 
   return (
-    <div className="max-w-xl"><Bereich>
+    <div className="max-w-xl"><Area>
       <div>
         <div className="text-sm font-medium">{tr("admin.wartungsprojekt")}</div>
         <p className="mt-1 text-xs text-muted">
@@ -136,7 +136,7 @@ function Maintenance() {
       {/* System wide switches: they belong to the installation, not between the settings of
           one person, where they used to stand. */}
       <SystemSchalterPanel />
-    </Bereich></div>
+    </Area></div>
   );
 }
 
@@ -146,9 +146,9 @@ function WorkflowLayout() {
   const { data } = useQuery({ queryKey: ["workflow-layout"], queryFn: workflowApi.layout });
   const [gap, setGap] = useState<number | null>(null);
   const [msg, setMsg] = useState("");
-  const wert = gap ?? data?.gap ?? 40;
+  const value = gap ?? data?.gap ?? 40;
   const save = useMutation({
-    mutationFn: () => workflowApi.setLayout(wert),
+    mutationFn: () => workflowApi.setLayout(value),
     onSuccess: () => {
       setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setGap(null);
       qc.invalidateQueries({ queryKey: ["workflow-layout"] });
@@ -162,11 +162,11 @@ function WorkflowLayout() {
         Kartenrändern. Kleinere Werte packen lange Abläufe enger zusammen.
       </p>
       <div className="mt-2 flex items-center gap-2">
-        <input type="number" min={8} max={400} value={wert}
+        <input type="number" min={8} max={400} value={value}
           onChange={(e) => setGap(Number(e.target.value))}
           className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <span className="text-xs text-muted">px</span>
-        <button onClick={() => save.mutate()} className={KNOPF.haupt}>
+        <button onClick={() => save.mutate()} className={BUTTON.haupt}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
       </div>
@@ -197,7 +197,7 @@ function TestenvConfig() {
   });
   // Label and hint come as keys: the field is built in the language it is currently shown
   // in.
-  const feld = (k: string, label: string, hint?: string) => (
+  const field = (k: string, label: string, hint?: string) => (
     <label className="block text-xs text-muted">{tr(label)}
       <input value={val(k)} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
         className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
@@ -209,16 +209,16 @@ function TestenvConfig() {
       <div className="text-sm font-medium">{tr("admin.testumgebungen_global")}</div>
       <p className="mt-1 text-xs text-muted">{tr("admin.testumgebungen_hinweis")}</p>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
-        {feld("testenv_host", "admin.feld_testenv_host", "admin.feld_testenv_host_hinweis")}
-        {feld("testenv_max_concurrent", "admin.feld_testenv_max_concurrent")}
-        {feld("testenv_port_lo", "admin.feld_testenv_port_lo")}
-        {feld("testenv_port_hi", "admin.feld_testenv_port_hi")}
-        {feld("testenv_mem_limit", "admin.feld_testenv_mem_limit", "admin.feld_testenv_mem_beispiel")}
-        {feld("testenv_cpus", "admin.feld_testenv_cpus", "admin.feld_testenv_cpus_beispiel")}
-        {feld("testenv_max_builds", "admin.feld_testenv_max_builds")}
+        {field("testenv_host", "admin.feld_testenv_host", "admin.feld_testenv_host_hinweis")}
+        {field("testenv_max_concurrent", "admin.feld_testenv_max_concurrent")}
+        {field("testenv_port_lo", "admin.feld_testenv_port_lo")}
+        {field("testenv_port_hi", "admin.feld_testenv_port_hi")}
+        {field("testenv_mem_limit", "admin.feld_testenv_mem_limit", "admin.feld_testenv_mem_beispiel")}
+        {field("testenv_cpus", "admin.feld_testenv_cpus", "admin.feld_testenv_cpus_beispiel")}
+        {field("testenv_max_builds", "admin.feld_testenv_max_builds")}
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <button onClick={() => save.mutate()} className={KNOPF.haupt}>
+        <button onClick={() => save.mutate()} className={BUTTON.haupt}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
         {save.error && (
@@ -238,9 +238,9 @@ function RunRetention() {
   });
   const [days, setDays] = useState<number | null>(null);
   const [msg, setMsg] = useState("");
-  const wert = days ?? data?.days ?? 30;
+  const value = days ?? data?.days ?? 30;
   const save = useMutation({
-    mutationFn: () => api.put("/admin/run-retention", { days: wert }),
+    mutationFn: () => api.put("/admin/run-retention", { days: value }),
     onSuccess: () => {
       setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setDays(null);
       qc.invalidateQueries({ queryKey: ["run-retention"] });
@@ -254,11 +254,11 @@ function RunRetention() {
         Frist werden sie samt Schritten endgültig gelöscht. <b>{tr("admin.0_nie_loeschen")}</b>
       </p>
       <div className="mt-2 flex items-center gap-2">
-        <input type="number" min={0} value={wert}
+        <input type="number" min={0} value={value}
           onChange={(e) => setDays(Number(e.target.value))}
           className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <span className="text-xs text-muted">{tr("admin.tage")}</span>
-        <button onClick={() => save.mutate()} className={KNOPF.haupt}>
+        <button onClick={() => save.mutate()} className={BUTTON.haupt}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
       </div>
@@ -290,7 +290,7 @@ function Users() {
   });
   const [mcpUser, setMcpUser] = useState<any | null>(null);
   const [editUser, setEditUser] = useState<any | null>(null);
-  const [neuOffen, setNeuOffen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
   const [sperren, setSperren] = useState<any | null>(null);
 
   return (
@@ -299,10 +299,10 @@ function Users() {
     {/* Keine Tabelle: vier Spalten auf 390 px hießen ein Wort je Zeile, und die drei
         Knöpfe stapelten sich rechts übereinander. Eine Zeile je Nutzer bricht sauber um
         und liest sich auf jeder Breite gleich. */}
-    <Bereich>
-    <Liste>
+    <Area>
+    <Listing>
       {users?.map((u) => (
-        <ListenZeile key={u.id}>
+        <ListenLine key={u.id}>
           <div className="flex items-center gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="font-medium">{u.display_name}</span>
@@ -315,33 +315,33 @@ function Users() {
                 <option value="admin">admin</option>
               </select>
             </div>
-            <Aktionen>
-              <IconKnopf icon="🧩" titel={tr("admin.mcp_server_zuweisen")} onClick={() => setMcpUser(u)} />
-              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setEditUser(u)} />
+            <Actions>
+              <IconButton icon="🧩" titel={tr("admin.mcp_server_zuweisen")} onClick={() => setMcpUser(u)} />
+              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setEditUser(u)} />
               {u.status === "pending" && (
-                <IconKnopf icon="✅" titel={tr("admin.freischalten")}
+                <IconButton icon="✅" titel={tr("admin.freischalten")}
                   onClick={() => act.mutate({ id: u.id, path: "approve" })} />
               )}
               {u.status === "active" && (
-                <IconKnopf icon="🔒" titel={tr("admin.sperren")} gefahr onClick={() => setSperren(u)} />
+                <IconButton icon="🔒" titel={tr("admin.sperren")} gefahr onClick={() => setSperren(u)} />
               )}
               {u.status === "disabled" && (
-                <IconKnopf icon="🔓" titel={tr("admin.entsperren")}
+                <IconButton icon="🔓" titel={tr("admin.entsperren")}
                   onClick={() => act.mutate({ id: u.id, path: "approve" })} />
               )}
-            </Aktionen>
+            </Actions>
           </div>
-        </ListenZeile>
+        </ListenLine>
       ))}
-    </Liste>
-    <button onClick={() => { setErr(""); setNeuOffen(true); }}
-      className={KNOPF.haupt}>
+    </Listing>
+    <button onClick={() => { setErr(""); setNewOpen(true); }}
+      className={BUTTON.haupt}>
       {ICON.neu} {tr("admin.nutzer_anlegen")}
     </button>
 
-    {neuOffen && (
-      <CreateUserDialog onClose={() => setNeuOffen(false)}
-        onCreated={() => { setNeuOffen(false); inv(); }} />
+    {newOpen && (
+      <CreateUserDialog onClose={() => setNewOpen(false)}
+        onCreated={() => { setNewOpen(false); inv(); }} />
     )}
     {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)}
       onSaved={() => { setEditUser(null); inv(); }} />}
@@ -352,13 +352,13 @@ function Users() {
       </Dialog>
     )}
     {sperren && (
-      <BestaetigenDialog titel={tr("admin.sperren")} laeuft={act.isPending}
+      <ConfirmDialog titel={tr("admin.sperren")} laeuft={act.isPending}
         text={tr("admin.sperren_frage", { name: sperren.display_name || sperren.username })}
         hinweis={tr("admin.sperren_hinweis")} bestaetigenText={tr("admin.sperren")}
         onClose={() => setSperren(null)}
         onBestaetigen={() => act.mutate({ id: sperren.id, path: "disable" })} />
     )}
-    </Bereich>
+    </Area>
     </>
   );
 }
@@ -378,7 +378,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   const [globalRole, setGlobalRole] = useState("user");
   const [statusVal, setStatusVal] = useState("active");
   const [err, setErr] = useState("");
-  const [laeuft, setLaeuft] = useState(false);
+  const [running, setRunning] = useState(false);
 
   const submit = async () => {
     setErr("");
@@ -386,7 +386,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
     // password is set, it has to have at least 8 characters.
     if (username.trim().length < 1) { setErr(tr("admin.benutzername_noetig")); return; }
     if (password && password.length < 8) { setErr(tr("admin.passwort_zu_kurz")); return; }
-    setLaeuft(true);
+    setRunning(true);
     try {
       await api.post<any>("/users", {
         username: username.trim(), display_name: displayName.trim(),
@@ -397,40 +397,40 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
       onCreated();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : tr("admin.fehler_beim_anlegen"));
-    } finally { setLaeuft(false); }
+    } finally { setRunning(false); }
   };
 
   return (
     <Dialog titel={tr("admin.nutzer_anlegen")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={submit} laeuft={laeuft}
+      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={submit} laeuft={running}
         deaktiviert={!username.trim()} speichernText={tr("common.anlegen")} />}>
       <Fehlerzeile text={err} />
       <div className="space-y-3">
-        <Feld label={tr("admin.benutzername")}>
-          <input value={username} autoFocus onChange={(e) => setUsername(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("admin.anzeigename_optional")}>
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("admin.email_optional")}>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("admin.passwort_optional_8_zeichen")}>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={EINGABE} />
-        </Feld>
+        <Field label={tr("admin.benutzername")}>
+          <input value={username} autoFocus onChange={(e) => setUsername(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("admin.anzeigename_optional")}>
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("admin.email_optional")}>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("admin.passwort_optional_8_zeichen")}>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={INPUT_VALUE} />
+        </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Feld label={tr("admin.rolle")}>
-            <select value={globalRole} onChange={(e) => setGlobalRole(e.target.value)} className={EINGABE}>
+          <Field label={tr("admin.rolle")}>
+            <select value={globalRole} onChange={(e) => setGlobalRole(e.target.value)} className={INPUT_VALUE}>
               <option value="user">user</option>
               <option value="admin">admin</option>
             </select>
-          </Feld>
-          <Feld label={tr("admin.status")} hinweis={tr("admin.aktive_nutzer_koennen_sich_sofort_anmeld")}>
-            <select value={statusVal} onChange={(e) => setStatusVal(e.target.value)} className={EINGABE}>
+          </Field>
+          <Field label={tr("admin.status")} hinweis={tr("admin.aktive_nutzer_koennen_sich_sofort_anmeld")}>
+            <select value={statusVal} onChange={(e) => setStatusVal(e.target.value)} className={INPUT_VALUE}>
               <option value="active">{tr("admin.aktiv")}</option>
               <option value="pending">{tr("admin.wartend")}</option>
             </select>
-          </Feld>
+          </Field>
         </div>
       </div>
     </Dialog>
@@ -458,7 +458,7 @@ function McpAssign({ userId }: { userId: number }) {
       <div className="flex gap-2">
         <input value={val} onChange={(e) => setText(e.target.value)}
           className="flex-1 rounded border border-line bg-surface px-2 py-1" />
-        <button onClick={save} className={KNOPF.haupt}>{tr("admin.speichern")}</button>
+        <button onClick={save} className={BUTTON.haupt}>{tr("admin.speichern")}</button>
       </div>
       <div className="mt-1 text-muted">{tr("admin.mcp_provisionieren_hinweis")}</div>
     </div>
@@ -468,25 +468,25 @@ function McpAssign({ userId }: { userId: number }) {
 function Cost() {
   const { data } = useQuery({ queryKey: ["cost-global"], queryFn: () => api.get<any>("/costs/global") });
   return (
-    <Bereich hinweis={<>Summe aller Läufe: <span className="text-xl font-semibold text-ink">
+    <Area hinweis={<>Summe aller Läufe: <span className="text-xl font-semibold text-ink">
       ${data?.total_usd?.toFixed(4) ?? "0"}</span></>}>
       {/* Modellnamen sind lang und Zahlen kurz: als Tabelle quetschte das auf dem Handy den
           Namen auf ein Wort je Zeile. Eine Zeile je Modell, Zahlen rechts. */}
-      <Liste>
+      <Listing>
         {data?.by_model?.map((m: any) => (
-          <ListenZeile key={m.model}>
+          <ListenLine key={m.model}>
             <div className="flex flex-wrap items-baseline gap-x-3">
               <span className="min-w-0 flex-1 break-all text-ink">{m.model}</span>
               <span className="tabular-nums text-ink">${m.usd}</span>
               <span className="tabular-nums text-xs text-muted">{tr("admin.calls_n", { anzahl: m.calls })}</span>
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
         {(!data?.by_model || data.by_model.length === 0) && (
-          <ListeLeer>{tr("admin.noch_keine_kosten")}</ListeLeer>
+          <ListingLeer>{tr("admin.noch_keine_kosten")}</ListingLeer>
         )}
-      </Liste>
-    </Bereich>
+      </Listing>
+    </Area>
   );
 }
 
@@ -498,11 +498,11 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
   const [newPassword, setNewPassword] = useState("");
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
-  const [laeuft, setLaeuft] = useState(false);
+  const [running, setRunning] = useState(false);
 
   const save = async () => {
     setErr("");
-    setLaeuft(true);
+    setRunning(true);
     try {
       await api.put(`/users/${user.id}`, {
         email, username, display_name: displayName, max_runners: Number(maxRunners),
@@ -510,7 +510,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
       onSaved();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : tr("common.speichern_fehlgeschlagen"));
-    } finally { setLaeuft(false); }
+    } finally { setRunning(false); }
   };
   // The password is set separately: it takes effect at once and has nothing to do with the
   // rest of the form, which is why it does not hang off "save".
@@ -527,34 +527,34 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
 
   return (
     <Dialog titel={tr("admin.nutzer_bearbeiten")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={save} laeuft={laeuft}
+      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={save} laeuft={running}
         deaktiviert={!username.trim()} />}>
       <Fehlerzeile text={err} />
       <div className="space-y-3">
-        <Feld label={tr("admin.anzeigename")}>
-          <input value={displayName} autoFocus onChange={(e) => setDisplayName(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label="E-Mail">
-          <input value={email} onChange={(e) => setEmail(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("admin.benutzername")}>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("admin.max_gleichzeitige_agenten_laeufe")}>
+        <Field label={tr("admin.anzeigename")}>
+          <input value={displayName} autoFocus onChange={(e) => setDisplayName(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label="E-Mail">
+          <input value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("admin.benutzername")}>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("admin.max_gleichzeitige_agenten_laeufe")}>
           <input type="number" min={0} max={20} value={maxRunners}
-            onChange={(e) => setMaxRunners(e.target.value)} className={EINGABE} />
-        </Feld>
+            onChange={(e) => setMaxRunners(e.target.value)} className={INPUT_VALUE} />
+        </Field>
         <div className="border-t border-line pt-3">
-          <Feld label={tr("admin.neues_passwort_setzen")}>
+          <Field label={tr("admin.neues_passwort_setzen")}>
             <div className="flex gap-2">
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                placeholder={tr("admin.mind_8_zeichen")} className={EINGABE} />
+                placeholder={tr("admin.mind_8_zeichen")} className={INPUT_VALUE} />
               <button onClick={resetPw} disabled={!newPassword}
-                className={KNOPF.neben}>
+                className={BUTTON.neben}>
                 {tr("admin.setzen")}
               </button>
             </div>
-          </Feld>
+          </Field>
           {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
         </div>
       </div>

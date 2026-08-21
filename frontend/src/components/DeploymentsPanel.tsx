@@ -3,10 +3,10 @@ import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
-  ApiError, DeploymentListe, DeploymentRow, DeploymentStatusFilter, deploymentApi,
+  ApiError, DeploymentListing, DeploymentRow, DeploymentStatusFilter, deploymentApi,
 } from "../api";
 import { formatTime } from "../lib/formatTime";
-import { KNOPF, KNOPF_KLEIN } from "./ui";
+import { BUTTON, BUTTON_KLEIN } from "./ui";
 
 // One component for both places (dashboard card and Settings → Deployment), so that there
 // are no two truths about status, durations and log head. The shell (card, section) is
@@ -33,7 +33,7 @@ const ST_BAR: Record<string, string> = {
 const KIND_LABEL: Record<string, string> = {
   self: "deploy.art.wartung", check: "deploy.art.pruefung", stack: "deploy.art.stack",
 };
-const QUELLE_LABEL: Record<string, string> = {
+const SOURCE_LABEL: Record<string, string> = {
   agent: "deployments_panel.quelle_agent", merge: "deployments_panel.quelle_merge",
   workflow: "deployments_panel.quelle_workflow", maintenance: "deployments_panel.quelle_maintenance",
   // The only value with a human behind it, the button below.
@@ -48,11 +48,11 @@ const FILTER: [DeploymentStatusFilter, string][] = [
 ];
 /** The API knows no "without a window": `since_hours` is mandatory with a default of 720 h
  *  and a maximum of 8760 h. An entry "everything" would therefore be a lie about 30 days. */
-const FENSTER: [number, string][] = [
+const WINDOW: [number, string][] = [
   [24, "deployments_panel.fenster_24h"], [168, "deployments_panel.fenster_7t"],
   [720, "deployments_panel.fenster_30t"], [8760, "deployments_panel.fenster_1j"],
 ];
-const FENSTER_STANDARD = 720;
+const WINDOW_STANDARD = 720;
 /** `LIMIT_MAX` of the API. Loading more beyond that would bring nothing but the same excerpt. */
 const LIMIT_MAX = 200;
 
@@ -82,12 +82,12 @@ export default function DeploymentsPanel(
 ) {
   const kompakt = variante === "kompakt";
   const [status, setStatus] = useState<DeploymentStatusFilter>("all");
-  const [seit, setSeit] = useState(FENSTER_STANDARD);   // Stunden, immer explizit
+  const [seit, setSeit] = useState(WINDOW_STANDARD);   // Stunden, immer explizit
   const [max, setMax] = useState(limit ?? (kompakt ? 5 : 50));
-  const [offen, setOffen] = useState<number | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
   const qc = useQueryClient();
 
-  const { data, error, isLoading } = useQuery<DeploymentListe>({
+  const { data, error, isLoading } = useQuery<DeploymentListing>({
     queryKey: ["deployments", projectId ?? null, issueId ?? null, status, seit, max],
     queryFn: () => deploymentApi.list({ projectId, issueId, limit: max, sinceHours: seit, status }),
     // Deployments are rare; a running one should still count on by itself.
@@ -118,7 +118,7 @@ export default function DeploymentsPanel(
   return (
     <div className="space-y-3">
       {!kompakt && projectId != null && ausloesen && (
-        <Ausloeser projectId={projectId} issueId={issueId}
+        <Trigger projectId={projectId} issueId={issueId}
           stackDir={ausloesen.stackDir} erlaubt={ausloesen.erlaubt} laufend={laufend > 0}
           nachziehen={() => {
             // The fresh deploy is `pending`; with a narrower filter it would fall out of the
@@ -139,12 +139,12 @@ export default function DeploymentsPanel(
           ))}
           <select value={seit} onChange={(e) => setSeit(+e.target.value)}
             className="ml-auto rounded border border-line bg-surface px-2 py-1 text-xs text-ink">
-            {FENSTER.map(([h, label]) => <option key={h} value={h}>{tr(label)}</option>)}
+            {WINDOW.map(([h, label]) => <option key={h} value={h}>{tr(label)}</option>)}
           </select>
         </div>
       )}
 
-      <Kopf by={data.by_status} count={data.count} truncated={data.truncated}
+      <Header by={data.by_status} count={data.count} truncated={data.truncated}
         kompakt={kompakt} fenster={seit} />
 
       {items.length === 0 ? (
@@ -152,20 +152,20 @@ export default function DeploymentsPanel(
         <div className="text-xs text-muted">
           {Object.values(data.by_status || {}).some((n) => n > 0)
             ? tr("deploy.kein_treffer_filter")
-            : tr("deployments_panel.nichts_deployt", { fenster: tr(fensterText(seit)) })}
+            : tr("deployments_panel.nichts_deployt", { fenster: tr(windowText(seit)) })}
         </div>
       ) : (
         <div className="divide-y divide-line">
           {items.map((d) => (
-            <Zeile key={d.id} d={d} kompakt={kompakt}
-              auf={offen === d.id} toggle={() => setOffen(offen === d.id ? null : d.id)} />
+            <Line key={d.id} d={d} kompakt={kompakt}
+              auf={open === d.id} toggle={() => setOpen(open === d.id ? null : d.id)} />
           ))}
         </div>
       )}
 
       {!kompakt && data.truncated && max < LIMIT_MAX && (
         <button onClick={() => setMax(Math.min(LIMIT_MAX, max + 50))}
-          className={KNOPF_KLEIN.neben}>
+          className={BUTTON_KLEIN.neben}>
           Mehr laden
         </button>
       )}
@@ -184,21 +184,21 @@ export default function DeploymentsPanel(
  *  server answers with 409 respectively 403 in both cases anyway, but a button that is
  *  certain to fail should not be offered. The reason stands as text beside it, not only as a
  *  `title`, because otherwise it is a grey area without an explanation. */
-function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen }: {
+function Trigger({ projectId, issueId, stackDir, erlaubt: allowed, laufend, nachziehen }: {
   projectId: number; issueId?: number; stackDir?: string | null;
   erlaubt: boolean; laufend: boolean; nachziehen: () => void;
 }) {
-  const [frage, setFrage] = useState(false);
+  const [question, setQuestion] = useState(false);
   const [sendet, setSendet] = useState(false);
-  const [fehler, setFehler] = useState("");
+  const [error, setError] = useState("");
   const [eingereiht, setEingereiht] = useState<number | null>(null);
 
-  const ordner = (stackDir || "").trim();
+  const folder = (stackDir || "").trim();
   // Order = urgency: no permission beats everything, then the missing target, then the
   // running deploy (which passes by itself).
-  const grund = !erlaubt
+  const reason = !allowed
     ? tr("deploy.rolle_fehlt")
-    : !ordner
+    : !folder
       ? tr("deploy.kein_arbeitsverzeichnis")
 
       : laufend
@@ -206,14 +206,14 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
         : "";
 
   const ausloesen = async () => {
-    setSendet(true); setFehler("");
+    setSendet(true); setError("");
     try {
       const d = await deploymentApi.create(projectId, issueId ? { issue_id: issueId } : {});
       setEingereiht(d.id);
-      setFrage(false);
+      setQuestion(false);
       nachziehen();
     } catch (e) {
-      setFehler(e instanceof ApiError ? e.message : tr("deploy.einreihen_fehlgeschlagen"));
+      setError(e instanceof ApiError ? e.message : tr("deploy.einreihen_fehlgeschlagen"));
     } finally {
       setSendet(false);
     }
@@ -222,21 +222,21 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
   return (
     <div className="rounded border border-line p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => { setFrage(true); setFehler(""); setEingereiht(null); }}
-          disabled={!!grund || frage || sendet}
-          className={KNOPF.haupt}>
+        <button onClick={() => { setQuestion(true); setError(""); setEingereiht(null); }}
+          disabled={!!reason || question || sendet}
+          className={BUTTON.haupt}>
           Jetzt deployen
         </button>
         <span className="text-xs text-muted">
-          {grund || tr("deploy.baut_neu", { ordner })}
+          {reason || tr("deploy.baut_neu", { ordner: folder })}
         </span>
       </div>
 
-      {frage && (
+      {question && (
         <div className="mt-3 space-y-2 rounded border border-yellow-400/40 bg-surface p-3">
           <div className="text-sm text-ink">{tr("deployments_panel.diesen_stand_wirklich_ausrollen")}</div>
           <div className="text-xs text-muted">
-            {tr("deployments_panel.was_passiert", { ordner })}
+            {tr("deployments_panel.was_passiert", { ordner: folder })}
           </div>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
             <li>{tr("deployments_panel.warnung_ausfall")}</li>
@@ -245,11 +245,11 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
           </ul>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button onClick={ausloesen} disabled={sendet}
-              className={KNOPF.haupt}>
+              className={BUTTON.haupt}>
               {tr(sendet ? "deployments_panel.wird_eingereiht" : "deployments_panel.ja_deployen")}
             </button>
-            <button onClick={() => setFrage(false)} disabled={sendet}
-              className={KNOPF.neben}>
+            <button onClick={() => setQuestion(false)} disabled={sendet}
+              className={BUTTON.neben}>
               Abbrechen
             </button>
           </div>
@@ -261,7 +261,7 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
           {tr("deployments_panel.eingereiht_als", { nummer: eingereiht })}
         </div>
       )}
-      {fehler && <div className="mt-2 text-xs text-red-400">{fehler}</div>}
+      {error && <div className="mt-2 text-xs text-red-400">{error}</div>}
     </div>
   );
 }
@@ -273,31 +273,31 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
  *  way in `_payload`), which is why it says "in the window" here and, separately, how many
  *  rows the list below is showing right now. Merging the two would be the number nobody can
  *  recompute. */
-function Kopf({ by, count, truncated, kompakt, fenster }: {
+function Header({ by, count, truncated, kompakt, fenster: window }: {
   by?: Record<string, number>; count: number; truncated?: boolean;
   kompakt: boolean; fenster: number;
 }) {
-  const eintraege = Object.entries(by || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
-  const summe = eintraege.reduce((s, [, n]) => s + n, 0);
-  if (!summe) return null;
+  const entries = Object.entries(by || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const sum_total = entries.reduce((s, [, n]) => s + n, 0);
+  if (!sum_total) return null;
   const abgebrochen = (by || {}).cancelled || 0;
   return (
     <div>
       <div className="flex h-2 overflow-hidden rounded">
-        {eintraege.map(([s, n]) => (
-          <div key={s} className={ST_BAR[s] || "bg-slate-500"} style={{ width: `${(n / summe) * 100}%` }}
+        {entries.map(([s, n]) => (
+          <div key={s} className={ST_BAR[s] || "bg-slate-500"} style={{ width: `${(n / sum_total) * 100}%` }}
             title={`${ST_LABEL[s] || s}: ${n}`} />
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
-        {eintraege.map(([s, n]) => (
+        {entries.map(([s, n]) => (
           <span key={s} className="flex items-center gap-1.5">
             <span className={`h-2 w-2 rounded-full ${ST_BAR[s] || "bg-slate-500"}`} />
             {ST_LABEL[s] || s}: <b className={s === "cancelled" ? "text-muted" : "text-ink"}>{n}</b>
           </span>
         ))}
         <span className="ml-auto">
-          {tr("deployments_panel.zusammenfassung", { summe, fenster: tr(fensterText(fenster)), count })}
+          {tr("deployments_panel.zusammenfassung", { summe: sum_total, fenster: tr(windowText(window)), count })}
           {truncated ? ` ${tr("deployments_panel.gekuerzt")}` : ""}
         </span>
       </div>
@@ -315,19 +315,19 @@ function Kopf({ by, count, truncated, kompakt, fenster }: {
   );
 }
 
-function Zeile({ d, kompakt, auf, toggle }: {
+function Line({ d, kompakt, auf, toggle }: {
   d: DeploymentRow; kompakt: boolean; auf: boolean; toggle: () => void;
 }) {
-  const laeuft = d.phase === "running";
+  const running = d.phase === "running";
   // The log head is the reason "failed" becomes understandable at all: always in the full
   // list, and in the card where it did not obviously end well.
-  const zeigeKopf = !!d.log_head && (!kompakt || d.ok !== true);
+  const zeigeHeader = !!d.log_head && (!kompakt || d.ok !== true);
   return (
     <div>
       <div role="button" tabIndex={0} onClick={toggle}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
         className="flex cursor-pointer items-start gap-2 py-2 text-left hover:bg-surface/50">
-        <OkZeichen ok={d.ok} laeuft={laeuft} />
+        <OkChars ok={d.ok} laeuft={running} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
             <span className={ST_TEXT[d.status] || "text-muted"}>{ST_LABEL[d.status] || d.status}</span>
@@ -346,14 +346,14 @@ function Zeile({ d, kompakt, auf, toggle }: {
             <span className="ml-auto shrink-0 text-xs text-muted">{formatTime(d.created_at) || "—"}</span>
           </div>
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
-            <span>{tr("deployments_panel.warteschlange")}: {dauerText(d.wait_ms)}</span>
-            <span>{tr("deployments_panel.arbeit")}: {dauerText(d.duration_ms)}</span>
-            {!kompakt && <span>{tr("deployments_panel.ausloeser")}: {tr(quelleText(d.source))}</span>}
+            <span>{tr("deployments_panel.warteschlange")}: {durationText(d.wait_ms)}</span>
+            <span>{tr("deployments_panel.arbeit")}: {durationText(d.duration_ms)}</span>
+            {!kompakt && <span>{tr("deployments_panel.ausloeser")}: {tr(sourceText(d.source))}</span>}
             {!kompakt && d.stack_dir && (
               <span className="truncate font-mono" title={d.stack_dir}>{d.stack_dir}</span>
             )}
           </div>
-          {zeigeKopf && (
+          {zeigeHeader && (
             <div className="mt-1 truncate font-mono text-[11px] text-muted" title={d.log_head || ""}>
               {einzeilig(d.log_head)}
             </div>
@@ -368,8 +368,8 @@ function Zeile({ d, kompakt, auf, toggle }: {
 
 /** Three valued `ok`. `null` means **unknown**, which is why it gets a sign and a colour of
  *  its own, not the green tick. If it is running, the running mark wins. */
-function OkZeichen({ ok, laeuft }: { ok?: boolean | null; laeuft: boolean }) {
-  if (laeuft) {
+function OkChars({ ok, laeuft: running }: { ok?: boolean | null; laeuft: boolean }) {
+  if (running) {
     return <span className="mt-0.5 animate-pulse text-yellow-400" title={tr("deployments_panel.laeuft_gerade")}>◐</span>;
   }
   if (ok === true) return <span className="mt-0.5 text-green-400" title="erfolgreich">✓</span>;
@@ -409,7 +409,7 @@ function LogAusklapper({ id, bytes }: { id: number; bytes?: number | null }) {
 
 /** Duration in the notation of `AgentMonitor.fmtDauer`. `null` or missing = "-", **never**
  *  "0 s": 71 of 186 rows lack a timestamp, and a computed zero would be a lie. */
-function dauerText(ms: number | null | undefined): string {
+function durationText(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
   if (ms < 1000) return `${Math.max(0, Math.round(ms))} ms`;
   const s = Math.max(0, Math.round(ms / 1000));
@@ -420,22 +420,22 @@ function dauerText(ms: number | null | undefined): string {
 
 /** `requested_by`/`chat_id` are filled on not a single row; the trigger comes from `source`,
  *  and with old rows it simply does not exist. */
-function quelleText(source?: string | null): string {
+function sourceText(source?: string | null): string {
   if (!source) return "deployments_panel.quelle_unbekannt";
-  return QUELLE_LABEL[source] || source;
+  return SOURCE_LABEL[source] || source;
 }
 
 /** Name the time window instead of hiding it: "61 successful" without a period says nothing.
  *  Returns a key, the caller translates. The odd windows fall back to a counted text, because
  *  a number plus a unit survives translation while a hand written case ending does not. */
-function fensterText(stunden: number): string {
-  if (stunden === 24) return "deployments_panel.fenster_24h";
-  if (stunden === 168) return "deployments_panel.fenster_7t";
-  if (stunden === 720) return "deployments_panel.fenster_30t";
-  if (stunden === 8760) return "deployments_panel.fenster_1j";
-  return stunden % 24 === 0
-    ? tr("deployments_panel.fenster_tage", { anzahl: stunden / 24 })
-    : tr("deployments_panel.fenster_stunden", { anzahl: stunden });
+function windowText(hours: number): string {
+  if (hours === 24) return "deployments_panel.fenster_24h";
+  if (hours === 168) return "deployments_panel.fenster_7t";
+  if (hours === 720) return "deployments_panel.fenster_30t";
+  if (hours === 8760) return "deployments_panel.fenster_1j";
+  return hours % 24 === 0
+    ? tr("deployments_panel.fenster_tage", { anzahl: hours / 24 })
+    : tr("deployments_panel.fenster_stunden", { anzahl: hours });
 }
 
 /** The log head contains line breaks; in a table row those are only a nuisance. */

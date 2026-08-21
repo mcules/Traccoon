@@ -26,7 +26,7 @@ export const TAB_ICONS: Record<ProjectTab, string> = {
 };
 
 /** Path of a project view. One place, so that no caller has to know the shape. */
-export function projektPfad(key: string, tab: ProjectTab, unter?: string): string {
+export function projektPath(key: string, tab: ProjectTab, unter?: string): string {
   return `/projects/${key}/${tab}` + (unter ? `/${unter}` : "");
 }
 
@@ -88,14 +88,14 @@ export function projectTabs(project: Project | undefined): [ProjectTab, string][
  */
 export function projectChromeTabs(
   project: Project | undefined,
-  aktuell?: { tab: ProjectTab; unter?: string },
+  current?: { tab: ProjectTab; unter?: string },
 ): ChromeTab[] {
   if (!project) return [];
   return projectTabs(project).map(([key, label]) => ({
     key,
     label,
     icon: TAB_ICONS[key],
-    to: projektPfad(project.key, key, aktuell && aktuell.tab === key ? aktuell.unter : undefined),
+    to: projektPath(project.key, key, current && current.tab === key ? current.unter : undefined),
   }));
 }
 
@@ -120,7 +120,7 @@ const ALT: Record<string, [ProjectTab, string?]> = {
 };
 
 /** Abschnitte im PFAD (`/projects/X/arbeit`), nicht in der Query. */
-export const ALT_ABSCHNITT: Record<string, string> = {
+export const ALT_SECTION: Record<string, string> = {
   arbeit: "work", betrieb: "operations", einstellungen: "settings",
 };
 
@@ -133,6 +133,6 @@ export const ALT_UNTER: Record<string, string> = {
 };
 
 export function altenTabUmleiten(key: string, alt: string): string | null {
-  const ziel = ALT[alt];
-  return ziel ? projektPfad(key, ziel[0], ziel[1]) : null;
+  const target = ALT[alt];
+  return target ? projektPath(key, target[0], target[1]) : null;
 }

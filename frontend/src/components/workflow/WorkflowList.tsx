@@ -3,8 +3,8 @@ import { tr } from "../../i18n";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi, type Project, type WorkflowSubjectKind } from "../../api";
-import { projektPfad } from "../../projectTabs";
-import { Liste, ListeLeer, ListenZeile, KNOPF} from "../ui";
+import { projektPath } from "../../projectTabs";
+import { Listing, ListingLeer, ListenLine, BUTTON} from "../ui";
 
 const SUBJECT_LABEL: Record<WorkflowSubjectKind, string> = {
   issue: "Ticket",
@@ -18,13 +18,13 @@ const EMPTY = { key: "", name: "", subject_kind: "issue" as WorkflowSubjectKind,
 export default function WorkflowList({ project }: { project: Project }) {
   const qc = useQueryClient();
   const nav = useNavigate();
-  const { data: alle } = useQuery({
+  const { data: all } = useQuery({
     queryKey: ["workflows", project.id],
     queryFn: () => workflowApi.list(project.id),
   });
   // Flows with a slot stand at the top in the slot overview (with the origin and a reset);
   // here only the freely created ones.
-  const defs = alle?.filter((d) => !d.slot);
+  const defs = all?.filter((d) => !d.slot);
   const [f, setF] = useState(EMPTY);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["workflows", project.id] });
@@ -43,7 +43,7 @@ export default function WorkflowList({ project }: { project: Project }) {
       setF(EMPTY);
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "settings", "processes") } });
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPath(project.key, "settings", "processes") } });
     },
     onError: fail,
   });
@@ -66,9 +66,9 @@ export default function WorkflowList({ project }: { project: Project }) {
         {tr("workflow_list.einleitung")}
       </p>
 
-      <Liste className="mb-4">
+      <Listing className="mb-4">
         {defs?.map((d) => (
-          <ListenZeile key={d.id} gedimmt={!d.enabled}>
+          <ListenLine key={d.id} gedimmt={!d.enabled}>
             <div className="flex flex-wrap items-center gap-3">
             <span className="font-mono text-xs text-muted">{d.key}</span>
             <span className="font-medium">{d.name}</span>
@@ -91,7 +91,7 @@ export default function WorkflowList({ project }: { project: Project }) {
             </button>
             <button
               title={tr("workflow_list.bearbeiten")}
-              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "settings", "processes") } })}
+              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPath(project.key, "settings", "processes") } })}
               className={ico + " hover:opacity-80"}
             >
               ✎
@@ -100,10 +100,10 @@ export default function WorkflowList({ project }: { project: Project }) {
               🗑
             </button>
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
-        {defs?.length === 0 && <ListeLeer>{tr("workflow_list.noch_keine_eigenen_prozesse")}</ListeLeer>}
-      </Liste>
+        {defs?.length === 0 && <ListingLeer>{tr("workflow_list.noch_keine_eigenen_prozesse")}</ListingLeer>}
+      </Listing>
 
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3">
         <input
@@ -135,7 +135,7 @@ export default function WorkflowList({ project }: { project: Project }) {
         />
         <button
           onClick={() => f.key.trim() && f.name.trim() && create.mutate()}
-          className={KNOPF.haupt}
+          className={BUTTON.haupt}
         >
           + Prozess anlegen &amp; bearbeiten
         </button>

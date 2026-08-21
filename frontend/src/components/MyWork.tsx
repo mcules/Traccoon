@@ -6,7 +6,7 @@ import { api, workflowApi, MyDashboard, MyTicket, ProjectMeta, WorkflowTaskLite 
 import { waitInfo } from "../lib/waitReason";
 import { formatTime } from "../lib/formatTime";
 import { NODE_TYPE_LABELS } from "./workflow/types";
-import { Bereich, Liste, ZEILE, KNOPF_TEXT} from "./ui";
+import { Area, Listing, LINE, BUTTON_TEXT} from "./ui";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 
 const PRIO_FARBE: Record<string, string> = {
@@ -77,13 +77,13 @@ export default function MyWork() {
 
       {data.action.length > 0 && (
         <Sektion titel={`⚡ ${tr("my_work.braucht_dich")}`} hinweis={tr("my_work.braucht_dich_hinweis")}>
-          <ProjektGruppen tickets={data.action} />
+          <ProjektGroups tickets={data.action} />
         </Sektion>
       )}
 
       {data.assigned.length > 0 && (
         <Sektion titel={`📋 ${tr("my_work.mir_zugewiesen")}`} hinweis={tr("my_work.mir_zugewiesen_hinweis")}>
-          <ProjektGruppen tickets={data.assigned} />
+          <ProjektGroups tickets={data.assigned} />
         </Sektion>
       )}
 
@@ -112,7 +112,7 @@ function TaskModal({ task, onClose }: { task: WorkflowTaskLite; onClose: () => v
       >
         <div className="mb-3 flex items-center justify-between">
           <div className="text-sm font-medium">{task.node_config.label || task.definition_name}</div>
-          <button onClick={onClose} className={KNOPF_TEXT.neben}>
+          <button onClick={onClose} className={BUTTON_TEXT.neben}>
             ✕
           </button>
         </div>
@@ -134,23 +134,23 @@ function TaskModal({ task, onClose }: { task: WorkflowTaskLite; onClose: () => v
   );
 }
 
-function ProjektGruppen({ tickets }: { tickets: MyTicket[] }) {
+function ProjektGroups({ tickets }: { tickets: MyTicket[] }) {
   // Group by project, keeping the order of first appearance (already sorted by updated_at).
-  const gruppen: { id: number; key: string; name: string; items: MyTicket[] }[] = [];
+  const groups: { id: number; key: string; name: string; items: MyTicket[] }[] = [];
   const idx = new Map<number, number>();
   for (const t of tickets) {
     let i = idx.get(t.project_id);
     if (i === undefined) {
-      i = gruppen.length;
+      i = groups.length;
       idx.set(t.project_id, i);
-      gruppen.push({ id: t.project_id, key: t.project_key, name: t.project_name, items: [] });
+      groups.push({ id: t.project_id, key: t.project_key, name: t.project_name, items: [] });
     }
-    gruppen[i].items.push(t);
+    groups[i].items.push(t);
   }
 
   return (
     <div className="space-y-3">
-      {gruppen.map((g) => (
+      {groups.map((g) => (
         <div key={g.id}>
           <Link to={`/projects/${g.key}`}
             className="mb-1.5 flex min-h-[36px] items-center gap-2 text-xs font-medium text-muted hover:text-ink md:min-h-[28px]">
@@ -158,20 +158,20 @@ function ProjektGruppen({ tickets }: { tickets: MyTicket[] }) {
             <span className="truncate">{g.name}</span>
             <span className="rounded bg-surface px-1.5 py-0.5 text-[11px]">{g.items.length}</span>
           </Link>
-          <Liste>
-            {g.items.map((t) => <TicketZeile key={t.key} t={t} />)}
-          </Liste>
+          <Listing>
+            {g.items.map((t) => <TicketLine key={t.key} t={t} />)}
+          </Listing>
         </div>
       ))}
     </div>
   );
 }
 
-function TicketZeile({ t }: { t: MyTicket }) {
+function TicketLine({ t }: { t: MyTicket }) {
   const wi = waitInfo(t);
   return (
     <Link to={`/projects/${t.project_key}/tickets/${t.key}`}
-      className={`${ZEILE} flex items-center gap-3`}>
+      className={`${LINE} flex items-center gap-3`}>
       <span className="font-mono text-xs text-muted" title={t.project_name}>{t.key}</span>
       <span className="min-w-0 flex-1 truncate text-sm">{t.summary}</span>
       {t.agent_working && <span className="text-xs text-sky-400" title={tr("my_work.agent_arbeitet")}>{tr("my_work.laeuft")}</span>}
@@ -188,19 +188,19 @@ function TicketZeile({ t }: { t: MyTicket }) {
   );
 }
 
-function Kachel({ label, wert, farbe }: { label: string; wert: number; farbe?: string }) {
+function Kachel({ label, wert: value, farbe }: { label: string; wert: number; farbe?: string }) {
   return (
     <div className="rounded-lg border border-line bg-card p-2 sm:p-3">
-      <div className={`text-xl font-semibold sm:text-2xl ${farbe || "text-ink"}`}>{wert}</div>
+      <div className={`text-xl font-semibold sm:text-2xl ${farbe || "text-ink"}`}>{value}</div>
       <div className="truncate text-[11px] leading-tight text-muted sm:text-xs" title={label}>{label}</div>
     </div>
   );
 }
 
-function Sektion({ titel, hinweis, children }: { titel: string; hinweis: string; children: React.ReactNode }) {
+function Sektion({ titel: title, hinweis: hint, children }: { titel: string; hinweis: string; children: React.ReactNode }) {
   return (
-    <Bereich titel={titel} hinweis={hinweis}>
-      <Liste>{children}</Liste>
-    </Bereich>
+    <Area titel={title} hinweis={hint}>
+      <Listing>{children}</Listing>
+    </Area>
   );
 }

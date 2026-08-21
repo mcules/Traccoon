@@ -19,7 +19,7 @@ type Katalog = Record<string, string>;
 const AUSGELIEFERT: Record<string, Katalog> = { de: de as Katalog, en: en as Katalog };
 export const QUELLSPRACHE = "de";
 
-let aktuell = QUELLSPRACHE;
+let current = QUELLSPRACHE;
 let overrides: Katalog = {};
 const horcher = new Set<() => void>();
 
@@ -29,8 +29,8 @@ export function beiSprachwechsel(fn: () => void): () => void {
   return () => horcher.delete(fn);
 }
 
-export function sprache(): string {
-  return aktuell;
+export function language(): string {
+  return current;
 }
 
 /**
@@ -41,7 +41,7 @@ export function sprache(): string {
  */
 export function tr(key: string, vars?: Record<string, string | number>): string {
   const text = overrides[key]
-    ?? AUSGELIEFERT[aktuell]?.[key]
+    ?? AUSGELIEFERT[current]?.[key]
     ?? AUSGELIEFERT[QUELLSPRACHE]?.[key]
     ?? key;
   if (!vars) return text;
@@ -58,8 +58,8 @@ export function tr(key: string, vars?: Record<string, string | number>): string 
  * who reads neither the catalog nor German. So: the override, the catalog of the chosen
  * language, otherwise nothing, and the caller keeps what the server wrote.
  */
-export function trBekannt(key: string, vars?: Record<string, string | number>): string | null {
-  const text = overrides[key] ?? AUSGELIEFERT[aktuell]?.[key];
+export function trKnown(key: string, vars?: Record<string, string | number>): string | null {
+  const text = overrides[key] ?? AUSGELIEFERT[current]?.[key];
   if (text === undefined) return null;
   if (!vars) return text;
   return text.replace(/\{(\w+)\}/g, (ganz, name) =>
@@ -67,13 +67,13 @@ export function trBekannt(key: string, vars?: Record<string, string | number>): 
 }
 
 /** Set the language and pull in what the admin changed. */
-export async function setzeSprache(locale: string): Promise<void> {
-  aktuell = locale && locale in AUSGELIEFERT ? locale : (locale || QUELLSPRACHE);
+export async function setzeLanguage(locale: string): Promise<void> {
+  current = locale && locale in AUSGELIEFERT ? locale : (locale || QUELLSPRACHE);
   overrides = {};
   try {
-    const antwort = await api.get<{ locale: string; texte: Katalog }>(
-      `/i18n/${encodeURIComponent(aktuell)}`);
-    overrides = antwort.texte || {};
+    const answer = await api.get<{ locale: string; texte: Katalog }>(
+      `/i18n/${encodeURIComponent(current)}`);
+    overrides = answer.texte || {};
   } catch {
     // Without a connection the shipped catalog remains, so the interface keeps working.
   }
@@ -81,7 +81,7 @@ export async function setzeSprache(locale: string): Promise<void> {
 }
 
 /** Every key with its German text, the basis of the admin translation view. */
-export function alleSchluessel(): Katalog {
+export function allKey(): Katalog {
   return AUSGELIEFERT[QUELLSPRACHE];
 }
 

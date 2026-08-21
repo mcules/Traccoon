@@ -33,7 +33,7 @@ export function useTokenKeepalive(aktiv: boolean, intervallMs: number = KEEPALIV
     if (!aktiv) return;
     let entlassen = false;
 
-    const erneuern = async () => {
+    const renew = async () => {
       try {
         const r = await api.post<{ access_token?: string }>("/auth/refresh");
         if (!entlassen && r?.access_token) setToken(r.access_token);
@@ -43,8 +43,8 @@ export function useTokenKeepalive(aktiv: boolean, intervallMs: number = KEEPALIV
       }
     };
 
-    void erneuern();
-    const timer = window.setInterval(() => { void erneuern(); }, intervallMs);
+    void renew();
+    const timer = window.setInterval(() => { void renew(); }, intervallMs);
     return () => { entlassen = true; window.clearInterval(timer); };
   }, [aktiv, intervallMs]);
 }

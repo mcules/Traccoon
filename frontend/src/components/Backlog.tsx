@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
 import { waitInfo } from "../lib/waitReason";
 import { ticketOpenHandlers, type OnOpenTicket } from "../ticketOpen";
-import { KNOPF, KNOPF_KLEIN, KNOPF_TEXT} from "./ui";
+import { BUTTON, BUTTON_KLEIN, BUTTON_TEXT} from "./ui";
 
 const PRIO_FARBE: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400",
@@ -23,33 +23,33 @@ export default function Backlog({
     qc.invalidateQueries({ queryKey: ["issues", project.id] });
     qc.invalidateQueries({ queryKey: ["meta", project.id] });
   };
-  const fehler = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
   const setSprint = useMutation({
     mutationFn: (v: { key: string; sprint_id: number | null }) =>
       api.put(`/issues/${v.key}`, { sprint_id: v.sprint_id }),
-    onSuccess: inv, onError: fehler,
+    onSuccess: inv, onError: error,
   });
-  const neu = useMutation({
+  const fresh = useMutation({
     mutationFn: () => api.post(`/projects/${project.id}/sprints`, { name }),
-    onSuccess: () => { setName(""); inv(); }, onError: fehler,
+    onSuccess: () => { setName(""); inv(); }, onError: error,
   });
-  const aktion = useMutation({
+  const action = useMutation({
     mutationFn: (v: { id: number; was: "start" | "complete" }) =>
       api.post(`/projects/${project.id}/sprints/${v.id}/${v.was}`),
-    onSuccess: inv, onError: fehler,
+    onSuccess: inv, onError: error,
   });
-  const loeschen = useMutation({
+  const remove = useMutation({
     mutationFn: (id: number) => api.del(`/projects/${project.id}/sprints/${id}`),
-    onSuccess: inv, onError: fehler,
+    onSuccess: inv, onError: error,
   });
 
   const offeneSprints = (meta.sprints || []).filter((s: any) => s.state !== "closed");
   const backlog = issues.filter((i) => !i.sprint_id);
 
-  const Zeile = (i: Issue) => (
+  const Line = (i: Issue) => (
     <div key={i.id} className="flex items-center gap-3 rounded border border-line bg-card px-2 py-1.5 text-sm">
-      <button {...ticketOpenHandlers(i.key, onOpen)} className={KNOPF_TEXT.neben}>{i.key}</button>
+      <button {...ticketOpenHandlers(i.key, onOpen)} className={BUTTON_TEXT.neben}>{i.key}</button>
       <span className="flex-1 truncate">{i.summary}</span>
       {(() => { const w = waitInfo(i); return w && (
         <span title={`${w.title}: ${w.label}`} className="text-xs">{w.icon}</span>
@@ -71,7 +71,7 @@ export default function Backlog({
 
       {offeneSprints.map((s: any) => {
         const drin = issues.filter((i) => i.sprint_id === s.id);
-        const fertig = drin.filter((i) => i.resolved_at).length;
+        const done = drin.filter((i) => i.resolved_at).length;
         return (
           <section key={s.id} className="rounded-lg border border-line p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -79,23 +79,23 @@ export default function Backlog({
               {s.state === "active"
                 ? <span className="rounded bg-green-500/20 px-1.5 text-xs text-green-400">{tr("backlog.laeuft")}</span>
                 : <span className="rounded bg-surface px-1.5 text-xs text-muted">geplant</span>}
-              <span className="text-xs text-muted">{drin.length} Tickets · {fertig} fertig</span>
+              <span className="text-xs text-muted">{drin.length} Tickets · {done} fertig</span>
               <div className="flex-1" />
               {s.state === "active" ? (
-                <button onClick={() => aktion.mutate({ id: s.id, was: "complete" })}
-                  className={KNOPF_KLEIN.neben}>
+                <button onClick={() => action.mutate({ id: s.id, was: "complete" })}
+                  className={BUTTON_KLEIN.neben}>
                   {tr("backlog.abschliessen")}</button>
               ) : (
-                <button onClick={() => aktion.mutate({ id: s.id, was: "start" })}
-                  className={KNOPF.haupt}>{tr("backlog.starten")}</button>
+                <button onClick={() => action.mutate({ id: s.id, was: "start" })}
+                  className={BUTTON.haupt}>{tr("backlog.starten")}</button>
               )}
               {!drin.length && (
-                <button onClick={() => loeschen.mutate(s.id)}
-                  className={KNOPF_TEXT.gefahr}>{tr("common.loeschen_klein")}</button>
+                <button onClick={() => remove.mutate(s.id)}
+                  className={BUTTON_TEXT.gefahr}>{tr("common.loeschen_klein")}</button>
               )}
             </div>
             <div className="space-y-1">
-              {drin.length ? drin.map(Zeile)
+              {drin.length ? drin.map(Line)
                 : <div className="text-xs text-muted">{tr("backlog.noch_nichts_zugeordnet")}</div>}
             </div>
           </section>
@@ -109,11 +109,11 @@ export default function Backlog({
           <div className="flex-1" />
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("backlog.neuer_sprint")}
             className="rounded border border-line bg-surface px-2 py-1 text-xs" />
-          <button onClick={() => name.trim() && neu.mutate()}
-            className={KNOPF_KLEIN.neben}>+ Sprint</button>
+          <button onClick={() => name.trim() && fresh.mutate()}
+            className={BUTTON_KLEIN.neben}>+ Sprint</button>
         </div>
         <div className="space-y-1">
-          {backlog.length ? backlog.map(Zeile)
+          {backlog.length ? backlog.map(Line)
             : <div className="text-xs text-muted">{tr("backlog.backlog_ist_leer")}</div>}
         </div>
       </section>

@@ -43,9 +43,9 @@ export function useSourceHandles(nodeId: string, vorgabe: SourceHandleDef[]): So
     for (const e of st.edges) if (e.source === nodeId) namen.add(e.sourceHandle || "out");
     return [...namen].sort().join("\u0000");
   });
-  const zusatz = genutzt ? genutzt.split("\u0000") : [];
+  const extra = genutzt ? genutzt.split("\u0000") : [];
   const out = [...vorgabe];
-  for (const name of zusatz) {
+  for (const name of extra) {
     if (!out.some((h) => h.id === name)) out.push({ id: name, label: name });
   }
   return out.length ? out : [{ id: "out" }];
@@ -82,8 +82,8 @@ export function BaseNode({
   // Every exit an existing edge uses MUST be drawn; otherwise React Flow swallows the edge
   // and the target node seemingly hangs in the air. Central here, so that it applies to
   // every node type (self-built graphs as well).
-  const alle = useSourceHandles(nodeId ?? "", sources);
-  sources = sources.length ? alle : sources;
+  const all = useSourceHandles(nodeId ?? "", sources);
+  sources = sources.length ? all : sources;
   // The flow runs from top to bottom: entry at the top, exits side by side at the bottom.
   const labeled = sources.filter((s) => s.label).length;
   return (

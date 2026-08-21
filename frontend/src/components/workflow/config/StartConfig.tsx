@@ -39,7 +39,7 @@ export default function StartConfig({
     queryFn: () => workflowApi.webhookGet(defId as number),
     enabled: !!defId,
   });
-  const adresseAnlegen = useMutation({
+  const adresseCreate = useMutation({
     mutationFn: () => workflowApi.webhookCreate(defId as number),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflow-webhook", defId] }),
   });
@@ -66,15 +66,15 @@ export default function StartConfig({
     t.kind === "webhook" ? "webhook"
       : t.kind === "mail_action" ? "mail_action"
         : (t.kind === "ereignis" || t.event) ? "ereignis" : "manuell";
-  const setArt = (neu: typeof art) => {
-    const rest = { ...t };
-    delete rest.event; delete rest.project_id; delete rest.filter; delete rest.kind;
-    delete rest.scope;
-    if (neu !== "manuell") rest.kind = neu;
-    if (neu === "mail_action") rest.scope = "message";
+  const setArt = (fresh: typeof art) => {
+    const remainder = { ...t };
+    delete remainder.event; delete remainder.project_id; delete remainder.filter; delete remainder.kind;
+    delete remainder.scope;
+    if (fresh !== "manuell") remainder.kind = fresh;
+    if (fresh === "mail_action") remainder.scope = "message";
     onChange({
       ...config,
-      trigger: Object.keys(rest).length ? (rest as NodeConfig["trigger"]) : undefined,
+      trigger: Object.keys(remainder).length ? (remainder as NodeConfig["trigger"]) : undefined,
     });
   };
   const setT = (next: Record<string, any>) => {
@@ -164,11 +164,11 @@ export default function StartConfig({
           </div>
         ) : (
           <button
-            onClick={() => adresseAnlegen.mutate()}
-            disabled={!defId || adresseAnlegen.isPending}
+            onClick={() => adresseCreate.mutate()}
+            disabled={!defId || adresseCreate.isPending}
             className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
           >
-            {adresseAnlegen.isPending ? "…" : "+ Adresse erzeugen"}
+            {adresseCreate.isPending ? "…" : "+ Adresse erzeugen"}
           </button>
         )}
 

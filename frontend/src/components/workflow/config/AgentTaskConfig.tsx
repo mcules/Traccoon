@@ -23,10 +23,10 @@ export default function AgentTaskConfig({
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
   // Ein Rollenname, den es (noch) nicht gibt, bleibt bedienbar: das Feld springt dann von
   // selbst auf die freie Eingabe, statt den Wert stillschweigend zu verwerfen.
-  const bekannt = new Set(["plan_agent", "exec_agent", "review_agent", "assigned",
+  const known = new Set(["plan_agent", "exec_agent", "review_agent", "assigned",
                            ...agentOptions(agents).map(([w]) => w)]);
   const [eigeneRolle, setEigeneRolle] = useState(
-    !!config.agent_role && !bekannt.has(config.agent_role));
+    !!config.agent_role && !known.has(config.agent_role));
 
   return (
     <div className="space-y-3">
@@ -38,11 +38,11 @@ export default function AgentTaskConfig({
         <select
           value={eigeneRolle ? "__frei__" : (config.agent_role || "exec_agent")}
           onChange={(e) => {
-            const wert = e.target.value;
+            const value = e.target.value;
             // „Andere Rolle" schaltet auf ein Textfeld um, statt sofort etwas zu setzen:
             // sonst stünde beim Umschalten kurz ein Rollenname da, den niemand gewählt hat.
-            setEigeneRolle(wert === "__frei__");
-            if (wert !== "__frei__") onChange({ ...config, agent_role: wert });
+            setEigeneRolle(value === "__frei__");
+            if (value !== "__frei__") onChange({ ...config, agent_role: value });
           }}
           className={`mt-1 ${inp}`}
         >
@@ -54,8 +54,8 @@ export default function AgentTaskConfig({
           </optgroup>
           <optgroup label="Fester Agent">
             {/* Konkrete Rollen mit Herkunft der Definition, die tatsächlich greift. */}
-            {agentOptions(agents).filter(([wert]) => wert).map(([wert, beschriftung]) => (
-              <option key={wert} value={wert}>{beschriftung}</option>
+            {agentOptions(agents).filter(([value]) => value).map(([value, beschriftung]) => (
+              <option key={value} value={value}>{beschriftung}</option>
             ))}
           </optgroup>
           <option value="__frei__">Andere Rolle (eintippen)…</option>

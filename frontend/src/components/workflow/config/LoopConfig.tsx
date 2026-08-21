@@ -1,5 +1,5 @@
 import type { NodeConfig } from "../types";
-import type { KontextFeld } from "../contextFields";
+import type { ContextField } from "../contextFields";
 import { tr } from "../../../i18n";
 
 /**
@@ -12,17 +12,17 @@ import { tr } from "../../../i18n";
 export default function LoopConfig({
   config,
   onChange,
-  felder = [],
+  felder: fields = [],
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
-  felder?: KontextFeld[];
+  felder?: ContextField[];
 }) {
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
   const set = (p: Partial<NodeConfig>) => onChange({ ...config, ...p });
   // Lists first: everything else can be walked through as well (a single value counts as one
   // element), but a list is almost always what is meant.
-  const listen = felder.filter((f) => f.type === "list" || f.type === "object");
+  const listen = fields.filter((f) => f.type === "list" || f.type === "object");
 
   return (
     <div className="space-y-3">
@@ -31,13 +31,13 @@ export default function LoopConfig({
         <input
           value={(config.liste as string) || ""}
           onChange={(e) => set({ liste: e.target.value.trim() })}
-          list={felder.length ? "wf-listenfelder" : undefined}
+          list={fields.length ? "wf-listenfelder" : undefined}
           placeholder="tool.json.items"
           className={`mt-1 font-mono ${inp}`}
         />
-        {felder.length > 0 && (
+        {fields.length > 0 && (
           <datalist id="wf-listenfelder">
-            {[...listen, ...felder].map((f) => (
+            {[...listen, ...fields].map((f) => (
               <option key={f.path} value={f.path}>{`${tr(f.description)} · ${f.source}`}</option>
             ))}
           </datalist>

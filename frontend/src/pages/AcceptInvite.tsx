@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, Project } from "../api";
 import { useAuth } from "../auth";
-import { KNOPF, KNOPF_TEXT} from "../components/ui";
+import { BUTTON, BUTTON_TEXT} from "../components/ui";
 
 interface Preview {
   project_key: string; project_name: string; email: string; role: string;
@@ -136,11 +136,11 @@ export default function AcceptInvite() {
             placeholder={tr("accept_invite.passwort")} value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
-        <button className={`mt-4 w-full ${KNOPF.haupt}`}>
+        <button className={`mt-4 w-full ${BUTTON.haupt}`}>
           {tr(mode === "login" ? "accept_invite.anmelden_beitreten" : "accept_invite.registrieren_beitreten")}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className={KNOPF_TEXT.neben}>
+          className={BUTTON_TEXT.neben}>
           {tr(mode === "login" ? "accept_invite.neu_hier" : "accept_invite.bereits_registriert")}
         </button>
       </form>

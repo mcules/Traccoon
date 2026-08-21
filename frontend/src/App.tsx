@@ -2,7 +2,7 @@ import { Suspense, lazy } from "react";
 import { tr } from "./i18n";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { useAuth } from "./auth";
-import { useSprache, useSpracheVonNutzer } from "./i18n/useSprache";
+import { useLanguage, useLanguageVonUser } from "./i18n/useSprache";
 import Login from "./pages/Login";
 import AcceptInvite from "./pages/AcceptInvite";
 import Projects from "./pages/Projects";
@@ -10,7 +10,7 @@ import ProjectView from "./pages/ProjectView";
 import TicketView from "./pages/TicketView";
 import WorkflowEditor from "./pages/WorkflowEditor";
 import Processes from "./pages/Processes";
-import AblageSeite from "./pages/Ablage";
+import AblagePage from "./pages/Ablage";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Konto from "./pages/Konto";
@@ -43,16 +43,16 @@ function AlteAdresse({ to }: { to: string }) {
  * müssen, in welcher Sprache dieser eine Abschnitt gemeint ist. Die alten leiten weiter,
  * denn sie stehen in Lesezeichen, in Tickets und im Vault.
  */
-function AlterAbschnitt({ karte, ziel }: { karte: Record<string, string>; ziel: string }) {
+function AlterSection({ karte, ziel: target }: { karte: Record<string, string>; ziel: string }) {
   const params = useParams();
   // Ein Abschnitt, der schon englisch hieß (person, mail), geht unverändert mit — sonst
   // landete `/account/person` im Nichts statt auf `/account/person`.
-  const abschnitt = karte[params.tab || ""] || params.tab || "";
-  return <Navigate to={abschnitt ? `${ziel}/${abschnitt}` : ziel} replace />;
+  const section = karte[params.tab || ""] || params.tab || "";
+  return <Navigate to={section ? `${target}/${section}` : target} replace />;
 }
 
 /** `/settings/prefs` split in two: what belongs to the person went to the account. */
-function EinstellungenTab() {
+function SettingsTab() {
   const { tab } = useParams();
   if (tab === "prefs") return <Navigate to="/account/agents" replace />;
   if (tab === "processes") return <Navigate to="/processes/own" replace />;
@@ -69,23 +69,23 @@ const KONTO_ALT = { ansicht: "appearance", meldungen: "notifications", agenten: 
 const PROZESSE_ALT = { eigene: "own", standard: "default", betrieb: "operations",
                        ausloeser: "triggers", messreihen: "metrics", ablagen: "documents" };
 
-function KontoSeite() {
+function KontoPage() {
   const { tab } = useParams();
   return tab && tab in KONTO_ALT
-    ? <AlterAbschnitt karte={KONTO_ALT} ziel="/account" /> : <Konto />;
+    ? <AlterSection karte={KONTO_ALT} ziel="/account" /> : <Konto />;
 }
 
-function ProzesseSeite() {
+function ProzessePage() {
   const { tab } = useParams();
   return tab && tab in PROZESSE_ALT
-    ? <AlterAbschnitt karte={PROZESSE_ALT} ziel="/processes" /> : <Processes />;
+    ? <AlterSection karte={PROZESSE_ALT} ziel="/processes" /> : <Processes />;
 }
 
 export default function App() {
   const { user, loading } = useAuth();
   // The language hangs off the logged-in human; without a login the browser decides.
-  useSpracheVonNutzer(user?.locale);
-  useSprache();
+  useLanguageVonUser(user?.locale);
+  useLanguage();
 
   if (loading) return <div className="p-8 text-muted">{tr("common.laedt")}</div>;
   if (!user) {
@@ -106,19 +106,19 @@ export default function App() {
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/mail" element={<Mail />} />
         <Route path="/account" element={<Konto />} />
-        <Route path="/account/:tab" element={<KontoSeite />} />
+        <Route path="/account/:tab" element={<KontoPage />} />
         <Route path="/konto" element={<AlteAdresse to="/account" />} />
-        <Route path="/account/:tab" element={<AlterAbschnitt karte={KONTO_ALT} ziel="/account" />} />
+        <Route path="/account/:tab" element={<AlterSection karte={KONTO_ALT} ziel="/account" />} />
         <Route path="/profil" element={<AlteAdresse to="/account" />} />
         {/* Plugins liegen unter einem eigenen kurzen Praefix — sie sind Bereiche,
             aber keine eingebauten. */}
         <Route path="/p/:slug" element={<PluginHost />} />
         <Route path="/settings" element={<Settings />} />
-        <Route path="/settings/:tab" element={<EinstellungenTab />} />
-        <Route path="/documents/:key" element={<AblageSeite />} />
-        <Route path="/documents/:key/:id" element={<AblageSeite />} />
+        <Route path="/settings/:tab" element={<SettingsTab />} />
+        <Route path="/documents/:key" element={<AblagePage />} />
+        <Route path="/documents/:key/:id" element={<AblagePage />} />
         <Route path="/processes" element={<Processes />} />
-        <Route path="/processes/:tab" element={<ProzesseSeite />} />
+        <Route path="/processes/:tab" element={<ProzessePage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/:tab" element={<AdminTab />} />
         <Route path="/projects/:key/workflows/:id" element={<WorkflowEditor />} />

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import { KNOPF_KLEIN } from "./ui";
+import { BUTTON_KLEIN } from "./ui";
 
 /**
  * The switches that hang off `/me/flags`, one panel per subject.
@@ -33,18 +33,18 @@ function useFlags() {
 }
 
 /** Short green confirmation under a panel; disappears on its own. */
-function useMeldung(): [string, (t: string) => void] {
+function useNotice(): [string, (t: string) => void] {
   const [msg, setMsg] = useState("");
   return [msg, (t: string) => { setMsg(t); setTimeout(() => setMsg(""), 2500); }];
 }
 
 const KARTE = "rounded-lg border border-line bg-card p-4";
-const FELD = "rounded border border-line bg-surface px-2 py-1";
+const FIELD = "rounded border border-line bg-surface px-2 py-1";
 
 export function AgentenBetriebPanel() {
   const { flags, inv } = useFlags();
   const [runners, setRunners] = useState(3);
-  const [msg, flash] = useMeldung();
+  const [msg, flash] = useNotice();
   useEffect(() => { if (flags) setRunners(flags.max_runners ?? 3); }, [flags]);
 
   return (
@@ -53,20 +53,20 @@ export function AgentenBetriebPanel() {
       <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
         <label className="text-muted">{tr("preferences_panel.gleichzeitige_laeufe_max_20")}</label>
         <input type="number" min={1} max={20} value={runners}
-          onChange={(e) => setRunners(+e.target.value)} className={`w-20 ${FELD}`} />
+          onChange={(e) => setRunners(+e.target.value)} className={`w-20 ${FIELD}`} />
         <button onClick={async () => {
           await api.put("/me/runner-limit", { value: runners }); inv(); flash(tr("konto.limit_gespeichert"));
-        }} className={KNOPF_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
+        }} className={BUTTON_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
       </div>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>
   );
 }
 
-export function AssistentMeldungenPanel() {
+export function AssistantNoticesPanel() {
   const { flags, inv } = useFlags();
   const [notify, setNotify] = useState("needed");
-  const [msg, flash] = useMeldung();
+  const [msg, flash] = useNotice();
   useEffect(() => { if (flags) setNotify(flags.assistant_notify || "needed"); }, [flags]);
 
   return (
@@ -77,7 +77,7 @@ export function AssistentMeldungenPanel() {
         setNotify(e.target.value);
         await api.put("/me/assistant-notify", { value: e.target.value });
         inv(); flash(tr("konto.gespeichert"));
-      }} className={`text-sm ${FELD}`}>
+      }} className={`text-sm ${FIELD}`}>
         <option value="needed">{tr("preferences_panel.nur_wenn_ich_etwas_wissen_muss_empfohlen")}</option>
         <option value="always">{tr("preferences_panel.jeder_erledigte_eingang")}</option>
         <option value="errors">{tr("preferences_panel.nur_pannen")}</option>
@@ -100,14 +100,14 @@ export function AssistentMeldungenPanel() {
 export function ZeitzonePanel() {
   const { flags, inv } = useFlags();
   const [zone, setZone] = useState("");
-  const [msg, flash] = useMeldung();
+  const [msg, flash] = useNotice();
   const { data: zonen } = useQuery({
     queryKey: ["timezones"], queryFn: () => api.get<string[]>("/timezones"),
     staleTime: 24 * 60 * 60_000,
   });
   useEffect(() => { if (flags) setZone(flags.timezone || ""); }, [flags]);
 
-  const jetzt = zone
+  const now = zone
     ? new Date().toLocaleString("de-DE", { timeZone: zone, hour: "2-digit", minute: "2-digit" })
     : "";
 
@@ -123,11 +123,11 @@ export function ZeitzonePanel() {
           setZone(e.target.value);
           await api.put("/me/timezone", { value: e.target.value });
           inv(); flash(tr("konto.gespeichert"));
-        }} className={`${FELD} max-w-xs`}>
+        }} className={`${FIELD} max-w-xs`}>
           {!zonen && <option value={zone}>{zone || "…"}</option>}
           {zonen?.map((z) => <option key={z} value={z}>{z}</option>)}
         </select>
-        {jetzt && <span className="text-xs text-muted">dort ist es gerade {jetzt} Uhr</span>}
+        {now && <span className="text-xs text-muted">dort ist es gerade {now} Uhr</span>}
       </div>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>
@@ -136,9 +136,9 @@ export function ZeitzonePanel() {
 
 export function GedaechtnisPanel() {
   const { flags, inv } = useFlags();
-  const [pfad, setPfad] = useState("");
-  const [msg, flash] = useMeldung();
-  useEffect(() => { if (flags) setPfad(flags.vault_memory_path || ""); }, [flags]);
+  const [path, setPath] = useState("");
+  const [msg, flash] = useNotice();
+  useEffect(() => { if (flags) setPath(flags.vault_memory_path || ""); }, [flags]);
 
   return (
     <div className={KARTE}>
@@ -149,12 +149,12 @@ export function GedaechtnisPanel() {
         {tr("common.und")} <code>{tr("preferences_panel.projekt_lt_key_gt_md")}</code>.
       </p>
       <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
-        <input value={pfad} onChange={(e) => setPfad(e.target.value)}
-          placeholder={tr("preferences_panel.z_b_04_traccoon_gedaechtnis")} className={`w-72 ${FELD}`} />
+        <input value={path} onChange={(e) => setPath(e.target.value)}
+          placeholder={tr("preferences_panel.z_b_04_traccoon_gedaechtnis")} className={`w-72 ${FIELD}`} />
         <button onClick={async () => {
-          await api.put("/me/vault-memory-path", { value: pfad });
-          inv(); flash(tr(pfad ? "preferences_panel.gedaechtnis_gespeichert" : "preferences_panel.gedaechtnis_aus"));
-        }} className={KNOPF_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
+          await api.put("/me/vault-memory-path", { value: path });
+          inv(); flash(tr(path ? "preferences_panel.gedaechtnis_gespeichert" : "preferences_panel.gedaechtnis_aus"));
+        }} className={BUTTON_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
       </div>
       <p className="mt-2 text-[11px] text-muted">{tr("preferences_panel.gedaechtnis_hinweis")}</p>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
@@ -162,20 +162,20 @@ export function GedaechtnisPanel() {
   );
 }
 
-export function NachtFensterPanel() {
+export function NachtWindowPanel() {
   const { flags, inv } = useFlags();
   const [start, setStart] = useState(22);
   const [ende, setEnde] = useState(6);
-  const [msg, flash] = useMeldung();
+  const [msg, flash] = useNotice();
   useEffect(() => {
     if (!flags) return;
     setStart(flags.night_start_hour ?? 22);
     setEnde(flags.night_end_hour ?? 6);
   }, [flags]);
 
-  const tage: number[] = flags?.night_days || [0, 1, 2, 3, 4, 5, 6];
+  const days: number[] = flags?.night_days || [0, 1, 2, 3, 4, 5, 6];
   const tagUm = async (idx: number) => {
-    const next = tage.includes(idx) ? tage.filter((d) => d !== idx) : [...tage, idx].sort();
+    const next = days.includes(idx) ? days.filter((d) => d !== idx) : [...days, idx].sort();
     await api.put("/me/night-window", { start_hour: start, end_hour: ende, days: next });
     inv();
   };
@@ -186,20 +186,20 @@ export function NachtFensterPanel() {
       <p className="mb-3 text-xs text-muted">{tr("preferences_panel.tickets_mit_der_markierung_nachtarbeit_s")}</p>
       <div className="mb-3 flex items-center gap-2 text-sm">
         <input type="number" min={0} max={23} value={start} onChange={(e) => setStart(+e.target.value)}
-          className={`w-16 ${FELD}`} />
+          className={`w-16 ${FIELD}`} />
         <span className="text-muted">{tr("common.bis")}</span>
         <input type="number" min={0} max={23} value={ende} onChange={(e) => setEnde(+e.target.value)}
-          className={`w-16 ${FELD}`} />
+          className={`w-16 ${FIELD}`} />
         <span className="text-muted">{tr("preferences_panel.uhr")}</span>
         <button onClick={async () => {
-          await api.put("/me/night-window", { start_hour: start, end_hour: ende, days: tage });
+          await api.put("/me/night-window", { start_hour: start, end_hour: ende, days: days });
           inv(); flash(tr("preferences_panel.fenster_gespeichert"));
-        }} className={KNOPF_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
+        }} className={BUTTON_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
       </div>
       <div className="mb-3 flex gap-1">
         {DAYS.map((d, i) => (
           <button key={d} onClick={() => tagUm(i)}
-            className={`rounded px-2 py-1 text-xs ${tage.includes(i)
+            className={`rounded px-2 py-1 text-xs ${days.includes(i)
               ? "bg-brand text-white" : "border border-line text-muted"}`}>{tr(`common.tag_${d}`)}</button>
         ))}
       </div>

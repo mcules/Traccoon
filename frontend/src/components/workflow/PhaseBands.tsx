@@ -23,19 +23,19 @@ export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
   // One band per contiguous block of a phase, NOT one hull around everything. If a side
   // branch runs along beside another phase, two boxes lying inside each other would
   // otherwise come into being, and one no longer sees what belongs to what.
-  const felder = PHASES.flatMap(([key, label, rgb]) => {
-    const teile = nodes.filter((n) => n.data.config.group === key);
-    if (!teile.length) return [];
+  const fields = PHASES.flatMap(([key, label, rgb]) => {
+    const parts = nodes.filter((n) => n.data.config.group === key);
+    if (!parts.length) return [];
     const hoehe = (n: FlowNode) => n.measured?.height ?? 88;
-    const sortiert = [...teile].sort((a, b) => a.position.y - b.position.y);
+    const sortiert = [...parts].sort((a, b) => a.position.y - b.position.y);
     const bloecke: FlowNode[][] = [];
     for (const n of sortiert) {
-      const letzter = bloecke[bloecke.length - 1];
-      const vorheriges = letzter?.[letzter.length - 1];
+      const last = bloecke[bloecke.length - 1];
+      const vorheriges = last?.[last.length - 1];
       // Connect when the next node follows immediately (at most one line of distance).
       const anschluss = vorheriges
         && n.position.y - (vorheriges.position.y + hoehe(vorheriges)) < hoehe(n) + 80;
-      if (anschluss) letzter.push(n);
+      if (anschluss) last.push(n);
       else bloecke.push([n]);
     }
     const luft = 26;
@@ -52,10 +52,10 @@ export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
     });
   });
 
-  if (!felder.length) return null;
+  if (!fields.length) return null;
   return (
     <ViewportPortal>
-      {felder.map((f) => (
+      {fields.map((f) => (
         <div
           key={f.key}
           // Behind the nodes and transparent to clicks: it is only orientation.

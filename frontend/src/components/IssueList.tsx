@@ -34,14 +34,14 @@ export default function IssueList({
     }
     if (statusId !== "") rows = rows.filter((i) => i.status_id === statusId);
     if (nurKi) rows = rows.filter((i) => i.assigned_agent);
-    const wert = (i: Issue): string | number =>
+    const value = (i: Issue): string | number =>
       sort === "priority" ? (PRIO_RANG[i.priority] ?? -1)
         : sort === "status" ? (statusMap.get(i.status_id) || "")
           : sort === "agent" ? (i.assigned_agent || "")
             : sort === "summary" ? i.summary.toLowerCase()
               : i.number;
     return [...rows].sort((a, b) => {
-      const va = wert(a), vb = wert(b);
+      const va = value(a), vb = value(b);
       const c = va < vb ? -1 : va > vb ? 1 : 0;
       return asc ? c : -c;
     });

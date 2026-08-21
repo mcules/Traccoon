@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
-import { KNOPF_TEXT, KNOPF } from "./ui";
+import { BUTTON_TEXT, BUTTON } from "./ui";
 
 type Status = {
   running_agents: number; update_pending: boolean; update_in_progress: boolean;
@@ -59,13 +59,13 @@ export default function AgentsBadge() {
                 </div>
                 {isAdmin && (
                   <button onClick={() => guard(() => cancel.mutateAsync())}
-                    className={KNOPF_TEXT.gefahr}>{tr("agents_badge.update_abbrechen")}</button>
+                    className={BUTTON_TEXT.gefahr}>{tr("agents_badge.update_abbrechen")}</button>
                 )}
               </div>
             ) : isAdmin ? (
               data?.maintenance_project_id ? (
                 <button onClick={() => guard(() => update.mutateAsync())} disabled={update.isPending}
-                  className={KNOPF.haupt}>
+                  className={BUTTON.haupt}>
                   ⬆ {tr("agents_badge.update_einreihen", { projekt: data.maintenance_project_key || "" })}
                 </button>
               ) : (

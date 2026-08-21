@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { tr } from "../../i18n";
-import { workflowApi, type WfDiff, type WfDiffKnoten } from "../../api";
+import { workflowApi, type WfDiff, type WfDiffNode } from "../../api";
 import { Dialog, Fehlerzeile } from "../ui";
 
 /**
@@ -12,7 +12,7 @@ import { Dialog, Fehlerzeile } from "../ui";
  * der man sucht. Die Anordnung bleibt außen vor; sie ist keine Fassung wert und deshalb auch
  * kein Unterschied.
  */
-export default function VersionsDiff({ defId, versionId, gegen, titel, onClose }: {
+export default function VersionsDiff({ defId, versionId, gegen, titel: title, onClose }: {
   defId: number; versionId: number; gegen?: number; titel: string; onClose: () => void;
 }) {
   const { data, error, isLoading } = useQuery({
@@ -21,7 +21,7 @@ export default function VersionsDiff({ defId, versionId, gegen, titel, onClose }
   });
 
   return (
-    <Dialog breit titel={titel} onClose={onClose}>
+    <Dialog breit titel={title} onClose={onClose}>
       {isLoading && <p className="text-sm text-muted">{tr("common.laedt")}</p>}
       <Fehlerzeile text={error ? String((error as Error).message || error) : ""} />
       {data && <DiffInhalt d={data} />}
@@ -45,8 +45,8 @@ function DiffInhalt({ d }: { d: WfDiff }) {
           : tr("diff.von_bis", { von: d.from_version, bis: d.to_version })}
       </p>
 
-      <Gruppe titel={tr("diff.knoten_neu")} eintraege={d.nodes_added} farbe="text-green-400" />
-      <Gruppe titel={tr("diff.knoten_weg")} eintraege={d.nodes_removed} farbe="text-red-400" />
+      <Group titel={tr("diff.knoten_neu")} eintraege={d.nodes_added} farbe="text-green-400" />
+      <Group titel={tr("diff.knoten_weg")} eintraege={d.nodes_removed} farbe="text-red-400" />
 
       {d.nodes_changed.length > 0 && (
         <div>
@@ -62,15 +62,15 @@ function DiffInhalt({ d }: { d: WfDiff }) {
                 </div>
                 <div className="space-y-1.5">
                   {k.fields.map((f) => (
-                    <div key={f.feld}>
-                      <div className="font-mono text-[11px] text-muted">{f.feld}</div>
+                    <div key={f.field}>
+                      <div className="font-mono text-[11px] text-muted">{f.field}</div>
                       {/* Zwei Zeilen statt einer: bei langen Werten sucht man sonst die
                           Stelle, an der sie auseinandergehen, mitten im Fließtext. */}
                       <div className="mt-0.5 break-all rounded bg-red-500/10 px-1.5 py-0.5 text-[11px] text-red-300">
-                        − {f.vorher || "—"}
+                        − {f.before || "—"}
                       </div>
                       <div className="mt-0.5 break-all rounded bg-green-500/10 px-1.5 py-0.5 text-[11px] text-green-300">
-                        + {f.nachher || "—"}
+                        + {f.after || "—"}
                       </div>
                     </div>
                   ))}
@@ -81,21 +81,21 @@ function DiffInhalt({ d }: { d: WfDiff }) {
         </div>
       )}
 
-      <Kanten titel={tr("diff.kanten_neu")} texte={d.edges_added} farbe="text-green-400" />
-      <Kanten titel={tr("diff.kanten_weg")} texte={d.edges_removed} farbe="text-red-400" />
+      <Edges titel={tr("diff.kanten_neu")} texte={d.edges_added} farbe="text-green-400" />
+      <Edges titel={tr("diff.kanten_weg")} texte={d.edges_removed} farbe="text-red-400" />
     </div>
   );
 }
 
-function Gruppe({ titel, eintraege, farbe }: {
-  titel: string; eintraege: WfDiffKnoten[]; farbe: string;
+function Group({ titel: title, eintraege: entries, farbe }: {
+  titel: string; eintraege: WfDiffNode[]; farbe: string;
 }) {
-  if (eintraege.length === 0) return null;
+  if (entries.length === 0) return null;
   return (
     <div>
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{titel}</div>
+      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{title}</div>
       <ul className="space-y-0.5">
-        {eintraege.map((k) => (
+        {entries.map((k) => (
           <li key={k.id} className={`text-sm ${farbe}`}>
             {k.label || k.id} <span className="font-mono text-xs opacity-70">{k.id}</span>
           </li>
@@ -105,11 +105,11 @@ function Gruppe({ titel, eintraege, farbe }: {
   );
 }
 
-function Kanten({ titel, texte, farbe }: { titel: string; texte: string[]; farbe: string }) {
+function Edges({ titel: title, texte, farbe }: { titel: string; texte: string[]; farbe: string }) {
   if (texte.length === 0) return null;
   return (
     <div>
-      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{titel}</div>
+      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{title}</div>
       <ul className="space-y-0.5">
         {texte.map((t) => <li key={t} className={`font-mono text-xs ${farbe}`}>{t}</li>)}
       </ul>

@@ -5,14 +5,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Issue, Project, ProjectMeta } from "../api";
 import { usePageChrome } from "../pageChrome";
 import {
-  ALT_ABSCHNITT, ALT_UNTER, altenTabUmleiten, arbeitAnsichten, betriebAnsichten, canManage,
+  ALT_SECTION, ALT_UNTER, altenTabUmleiten, arbeitAnsichten, betriebAnsichten, canManage,
   canWrite, projectChromeTabs,
-  projectTabs, projektPfad, type ProjectTab,
+  projectTabs, projektPath, type ProjectTab,
 } from "../projectTabs";
 import { useAuth } from "../auth";
 import TicketDrawer from "../components/TicketDrawer";
 import NewTicketModal from "../components/NewTicketModal";
-import { KNOPF } from "../components/ui";
+import { BUTTON } from "../components/ui";
 // Monaco is large, so load it only when the code tab is opened.
 const FilesPanel = lazy(() => import("../components/FilesPanel"));
 // Canvas, pixel world and engine of the office do not belong in the main bundle: whoever
@@ -54,14 +54,14 @@ export default function ProjectView() {
     const t = searchParams.get("ticket");
     if (t) { navigate(`/projects/${key}/tickets/${t}`, { replace: true }); return; }
     const alt = searchParams.get("tab");
-    const ziel = alt && key ? altenTabUmleiten(key, alt) : null;
-    if (ziel) { navigate(ziel, { replace: true }); return; }
+    const target = alt && key ? altenTabUmleiten(key, alt) : null;
+    if (target) { navigate(target, { replace: true }); return; }
     // Deutsche Abschnitte im Pfad (`/projects/X/arbeit/liste`) auf die englischen: Adressen
     // sind englisch, und was in Lesezeichen steht, soll trotzdem ankommen.
-    const neuTab = tab ? ALT_ABSCHNITT[tab] : undefined;
-    const neuUnter = unter ? ALT_UNTER[unter] : undefined;
-    if (key && (neuTab || neuUnter)) {
-      navigate(projektPfad(key, (neuTab || tab) as any, neuUnter || unter), { replace: true });
+    const newTab = tab ? ALT_SECTION[tab] : undefined;
+    const newUnter = unter ? ALT_UNTER[unter] : undefined;
+    if (key && (newTab || newUnter)) {
+      navigate(projektPath(key, (newTab || tab) as any, newUnter || unter), { replace: true });
     }
   }, []);
 
@@ -102,14 +102,14 @@ export default function ProjectView() {
     return () => ws?.close();
   }, [project?.id]);
 
-  const darfVerwalten = canManage(project);
-  const darfSchreiben = canWrite(project);
+  const mayVerwalten = canManage(project);
+  const mayWrite = canWrite(project);
 
   // Monaco/FilesPanel is a chunk of about 3.3 MB plus workers (ts.worker about 6 MB) and
   // would otherwise load only on a click on "code". When the code tab is available, prewarm
   // it completely while the page is idle: first the editor chunk, then the worker chunks, so that the first click is almost immediate.
   useEffect(() => {
-    if (!(project?.git_enabled && darfVerwalten)) return;
+    if (!(project?.git_enabled && mayVerwalten)) return;
     const warm = async () => {
       await import("../components/FilesPanel");        // Editor-Chunk + monaco-core
       const m = await import("../monaco");
@@ -119,7 +119,7 @@ export default function ProjectView() {
     const cic = (window as any).cancelIdleCallback as undefined | ((id: number) => void);
     const id = ric ? ric(warm, { timeout: 4000 }) : (setTimeout(warm, 2000) as unknown as number);
     return () => { if (ric && cic) cic(id); else clearTimeout(id); };
-  }, [project?.id, darfVerwalten]);
+  }, [project?.id, mayVerwalten]);
 
   // Role and flag dependent tab list (shared with the ticket page). Computed before the
   // project guard so that usePageChrome (a hook) is called unconditionally.
@@ -162,7 +162,7 @@ export default function ProjectView() {
         {ansichten.length > 1 && (
           <div className="flex flex-wrap gap-1.5">
             {ansichten.map(([k, label]) => (
-              <Link key={k} to={projektPfad(project.key, tab, k)}
+              <Link key={k} to={projektPath(project.key, tab, k)}
                 className={`rounded-md border px-3 py-1 text-sm ${
                   ansicht === k
                     ? "border-brand bg-brand text-white"
@@ -174,9 +174,9 @@ export default function ProjectView() {
           </div>
         )}
         <div className="hidden flex-1 sm:block" />
-        {darfSchreiben && tab === "work" && (
+        {mayWrite && tab === "work" && (
           <button onClick={() => setNewOpen(true)} title={tr("project_view.neues_ticket")}
-            className={KNOPF.haupt}>
+            className={BUTTON.haupt}>
             + <span className="hidden sm:inline">{tr("project_view.neues_ticket")}</span>
           </button>
         )}
@@ -209,11 +209,11 @@ export default function ProjectView() {
               <OfficeTab project={project} />
             </Suspense>
           )}
-          {ansicht === "testenvs" && darfSchreiben && <TestenvsPanel project={project} />}
+          {ansicht === "testenvs" && mayWrite && <TestenvsPanel project={project} />}
           {ansicht === "hardware" && <Hardware project={project} />}
         </>
       )}
-      {tab === "settings" && darfVerwalten && (
+      {tab === "settings" && mayVerwalten && (
         <ProjectSettings project={project} bereich={unter} />
       )}
 

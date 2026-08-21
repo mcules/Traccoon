@@ -5,8 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, workflowApi, type IssueType, type Project } from "../../api";
 import type { WorkflowSlotInfo } from "./types";
 import {
-  Bereich, Etikett, Fehlerzeile, Liste, ListenZeile, Zeilenknopf, KNOPF_TEXT} from "../ui";
-import { projektPfad } from "../../projectTabs";
+  Area, Etikett, Fehlerzeile, Listing, ListenLine, Zeilenknopf, BUTTON_TEXT} from "../ui";
+import { projektPath } from "../../projectTabs";
 
 /** Where the applicable flow comes from: the most important information on this page. */
 // Keys instead of texts: the table comes into being while the module loads, and a tr() here
@@ -61,7 +61,7 @@ export default function SlotList({ project }: { project: Project }) {
     onSuccess: (d) => {
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "settings", "processes") } });
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPath(project.key, "settings", "processes") } });
     },
     onError: fail,
     onSettled: () => setBusy(""),
@@ -85,15 +85,15 @@ export default function SlotList({ project }: { project: Project }) {
     onError: fail,
   });
 
-  const aktuellerSatz = slots?.find((s) => s.origin !== "project")?.set_id ?? null;
+  const aktuellerPreset = slots?.find((s) => s.origin !== "project")?.set_id ?? null;
 
   return (
-    <Bereich hinweis={tr("slot_list.einleitung")}>
+    <Area hinweis={tr("slot_list.einleitung")}>
       {sets && sets.length > 1 && (
         <label className="block text-xs font-medium text-muted">
           {tr("slot_list.prozess_satz")}
           <select
-            value={aktuellerSatz ?? ""}
+            value={aktuellerPreset ?? ""}
             onChange={(e) => chooseSet.mutate(e.target.value ? Number(e.target.value) : null)}
             className="mt-1 w-full max-w-md rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink"
           >
@@ -110,11 +110,11 @@ export default function SlotList({ project }: { project: Project }) {
 
       <Fehlerzeile text={err} />
 
-      <Liste>
+      <Listing>
         {slots?.map((s) => {
           const o = ORIGIN[s.origin];
           return (
-            <ListenZeile key={s.slot}>
+            <ListenLine key={s.slot}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-ink">{s.name}</span>
                 <Etikett farbe={o.farbe} titel={tr(o.hint)}>{tr(o.label)}</Etikett>
@@ -124,7 +124,7 @@ export default function SlotList({ project }: { project: Project }) {
                 <div className="flex-1" />
                 {s.definition_id && (
                   <Zeilenknopf onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`,
-                    { state: { from: projektPfad(project.key, "settings", "processes") } })}>
+                    { state: { from: projektPath(project.key, "settings", "processes") } })}>
                     {tr(s.origin === "project" ? "slot_list.bearbeiten" : "slot_list.ansehen")}
                   </Zeilenknopf>
                 )}
@@ -151,13 +151,13 @@ export default function SlotList({ project }: { project: Project }) {
                   {(s.per_issue_type || []).map((v) => (
                     <span key={v.issue_type_id}
                           className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
-                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: projektPfad(project.key, "settings", "processes") } })}
+                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: projektPath(project.key, "settings", "processes") } })}
                               title={tr("slot_list.eigenen_ablauf_dieser_vorgangsart_bearbe")}>
                         {v.issue_type_name}
                       </button>
                       <button onClick={() => reset.mutate({ slot: s.slot, art: v.issue_type_id })}
                               title={tr("slot_list.eigenen_ablauf_verwerfen_die_vorgangsart")}
-                              className={KNOPF_TEXT.gefahr}>✕</button>
+                              className={BUTTON_TEXT.gefahr}>✕</button>
                     </span>
                   ))}
                   <select
@@ -177,10 +177,10 @@ export default function SlotList({ project }: { project: Project }) {
                 {tr(o.hint)}
                 {s.set_name && s.origin !== "project" ? ` (${s.set_name})` : ""}
               </div>
-            </ListenZeile>
+            </ListenLine>
           );
         })}
-      </Liste>
-    </Bereich>
+      </Listing>
+    </Area>
   );
 }

@@ -117,7 +117,7 @@ export default function AutoActionConfig({
     const s = ACTION_SPECS[name]?.subjects;
     return !s || !subjectKind || s.includes(subjectKind as any);
   };
-  const gruppen = GROUPS
+  const groups = GROUPS
     .map(([g, items]) => [g, items.filter(([k]) => passt(k) || k === action.action)] as const)
     .filter(([, items]) => items.length);
   // Action changed: do not carry the parameters of the old one along.
@@ -136,8 +136,8 @@ export default function AutoActionConfig({
           onChange={(e) => setAction(e.target.value as AutoActionName)}
           className={`mt-1 ${inp}`}
         >
-          {gruppen.map(([gruppe, items]) => (
-            <optgroup key={gruppe} label={gruppe}>
+          {groups.map(([group, items]) => (
+            <optgroup key={group} label={group}>
               {items.map(([k, l]) => (
                 <option key={k} value={k}>
                   {tr(l)}

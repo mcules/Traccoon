@@ -5,7 +5,7 @@ import { useAuth } from "../auth";
 import { tr } from "../i18n";
 import { usePlugins } from "../plugins";
 import { usePageChrome } from "../pageChrome";
-import { Bereich } from "../components/ui";
+import { Area } from "../components/ui";
 
 /**
  * The host a plugin runs in — and the bridge over which it gets its data.
@@ -155,7 +155,7 @@ export default function PluginHost() {
   useEffect(() => setError(""), [slug]);
 
   if (plugins.length && !plugin) {
-    return <Bereich hinweis={tr("plugins.nicht_gefunden")}><div /></Bereich>;
+    return <Area hinweis={tr("plugins.nicht_gefunden")}><div /></Area>;
   }
 
   // The anchor decides which page of a plugin with several contributions is meant.

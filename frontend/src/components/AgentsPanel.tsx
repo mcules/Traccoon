@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Aktionen, Bereich, Dialog, DialogFuss, Fehlerzeile, ICON, IconKnopf, Liste, ListenZeile, LoeschDialog, KNOPF, KNOPF_KLEIN, KNOPF_TEXT} from "./ui";
+  Actions, Area, Dialog, DialogFuss, Fehlerzeile, ICON, IconButton, Listing, ListenLine, LoeschDialog, BUTTON, BUTTON_KLEIN, BUTTON_TEXT} from "./ui";
 
 interface Agent {
   id: number; role: string; display_name: string; system_prompt: string;
@@ -47,10 +47,10 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   // What the model carries and how fast it writes: the choice is decided by that, not by the
   // name. With local models it is the only distinction (the price is 0).
   const modelLabel = (m: any) => {
-    const teile = [m.display_name || m.model];
-    if (m.context_tokens) teile.push(`${Math.round(m.context_tokens / 1000)}k Kontext`);
-    if (m.speed_tps) teile.push(`≈${m.speed_tps} t/s`);
-    return teile.join(" · ");
+    const parts = [m.display_name || m.model];
+    if (m.context_tokens) parts.push(`${Math.round(m.context_tokens / 1000)}k Kontext`);
+    if (m.speed_tps) parts.push(`≈${m.speed_tps} t/s`);
+    return parts.join(" · ");
   };
 
   // In project mode show only the project-owned agents; project-less ones are "inherited".
@@ -91,21 +91,21 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   });
 
   return (
-    <Bereich>
+    <Area>
       <Fehlerzeile text={err} />
       {note && <div className="mb-2 text-sm text-green-400">{note}</div>}
       <div className="mb-3 flex items-center gap-2">
         <p className="flex-1 text-sm text-muted">
           {tr(projectId ? "agents_panel.einleitung_projekt" : "agents_panel.einleitung_eigene")}</p>
         {!projectId && (!allAgents || allAgents.length === 0) && (
-          <button onClick={() => seed.mutate()} className={KNOPF.neben}>
+          <button onClick={() => seed.mutate()} className={BUTTON.neben}>
             {tr("agents_panel.standard_agenten_anlegen")}</button>
         )}
         <button onClick={() => fetchModels.mutate()} disabled={fetchModels.isPending}
           title={tr("agents_panel.verfuegbare_modelle_live_bei_den_provide")}
-          className={KNOPF.neben}>
+          className={BUTTON.neben}>
           {fetchModels.isPending ? tr("common.laedt") : `↻ ${tr("agents_panel.modelle_abrufen")}`}</button>
-        <button onClick={newAgent} className={KNOPF.haupt}>
+        <button onClick={newAgent} className={BUTTON.haupt}>
           + Agent</button>
       </div>
 
@@ -114,9 +114,9 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
           ({inherited.map((a) => a.role).join(", ")}). Lege hier einen an, um sie fürs Projekt zu überschreiben.</p>
       )}
 
-      <Liste>
+      <Listing>
         {agents?.map((a) => (
-          <ListenZeile key={a.id}>
+          <ListenLine key={a.id}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-mono font-medium">{a.role}</span>
             <span className="text-xs text-muted">{a.provider}{a.model ? ` · ${a.model}` : ""}</span>
@@ -129,25 +129,25 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
             </div>
             {a.origin_agent_id && <span className="rounded bg-surface px-1 text-xs">{tr(a.customized ? "agents_panel.bearbeitet" : "agents_panel.verknuepft")}</span>}
             <div className="hidden flex-1 sm:block" />
-            <Aktionen>
+            <Actions>
               {!projectId && (
-                <IconKnopf icon="🔗" titel={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}
+                <IconButton icon="🔗" titel={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}
                   onClick={() => syncLinked.mutate(a.id)} disabled={syncLinked.isPending} />
               )}
-              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setEdit(a)} />
-              <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschAgent(a)} />
-            </Aktionen>
+              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setEdit(a)} />
+              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschAgent(a)} />
+            </Actions>
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
-      </Liste>
+      </Listing>
 
       {/* Projekt-Modus: geerbte (globale) Agenten mit „In Projekt laden" */}
       {projectId && inherited.map((a) => (
         <div key={`inh-${a.id}`} className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-dashed border-line px-2.5 py-1.5 text-sm text-muted">
           <span className="font-mono">{a.role}</span><span className="text-xs">geerbt (global)</span>
           <div className="flex-1" />
-          <button onClick={() => loadInto.mutate(a.id)} className={KNOPF_TEXT.neben}>{tr("agents_panel.in_projekt_laden")}</button>
+          <button onClick={() => loadInto.mutate(a.id)} className={BUTTON_TEXT.neben}>{tr("agents_panel.in_projekt_laden")}</button>
         </div>
       ))}
 
@@ -207,7 +207,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                   : <div className="text-xs text-muted">{tr("agents_panel.erst_speichern_dann_mcp_server_freigeben")}</div>}
               </Sec>
 
-              <button onClick={() => setShowAdv(!showAdv)} className={KNOPF_TEXT.neben}>
+              <button onClick={() => setShowAdv(!showAdv)} className={BUTTON_TEXT.neben}>
                 {showAdv ? "▾" : "▸"} Erweitert (Fähigkeiten, Limits)
               </button>
               {showAdv && (
@@ -237,7 +237,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
         <LoeschDialog was={loeschAgent.role} laeuft={del.isPending}
           onClose={() => setLoeschAgent(null)} onLoeschen={() => del.mutate(loeschAgent.id)} />
       )}
-    </Bereich>
+    </Area>
   );
 }
 
@@ -323,7 +323,7 @@ function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
             <span>{i.name}</span>
             {i.set_keys?.length > 0 && <span className="text-xs text-muted">({i.set_keys.length} Variable(n))</span>}
             <div className="flex-1" />
-            <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => del(i.id)} />
+            <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => del(i.id)} />
           </div>
         ))}
         {instances?.length === 0 && <div className="text-xs text-muted">{tr("agents_panel.keine_mcp_server_freigegeben")}</div>}
@@ -345,7 +345,7 @@ function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
                 className="w-full rounded border border-line bg-card px-2 py-1 text-sm" />
             ))}
             {(server.variables || []).length === 0 && <div className="text-xs text-muted">{tr("agents_panel.dieser_server_braucht_keine_variablen")}</div>}
-            <button onClick={add} className={KNOPF_KLEIN.haupt}>{tr("agents_panel.instanz_hinzufuegen")}</button>
+            <button onClick={add} className={BUTTON_KLEIN.haupt}>{tr("agents_panel.instanz_hinzufuegen")}</button>
           </div>
         )}
       </div>

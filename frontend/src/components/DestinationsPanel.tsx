@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, destinationApi, type Destination, type DestinationScope } from "../api";
 import { KeyValueEditor } from "./workflow/kv";
 import {
-  Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "./ui";
+  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, Listing,
+  ListingLeer, ListenLine, LoeschDialog, BUTTON } from "./ui";
 import { useAuth } from "../auth";
 
 // Keys instead of texts: the list comes into being while the module loads, and a tr() here
@@ -57,16 +57,16 @@ export default function DestinationsPanel({
 }) {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<Destination | {} | null>(null);   // {} = neues Ziel
-  const [loeschZiel, setLoeschZiel] = useState<Destination | null>(null);
+  const [loeschTarget, setLoeschTarget] = useState<Destination | null>(null);
   const [err, setErr] = useState("");
   const [probe, setProbe] = useState<Record<number, string>>({});
 
-  const schluessel = ["destinations", scope, projectId ?? null];
-  const { data: alle } = useQuery({
-    queryKey: schluessel,
+  const key = ["destinations", scope, projectId ?? null];
+  const { data: all } = useQuery({
+    queryKey: key,
     queryFn: () => destinationApi.list(projectId),
   });
-  const ziele = alle?.filter((d) => d.scope === scope
+  const targets = all?.filter((d) => d.scope === scope
     && (scope !== "project" || d.project_id === projectId)
     && (scope !== "user" || d.user_id === userId));
 
@@ -84,9 +84,9 @@ export default function DestinationsPanel({
     onSuccess: () => { setDialog(null); setErr(""); inv(); },
     onError: fail,
   });
-  const loeschen = useMutation({
+  const remove = useMutation({
     mutationFn: (id: number) => destinationApi.del(id),
-    onSuccess: () => { setLoeschZiel(null); inv(); }, onError: fail,
+    onSuccess: () => { setLoeschTarget(null); inv(); }, onError: fail,
   });
   const testen = useMutation({
     mutationFn: (id: number) => destinationApi.test(id, { method: "GET", path: "" }),
@@ -97,16 +97,16 @@ export default function DestinationsPanel({
   });
 
   return (
-    <Bereich hinweis={<>
+    <Area hinweis={<>
       {tr("destinations_panel.einleitung")}
       {scope === "user" && ` ${tr("destinations_panel.einleitung_user")}`}
       {scope === "project" && ` ${tr("destinations_panel.einleitung_projekt")}`}
     </>}>
       <Fehlerzeile text={err} />
 
-      <Liste>
-        {ziele?.map((d) => (
-          <ListenZeile key={d.id} gedimmt={!d.enabled}>
+      <Listing>
+        {targets?.map((d) => (
+          <ListenLine key={d.id} gedimmt={!d.enabled}>
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -125,36 +125,36 @@ export default function DestinationsPanel({
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted">{d.base_url}</div>
               </div>
-              <Aktionen>
-                <IconKnopf icon={ICON.testen} titel={tr("destinations_panel.probeaufruf_get_auf_die_basis_url")}
+              <Actions>
+                <IconButton icon={ICON.testen} titel={tr("destinations_panel.probeaufruf_get_auf_die_basis_url")}
                   onClick={() => testen.mutate(d.id)} disabled={testen.isPending} />
-                <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(d)} />
-                <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschZiel(d)} />
-              </Aktionen>
+                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(d)} />
+                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschTarget(d)} />
+              </Actions>
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
-        {ziele?.length === 0 && <ListeLeer>{tr("destinations_panel.noch_keine_ziele")}</ListeLeer>}
-      </Liste>
+        {targets?.length === 0 && <ListingLeer>{tr("destinations_panel.noch_keine_ziele")}</ListingLeer>}
+      </Listing>
 
       <button onClick={() => { setErr(""); setDialog({}); }}
-        className={KNOPF.haupt}>
+        className={BUTTON.haupt}>
         {ICON.neu} {tr("destinations_panel.neues_ziel")}
       </button>
 
       {dialog && (
-        <ZielDialog ziel={"id" in dialog ? (dialog as Destination) : null}
+        <TargetDialog ziel={"id" in dialog ? (dialog as Destination) : null}
           fehler={err}
           laeuft={speichern.isPending}
           onClose={() => { setDialog(null); setErr(""); }}
           onSpeichern={(body, id) => speichern.mutate({ id, body })} />
       )}
-      {loeschZiel && (
-        <LoeschDialog was={loeschZiel.name} hinweis={tr("destinations_panel.loeschen_hinweis")}
-          laeuft={loeschen.isPending}
-          onClose={() => setLoeschZiel(null)} onLoeschen={() => loeschen.mutate(loeschZiel.id)} />
+      {loeschTarget && (
+        <LoeschDialog was={loeschTarget.name} hinweis={tr("destinations_panel.loeschen_hinweis")}
+          laeuft={remove.isPending}
+          onClose={() => setLoeschTarget(null)} onLoeschen={() => remove.mutate(loeschTarget.id)} />
       )}
-    </Bereich>
+    </Area>
   );
 }
 
@@ -164,119 +164,119 @@ export default function DestinationsPanel({
  * The name stays fixed once it exists: flows, jobs and agents address the destination by
  * exactly that name, and renaming it here would break them silently.
  */
-function ZielDialog({ ziel, fehler, laeuft, onClose, onSpeichern }: {
+function TargetDialog({ ziel: target, fehler: error, laeuft: running, onClose, onSpeichern }: {
   ziel: Destination | null;
   fehler: string;
   laeuft: boolean;
   onClose: () => void;
   onSpeichern: (body: Record<string, any>, id: number | null) => void;
 }) {
-  const [f, setF] = useState<Record<string, any>>(ziel ? { ...LEER, ...ziel, secret: "" } : LEER);
-  const [kopf, setKopf] = useState<Record<string, any>>(ziel?.default_headers || {});
+  const [f, setF] = useState<Record<string, any>>(target ? { ...LEER, ...target, secret: "" } : LEER);
+  const [header, setHeader] = useState<Record<string, any>>(target?.default_headers || {});
   const [secretField, secretLabel] = SECRET_FIELD[f.auth_type] || ["", ""];
   const kann = !!f.name.trim() && !!f.base_url.trim();
 
   const speichern = () => {
-    const body: Record<string, any> = { ...f, default_headers: kopf };
+    const body: Record<string, any> = { ...f, default_headers: header };
     delete body.secret;
     if (secretField && f.secret) body[secretField] = f.secret;
     // The name belongs to the entry, not to the change: an update must not carry it.
-    if (ziel) delete body.name;
-    onSpeichern(body, ziel ? ziel.id : null);
+    if (target) delete body.name;
+    onSpeichern(body, target ? target.id : null);
   };
 
   return (
-    <Dialog breit titel={ziel ? tr("destinations_panel.ziel_bearbeiten") : tr("destinations_panel.neues_ziel")}
+    <Dialog breit titel={target ? tr("destinations_panel.ziel_bearbeiten") : tr("destinations_panel.neues_ziel")}
       onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={speichern} deaktiviert={!kann} laeuft={laeuft}
-        speichernText={ziel ? undefined : tr("common.anlegen")} />}>
-      <Fehlerzeile text={fehler} />
+      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={speichern} deaktiviert={!kann} laeuft={running}
+        speichernText={target ? undefined : tr("common.anlegen")} />}>
+      <Fehlerzeile text={error} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Feld label={tr("destinations_panel.name_z_b_crm")} hinweis={ziel ? tr("destinations_panel.name_fest") : undefined}>
-          <input value={f.name} disabled={!!ziel} autoFocus={!ziel}
+        <Field label={tr("destinations_panel.name_z_b_crm")} hinweis={target ? tr("destinations_panel.name_fest") : undefined}>
+          <input value={f.name} disabled={!!target} autoFocus={!target}
             onChange={(e) => setF({ ...f, name: e.target.value })}
-            className={`${EINGABE} font-mono disabled:opacity-60`} />
-        </Feld>
-        <Feld label={tr("destinations_panel.bezeichnung")}>
-          <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} className={EINGABE} />
-        </Feld>
+            className={`${INPUT_VALUE} font-mono disabled:opacity-60`} />
+        </Field>
+        <Field label={tr("destinations_panel.bezeichnung")}>
+          <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} className={INPUT_VALUE} />
+        </Field>
         <div className="sm:col-span-2">
-          <Feld label={tr("destinations_panel.basis_url_https_api_example_com_v1")}>
-            <input value={f.base_url} autoFocus={!!ziel}
-              onChange={(e) => setF({ ...f, base_url: e.target.value })} className={EINGABE} />
-          </Feld>
+          <Field label={tr("destinations_panel.basis_url_https_api_example_com_v1")}>
+            <input value={f.base_url} autoFocus={!!target}
+              onChange={(e) => setF({ ...f, base_url: e.target.value })} className={INPUT_VALUE} />
+          </Field>
         </div>
-        <Feld label={tr("destinations_panel.anmeldung")}>
-          <select value={f.auth_type} onChange={(e) => setF({ ...f, auth_type: e.target.value })} className={EINGABE}>
+        <Field label={tr("destinations_panel.anmeldung")}>
+          <select value={f.auth_type} onChange={(e) => setF({ ...f, auth_type: e.target.value })} className={INPUT_VALUE}>
             {AUTH.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
           </select>
-        </Feld>
-        <Feld label={tr("destinations_panel.zeitlimit_s")}>
+        </Field>
+        <Field label={tr("destinations_panel.zeitlimit_s")}>
           <input type="number" min={1} max={600} value={f.timeout_sec}
-            onChange={(e) => setF({ ...f, timeout_sec: Number(e.target.value) })} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("destinations_panel.antwort_max_zeichen")}
+            onChange={(e) => setF({ ...f, timeout_sec: Number(e.target.value) })} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("destinations_panel.antwort_max_zeichen")}
           hinweis={tr("destinations_panel.wie_viel_der_antwort_der_aufrufer_hoechs")}>
           <input type="number" min={500} max={60000} step={500} value={f.max_response_chars}
-            onChange={(e) => setF({ ...f, max_response_chars: Number(e.target.value) })} className={EINGABE} />
-        </Feld>
+            onChange={(e) => setF({ ...f, max_response_chars: Number(e.target.value) })} className={INPUT_VALUE} />
+        </Field>
 
         {f.auth_type === "basic" && (
-          <Feld label={tr("destinations_panel.benutzername")}>
-            <input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} className={EINGABE} />
-          </Feld>
+          <Field label={tr("destinations_panel.benutzername")}>
+            <input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} className={INPUT_VALUE} />
+          </Field>
         )}
         {f.auth_type === "api_key" && (
           <>
-            <Feld label={tr("destinations_panel.name_des_schluessels")}>
-              <input value={f.api_key_name} onChange={(e) => setF({ ...f, api_key_name: e.target.value })} className={EINGABE} />
-            </Feld>
-            <Feld label={tr("destinations_panel.wohin")}>
-              <select value={f.api_key_in} onChange={(e) => setF({ ...f, api_key_in: e.target.value })} className={EINGABE}>
+            <Field label={tr("destinations_panel.name_des_schluessels")}>
+              <input value={f.api_key_name} onChange={(e) => setF({ ...f, api_key_name: e.target.value })} className={INPUT_VALUE} />
+            </Field>
+            <Field label={tr("destinations_panel.wohin")}>
+              <select value={f.api_key_in} onChange={(e) => setF({ ...f, api_key_in: e.target.value })} className={INPUT_VALUE}>
                 <option value="header">{tr("destinations_panel.im_kopf")}</option>
                 <option value="query">{tr("destinations_panel.in_der_url")}</option>
               </select>
-            </Feld>
+            </Field>
           </>
         )}
         {f.auth_type === "hmac" && (
           <>
-            <Feld label={tr("destinations_panel.signatur_kopfzeile")}>
-              <input value={f.hmac_header} onChange={(e) => setF({ ...f, hmac_header: e.target.value })} className={EINGABE} />
-            </Feld>
-            <Feld label={tr("destinations_panel.praefix_leer_lassen_z_b_hermes")}>
-              <input value={f.hmac_prefix} onChange={(e) => setF({ ...f, hmac_prefix: e.target.value })} className={EINGABE} />
-            </Feld>
+            <Field label={tr("destinations_panel.signatur_kopfzeile")}>
+              <input value={f.hmac_header} onChange={(e) => setF({ ...f, hmac_header: e.target.value })} className={INPUT_VALUE} />
+            </Field>
+            <Field label={tr("destinations_panel.praefix_leer_lassen_z_b_hermes")}>
+              <input value={f.hmac_prefix} onChange={(e) => setF({ ...f, hmac_prefix: e.target.value })} className={INPUT_VALUE} />
+            </Field>
           </>
         )}
         {f.auth_type === "oauth2_cc" && (
           <>
             <div className="sm:col-span-2">
-              <Feld label={tr("destinations_panel.token_url")}>
-                <input value={f.oauth_token_url} onChange={(e) => setF({ ...f, oauth_token_url: e.target.value })} className={EINGABE} />
-              </Feld>
+              <Field label={tr("destinations_panel.token_url")}>
+                <input value={f.oauth_token_url} onChange={(e) => setF({ ...f, oauth_token_url: e.target.value })} className={INPUT_VALUE} />
+              </Field>
             </div>
-            <Feld label={tr("destinations_panel.client_id")}>
-              <input value={f.oauth_client_id} onChange={(e) => setF({ ...f, oauth_client_id: e.target.value })} className={EINGABE} />
-            </Feld>
-            <Feld label={tr("destinations_panel.scope_optional")}>
-              <input value={f.oauth_scope} onChange={(e) => setF({ ...f, oauth_scope: e.target.value })} className={EINGABE} />
-            </Feld>
+            <Field label={tr("destinations_panel.client_id")}>
+              <input value={f.oauth_client_id} onChange={(e) => setF({ ...f, oauth_client_id: e.target.value })} className={INPUT_VALUE} />
+            </Field>
+            <Field label={tr("destinations_panel.scope_optional")}>
+              <input value={f.oauth_scope} onChange={(e) => setF({ ...f, oauth_scope: e.target.value })} className={INPUT_VALUE} />
+            </Field>
           </>
         )}
         {secretField && (
           <div className="sm:col-span-2">
-            <Feld label={tr(secretLabel)}
-              hinweis={ziel ? tr("destinations_panel.geheimnis_unveraendert", { feld: tr(secretLabel) }) : undefined}>
+            <Field label={tr(secretLabel)}
+              hinweis={target ? tr("destinations_panel.geheimnis_unveraendert", { feld: tr(secretLabel) }) : undefined}>
               <input type="password" value={f.secret}
-                onChange={(e) => setF({ ...f, secret: e.target.value })} className={EINGABE} />
-            </Feld>
+                onChange={(e) => setF({ ...f, secret: e.target.value })} className={INPUT_VALUE} />
+            </Field>
           </div>
         )}
 
         <div className="sm:col-span-2">
           <div className="mb-1 text-xs font-medium text-muted">{tr("destinations_panel.feste_kopfzeilen_bei_jedem_aufruf")}</div>
-          <KeyValueEditor value={kopf} onChange={setKopf} />
+          <KeyValueEditor value={header} onChange={setHeader} />
         </div>
 
         <label className="flex items-center gap-2 text-sm text-ink">
@@ -303,7 +303,7 @@ function ZielDialog({ ziel, fehler, laeuft, onClose, onSpeichern }: {
  * settings, each time the same panel. One entry now, and the scope is a switch above the
  * list, showing only what this person may see.
  */
-export function DestinationsBereich({ projectId }: { projectId?: number }) {
+export function DestinationsArea({ projectId }: { projectId?: number }) {
   const { user } = useAuth();
   const istAdmin = user?.global_role === "admin";
   const bereiche: [DestinationScope, string][] = [

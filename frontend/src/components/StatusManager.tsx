@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import {
-  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, KNOPF, KNOPF_TEXT} from "./ui";
+  Actions, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, LoeschDialog, BUTTON, BUTTON_TEXT} from "./ui";
 
 type Status = { id: number; name: string; category: string; order: number };
 const KATEGORIEN: [string, string][] = [
@@ -29,7 +29,7 @@ export default function StatusManager({ project }: { project: Project }) {
 
   useEffect(() => { if (meta) setRows([...meta.statuses].sort((a, b) => a.order - b.order)); }, [meta]);
   const inv = () => qc.invalidateQueries({ queryKey: ["meta", project.id] });
-  const fehler = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
 
   const speichern = async (s: Status | null, name: string, category: string) => {
     setErr("");
@@ -37,7 +37,7 @@ export default function StatusManager({ project }: { project: Project }) {
       if (s) await api.put(`/projects/${project.id}/statuses/${s.id}`, { name, category });
       else await api.post(`/projects/${project.id}/statuses`, { name, category });
       setDialog(null); inv();
-    } catch (e) { fehler(e); }
+    } catch (e) { error(e); }
   };
   const move = async (i: number, d: -1 | 1) => {
     const j = i + d;
@@ -45,12 +45,12 @@ export default function StatusManager({ project }: { project: Project }) {
     const ids = rows.map((r) => r.id);
     [ids[i], ids[j]] = [ids[j], ids[i]];
     try { await api.post(`/projects/${project.id}/statuses/reorder`, { ordered_ids: ids }); inv(); }
-    catch (e) { fehler(e); }
+    catch (e) { error(e); }
   };
   const del = async (s: Status) => {
     setErr("");
     try { await api.del(`/projects/${project.id}/statuses/${s.id}`); setLoeschStatus(null); inv(); }
-    catch (e) { setLoeschStatus(null); fehler(e); }
+    catch (e) { setLoeschStatus(null); error(e); }
   };
 
   const katLabel = (k: string) => KATEGORIEN.find(([key]) => key === k)?.[1] || k;
@@ -66,23 +66,23 @@ export default function StatusManager({ project }: { project: Project }) {
             <div className="flex flex-col">
               <button onClick={() => move(i, -1)} disabled={i === 0}
                 title={tr("status_manager.nach_oben")} aria-label={tr("status_manager.nach_oben")}
-                className={KNOPF_TEXT.neben}>▲</button>
+                className={BUTTON_TEXT.neben}>▲</button>
               <button onClick={() => move(i, 1)} disabled={i === rows.length - 1}
                 title={tr("status_manager.nach_unten")} aria-label={tr("status_manager.nach_unten")}
-                className={KNOPF_TEXT.neben}>▼</button>
+                className={BUTTON_TEXT.neben}>▼</button>
             </div>
             <span className="flex-1">{s.name}</span>
             <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{katLabel(s.category)}</span>
-            <Aktionen>
-              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(s)} />
-              <IconKnopf icon={ICON.loeschen} titel={tr("status_manager.status_loeschen")} gefahr
+            <Actions>
+              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(s)} />
+              <IconButton icon={ICON.loeschen} titel={tr("status_manager.status_loeschen")} gefahr
                 onClick={() => setLoeschStatus(s)} />
-            </Aktionen>
+            </Actions>
           </div>
         ))}
       </div>
       <button onClick={() => setDialog({})}
-        className={KNOPF.haupt}>
+        className={BUTTON.haupt}>
         {ICON.neu} {tr("status_manager.neue_spalte")}
       </button>
       <p className="mt-2 text-xs text-muted">{tr("status_manager.kategorie_hinweis")}</p>
@@ -112,14 +112,14 @@ function StatusDialog({ status, onClose, onSpeichern }: {
         speichernText={status ? undefined : tr("common.anlegen")}
         onSpeichern={() => onSpeichern(name.trim(), kategorie)} />}>
       <div className="space-y-3">
-        <Feld label={tr("status_manager.name")}>
-          <input value={name} autoFocus onChange={(e) => setName(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("status_manager.kategorie")} hinweis={tr("status_manager.kategorie_hinweis")}>
-          <select value={kategorie} onChange={(e) => setKategorie(e.target.value)} className={EINGABE}>
+        <Field label={tr("status_manager.name")}>
+          <input value={name} autoFocus onChange={(e) => setName(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("status_manager.kategorie")} hinweis={tr("status_manager.kategorie_hinweis")}>
+          <select value={kategorie} onChange={(e) => setKategorie(e.target.value)} className={INPUT_VALUE}>
             {KATEGORIEN.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
-        </Feld>
+        </Field>
       </div>
     </Dialog>
   );

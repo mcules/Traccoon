@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Liste, ListeLeer, ListenZeile, KNOPF, KNOPF_TEXT} from "./ui";
+  Actions, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, LoeschDialog, Area, Etikett, Listing, ListingLeer, ListenLine, BUTTON, BUTTON_TEXT} from "./ui";
 
 interface Policy {
   id: number; match_kind: string; match_value: string;
@@ -17,7 +17,7 @@ export default function AssistantPolicies() {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
   const [dialog, setDialog] = useState<Policy | {} | null>(null);   // {} = neue Regel
-  const [loeschRegel, setLoeschRegel] = useState<Policy | null>(null);
+  const [loeschRule, setLoeschRule] = useState<Policy | null>(null);
   const { data = [], isLoading } = useQuery({
     queryKey: ["policies"], queryFn: () => api.get<Policy[]>("/assistant/policies"),
   });
@@ -31,20 +31,20 @@ export default function AssistantPolicies() {
   });
   const del = useMutation({
     mutationFn: (id: number) => api.del(`/assistant/policies/${id}`),
-    onSuccess: () => { setLoeschRegel(null); inv(); }, onError: guard,
+    onSuccess: () => { setLoeschRule(null); inv(); }, onError: guard,
   });
 
   return (
     <div className="space-y-4">
       <ToolPermissions />
-      <Bereich titel="📥 Eingangs-Regeln (Mail)" hinweis={tr("assistant_policies.einleitung")}>
+      <Area titel="📥 Eingangs-Regeln (Mail)" hinweis={tr("assistant_policies.einleitung")}>
       <Fehlerzeile text={err} />
 
       {isLoading && <div className="text-sm text-muted">{tr("assistant_policies.laedt")}</div>}
 
-      <Liste>
+      <Listing>
         {data.map((p) => (
-          <ListenZeile key={p.id} gedimmt={!p.enabled}>
+          <ListenLine key={p.id} gedimmt={!p.enabled}>
             <div className="flex flex-wrap items-center gap-1.5">
               <Etikett>{KIND_LABEL[p.match_kind] || p.match_kind}</Etikett>
               <span className="font-medium text-ink">{p.match_value}</span>
@@ -57,32 +57,32 @@ export default function AssistantPolicies() {
             {p.action_hint && <p className="mt-1 text-xs text-muted">↳ {p.action_hint}</p>}
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1" />
-              <Aktionen>
-                <IconKnopf icon={p.enabled ? "⏸" : "⏵"} onClick={() => save.mutate({ ...p, enabled: !p.enabled })}
+              <Actions>
+                <IconButton icon={p.enabled ? "⏸" : "⏵"} onClick={() => save.mutate({ ...p, enabled: !p.enabled })}
                   titel={tr(p.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
-                <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(p)} />
-                <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschRegel(p)} />
-              </Aktionen>
+                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(p)} />
+                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschRule(p)} />
+              </Actions>
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
         {!isLoading && data.length === 0 && (
-          <ListeLeer>{tr("assistant_policies.keine_regeln")}</ListeLeer>
+          <ListingLeer>{tr("assistant_policies.keine_regeln")}</ListingLeer>
         )}
-      </Liste>
+      </Listing>
 
-      <button onClick={() => setDialog({})} className={KNOPF.haupt}>
+      <button onClick={() => setDialog({})} className={BUTTON.haupt}>
         {ICON.neu} {tr("assistant_policies.regel_anlegen")}
       </button>
-      </Bereich>
+      </Area>
 
       {dialog && (
-        <RegelDialog regel={"id" in dialog ? (dialog as Policy) : null} laeuft={save.isPending}
-          onClose={() => setDialog(null)} onSpeichern={(werte) => save.mutate(werte)} />
+        <RuleDialog regel={"id" in dialog ? (dialog as Policy) : null} laeuft={save.isPending}
+          onClose={() => setDialog(null)} onSpeichern={(values) => save.mutate(values)} />
       )}
-      {loeschRegel && (
-        <LoeschDialog was={loeschRegel.match_value} laeuft={del.isPending}
-          onClose={() => setLoeschRegel(null)} onLoeschen={() => del.mutate(loeschRegel.id)} />
+      {loeschRule && (
+        <LoeschDialog was={loeschRule.match_value} laeuft={del.isPending}
+          onClose={() => setLoeschRule(null)} onLoeschen={() => del.mutate(loeschRule.id)} />
       )}
     </div>
   );
@@ -101,23 +101,23 @@ function ToolPermissions() {
   const A: Record<string, "gruen" | "rot" | "neutral"> = { allow: "gruen", deny: "rot", ask: "neutral" };
 
   return (
-    <Bereich titel="🔐 Tool-Freigaben" hinweis={tr("assistant_policies.rechte_hinweis")}>
-      <Liste>
+    <Area titel="🔐 Tool-Freigaben" hinweis={tr("assistant_policies.rechte_hinweis")}>
+      <Listing>
         {data.map((p) => (
-          <ListenZeile key={p.id}>
+          <ListenLine key={p.id}>
             <div className="flex items-center gap-2">
             <code className="text-ink">{p.tool}</code>
             {p.resource !== "*" && <code className="text-xs text-muted">{p.resource}</code>}
             <Etikett farbe={A[p.action] || A.ask}>{p.action}</Etikett>
             <div className="flex-1" />
-            {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className={KNOPF_TEXT.neben}>→ allow</button>}
-            {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className={KNOPF_TEXT.gefahr}>→ deny</button>}
-            <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => del.mutate(p.id)} />
+            {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className={BUTTON_TEXT.neben}>→ allow</button>}
+            {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className={BUTTON_TEXT.gefahr}>→ deny</button>}
+            <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => del.mutate(p.id)} />
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
-        {data.length === 0 && <ListeLeer>{tr("assistant_policies.keine_der_assistent_fragt_bei_jeder_heik")}</ListeLeer>}
-      </Liste>
+        {data.length === 0 && <ListingLeer>{tr("assistant_policies.keine_der_assistent_fragt_bei_jeder_heik")}</ListingLeer>}
+      </Listing>
       <div className="flex gap-2">
         <input value={tool} onChange={(e) => setTool(e.target.value)} placeholder={tr("assistant_policies.tool_glob_z_b_obsidian")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-ink outline-none" />
@@ -125,9 +125,9 @@ function ToolPermissions() {
           <option value="allow">allow</option><option value="deny">deny</option><option value="ask">ask</option>
         </select>
         <button onClick={() => { if (tool.trim()) { save.mutate({ tool: tool.trim(), action }); setTool(""); } }}
-          className={KNOPF.haupt}>+ Regel</button>
+          className={BUTTON.haupt}>+ Regel</button>
       </div>
-    </Bereich>
+    </Area>
   );
 }
 
@@ -138,47 +138,47 @@ function ToolPermissions() {
  * each wrote one field on click. Which of them belonged together only became clear by
  * trying, and undoing meant clicking back through them.
  */
-function RegelDialog({ regel, laeuft, onClose, onSpeichern }: {
+function RuleDialog({ regel: rule, laeuft: running, onClose, onSpeichern }: {
   regel: Policy | null; laeuft: boolean;
   onClose: () => void; onSpeichern: (p: Partial<Policy> & { id?: number }) => void;
 }) {
-  const [kind, setKind] = useState(regel?.match_kind || "sender");
-  const [value, setValue] = useState(regel?.match_value || "");
-  const [redaction, setRedaction] = useState(regel?.redaction || "redacted");
-  const [hint, setHint] = useState(regel?.action_hint || "");
-  const [autoApprove, setAutoApprove] = useState(regel ? regel.auto_approve : true);
-  const [enabled, setEnabled] = useState(regel ? regel.enabled : true);
+  const [kind, setKind] = useState(rule?.match_kind || "sender");
+  const [value, setValue] = useState(rule?.match_value || "");
+  const [redaction, setRedaction] = useState(rule?.redaction || "redacted");
+  const [hint, setHint] = useState(rule?.action_hint || "");
+  const [autoApprove, setAutoApprove] = useState(rule ? rule.auto_approve : true);
+  const [enabled, setEnabled] = useState(rule ? rule.enabled : true);
 
   return (
-    <Dialog titel={tr(regel ? "assistant_policies.regel_bearbeiten" : "assistant_policies.regel_anlegen")}
+    <Dialog titel={tr(rule ? "assistant_policies.regel_bearbeiten" : "assistant_policies.regel_anlegen")}
       onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!value.trim()} laeuft={laeuft}
-        speichernText={regel ? undefined : tr("common.anlegen")}
+      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!value.trim()} laeuft={running}
+        speichernText={rule ? undefined : tr("common.anlegen")}
         onSpeichern={() => onSpeichern({
-          ...(regel ? { id: regel.id } : {}),
+          ...(rule ? { id: rule.id } : {}),
           match_kind: kind, match_value: value.trim(), redaction, action_hint: hint,
           auto_approve: autoApprove, enabled,
         })} />}>
       <div className="space-y-3">
-        <Feld label={tr("assistant_policies.trifft_auf")}>
-          <select value={kind} onChange={(e) => setKind(e.target.value)} className={EINGABE}>
+        <Field label={tr("assistant_policies.trifft_auf")}>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} className={INPUT_VALUE}>
             <option value="sender">{tr("assistant_policies.absender")}</option>
             <option value="domain">{tr("assistant_policies.domain")}</option>
             <option value="category">{tr("assistant_policies.kategorie")}</option>
           </select>
-        </Feld>
-        <Feld label={tr("assistant_policies.wert_z_b_news_verband_de")}>
-          <input value={value} autoFocus onChange={(e) => setValue(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("assistant_policies.verarbeitung")}>
-          <select value={redaction} onChange={(e) => setRedaction(e.target.value)} className={EINGABE}>
+        </Field>
+        <Field label={tr("assistant_policies.wert_z_b_news_verband_de")}>
+          <input value={value} autoFocus onChange={(e) => setValue(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("assistant_policies.verarbeitung")}>
+          <select value={redaction} onChange={(e) => setRedaction(e.target.value)} className={INPUT_VALUE}>
             <option value="redacted">{tr("assistant.geschwaerzt")}</option>
             <option value="unredacted">{tr("assistant.ungeschwaerzt")}</option>
           </select>
-        </Feld>
-        <Feld label={tr("assistant_policies.gelernte_aktion_optional")}>
-          <input value={hint} onChange={(e) => setHint(e.target.value)} className={EINGABE} />
-        </Feld>
+        </Field>
+        <Field label={tr("assistant_policies.gelernte_aktion_optional")}>
+          <input value={hint} onChange={(e) => setHint(e.target.value)} className={INPUT_VALUE} />
+        </Field>
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={autoApprove} onChange={(e) => setAutoApprove(e.target.checked)} />
           {tr("assistant_policies.auto_freigabe")}

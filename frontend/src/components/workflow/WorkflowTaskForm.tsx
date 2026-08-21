@@ -4,7 +4,7 @@ import { ApiError, workflowApi, type NodeConfig } from "../../api";
 import type { MemberLite } from "../../api";
 import { DynamicForm, defaultValues, missingRequired } from "./formFields";
 import { tr } from "../../i18n";
-import { KNOPF } from "../ui";
+import { BUTTON } from "../ui";
 
 /** Editing form for an open step (human_task or approval). */
 export default function WorkflowTaskForm({
@@ -73,7 +73,7 @@ export default function WorkflowTaskForm({
           <button
             disabled={approve.isPending}
             onClick={() => approve.mutate()}
-            className={KNOPF.zusage}
+            className={BUTTON.zusage}
           >
             ✅ Genehmigen
           </button>
@@ -115,7 +115,7 @@ export default function WorkflowTaskForm({
         disabled={complete.isPending || missing.length > 0}
         onClick={() => complete.mutate()}
         title={missing.length ? `Pflichtfelder: ${missing.join(", ")}` : undefined}
-        className={KNOPF.haupt}
+        className={BUTTON.haupt}
       >
         ✓ Erledigt
       </button>

@@ -30,7 +30,7 @@ interface WakeLockSentinelLike {
   release(): Promise<void>;
 }
 interface WakeLockLike {
-  request(typ: "screen"): Promise<WakeLockSentinelLike>;
+  request(kind: "screen"): Promise<WakeLockSentinelLike>;
 }
 
 /**
@@ -48,23 +48,23 @@ export function useWakeLock(aktiv: boolean): void {
     if (!wl) return;                              // Merkmalsprüfung: Firefox/Safari-Altstand
 
     let entlassen = false;
-    let sperre: WakeLockSentinelLike | null = null;
+    let block: WakeLockSentinelLike | null = null;
 
     const anfordern = async () => {
-      if (entlassen || sperre !== null || document.visibilityState !== "visible") return;
+      if (entlassen || block !== null || document.visibilityState !== "visible") return;
       try {
-        sperre = await wl.request("screen");
+        block = await wl.request("screen");
         // The effect can have been cleaned up during the `await`, and then the freshly
         // fetched lock belongs to nobody and is released again immediately.
-        if (entlassen) { void sperre.release().catch(() => {}); sperre = null; }
+        if (entlassen) { void block.release().catch(() => {}); block = null; }
       } catch {
-        sperre = null;
+        block = null;
       }
     };
 
     const beiSichtbarkeit = () => {
       if (document.visibilityState === "visible") {
-        sperre = null;                            // beim Verstecken hat der Browser sie gelöst
+        block = null;                            // beim Verstecken hat der Browser sie gelöst
         void anfordern();
       }
     };
@@ -74,8 +74,8 @@ export function useWakeLock(aktiv: boolean): void {
     return () => {
       entlassen = true;
       document.removeEventListener("visibilitychange", beiSichtbarkeit);
-      void sperre?.release().catch(() => {});
-      sperre = null;
+      void block?.release().catch(() => {});
+      block = null;
     };
   }, [aktiv]);
 }

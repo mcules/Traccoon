@@ -5,20 +5,20 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError, api, processApi, workflowApi,
-  type ProcAusloeser, type ProcLauf, type ProcSlot, type User,
+  type ProcTrigger, type ProcLauf, type ProcSlot, type User,
 } from "../api";
 import { usePageChrome } from "../pageChrome";
 import {
-  Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, Zeilenknopf,
+  Area, Etikett, Fehlerzeile, Listing, ListingLeer, ListenLine, Zeilenknopf,
 } from "../components/ui";
 import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
-import { projektPfad } from "../projectTabs";
+import { projektPath } from "../projectTabs";
 import MessreihenPanel from "../components/workflow/MessreihenPanel";
 import AblagenPanel from "../components/workflow/AblagenPanel";
-import StandortePanel from "../components/workflow/StandortePanel";
+import LocationsPanel from "../components/workflow/StandortePanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 import VersionsDiff from "../components/workflow/VersionsDiff";
-import { BestaetigenDialog, ICON, IconKnopf } from "../components/ui";
+import { ConfirmDialog, ICON, IconButton } from "../components/ui";
 
 /**
  * Process administration: the view across all flows.
@@ -59,50 +59,50 @@ export default function Processes() {
       {tab === "own" && <OwnWorkflowsPanel />}
       {tab === "metrics" && <MessreihenPanel />}
       {tab === "documents" && <AblagenPanel />}
-      {tab === "locations" && <StandortePanel />}
-      {tab === "default" && <StandardSatz />}
+      {tab === "locations" && <LocationsPanel />}
+      {tab === "default" && <StandardPreset />}
       {tab === "operations" && <Betrieb />}
-      {tab === "triggers" && <Ausloeser />}
+      {tab === "triggers" && <Trigger />}
     </div>
   );
 }
 
 // ── Standard-Satz ────────────────────────────────────────────────────────────
 
-function StandardSatz() {
+function StandardPreset() {
   const nav = useNavigate();
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.get<User>("/auth/me") });
   const admin = me?.global_role === "admin";
-  const [offen, setOffen] = useState<number | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
 
   const { data: slots } = useQuery({ queryKey: ["proc-slots"], queryFn: () => processApi.slots() });
 
   return (
-    <Bereich hinweis={<>
+    <Area hinweis={<>
       {tr("proc.standard_hinweis")}{" "}
       {tr(admin ? "processes.hinweis_admin" : "processes.hinweis_leser")}
     </>}>
-      <Liste>
+      <Listing>
         {slots?.map((s) => (
-          <SlotZeile
+          <SlotLine
             key={s.slot} s={s} admin={admin}
-            offen={offen === s.definition_id}
-            onToggle={() => setOffen(offen === s.definition_id ? null : s.definition_id)}
+            offen={open === s.definition_id}
+            onToggle={() => setOpen(open === s.definition_id ? null : s.definition_id)}
             onEdit={() => s.definition_id && nav(`/workflows/${s.definition_id}`, { state: { from: "/processes/default" } })}
           />
         ))}
-        {slots?.length === 0 && <ListeLeer>{tr("proc.kein_standard_satz")}</ListeLeer>}
-      </Liste>
-    </Bereich>
+        {slots?.length === 0 && <ListingLeer>{tr("proc.kein_standard_satz")}</ListingLeer>}
+      </Listing>
+    </Area>
   );
 }
 
-function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
+function SlotLine({ s, admin, offen: open, onToggle, onEdit }: {
   s: ProcSlot; admin: boolean; offen: boolean; onToggle: () => void; onEdit: () => void;
 }) {
   const nav = useNavigate();
   return (
-    <ListenZeile>
+    <ListenLine>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-ink">{s.name}</span>
         {s.published
@@ -115,7 +115,7 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
         )}
         <div className="flex-1" />
         <Zeilenknopf onClick={onToggle}>
-          {offen ? "Versionen ausblenden" : "Versionen"}
+          {open ? "Versionen ausblenden" : "Versionen"}
         </Zeilenknopf>
         {s.definition_id && (
           <Zeilenknopf onClick={onEdit}>{admin ? "Bearbeiten" : "Ansehen"}</Zeilenknopf>
@@ -139,17 +139,17 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
         </div>
       )}
 
-      {offen && s.definition_id && <Versionen defId={s.definition_id} darfSchreiben={admin} />}
-    </ListenZeile>
+      {open && s.definition_id && <Versionen defId={s.definition_id} darfSchreiben={admin} />}
+    </ListenLine>
   );
 }
 
 /** Version history with rolling back; the old version is published as a new one. */
-function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boolean }) {
+function Versionen({ defId, darfSchreiben: mayWrite }: { defId: number; darfSchreiben: boolean }) {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
   const [diffVon, setDiffVon] = useState<{ id: number; version: number } | null>(null);
-  const [zurueck, setZurueck] = useState<{ id: number; version: number } | null>(null);
+  const [back, setBack] = useState<{ id: number; version: number } | null>(null);
   const { data: versionen } = useQuery({
     queryKey: ["wf-versions", defId], queryFn: () => workflowApi.versions(defId),
   });
@@ -161,7 +161,7 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
     mutationFn: (vid: number) => workflowApi.rollback(defId, vid),
     onSuccess: () => {
       setErr("");
-      setZurueck(null);
+      setBack(null);
       qc.invalidateQueries({ queryKey: ["wf-versions", defId] });
       qc.invalidateQueries({ queryKey: ["wf-def", defId] });
       qc.invalidateQueries({ queryKey: ["proc-slots"] });
@@ -174,10 +174,10 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
       {err && <div className="mb-2 rounded border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-300">{err}</div>}
       <div className="space-y-1">
         {versionen?.map((v) => {
-          const aktuell = def?.current_version_id === v.id;
+          const current = def?.current_version_id === v.id;
           return (
             <div key={v.id} className="flex flex-wrap items-center gap-2 text-xs">
-              <span className={`w-10 shrink-0 ${aktuell ? "font-medium text-ink" : "text-muted"}`}>
+              <span className={`w-10 shrink-0 ${current ? "font-medium text-ink" : "text-muted"}`}>
                 v{v.version}
               </span>
               <span className={`rounded px-1.5 py-0.5 ${
@@ -185,7 +185,7 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
               }`}>
                 {tr(v.status === "published" ? "proc.veroeffentlicht" : "proc.entwurf")}
               </span>
-              {aktuell && (
+              {current && (
                 <span className="rounded bg-brand/20 px-1.5 py-0.5 text-brand">aktuell</span>
               )}
               <span className="min-w-0 flex-1 truncate text-muted" title={v.notes || ""}>
@@ -194,11 +194,11 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
               <span className="shrink-0 text-muted">
                 {formatDate(v.published_at)}
               </span>
-              <IconKnopf icon="⇄" titel={tr("proc.unterschiede")}
+              <IconButton icon="⇄" titel={tr("proc.unterschiede")}
                 onClick={() => setDiffVon({ id: v.id, version: v.version })} />
-              {darfSchreiben && !aktuell && v.status === "published" && (
-                <IconKnopf icon={ICON.zurueck} titel={tr("processes.diese_fassung_wieder_in_kraft_setzen_als")}
-                  onClick={() => setZurueck({ id: v.id, version: v.version })} />
+              {mayWrite && !current && v.status === "published" && (
+                <IconButton icon={ICON.zurueck} titel={tr("processes.diese_fassung_wieder_in_kraft_setzen_als")}
+                  onClick={() => setBack({ id: v.id, version: v.version })} />
               )}
             </div>
           );
@@ -211,15 +211,15 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
           titel={tr("proc.unterschiede_zu_vorgaenger", { version: diffVon.version })}
           onClose={() => setDiffVon(null)} />
       )}
-      {zurueck && (
-        <BestaetigenDialog
+      {back && (
+        <ConfirmDialog
           titel={tr("proc.zurueckrollen")}
-          text={tr("proc.zurueckrollen_frage", { version: zurueck.version })}
+          text={tr("proc.zurueckrollen_frage", { version: back.version })}
           hinweis={tr("proc.zurueckrollen_hinweis")}
           bestaetigenText={tr("proc.zurueckrollen")} gefahr={false}
           laeuft={rollback.isPending}
-          onClose={() => setZurueck(null)}
-          onBestaetigen={() => rollback.mutate(zurueck.id)} />
+          onClose={() => setBack(null)}
+          onBestaetigen={() => rollback.mutate(back.id)} />
       )}
     </div>
   );
@@ -244,20 +244,20 @@ const WARTET_AUF: Record<string, string> = {
 function Betrieb() {
   const qc = useQueryClient();
   const nav = useNavigate();
-  const [nurHaengt, setNurHaengt] = useState(false);
+  const [nurHangs, setNurHangs] = useState(false);
   const [mitFertigen, setMitFertigen] = useState(false);
   const [err, setErr] = useState("");
   // Expanded run: graph plus log. A process that is stuck or has failed always raises the
   // same question: what came back, and why did it then continue there?
-  const [offen, setOffen] = useState<number | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
 
-  const { data: laeufe } = useQuery({
-    queryKey: ["proc-running", nurHaengt, mitFertigen],
-    queryFn: () => processApi.running({ onlyStuck: nurHaengt, includeDone: mitFertigen }),
+  const { data: runs } = useQuery({
+    queryKey: ["proc-running", nurHangs, mitFertigen],
+    queryFn: () => processApi.running({ onlyStuck: nurHangs, includeDone: mitFertigen }),
     refetchInterval: 20000,
   });
 
-  const abbrechen = useMutation({
+  const cancel = useMutation({
     mutationFn: (iid: number) => workflowApi.cancel(iid),
     onSuccess: () => {
       setErr("");
@@ -266,15 +266,15 @@ function Betrieb() {
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
 
-  const haengen = laeufe?.filter((l) => l.haengt).length ?? 0;
+  const haengen = runs?.filter((l) => l.haengt).length ?? 0;
 
   return (
-    <Bereich
+    <Area
       hinweis={tr("proc.betrieb_hinweis")}
       werkzeuge={<>
         <label className="flex items-center gap-1.5">
-          <input type="checkbox" checked={nurHaengt} onChange={(e) => setNurHaengt(e.target.checked)} />
-          {tr("proc.nur_auffaelliges")}{haengen > 0 && !nurHaengt ? ` (${haengen})` : ""}
+          <input type="checkbox" checked={nurHangs} onChange={(e) => setNurHangs(e.target.checked)} />
+          {tr("proc.nur_auffaelliges")}{haengen > 0 && !nurHangs ? ` (${haengen})` : ""}
         </label>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={mitFertigen} onChange={(e) => setMitFertigen(e.target.checked)} />
@@ -282,15 +282,15 @@ function Betrieb() {
         </label>
         <div className="flex-1" />
         <span className="text-xs text-muted">
-          {laeufe?.length ?? 0} {tr(laeufe?.length === 1 ? "proc.vorgang" : "proc.vorgaenge")}
+          {runs?.length ?? 0} {tr(runs?.length === 1 ? "proc.vorgang" : "proc.vorgaenge")}
         </span>
       </>}
     >
       <Fehlerzeile text={err} />
 
-      <Liste>
-        {laeufe?.map((l) => (
-          <ListenZeile key={l.id}>
+      <Listing>
+        {runs?.map((l) => (
+          <ListenLine key={l.id}>
             <div className="flex flex-wrap items-center gap-2">
               <Etikett farbe={STATUS_FARBE[l.status]}>{tr(STATUS_TEXT[l.status])}</Etikett>
               <span className="font-medium text-ink">{l.definition_name}</span>
@@ -299,7 +299,7 @@ function Betrieb() {
               {l.subject_ref && (
                 <button
                   onClick={() => nav(l.subject_ref?.startsWith("HW-")
-                    ? projektPfad(l.project_key!, "operations", "hardware")
+                    ? projektPath(l.project_key!, "operations", "hardware")
                     : `/projects/${l.project_key}/tickets/${l.subject_ref}`)}
                   className="rounded bg-surface px-1.5 py-0.5 text-xs text-ink hover:text-brand"
                 >
@@ -313,13 +313,13 @@ function Betrieb() {
                 </span>
               )}
               <Zeilenknopf
-                onClick={() => setOffen(offen === l.id ? null : l.id)}
+                onClick={() => setOpen(open === l.id ? null : l.id)}
                 titel={tr("processes.verlauf_des_vorgangs")}
               >
-                {tr(offen === l.id ? "processes.verlauf_zu" : "processes.verlauf")}
+                {tr(open === l.id ? "processes.verlauf_zu" : "processes.verlauf")}
               </Zeilenknopf>
               {(l.status === "running" || l.status === "waiting") && (
-                <Zeilenknopf gefahr onClick={() => abbrechen.mutate(l.id)}
+                <Zeilenknopf gefahr onClick={() => cancel.mutate(l.id)}
                   titel={tr("processes.vorgang_abbrechen")}>
                   {tr("processes.abbrechen")}
                 </Zeilenknopf>
@@ -330,25 +330,25 @@ function Betrieb() {
               {l.waiting_for && ` — ${tr("proc.wartet")} ${WARTET_AUF[l.waiting_for] ? tr(WARTET_AUF[l.waiting_for]) : l.waiting_for}`}
             </div>
             {l.error && <div className="mt-1 text-xs text-red-300">{l.error}</div>}
-            {offen === l.id && (
+            {open === l.id && (
               <div className="mt-3 border-t border-line pt-3">
                 <WorkflowInstanceView iid={l.id} projectId={l.project_id ?? null}
                                      height="260px" compact />
               </div>
             )}
-          </ListenZeile>
+          </ListenLine>
         ))}
-        {laeufe?.length === 0 && (
-          <ListeLeer>{nurHaengt ? tr("proc.nichts_auffaelliges") : tr("proc.kein_vorgang")}</ListeLeer>
+        {runs?.length === 0 && (
+          <ListingLeer>{nurHangs ? tr("proc.nichts_auffaelliges") : tr("proc.kein_vorgang")}</ListingLeer>
         )}
-      </Liste>
-    </Bereich>
+      </Listing>
+    </Area>
   );
 }
 
 // ── Triggers ─────────────────────────────────────────────────────────────────
 
-const KIND: Record<ProcAusloeser["kind"], { label: string; farbe: EtikettFarbe }> = {
+const KIND: Record<ProcTrigger["kind"], { label: string; farbe: EtikettFarbe }> = {
   event: { label: "processes.ausloeser_event", farbe: "violett" },
   webhook: { label: "processes.ausloeser_webhook", farbe: "blau" },
   job: { label: "processes.ausloeser_job", farbe: "gruen" },
@@ -356,7 +356,7 @@ const KIND: Record<ProcAusloeser["kind"], { label: string; farbe: EtikettFarbe }
   manual: { label: "processes.ausloeser_manual", farbe: "neutral" },
 };
 
-function Ausloeser() {
+function Trigger() {
   const nav = useNavigate();
   const { data: trigger } = useQuery({ queryKey: ["proc-triggers"], queryFn: processApi.triggers });
   const { data: events } = useQuery({ queryKey: ["proc-events"], queryFn: processApi.events });
@@ -365,12 +365,12 @@ function Ausloeser() {
 
   return (
     <div className="space-y-4">
-      <Bereich hinweis={tr("proc.ausloeser_hinweis")}>
-        <Liste>
+      <Area hinweis={tr("proc.ausloeser_hinweis")}>
+        <Listing>
           {trigger?.map((t, i) => {
             const k = KIND[t.kind];
             return (
-              <ListenZeile key={`${t.definition_id}-${t.kind}-${i}`} gedimmt={!t.enabled}>
+              <ListenLine key={`${t.definition_id}-${t.kind}-${i}`} gedimmt={!t.enabled}>
                 <div className="flex flex-wrap items-center gap-2">
                   <Etikett farbe={k.farbe}>{tr(k.label)}</Etikett>
                   <span className="font-medium text-ink">{t.definition_name}</span>
@@ -387,23 +387,23 @@ function Ausloeser() {
                   {t.label}
                   {t.only_project_id && ` ${tr("proc.nur_fuer_projekt")}`}
                 </div>
-              </ListenZeile>
+              </ListenLine>
             );
           })}
-          {trigger?.length === 0 && <ListeLeer>{tr("processes.noch_keine_version")}</ListeLeer>}
-        </Liste>
-      </Bereich>
+          {trigger?.length === 0 && <ListingLeer>{tr("processes.noch_keine_version")}</ListingLeer>}
+        </Listing>
+      </Area>
 
-      <Bereich hinweis={<>
+      <Area hinweis={<>
         <span className="font-medium text-ink">{tr("processes.ereignisse")}</span>{" — "}
         {tr("processes.ereignisse_hinweis")}
         {ohneZuhoerer === events?.length && events.length > 0 && (
           <> {tr("processes.ereignisse_niemand_hoert")}</>
         )}
       </>}>
-        <Liste>
+        <Listing>
           {events?.map((e) => (
-            <ListenZeile key={e.event}>
+            <ListenLine key={e.event}>
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate">{e.label}</span>
                 <code className="hidden shrink-0 text-[11px] text-muted sm:block">{e.event}</code>
@@ -412,10 +412,10 @@ function Ausloeser() {
                   {e.listeners || "—"}
                 </Etikett>
               </div>
-            </ListenZeile>
+            </ListenLine>
           ))}
-        </Liste>
-      </Bereich>
+        </Listing>
+      </Area>
     </div>
   );
 }

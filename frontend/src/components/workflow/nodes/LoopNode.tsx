@@ -14,7 +14,7 @@ export default function LoopNode({ id, data, selected }: FlowNodeProps) {
     { id: "element", label: "je Element", color: "!bg-brand" },
     { id: "fertig", label: "fertig", color: "!bg-green-500" },
   ];
-  const liste = data.config.liste as string | undefined;
+  const listing = data.config.liste as string | undefined;
   return (
     <BaseNode
       nodeId={id}
@@ -26,7 +26,7 @@ export default function LoopNode({ id, data, selected }: FlowNodeProps) {
       aus={!!data.config.deaktiviert}
       sources={sources}
     >
-      <div className="font-mono text-[11px]">{liste || tr("loop.keine_liste")}</div>
+      <div className="font-mono text-[11px]">{listing || tr("loop.keine_liste")}</div>
     </BaseNode>
   );
 }

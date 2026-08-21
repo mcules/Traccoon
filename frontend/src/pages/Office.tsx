@@ -74,23 +74,23 @@ import ErrorBoundary, { sicheresNeuladen } from "../components/ErrorBoundary.tsx
 import type { Scope } from "../components/office/api.ts";
 import { useWakeLock } from "../hooks/useWakeLock.ts";
 import { useTokenKeepalive } from "../hooks/useTokenKeepalive.ts";
-import { projektPfad } from "../projectTabs";
+import { projektPath } from "../projectTabs";
 import { SCHIENE_FREILASSEN } from "../nav";
-import { KNOPF } from "../components/ui";
+import { BUTTON } from "../components/ui";
 
 // ── Adjustable settings of the watchdog ─────────────────────────────────────────────────────
 
 /** This long an error may stand before a reload happens. Two minutes are longer than any
  *  backend restart and than the full reconnect staircase of the feed; what stays that long
  *  does not go away by itself any more. */
-const WACHHUND_FEHLER_MS = 120_000;
+const WACHHUND_ERROR_MS = 120_000;
 
 /** Authentication error of the socket (4401/4403). Shorter, because here a fresh page load
  *  with a renewed token can actually change something. */
 const WACHHUND_AUTH_MS = 60_000;
 
 /** Mindestabstand zweier automatischer Neuladeversuche desselben Grundes. */
-const NEULADEN_ABSTAND_MS = 10 * 60_000;
+const NEULADEN_DISTANCE_MS = 10 * 60_000;
 
 /** Render exception: wait briefly (perhaps it was an event that is over in a moment), then
  *  rebuild. */
@@ -107,25 +107,25 @@ const NACHT_STUNDE = 4;
  * `onclose` respectively `hello` handling). If the wording changes there, the long deadline
  * silently takes hold here: worse, but never wrong.
  */
-function frist(meldung: string): number {
-  if (meldung.includes("Vertragsversion")) return 0;
-  if (meldung.includes("Keine Berechtigung")) return WACHHUND_AUTH_MS;
-  return WACHHUND_FEHLER_MS;
+function frist(notice: string): number {
+  if (notice.includes("Vertragsversion")) return 0;
+  if (notice.includes("Keine Berechtigung")) return WACHHUND_AUTH_MS;
+  return WACHHUND_ERROR_MS;
 }
 
-function grundVon(meldung: string): string {
-  if (meldung.includes("Vertragsversion")) return "vertragsbruch";
-  if (meldung.includes("Keine Berechtigung")) return "socket-auth";
+function reasonVon(notice: string): string {
+  if (notice.includes("Vertragsversion")) return "vertragsbruch";
+  if (notice.includes("Keine Berechtigung")) return "socket-auth";
   return "dauerfehler";
 }
 
 /** Milliseconds until the next full `stunde` in local time. */
 function bisZurStunde(stunde: number): number {
-  const jetzt = new Date();
-  const ziel = new Date(jetzt);
-  ziel.setHours(stunde, 0, 0, 0);
-  if (ziel.getTime() <= jetzt.getTime()) ziel.setDate(ziel.getDate() + 1);
-  return ziel.getTime() - jetzt.getTime();
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(stunde, 0, 0, 0);
+  if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+  return target.getTime() - now.getTime();
 }
 
 export default function Office(): JSX.Element {
@@ -161,11 +161,11 @@ export default function Office(): JSX.Element {
   );
 
   /** One writer for both parameters: they never change independently of each other. */
-  const schreibe = useCallback((feld: "at" | "sid", wert: string | null) => {
+  const schreibe = useCallback((field: "at" | "sid", value: string | null) => {
     setParams((vorher) => {
       const next = new URLSearchParams(vorher);
-      if (wert === null) next.delete(feld);
-      else next.set(feld, wert);
+      if (value === null) next.delete(field);
+      else next.set(field, value);
       return next;
     }, { replace: true });
   }, [setParams]);
@@ -181,7 +181,7 @@ export default function Office(): JSX.Element {
 
   // Back to where the office came from: into the project tab when a project is involved,
   // otherwise to the project list.
-  const zurueck = () => navigate(projectKey ? projektPfad(projectKey, "operations", "office") : "/");
+  const back = () => navigate(projectKey ? projektPath(projectKey, "operations", "office") : "/");
 
   /** Esc in the kiosk: one level back into the operable full screen page, not out of the
    *  office; room and jump point stay, because usually you want to intervene right here. */
@@ -199,30 +199,30 @@ export default function Office(): JSX.Element {
   useWakeLock(kiosk);
   useTokenKeepalive(kiosk);
 
-  const [fehler, setFehler] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
 
   // Watchdog for permanent errors. The timer is reset on **every** change of the message: an
   // error that comes and goes is not a permanent error, and another error is another case.
   useEffect(() => {
-    if (!kiosk || !fehler) return;
-    const wartezeit = frist(fehler);
-    const grund = grundVon(fehler);
+    if (!kiosk || !error) return;
+    const wartezeit = frist(error);
+    const reason = reasonVon(error);
     if (wartezeit === 0) {
       // Contract breach: a new frontend lies on the server, this one here is from yesterday.
-      sicheresNeuladen(grund, NEULADEN_ABSTAND_MS);
+      sicheresNeuladen(reason, NEULADEN_DISTANCE_MS);
       return;
     }
     const timer = window.setTimeout(
-      () => sicheresNeuladen(grund, NEULADEN_ABSTAND_MS), wartezeit);
+      () => sicheresNeuladen(reason, NEULADEN_DISTANCE_MS), wartezeit);
     return () => window.clearTimeout(timer);
-  }, [kiosk, fehler]);
+  }, [kiosk, error]);
 
   // The nightly cut. A single timer instead of a clock query on a beat: the deadline is
   // always under 24 h and therefore fits comfortably into `setTimeout`.
   useEffect(() => {
     if (!kiosk) return;
     const timer = window.setTimeout(
-      () => sicheresNeuladen("nacht", NEULADEN_ABSTAND_MS), bisZurStunde(NACHT_STUNDE));
+      () => sicheresNeuladen("nacht", NEULADEN_DISTANCE_MS), bisZurStunde(NACHT_STUNDE));
     return () => window.clearTimeout(timer);
   }, [kiosk]);
 
@@ -243,8 +243,8 @@ export default function Office(): JSX.Element {
               zweiter Ort, an dem man ihn sucht. */}
           {projectKey && (
             <button
-              onClick={zurueck}
-              className={KNOPF.neben}
+              onClick={back}
+              className={BUTTON.neben}
             >
               ← {tr("office.zurueck_projekt")}
             </button>
@@ -268,7 +268,7 @@ export default function Office(): JSX.Element {
         <ErrorBoundary
           label="buero"
           reloadAfterMs={kiosk ? BOUNDARY_RELOAD_MS : undefined}
-          reloadMinGapMs={NEULADEN_ABSTAND_MS}
+          reloadMinGapMs={NEULADEN_DISTANCE_MS}
         >
           <OfficeView
             scope={scope}
@@ -277,8 +277,8 @@ export default function Office(): JSX.Element {
             onAtChange={onAtChange}
             initialSid={start.current.sid}
             onSidChange={onSidChange}
-            onErrorChange={setFehler}
-            onClose={kiosk ? kioskVerlassen : zurueck}
+            onErrorChange={setError}
+            onClose={kiosk ? kioskVerlassen : back}
             className="min-h-0 flex-1 p-3"
           />
         </ErrorBoundary>

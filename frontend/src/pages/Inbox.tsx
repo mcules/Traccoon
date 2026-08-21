@@ -6,7 +6,7 @@ import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
 import AssistantChat from "../components/AssistantChat";
 import {
-  Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, Reiter, KNOPF } from "../components/ui";
+  Area, Etikett, Fehlerzeile, Listing, ListingLeer, ListenLine, Reiter, BUTTON } from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 interface InboxItem {
@@ -85,25 +85,25 @@ type StatistikDaten = {
  * a chart library for six numbers would be a dependency nobody can read afterwards.
  */
 function Statistik() {
-  const [tage, setTage] = useState(30);
+  const [days, setDays] = useState(30);
   const { data } = useQuery({
-    queryKey: ["assistant-statistik", tage],
-    queryFn: () => api.get<StatistikDaten>(`/assistant/stats?days=${tage}`),
+    queryKey: ["assistant-statistik", days],
+    queryFn: () => api.get<StatistikDaten>(`/assistant/stats?days=${days}`),
   });
-  const arten = Object.entries(data?.arten || {});
-  const groesste = Math.max(1, ...arten.map(([, w]) => w.gesamt));
+  const kinds = Object.entries(data?.arten || {});
+  const groesste = Math.max(1, ...kinds.map(([, w]) => w.gesamt));
 
   return (
     <div className="space-y-4">
-      <Bereich
+      <Area
         hinweis={tr("inbox.statistik_hinweis")}
-        werkzeuge={<Reiter aktiv={String(tage)} onWaehlen={(w) => setTage(Number(w))} auswahl={[
+        werkzeuge={<Reiter aktiv={String(days)} onWaehlen={(w) => setDays(Number(w))} auswahl={[
           ["7", "7 Tage"], ["30", "30 Tage"], ["90", "90 Tage"], ["365", "1 Jahr"],
         ]} />}
       >
-        {arten.length === 0 && <p className="text-sm text-muted">{tr("inbox.statistik_leer")}</p>}
+        {kinds.length === 0 && <p className="text-sm text-muted">{tr("inbox.statistik_leer")}</p>}
         <div className="space-y-2">
-          {arten.map(([art, w]) => (
+          {kinds.map(([art, w]) => (
             <div key={art}>
               <div className="mb-0.5 flex items-baseline gap-2 text-sm">
                 <span className="font-medium text-ink">{art}</span>
@@ -121,9 +121,9 @@ function Statistik() {
             </div>
           ))}
         </div>
-      </Bereich>
+      </Area>
 
-      <Bereich titel={tr("inbox.statistik_modell")} hinweis={tr("inbox.statistik_modell_hinweis")}>
+      <Area titel={tr("inbox.statistik_modell")} hinweis={tr("inbox.statistik_modell_hinweis")}>
         {data?.modell.quote === null || data?.modell.entschieden === 0 ? (
           <p className="text-sm text-muted">{tr("inbox.statistik_modell_leer")}</p>
         ) : (
@@ -138,7 +138,7 @@ function Statistik() {
             </span>
           </p>
         )}
-      </Bereich>
+      </Area>
     </div>
   );
 }
@@ -160,86 +160,86 @@ function InboxList() {
     onSuccess: inv, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
 
-  const items = data.filter((eintrag) =>
-    filter === "alle" ? true : filter === "offen" ? OPEN.includes(eintrag.status) : !OPEN.includes(eintrag.status));
+  const items = data.filter((entry) =>
+    filter === "alle" ? true : filter === "offen" ? OPEN.includes(entry.status) : !OPEN.includes(entry.status));
 
   return (
     <>
       <div className="mb-4 flex gap-1 border-b border-line">
       </div>
-      <Bereich
+      <Area
         werkzeuge={<Reiter aktiv={filter} onWaehlen={setFilter} auswahl={[
           ["offen", "Offen"], ["erledigt", "Erledigt"], ["alle", "Alle"],
         ]} />}
       >
       <Fehlerzeile text={err} />
       {isLoading && <div className="text-sm text-muted">{tr("inbox.laedt")}</div>}
-      <Liste>
-        {items.map((eintrag) => {
-          const prio = PRIO[eintrag.priority] || PRIO.normal;
-          const st = STATUS[eintrag.status] || { label: eintrag.status, farbe: "neutral" as const };
-          const expanded = openId === eintrag.id;
+      <Listing>
+        {items.map((entry) => {
+          const prio = PRIO[entry.priority] || PRIO.normal;
+          const st = STATUS[entry.status] || { label: entry.status, farbe: "neutral" as const };
+          const expanded = openId === entry.id;
           return (
-            <ListenZeile key={eintrag.id}>
+            <ListenLine key={entry.id}>
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 <Etikett farbe={st.farbe}>{tr(st.label)}</Etikett>
                 <Etikett farbe={prio.farbe}>{tr(prio.label)}</Etikett>
-                {eintrag.category && <Etikett>{eintrag.category}</Etikett>}
-                {eintrag.sensitive && <span title="sensibel — vertraulich behandeln">🔒</span>}
-                {eintrag.redaction === "unredacted" && (
+                {entry.category && <Etikett>{entry.category}</Etikett>}
+                {entry.sensitive && <span title="sensibel — vertraulich behandeln">🔒</span>}
+                {entry.redaction === "unredacted" && (
                   <Etikett farbe="gelb" titel={tr("inbox.volltext_freigegeben")}>ungeschwärzt</Etikett>
                 )}
-                <span className="ml-auto text-xs text-muted">{formatTime(eintrag.created_at)}</span>
+                <span className="ml-auto text-xs text-muted">{formatTime(entry.created_at)}</span>
               </div>
-              <div className="truncate font-medium text-ink">{eintrag.subject || eintrag.title}</div>
-              {eintrag.from && <div className="truncate text-xs text-muted">von {eintrag.from}</div>}
-              {eintrag.redacted_summary && <p className="mt-1.5 break-words text-sm text-muted">{eintrag.redacted_summary}</p>}
-              {eintrag.action_hint && (
-                <p className="mt-1.5 break-words text-xs text-brand">↳ {tr("inbox.gelernte_vorgabe")}: {eintrag.action_hint}</p>
+              <div className="truncate font-medium text-ink">{entry.subject || entry.title}</div>
+              {entry.from && <div className="truncate text-xs text-muted">von {entry.from}</div>}
+              {entry.redacted_summary && <p className="mt-1.5 break-words text-sm text-muted">{entry.redacted_summary}</p>}
+              {entry.action_hint && (
+                <p className="mt-1.5 break-words text-xs text-brand">↳ {tr("inbox.gelernte_vorgabe")}: {entry.action_hint}</p>
               )}
 
               <div className="mt-3 flex items-center gap-2">
-                {(eintrag.status === "new" || eintrag.status === "error") && (
+                {(entry.status === "new" || entry.status === "error") && (
                   <>
-                    <button onClick={() => { setErr(""); setApproveId(approveId === eintrag.id ? null : eintrag.id); }}
-                      className={KNOPF.haupt}>
-                      {eintrag.status === "error" ? "Erneut freigeben" : "Freigeben…"}
+                    <button onClick={() => { setErr(""); setApproveId(approveId === entry.id ? null : entry.id); }}
+                      className={BUTTON.haupt}>
+                      {entry.status === "error" ? "Erneut freigeben" : "Freigeben…"}
                     </button>
-                    <button onClick={() => { setErr(""); reject.mutate(eintrag.id); }} disabled={reject.isPending}
-                      className={KNOPF.neben}>
+                    <button onClick={() => { setErr(""); reject.mutate(entry.id); }} disabled={reject.isPending}
+                      className={BUTTON.neben}>
                       Verwerfen
                     </button>
                   </>
                 )}
-                {eintrag.status === "approved" && <span className="text-sm text-muted">{tr("inbox.wartet_auf_bearbeitung")}</span>}
-                {eintrag.status === "running" && <span className="text-sm text-brand">🔄 Assistent arbeitet…</span>}
-                {(eintrag.result || eintrag.error) && (
-                  <button onClick={() => setOpenId(expanded ? null : eintrag.id)}
+                {entry.status === "approved" && <span className="text-sm text-muted">{tr("inbox.wartet_auf_bearbeitung")}</span>}
+                {entry.status === "running" && <span className="text-sm text-brand">🔄 Assistent arbeitet…</span>}
+                {(entry.result || entry.error) && (
+                  <button onClick={() => setOpenId(expanded ? null : entry.id)}
                     className="ml-auto rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
                     {expanded ? "Details ausblenden" : "Details"}
                   </button>
                 )}
               </div>
 
-              {approveId === eintrag.id && (eintrag.status === "new" || eintrag.status === "error") && (
-                <ApprovePanel item={eintrag} onDone={() => { setApproveId(null); inv(); }}
+              {approveId === entry.id && (entry.status === "new" || entry.status === "error") && (
+                <ApprovePanel item={entry} onDone={() => { setApproveId(null); inv(); }}
                   onError={(m) => setErr(m)} />
               )}
 
-              {expanded && (eintrag.result || eintrag.error) && (
+              {expanded && (entry.result || entry.error) && (
                 <div className="mt-3 border-t border-line pt-3">
-                  {eintrag.error && <div className="mb-2 rounded bg-red-500/10 px-2 py-1.5 text-sm text-red-400 whitespace-pre-wrap">{eintrag.error}</div>}
-                  {eintrag.result && <div className="text-sm text-ink whitespace-pre-wrap">{eintrag.result}</div>}
+                  {entry.error && <div className="mb-2 rounded bg-red-500/10 px-2 py-1.5 text-sm text-red-400 whitespace-pre-wrap">{entry.error}</div>}
+                  {entry.result && <div className="text-sm text-ink whitespace-pre-wrap">{entry.result}</div>}
                 </div>
               )}
-            </ListenZeile>
+            </ListenLine>
           );
         })}
         {!isLoading && items.length === 0 && (
-          <ListeLeer>Nichts hier. Eingehende Mails erscheinen automatisch.</ListeLeer>
+          <ListingLeer>Nichts hier. Eingehende Mails erscheinen automatisch.</ListingLeer>
         )}
-      </Liste>
-      </Bereich>
+      </Listing>
+      </Area>
     </>
   );
 }
@@ -294,7 +294,7 @@ function ApprovePanel({ item, onDone, onError }:
       </div>
       <div className="flex items-center gap-2">
         <button onClick={() => approve.mutate()} disabled={approve.isPending}
-          className={KNOPF.haupt}>
+          className={BUTTON.haupt}>
           {tr(scope === "once" ? "inbox.freigeben" : "inbox.freigeben_merken")}
         </button>
         {scope !== "once" && <span className="text-xs text-muted">{tr("inbox.legt_regel_an")}</span>}
