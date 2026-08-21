@@ -24,7 +24,12 @@ const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-await ctx.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
+// The init script runs in EVERY frame, and the plugin frame is sandboxed without
+// `allow-same-origin`: touching localStorage there throws a SecurityError that lands in the
+// report as a script error. The token belongs to the host anyway, so ask before writing.
+await ctx.addInitScript((t) => {
+  try { localStorage.setItem("traccoon_token", t); } catch { /* the sandboxed frame, not ours */ }
+}, TOKEN);
 const page = await ctx.newPage();
 
 const noise = [];
@@ -32,7 +37,15 @@ const noise = [];
 // interesting message (a refused image) arrives from exactly the one without an origin.
 page.on("console", (m) => { if (m.type() === "error") noise.push(`console: ${m.text().slice(0, 200)}`); });
 page.on("pageerror", (e) => noise.push(`script: ${String(e).slice(0, 200)}`));
-page.on("requestfailed", (r) => noise.push(`failed: ${r.url().slice(0, 110)} — ${r.failure()?.errorText}`));
+// A tile the map no longer needs is aborted, and that is the normal course of things: the
+// view starts wide, the tracks pull it in, and every tile of the first zoom level dies on the
+// way. Counted, not listed — twenty lines of it would bury the one failure that matters.
+let aborted = 0;
+page.on("requestfailed", (r) => {
+  const why = r.failure()?.errorText || "";
+  if (why === "net::ERR_ABORTED" && r.url().includes("/tile.")) { aborted += 1; return; }
+  noise.push(`failed: ${r.url().slice(0, 110)} — ${why}`);
+});
 page.on("response", (r) => { if (r.status() >= 400) noise.push(`http ${r.status()}: ${r.url().slice(0, 110)}`); });
 
 await page.goto(`${BASIS}/p/${PLUGIN}`, { waitUntil: "networkidle", timeout: 45000 });
@@ -63,7 +76,7 @@ const found = await frame.evaluate(() => {
 });
 
 await page.screenshot({ path: "/w/map-check.png" });
-console.log(JSON.stringify(found, null, 1));
+console.log(JSON.stringify({ ...found, tiles_aborted: aborted }, null, 1));
 if (noise.length) console.log("\n" + noise.join("\n"));
 
 // A container without a height, a tile that stays empty, a bridge that never arrived: each of
