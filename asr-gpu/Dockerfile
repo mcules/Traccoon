@@ -1,13 +1,14 @@
-# Qwen3-ASR auf der iGPU: llama.cpp mit Vulkan-Backend.
+# Qwen3-ASR on the iGPU: llama.cpp with the Vulkan backend.
 #
-# Warum nicht whisper: gemessen am 2026-08-07 lieferte whisper.cpp auf derselben GPU zwar
-# Tempo (0,7 s statt 3,1 s für 7 s Audio), verhunzte aber Eigennamen („Trakong" statt
-# „Traccoon") — es gewichtet den Vokabel-Vorlauf schwächer als faster-whisper. Qwen3-ASR ist
-# ein Sprachmodell mit Audio-Eingang: es versteht Kontext im Prompt, statt ihn nur als
-# Wortliste zu streifen. Und es läuft über dieselbe ggml/Vulkan-Schiene wie der bereits
-# laufende llama.cpp-RPC-Container auf diesem Chip.
+# Why not whisper: measured on 2026-08-07, whisper.cpp on the same GPU did deliver speed (0.7 s
+# instead of 3.1 s for 7 s of audio) but mangled proper nouns ("Trakong" instead of "Traccoon")
+# — it weighs the vocabulary prompt more weakly than faster-whisper does. Qwen3-ASR is a
+# language model with an audio input: it understands context in the prompt instead of merely
+# brushing past it as a word list. And it runs over the same ggml/Vulkan rail as the llama.cpp
+# RPC container already running on this chip.
 #
-# Quellen im Image statt im Repository — ein fremdes Projekt gehört nicht in unsere Historie.
+# Sources in the image instead of in the repository — a foreign project does not belong in our
+# history.
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -22,10 +23,10 @@ ARG LLAMA_REF=master
 WORKDIR /src
 RUN git clone --depth 1 --branch ${LLAMA_REF} https://github.com/ggml-org/llama.cpp .
 
-# `llama-server` bringt den Audio-Pfad (libmtmd) und die OpenAI-kompatible API mit.
-# Shared Libs + `--install`, weil ein allein kopiertes Binär seine libggml nicht findet.
-# Tests und Beispiele aus: `--install` wollte sonst Binärdateien einsammeln, die der
-# gezielte Server-Build gar nicht erzeugt hat („cmake_install.cmake:52: file … does not exist").
+# `llama-server` brings the audio path (libmtmd) and the OpenAI compatible API along.
+# Shared libs + `--install`, because a binary copied on its own does not find its libggml.
+# Tests and examples off: `--install` would otherwise collect binaries that the targeted server
+# build never produced ("cmake_install.cmake:52: file … does not exist").
 RUN cmake -B build -DGGML_VULKAN=ON -DLLAMA_CURL=ON -DBUILD_SHARED_LIBS=ON \
     -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=ON \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app \

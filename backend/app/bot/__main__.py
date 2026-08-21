@@ -68,10 +68,12 @@ VOICE_MAX_BYTES = int(os.getenv("TELEGRAM_VOICE_MAX_BYTES", str(19 * 1024 * 1024
 # Extra words by hand, for everything that is NOT in the database (names from other stacks,
 # technical terms, abbreviations). The normal case needs none of this: the list builds itself
 # from our own data (see `_vokabular`).
-VOICE_VOCABULARY = os.getenv("TELEGRAM_VOICE_VOKABULAR", "").strip()
+VOICE_VOCABULARY = (os.getenv("TELEGRAM_VOICE_VOCABULARY")
+                    or os.getenv("TELEGRAM_VOICE_VOKABULAR", "")).strip()
 # Whisper cuts the `initial_prompt` at about 224 tokens and then takes the END, so a list that
 # is too long loses exactly the words standing at the front. Better keep it short.
-VOCABULARY_MAX_WORDS = int(os.getenv("TELEGRAM_VOICE_VOKABULAR_MAX", "60"))
+VOCABULARY_MAX_WORDS = int(os.getenv("TELEGRAM_VOICE_VOCABULARY_MAX")
+                           or os.getenv("TELEGRAM_VOICE_VOKABULAR_MAX", "60"))
 _vocabulary_cache: tuple[float, str] = (0.0, "")
 
 
