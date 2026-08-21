@@ -15,7 +15,7 @@ from app.models.secrets import ProviderToken
 from app.services import workflow_templates
 from sqlalchemy import select
 
-from conftest import make_user, make_webhook, melde
+from conftest import make_user, make_webhook, report
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ async def anna(db):
 async def _mail(db, owner, agent: str, uid: int) -> AssistantTask:
     sub = await make_webhook(db, owner, "mail-test", mode="assistant", agent=agent,
                              classify_agent="mail_classifier")
-    ids = await melde(db, sub, {"account": "privat", "uid": uid,
+    ids = await report(db, sub, {"account": "privat", "uid": uid,
                                 "from": "rechnung@beispiel.de", "subject": "Rechnung 4711",
                                 "body": "IBAN DE12 3456 7890, 129,90 EUR"})
     assert ids, "the shipped mail inbox does not listen for mail.received"
@@ -83,9 +83,9 @@ async def test_the_same_mail_twice_stays_one_item(db, anna):
     sub = await make_webhook(db, anna, "mail-test", mode="assistant", agent="assistent")
     payload = {"account": "privat", "uid": 4, "from": "rechnung@beispiel.de",
                 "subject": "Rechnung 4711", "body": "IBAN DE12 3456 7890, 129,90 EUR"}
-    assert await melde(db, sub, payload), "die erste Zustellung muss laufen"
+    assert await report(db, sub, payload), "die erste Zustellung muss laufen"
 
-    ids = await melde(db, sub, {**payload, "body": "egal"})
+    ids = await report(db, sub, {**payload, "body": "egal"})
     assert ids == []
     items = (await db.execute(select(AssistantTask).where(
         AssistantTask.source_ref == "privat:4"))).scalars().all()

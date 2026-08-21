@@ -34,7 +34,7 @@ def _node(graph: dict) -> dict:
     return {n["id"]: n["data"]["config"] for n in graph["nodes"]}
 
 
-async def _graph_von(db, job: Job) -> dict:
+async def _graph_from(db, job: Job) -> dict:
     d = await db.get(WorkflowDefinition, job.workflow_definition_id)
     v = await db.get(WorkflowVersion, d.current_version_id)
     return v.graph
@@ -48,11 +48,11 @@ async def test_a_prompt_job_becomes_a_flow(db):
     await db.refresh(job)
     assert job.kind == "workflow" and job.workflow_definition_id
 
-    node = _node(await _graph_von(db, job))
-    arbeit = node["arbeit"]["action"]
-    assert arbeit["action"] == "agent_run"
-    assert arbeit["params"]["agent"] == "news"
-    assert arbeit["params"]["task"] == "Fasse die Woche zusammen."
+    node = _node(await _graph_from(db, job))
+    work = node["arbeit"]["action"]
+    assert work["action"] == "agent_run"
+    assert work["params"]["agent"] == "news"
+    assert work["params"]["task"] == "Fasse die Woche zusammen."
     # Das Ergebnis des Laufs ist die Antwort des Ablaufs — daran hängt die Job-Historie.
     assert node["answer"]["action"]["params"]["text"] == "{{ result.output }}"
 
@@ -62,7 +62,7 @@ async def test_a_script_job_becomes_a_flow(db):
     job = await _job(db, anna, kind="script", command="pruefe.sh", args=["-x", "42"],
                      notify_mode="never")
     await convert(db)
-    node = _node(await _graph_von(db, job))
+    node = _node(await _graph_from(db, job))
     assert node["arbeit"]["action"]["params"] == {
         "command": "pruefe.sh", "args": ["-x", "42"], "timeout_sec": 600,
         "context_key": "result"}
@@ -74,9 +74,9 @@ async def test_the_notify_mode_becomes_a_decision(db):
     anna = await make_user(db, "anna")
     job = await _job(db, anna, prompt="Sieh nach.", notify_mode="on_error")
     await convert(db)
-    node = _node(await _graph_von(db, job))
-    weiche = node["melden_wenn"]["branches"][0]
-    assert weiche["guard"] == {"==": [{"var": "result.status"}, "failed"]}
+    node = _node(await _graph_from(db, job))
+    decision = node["melden_wenn"]["branches"][0]
+    assert decision["guard"] == {"==": [{"var": "result.status"}, "failed"]}
     assert node["melden"]["action"]["params"]["title"] == "Job: Prüfer"
 
 
@@ -86,11 +86,11 @@ async def test_long_text_goes_into_a_storage(db):
     anna = await make_user(db, "anna")
     job = await _job(db, anna, prompt="Digest", result_html=True)
     await convert(db)
-    graph = await _graph_von(db, job)
+    graph = await _graph_from(db, job)
     node = _node(graph)
-    ablegen = node["ablegen"]["action"]
-    assert ablegen["action"] == "document"
-    assert ablegen["params"]["storage"] == "pruefer" and ablegen["params"]["name"] == "Prüfer"
+    store = node["ablegen"]["action"]
+    assert store["action"] == "document"
+    assert store["params"]["storage"] == "pruefer" and store["params"]["name"] == "Prüfer"
     # Gemeldet wird der Verweis, nicht der Text.
     assert node["melden"]["action"]["params"]["text"] == "{{ document.title }}\n{{ document.url }}"
     # Und das Ablegen steht VOR der Melde-Frage: auch ein stiller Job behält seinen Text.
@@ -232,8 +232,8 @@ async def test_the_text_lands_in_the_storage(db, redis_stub):
     assert entry.body.startswith("# Montag")
     # Die Überschrift kommt aus dem Text, wenn keine genannt wurde.
     assert entry.title == "Montag"
-    ablage = (await db.execute(select(DocSeries))).scalars().one()
-    assert ablage.key == "rueckblick" and ablage.last_title == "Montag"
+    store = (await db.execute(select(DocSeries))).scalars().one()
+    assert store.key == "rueckblick" and store.last_title == "Montag"
     # Der Verweis gehört in die Meldung — er ist der Grund, warum überhaupt abgelegt wird.
     assert inst.context["document"]["url"].endswith("/documents/rueckblick")
 
@@ -278,8 +278,8 @@ async def test_old_versions_are_forgotten(db):
 
     anna = await make_user(db, "anna")
     for n in range(5):
-        await documents.hinlegen(db, anna.id, "kurz", title=f"Nr {n}", text=f"Text {n}",
-                                 behalten=3)
+        await documents.put(db, anna.id, "kurz", title=f"Nr {n}", text=f"Text {n}",
+                                 keep=3)
     await db.commit()
-    uebrig = (await db.execute(select(DocEntry.title))).scalars().all()
-    assert sorted(uebrig) == ["Nr 2", "Nr 3", "Nr 4"]
+    left = (await db.execute(select(DocEntry.title))).scalars().all()
+    assert sorted(left) == ["Nr 2", "Nr 3", "Nr 4"]

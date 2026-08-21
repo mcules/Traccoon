@@ -47,10 +47,10 @@ async def test_setting_state_affects_the_ticket(db, register):
         db.add(WorkflowStatus(project_id=proj.id, name=name, category=kat, order=i))
     db.add_all([t, IssueCounter(project_id=proj.id, last_number=0)])
     await db.commit()
-    spalten = {s.name: s for s in (await db.execute(
+    columns = {s.name: s for s in (await db.execute(
         select(WorkflowStatus).where(WorkflowStatus.project_id == proj.id))).scalars().all()}
     issue = Issue(project_id=proj.id, number=1, key="TST-1", type_id=t.id,
-                  status_id=spalten["To Do"].id, summary="X", reporter_id=1, rank="1")
+                  status_id=columns["To Do"].id, summary="X", reporter_id=1, rank="1")
     db.add(issue)
     await db.commit()
 
@@ -58,7 +58,7 @@ async def test_setting_state_affects_the_ticket(db, register):
                            status_key="hold", reason="merge")
     assert issue.agent_status == TicketAgentStatus.hold
     assert issue.hold_reason.value == "merge"
-    assert issue.status_id == spalten["Warten"].id      # the board column follows
+    assert issue.status_id == columns["Warten"].id      # the board column follows
 
 
 async def test_setting_state_affects_the_hardware(db, register):
@@ -95,7 +95,7 @@ async def test_seed_is_idempotent_and_keeps_labels(db, register):
 
 async def test_only_an_admin_curates_types(client, db, register):
     normal = await make_user(db, "otto")
-    chef = await make_user(db, "chef", admin=True)
+    boss = await make_user(db, "chef", admin=True)
 
     r = await client.get("/artifact-types", headers=auth(normal))
     assert r.status_code == 200 and len(r.json()) == 2      # everybody may read
@@ -104,26 +104,26 @@ async def test_only_an_admin_curates_types(client, db, register):
                           json={"key": "vertrag", "name": "Vertrag"})
     assert r.status_code == 403
 
-    r = await client.post("/artifact-types", headers=auth(chef),
+    r = await client.post("/artifact-types", headers=auth(boss),
                           json={"key": "vertrag", "name": "Vertrag", "icon": "📄"})
     assert r.status_code == 201, r.text
     assert r.json()["backing"] == "generic" and r.json()["builtin"] is False
 
 
 async def test_builtin_kind_cannot_be_deleted(client, db, register):
-    chef = await make_user(db, "chef", admin=True)
+    boss = await make_user(db, "chef", admin=True)
     ticket = await kind.type_by_key(db, "ticket")
-    r = await client.delete(f"/artifact-types/{ticket.id}", headers=auth(chef))
+    r = await client.delete(f"/artifact-types/{ticket.id}", headers=auth(boss))
     assert r.status_code == 409
     assert "cannot be deleted" in r.json()["detail"]
 
 
 async def test_label_of_a_builtin_state_can_be_changed(client, db, register):
     """The key stays (it IS the stored value), the label does not."""
-    chef = await make_user(db, "chef", admin=True)
+    boss = await make_user(db, "chef", admin=True)
     ticket = await kind.type_by_key(db, "ticket")
     s = next(x for x in await kind.statuses(db, ticket.id) if x.value == "to_test")
-    r = await client.put(f"/artifact-field-options/{s.id}", headers=auth(chef),
+    r = await client.put(f"/artifact-field-options/{s.id}", headers=auth(boss),
                          json={"key": "GEAENDERT", "label": "Warte auf Abnahme",
                                "category": "in_progress", "order": 5, "waiting": True})
     assert r.status_code == 200
@@ -156,14 +156,14 @@ async def test_combined_listing_shows_ticket_and_hardware(client, db, register):
 
     r = await client.get("/artifacts", headers=auth(owner))
     assert r.status_code == 200, r.text
-    typen = {a["type_key"] for a in r.json()}
-    assert typen == {"ticket", "hardware"}
+    types = {a["type_key"] for a in r.json()}
+    assert types == {"ticket", "hardware"}
 
     # Only what waits for a human: the register says which states those are.
     r = await client.get("/artifacts?waiting=true", headers=auth(owner))
-    wartend = r.json()
-    assert [a["ref"] for a in wartend] == ["TST-1"]
-    assert wartend[0]["status_label"] == "Plan wartet auf Freigabe"
+    waiting = r.json()
+    assert [a["ref"] for a in waiting] == ["TST-1"]
+    assert waiting[0]["status_label"] == "Plan wartet auf Freigabe"
 
 
 async def test_foreign_projects_stay_invisible(client, db, register):
@@ -171,18 +171,18 @@ async def test_foreign_projects_stay_invisible(client, db, register):
     from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
     from conftest import add_member
 
-    ich = await make_user(db, "ich")
-    fremd = await make_project(db, "FRD", "Fremd")
-    t = IssueType(project_id=fremd.id, name="Aufgabe")
-    s = WorkflowStatus(project_id=fremd.id, name="To Do", category=StatusCategory.todo, order=0)
-    db.add_all([t, s, IssueCounter(project_id=fremd.id, last_number=0)])
+    me = await make_user(db, "ich")
+    foreign = await make_project(db, "FRD", "Fremd")
+    t = IssueType(project_id=foreign.id, name="Aufgabe")
+    s = WorkflowStatus(project_id=foreign.id, name="To Do", category=StatusCategory.todo, order=0)
+    db.add_all([t, s, IssueCounter(project_id=foreign.id, last_number=0)])
     await db.commit()
-    db.add(Issue(project_id=fremd.id, number=1, key="FRD-1", type_id=t.id, status_id=s.id,
+    db.add(Issue(project_id=foreign.id, number=1, key="FRD-1", type_id=t.id, status_id=s.id,
                  summary="Geheim", reporter_id=1, rank="0001"))
     await db.commit()
     await kind.reconcile(db)
 
-    meins = await make_project(db, "MIN", "Meins")
-    await add_member(db, meins, ich, ProjectRole.owner)
-    r = await client.get("/artifacts", headers=auth(ich))
+    mine = await make_project(db, "MIN", "Meins")
+    await add_member(db, mine, me, ProjectRole.owner)
+    r = await client.get("/artifacts", headers=auth(me))
     assert [a["title"] for a in r.json()] == []

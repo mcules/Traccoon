@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.hardware import (
     HardwareAsset, HardwareAssetStep, HardwareModel, HardwareWorkflow,
@@ -78,7 +78,7 @@ async def _require_location_manage(loc: Location, user: User, db: AsyncSession) 
         return
     proj = await db.get(Project, loc.project_id)
     if proj is None:
-        raise Fehler(400, "err.project_does_not_exist", "The project does not exist")
+        raise Error(400, "err.project_does_not_exist", "The project does not exist")
     try:
         access = await build_access(proj, user, db)
     except HTTPException:
@@ -88,7 +88,7 @@ async def _require_location_manage(loc: Location, user: User, db: AsyncSession) 
     level = await _location_grant_level(loc.id, user, db)
     if level == GrantLevel.manage:
         return
-    raise Fehler(403, "err.no_access_location", "No access to this location")
+    raise Error(403, "err.no_access_location", "No access to this location")
 
 
 async def _compute_full_path(loc: Location, db: AsyncSession) -> str:
@@ -122,9 +122,9 @@ async def create_location(
     if data.project_id is not None:
         proj = await db.get(Project, data.project_id)
         if proj is None:
-            raise Fehler(400, "err.project_does_not_exist", "The project does not exist")
+            raise Error(400, "err.project_does_not_exist", "The project does not exist")
         if not (await build_access(proj, user, db)).has_role(ProjectRole.maintainer):
-            raise Fehler(403, "err.no_access_project", "No access to this project")
+            raise Error(403, "err.no_access_project", "No access to this project")
     loc = Location(
         name=data.name, type=data.type, parent_id=data.parent_id,
         project_id=data.project_id, notes=data.notes,
@@ -144,7 +144,7 @@ async def update_location(
 ):
     loc = await db.get(Location, loc_id)
     if loc is None:
-        raise Fehler(404, "err.location_not_found", "Location not found")
+        raise Error(404, "err.location_not_found", "Location not found")
     await _require_location_manage(loc, user, db)
     # Moving into another project additionally requires maintainer+ in the TARGET project;
     # otherwise a maintainer of project A could simply move a location into project B.
@@ -152,9 +152,9 @@ async def update_location(
         if data.project_id is not None:
             target_proj = await db.get(Project, data.project_id)
             if target_proj is None:
-                raise Fehler(400, "err.project_does_not_exist", "The project does not exist")
+                raise Error(400, "err.project_does_not_exist", "The project does not exist")
             if not (await build_access(target_proj, user, db)).has_role(ProjectRole.maintainer):
-                raise Fehler(403, "err.no_access_target_project",
+                raise Error(403, "err.no_access_target_project",
                              "No access to the target project")
     loc.name, loc.type, loc.parent_id = data.name, data.type, data.parent_id
     loc.project_id, loc.notes = data.project_id, data.notes
@@ -175,7 +175,7 @@ async def delete_location(
 ):
     loc = await db.get(Location, loc_id)
     if loc is None:
-        raise Fehler(404, "err.location_not_found", "Location not found")
+        raise Error(404, "err.location_not_found", "Location not found")
     await _require_location_manage(loc, user, db)
     await db.delete(loc)
     await db.commit()
@@ -206,11 +206,11 @@ async def delete_model(
 ):
     m = await db.get(HardwareModel, model_id)
     if m is None:
-        raise Fehler(404, "err.model_not_found", "Model not found")
+        raise Error(404, "err.model_not_found", "Model not found")
     n = (await db.execute(select(func.count(HardwareAsset.id)).where(
         HardwareAsset.model_id == model_id))).scalar() or 0
     if n:
-        raise Fehler(409, "err.model_still_has_units",
+        raise Error(409, "err.model_still_has_units",
                      "{count} unit(s) use this model, remove them first", count=n)
     await db.delete(m)
     await db.commit()
@@ -279,9 +279,9 @@ async def _require_project_member(project_id: int | None, user: User, db: AsyncS
         return  # stock or storage without a project
     proj = await db.get(Project, project_id)
     if proj is None:
-        raise Fehler(400, "err.project_does_not_exist", "The project does not exist")
+        raise Error(400, "err.project_does_not_exist", "The project does not exist")
     if not (await build_access(proj, user, db)).has_role(ProjectRole.member):
-        raise Fehler(403, "err.no_access_project", "No access to this project")
+        raise Error(403, "err.no_access_project", "No access to this project")
 
 
 async def _require_asset_manage(asset: HardwareAsset, user: User, db: AsyncSession) -> None:
@@ -291,7 +291,7 @@ async def _require_asset_manage(asset: HardwareAsset, user: User, db: AsyncSessi
         return
     proj = await db.get(Project, asset.project_id)
     if proj is None:
-        raise Fehler(400, "err.project_does_not_exist", "The project does not exist")
+        raise Error(400, "err.project_does_not_exist", "The project does not exist")
     try:
         access = await build_access(proj, user, db)
     except HTTPException:
@@ -304,7 +304,7 @@ async def _require_asset_manage(asset: HardwareAsset, user: User, db: AsyncSessi
         loc = await db.get(Location, asset.location_id)
         if loc is not None and (await _location_grant_level(loc.id, user, db)) == GrantLevel.manage:
             return
-    raise Fehler(403, "err.no_access_unit", "No access to this unit")
+    raise Error(403, "err.no_access_unit", "No access to this unit")
 
 
 @router.post("/hardware/assets", response_model=AssetOut, status_code=201)
@@ -312,7 +312,7 @@ async def create_asset(
     data: AssetIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)
 ):
     if await db.get(HardwareModel, data.model_id) is None:
-        raise Fehler(400, "err.model_does_not_exist", "The model does not exist")
+        raise Error(400, "err.model_does_not_exist", "The model does not exist")
     await _require_project_member(data.project_id, user, db)
     a = HardwareAsset(**data.model_dump())
     db.add(a)
@@ -333,7 +333,7 @@ async def update_asset(
 ):
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise Fehler(404, "err.unit_not_found", "Unit not found")
+        raise Error(404, "err.unit_not_found", "Unit not found")
     await _require_asset_manage(a, user, db)
     fields = data.model_dump(exclude_unset=True)
     # Moving into another project additionally requires member+ in the TARGET project;
@@ -356,7 +356,7 @@ async def delete_asset(
 ):
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise Fehler(404, "err.unit_not_found", "Unit not found")
+        raise Error(404, "err.unit_not_found", "Unit not found")
     await _require_asset_manage(a, user, db)
     await db.delete(a)
     await db.commit()
@@ -370,9 +370,9 @@ async def asset_issues(
     from ..models.ticket import Issue, WorkflowStatus
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise Fehler(404, "err.unit_not_found", "Unit not found")
+        raise Error(404, "err.unit_not_found", "Unit not found")
     if not await _can_view_asset(a, user, db):
-        raise Fehler(403, "err.no_access_unit", "No access to this unit")
+        raise Error(403, "err.no_access_unit", "No access to this unit")
     rows = (
         await db.execute(
             select(Issue).where(Issue.asset_id == asset_id).order_by(Issue.number.desc())
@@ -471,9 +471,9 @@ async def asset_steps(
 ):
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise Fehler(404, "err.unit_not_found", "Unit not found")
+        raise Error(404, "err.unit_not_found", "Unit not found")
     if not await _can_view_asset(a, user, db):
-        raise Fehler(403, "err.no_access_unit", "No access to this unit")
+        raise Error(403, "err.no_access_unit", "No access to this unit")
     await _instantiate_steps(a, db)
     rows = (
         await db.execute(
@@ -505,10 +505,10 @@ async def start_asset_workflow(
     """Starts (idempotently) a procurement workflow instance for a unit."""
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise Fehler(404, "err.unit_not_found", "Unit not found")
+        raise Error(404, "err.unit_not_found", "Unit not found")
     await _require_project_member(a.project_id, user, db)
     if a.project_id is None:
-        raise Fehler(409, "err.supply_without_project_has_no_workflow",
+        raise Error(409, "err.supply_without_project_has_no_workflow",
                      "A supply or stock without a project has no procurement workflow")
     from ..services.hardware_workflow import start_hardware_instance
     inst = await start_hardware_instance(db, a, user.id)
@@ -522,10 +522,10 @@ async def complete_step(
 ):
     step = await db.get(HardwareAssetStep, step_id)
     if step is None or step.asset_id != asset_id:
-        raise Fehler(404, "err.step_not_found", "Step not found")
+        raise Error(404, "err.step_not_found", "Step not found")
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise Fehler(404, "err.unit_not_found", "Unit not found")
+        raise Error(404, "err.unit_not_found", "Unit not found")
     await _require_asset_manage(a, user, db)
     step.status = "DONE"
     step.completed_at = dt.datetime.now(tz=dt.timezone.utc)

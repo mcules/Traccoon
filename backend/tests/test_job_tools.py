@@ -100,8 +100,8 @@ async def test_the_agent_receives_the_result_of_the_run(db, anna, redis_stub):
 
     out = await _tool(db, anna, "traccoon_run_job", job_id=j.id)
     assert "ausgeführt" in out
-    lauf = (await db.execute(select(JobRun).order_by(JobRun.id.desc()))).scalars().first()
-    assert lauf.workflow_instance_id is not None
+    run = (await db.execute(select(JobRun).order_by(JobRun.id.desc()))).scalars().first()
+    assert run.workflow_instance_id is not None
 
 
 async def test_writing_job_tools_need_a_grant(db):

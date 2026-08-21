@@ -18,27 +18,27 @@ from __future__ import annotations
 import json
 
 
-def _sortiert(value):
+def _sorted(value):
     """Deep sort of dict keys so that a re-saved graph does not look different.
 
     Lists keep their order: in a graph the order of nodes says nothing, but the order inside
     a config (the branches of a decision) says everything.
     """
     if isinstance(value, dict):
-        return {k: _sortiert(value[k]) for k in sorted(value)
+        return {k: _sorted(value[k]) for k in sorted(value)
                 if value[k] is not None}
     if isinstance(value, list):
-        return [_sortiert(v) for v in value]
+        return [_sorted(v) for v in value]
     return value
 
 
-def node_inhalt(node: dict) -> dict:
+def node_content(node: dict) -> dict:
     """One node, without anything that only concerns the picture."""
     return {"id": str(node.get("id") or ""), "type": str(node.get("type") or ""),
-            "config": _sortiert((node.get("data") or {}).get("config") or {})}
+            "config": _sorted((node.get("data") or {}).get("config") or {})}
 
 
-def edges_inhalt(edge: dict) -> dict:
+def edges_content(edge: dict) -> dict:
     """One edge. The id travels along because the editor addresses edges by it, but the
     meaning sits in source, handle and target."""
     return {"id": str(edge.get("id") or ""), "source": str(edge.get("source") or ""),
@@ -47,27 +47,27 @@ def edges_inhalt(edge: dict) -> dict:
             "label": edge.get("label") if isinstance(edge.get("label"), str) else ""}
 
 
-def inhalt(graph: dict | None) -> dict:
+def content(graph: dict | None) -> dict:
     """The functional content of a graph: nodes and edges, sorted, without positions."""
     graph = graph or {}
     return {
-        "nodes": sorted((node_inhalt(n) for n in (graph.get("nodes") or [])),
+        "nodes": sorted((node_content(n) for n in (graph.get("nodes") or [])),
                         key=lambda n: n["id"]),
-        "edges": sorted((edges_inhalt(e) for e in (graph.get("edges") or [])),
+        "edges": sorted((edges_content(e) for e in (graph.get("edges") or [])),
                         key=lambda e: (e["source"], e["handle"], e["target"], e["id"])),
     }
 
 
-def inhalts_signatur(graph: dict | None) -> str:
+def content_signature(graph: dict | None) -> str:
     """One string per behaviour. Equal string, equal flow."""
-    return json.dumps(inhalt(graph), sort_keys=True, ensure_ascii=False)
+    return json.dumps(content(graph), sort_keys=True, ensure_ascii=False)
 
 
-def gleicher_inhalt(a: dict | None, b: dict | None) -> bool:
-    return inhalts_signatur(a) == inhalts_signatur(b)
+def same_content(a: dict | None, b: dict | None) -> bool:
+    return content_signature(a) == content_signature(b)
 
 
-def positionen(graph: dict | None) -> dict[str, dict]:
+def positions(graph: dict | None) -> dict[str, dict]:
     """Node id to position, the half a version does not care about."""
     out: dict[str, dict] = {}
     for node in (graph or {}).get("nodes") or []:
@@ -76,21 +76,21 @@ def positionen(graph: dict | None) -> dict[str, dict]:
     return out
 
 
-def mit_positionen(graph: dict | None, new: dict[str, dict]) -> dict:
+def with_positions(graph: dict | None, new: dict[str, dict]) -> dict:
     """A copy of the graph with the given positions, content untouched.
 
     Used to save an arrangement into a version that has already been published: the flow does
     not change by it, so the version does not have to.
     """
-    kopie = json.loads(json.dumps(graph or {"nodes": [], "edges": []}))
-    for node in kopie.get("nodes") or []:
+    copy = json.loads(json.dumps(graph or {"nodes": [], "edges": []}))
+    for node in copy.get("nodes") or []:
         pos = new.get(str(node.get("id") or ""))
         if pos:
             node["position"] = {"x": pos.get("x", 0), "y": pos.get("y", 0)}
-    return kopie
+    return copy
 
 
-def _flach(value, praefix: str = "") -> dict[str, object]:
+def _flat(value, prefix: str = "") -> dict[str, object]:
     """A config as flat paths: `action.params.reihe` instead of one lump called `action`.
 
     Whoever compares whole configs learns that "the action changed" and has to read two
@@ -100,9 +100,9 @@ def _flach(value, praefix: str = "") -> dict[str, object]:
     if isinstance(value, dict):
         out: dict[str, object] = {}
         for k in sorted(value):
-            out.update(_flach(value[k], f"{praefix}.{k}" if praefix else str(k)))
+            out.update(_flat(value[k], f"{prefix}.{k}" if prefix else str(k)))
         return out
-    return {praefix: value}
+    return {prefix: value}
 
 
 def _label(node: dict) -> str:
@@ -111,11 +111,11 @@ def _label(node: dict) -> str:
 
 
 def _edge_text(edge: dict) -> str:
-    pfeil = f"{edge['source']} → {edge['target']}"
-    return f"{pfeil} ({edge['handle']})" if edge["handle"] else pfeil
+    arrow = f"{edge['source']} → {edge['target']}"
+    return f"{arrow} ({edge['handle']})" if edge["handle"] else arrow
 
 
-def unterschiede(alt: dict | None, new: dict | None) -> dict:
+def differences(old: dict | None, new: dict | None) -> dict:
     """What changed between two graphs, in the words of the editor.
 
     Deliberately not a text diff over JSON: a moved brace is not an answer to "what does the
@@ -123,7 +123,7 @@ def unterschiede(alt: dict | None, new: dict | None) -> dict:
     changed node says WHICH of its settings changed, because that is the line a human looks
     for.
     """
-    a, b = inhalt(alt), inhalt(new)
+    a, b = content(old), content(new)
     a_node = {n["id"]: n for n in a["nodes"]}
     b_node = {n["id"]: n for n in b["nodes"]}
     a_edges = {(e["source"], e["handle"], e["target"]): e for e in a["edges"]}
@@ -131,17 +131,17 @@ def unterschiede(alt: dict | None, new: dict | None) -> dict:
 
     changed = []
     for nid in sorted(set(a_node) & set(b_node)):
-        vorher, nachher = a_node[nid]["config"], b_node[nid]["config"]
-        if vorher == nachher and a_node[nid]["type"] == b_node[nid]["type"]:
+        before, nachher = a_node[nid]["config"], b_node[nid]["config"]
+        if before == nachher and a_node[nid]["type"] == b_node[nid]["type"]:
             continue
-        v_flach, n_flach = _flach(vorher), _flach(nachher)
-        fields = sorted(set(v_flach) | set(n_flach))
+        v_flat, n_flat = _flat(before), _flat(nachher)
+        fields = sorted(set(v_flat) | set(n_flat))
         changed.append({
             "id": nid, "label": _label(b_node[nid]),
             "fields": [{"field": f,
-                        "before": json.dumps(v_flach.get(f), ensure_ascii=False)[:400],
-                        "after": json.dumps(n_flach.get(f), ensure_ascii=False)[:400]}
-                       for f in fields if v_flach.get(f) != n_flach.get(f)],
+                        "before": json.dumps(v_flat.get(f), ensure_ascii=False)[:400],
+                        "after": json.dumps(n_flat.get(f), ensure_ascii=False)[:400]}
+                       for f in fields if v_flat.get(f) != n_flat.get(f)],
         })
 
     return {
@@ -152,5 +152,5 @@ def unterschiede(alt: dict | None, new: dict | None) -> dict:
         "nodes_changed": changed,
         "edges_added": [_edge_text(b_edges[k]) for k in sorted(set(b_edges) - set(a_edges))],
         "edges_removed": [_edge_text(a_edges[k]) for k in sorted(set(a_edges) - set(b_edges))],
-        "identical": inhalts_signatur(alt) == inhalts_signatur(new),
+        "identical": content_signature(old) == content_signature(new),
     }

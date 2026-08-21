@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.enums import ProjectRole, SprintState
 from ..models.project import ProjectMember
@@ -100,7 +100,7 @@ async def delete_type(
 ):
     t = await db.get(IssueType, type_id)
     if t is None or t.project_id != access.project.id:
-        raise Fehler(404, "err.type_not_found", "Type not found")
+        raise Error(404, "err.type_not_found", "Type not found")
     await db.delete(t)
     await db.commit()
 
@@ -141,7 +141,7 @@ async def update_status(
     """Rename a status or change its category."""
     s = await db.get(WorkflowStatus, status_id)
     if s is None or s.project_id != access.project.id:
-        raise Fehler(404, "err.status_not_found", "Status not found")
+        raise Error(404, "err.status_not_found", "Status not found")
     s.name = data.name
     s.category = data.category
     await db.commit()
@@ -164,7 +164,7 @@ async def reorder_statuses(
         WorkflowStatus.project_id == access.project.id))).scalars().all()
     by_id = {s.id: s for s in rows}
     if set(data.ordered_ids) != set(by_id):
-        raise Fehler(400, "err.list_needs_all_statuses",
+        raise Error(400, "err.list_needs_all_statuses",
                      "The list has to contain exactly all statuses of the project")
     boards = (await db.execute(select(Board).where(Board.project_id == access.project.id))).scalars().all()
     cols = (await db.execute(select(BoardColumn).where(
@@ -186,18 +186,18 @@ async def delete_status(
 ):
     s = await db.get(WorkflowStatus, status_id)
     if s is None or s.project_id != access.project.id:
-        raise Fehler(404, "err.status_not_found", "Status not found")
+        raise Error(404, "err.status_not_found", "Status not found")
     # Do not delete the last status; otherwise the board would have no column and new
     # tickets would have no target status.
     count = (await db.execute(select(func.count(WorkflowStatus.id)).where(
         WorkflowStatus.project_id == access.project.id))).scalar() or 0
     if count <= 1:
-        raise Fehler(409, "err.last_status_cannot_deleted", "The last status cannot be deleted")
+        raise Error(409, "err.last_status_cannot_deleted", "The last status cannot be deleted")
     # Tickets in this status block the deletion (an FK without cascade), with a clear message.
     n_issues = (await db.execute(select(func.count(Issue.id)).where(
         Issue.status_id == status_id))).scalar() or 0
     if n_issues:
-        raise Fehler(409, "err.status_still_has_tickets",
+        raise Error(409, "err.status_still_has_tickets",
                      "{count} ticket(s) stand in this status, move them first", count=n_issues)
     await db.delete(s)
     await db.commit()
@@ -213,7 +213,7 @@ async def add_sprint(
 ):
     board = (await db.execute(select(Board).where(Board.project_id == access.project.id))).scalars().first()
     if board is None:
-        raise Fehler(400, "err.no_board", "No board")
+        raise Error(400, "err.no_board", "No board")
     sp = Sprint(board_id=board.id, name=data.name, goal=data.goal, state=data.state,
                 start_date=data.start_date, end_date=data.end_date)
     db.add(sp)
@@ -231,14 +231,14 @@ async def start_sprint(
     """Start a sprint. Only one is active per board; otherwise "the current sprint" is ambiguous."""
     sp = await _sprint_of_project(db, sprint_id, access.project.id)
     if sp.state == SprintState.closed:
-        raise Fehler(409, "err.finished_sprint_cannot_started",
+        raise Error(409, "err.finished_sprint_cannot_started",
                      "A finished sprint cannot be started")
-    laufend = (await db.execute(select(Sprint).where(
+    running = (await db.execute(select(Sprint).where(
         Sprint.board_id == sp.board_id, Sprint.state == SprintState.active,
         Sprint.id != sp.id))).scalars().first()
-    if laufend is not None:
-        raise Fehler(409, "err.sprint_still_running_close_first",
-                     'The sprint "{name}" is still running, close it first', name=laufend.name)
+    if running is not None:
+        raise Error(409, "err.sprint_still_running_close_first",
+                     'The sprint "{name}" is still running, close it first', name=running.name)
     sp.state = SprintState.active
     sp.start_date = sp.start_date or dt.datetime.now(tz=dt.timezone.utc)
     await db.commit()
@@ -268,10 +268,10 @@ async def complete_sprint(
 async def _sprint_of_project(db: AsyncSession, sprint_id: int, project_id: int) -> Sprint:
     sp = await db.get(Sprint, sprint_id)
     if sp is None:
-        raise Fehler(404, "err.sprint_not_found", "Sprint not found")
+        raise Error(404, "err.sprint_not_found", "Sprint not found")
     board = await db.get(Board, sp.board_id)
     if board is None or board.project_id != project_id:
-        raise Fehler(404, "err.sprint_not_found", "Sprint not found")  # no hint at foreign projects
+        raise Error(404, "err.sprint_not_found", "Sprint not found")  # no hint at foreign projects
     return sp
 
 

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.assistant import AssistantPermission, AssistantPolicy, AssistantTask
 from ..models.user import User
@@ -41,12 +41,12 @@ def _out(t: AssistantTask) -> dict:
 async def _get_owned(tid: int, user: User, db: AsyncSession) -> AssistantTask:
     t = await db.get(AssistantTask, tid)
     if t is None or not is_owner_or_admin(t.owner_user_id, user):
-        raise Fehler(404, "err.not_found", "Not found")
+        raise Error(404, "err.not_found", "Not found")
     return t
 
 
 @router.get("/assistant/inbox")
-async def list_inbox(status_filter: str | None = None, archiv: bool = False,
+async def list_inbox(status_filter: str | None = None, archive: bool = False,
                      user: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
     """Incoming items, newest first.
@@ -58,7 +58,7 @@ async def list_inbox(status_filter: str | None = None, archiv: bool = False,
     q = (select(AssistantTask)
          .where(AssistantTask.kind != "chat")
          .order_by(AssistantTask.id.desc()))
-    q = q.where(AssistantTask.archived_at.isnot(None) if archiv
+    q = q.where(AssistantTask.archived_at.isnot(None) if archive
                 else AssistantTask.archived_at.is_(None))
     # An admin sees everything; everybody else only their own.
     if user.global_role != "admin":
@@ -91,7 +91,7 @@ async def approve_inbox(tid: int, data: ApproveIn | None = None,
     d = data or ApproveIn()
     t = await _get_owned(tid, user, db)
     if t.status not in ("new", "error"):
-        raise Fehler(409, "err.item_cannot_approved_status",
+        raise Error(409, "err.item_cannot_approved_status",
                      "The item cannot be approved (status {status})", status=t.status)
     await approve_assistant_task(db, t, scope=d.scope, redaction=d.redaction, action_note=d.action_note)
     await db.refresh(t)
@@ -108,7 +108,7 @@ async def reject_inbox(tid: int, user: User = Depends(get_current_user),
 
 
 @router.get("/assistant/stats")
-async def statistik(days: int = 30, user: User = Depends(get_current_user),
+async def stats(days: int = 30, user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
     """As what mail was classified, plus how well the local model judged.
 
@@ -116,11 +116,11 @@ async def statistik(days: int = 30, user: User = Depends(get_current_user),
     `api/dashboard.py`). Nothing is kept twice, and the answer covers the whole stock
     instead of starting at zero with a counter.
     """
-    from ..services.spam_report import bilanz, einstufungen
+    from ..services.spam_report import balance, classifications
 
-    daten = await einstufungen(db, user.id, days=days)
-    daten["betrieb"] = await bilanz(db, user.id)
-    return daten
+    data = await classifications(db, user.id, days=days)
+    data["betrieb"] = await balance(db, user.id)
+    return data
 
 
 # ================= Gelernte Regeln (AssistantPolicy) =================
@@ -146,7 +146,7 @@ class PolicyIn(BaseModel):
 async def _pol_owned(pid: int, user: User, db: AsyncSession) -> AssistantPolicy:
     p = await db.get(AssistantPolicy, pid)
     if p is None or not is_owner_or_admin(p.owner_user_id, user):
-        raise Fehler(404, "err.rule_not_found", "Rule not found")
+        raise Error(404, "err.rule_not_found", "Rule not found")
     return p
 
 
@@ -227,7 +227,7 @@ async def delete_tool_perm(pid: int, user: User = Depends(get_current_user),
                            db: AsyncSession = Depends(get_session)):
     p = await db.get(AssistantPermission, pid)
     if p is None or not is_owner_or_admin(p.owner_user_id, user):
-        raise Fehler(404, "err.not_found", "Not found")
+        raise Error(404, "err.not_found", "Not found")
     await db.delete(p)
     await db.commit()
 
@@ -251,14 +251,14 @@ class DecideIn(BaseModel):
 
 
 @router.get("/assistant/chat")
-async def chat_history(vor: int | None = None, limit: int = 20, archiv: bool = False,
+async def chat_history(before: int | None = None, limit: int = 20, archive: bool = False,
                        user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     """A page of the conversation, newest last.
 
     Formerly the last fifty came at once, and the browser scrolled through all of them down
     to the current one on every opening. Now the newest `limit` come, and whoever wants to
-    read further back fetches the page before them (`vor` = the id one is standing at).
+    read further back fetches the page before them (`before` = the id one is standing at).
 
     `mehr` says whether anything lies before that page, which the browser cannot tell from a
     full page alone.
@@ -267,15 +267,15 @@ async def chat_history(vor: int | None = None, limit: int = 20, archiv: bool = F
     q = (select(AssistantTask)
          .where(AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat")
          .order_by(AssistantTask.id.desc()))
-    q = q.where(AssistantTask.archived_at.isnot(None) if archiv
+    q = q.where(AssistantTask.archived_at.isnot(None) if archive
                 else AssistantTask.archived_at.is_(None))
-    if vor:
-        q = q.where(AssistantTask.id < vor)
+    if before:
+        q = q.where(AssistantTask.id < before)
     # One row more than asked for: that is the answer to "is there anything older".
     rows = (await db.execute(q.limit(n + 1))).scalars().all()
-    mehr = len(rows) > n
+    more = len(rows) > n
     page = rows[:n]
-    return {"messages": [_chat_out(t) for t in reversed(page)], "more": mehr}
+    return {"messages": [_chat_out(t) for t in reversed(page)], "more": more}
 
 
 # Running messages stay: archiving something that is still being worked on would hide the
@@ -302,7 +302,7 @@ async def chat_archive(tid: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     t = await _get_owned(tid, user, db)
     if t.status in _RUNNING:
-        raise Fehler(409, "err.still_running", "The message is still being worked on")
+        raise Error(409, "err.still_running", "The message is still being worked on")
     t.archived_at = dt.datetime.now(tz=dt.timezone.utc)
     await db.commit()
     return _chat_out(t)
@@ -322,7 +322,7 @@ async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
     text = (data.text or "").strip()
     if not text:
-        raise Fehler(400, "err.empty_message", "Empty message")
+        raise Error(400, "err.empty_message", "Empty message")
     t = AssistantTask(owner_user_id=user.id, kind="chat", source="web", status="approved",
                       title=text[:200], meta={"chat_text": text})
     db.add(t)
@@ -339,9 +339,9 @@ async def chat_decide(tid: int, data: DecideIn, user: User = Depends(get_current
                       db: AsyncSession = Depends(get_session)):
     t = await _get_owned(tid, user, db)
     if t.status != "awaiting":
-        raise Fehler(409, "err.no_open_approval", "No open approval")
+        raise Error(409, "err.no_open_approval", "No open approval")
     if data.decision not in ("once", "always", "never"):
-        raise Fehler(400, "err.invalid_decision", "Invalid decision")
+        raise Error(400, "err.invalid_decision", "Invalid decision")
     from ..worker.assistant_gate import apply_perm_decision
     await apply_perm_decision(db, t, data.decision)
     await db.refresh(t)

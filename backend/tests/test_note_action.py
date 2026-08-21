@@ -20,17 +20,17 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture
 def mcp_stub(monkeypatch):
     """Replace the MCP call by a transcript."""
-    aufrufe = []
+    calls = []
 
-    async def fake(db, owner_id, name, argumente):
-        aufrufe.append((name, argumente))
+    async def fake(db, owner_id, name, arguments):
+        calls.append((name, arguments))
         return {"ok": True, "text": "angehängt", "json": None}
 
     monkeypatch.setattr(workflow_tools, "call", fake)
-    return aufrufe
+    return calls
 
 
-async def _instanz(db, anna, context: dict) -> WorkflowInstance:
+async def _instance(db, anna, context: dict) -> WorkflowInstance:
     d = WorkflowDefinition(project_id=None, key="notiz", name="Notiz", created_by=anna.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
@@ -56,46 +56,46 @@ async def test_path_and_text_come_from_the_context(db, mcp_stub):
     """The point of the whole thing: the kind decides the note, so a new kind writes its own
     without anybody touching the flow."""
     anna = await make_user(db, "anna")
-    inst = await _instanz(db, anna, {"spam": {"art": "phishing", "befunde_text": "gibt sich als Bank aus"}})
+    inst = await _instance(db, anna, {"spam": {"art": "phishing", "befunde_text": "gibt sich als Bank aus"}})
 
     r = await run_action(db, inst, _node(
         path="04 Wissen/Erkennung/{{ spam.art }}.md",
         text="- {{ spam.befunde_text }}"))
 
     assert r["ok"] is True
-    name, argumente = mcp_stub[0]
+    name, arguments = mcp_stub[0]
     # Mit Server-Präfix: ohne es findet die Sitzung kein Werkzeug und antwortet mit einem
     # HINWEIS ALS TEXT, den `aufrufen` als Erfolg zurückgibt. Die Notiz bliebe leer.
     assert name == "obsidian__obsidian_append_to_note"
-    assert argumente["target"] == {"type": "path", "path": "04 Wissen/Erkennung/phishing.md"}
-    assert argumente["content"] == "- gibt sich als Bank aus"
-    assert "section" not in argumente, "ohne Abschnitt wird auch keiner mitgeschickt"
+    assert arguments["target"] == {"type": "path", "path": "04 Wissen/Erkennung/phishing.md"}
+    assert arguments["content"] == "- gibt sich als Bank aus"
+    assert "section" not in arguments, "ohne Abschnitt wird auch keiner mitgeschickt"
     assert inst.context["note"]["ok"] is True
 
 
 async def test_the_tool_can_be_overridden(db, mcp_stub):
     """Ein Vault an einem anderen Server soll erreichbar bleiben, ohne neue Aktion."""
     anna = await make_user(db, "anna")
-    inst = await _instanz(db, anna, {})
+    inst = await _instance(db, anna, {})
     await run_action(db, inst, _node(path="a.md", text="x", tool="zweitvault__append"))
     assert mcp_stub[0][0] == "zweitvault__append"
 
 
 async def test_the_section_is_passed_through(db, mcp_stub):
     anna = await make_user(db, "anna")
-    inst = await _instanz(db, anna, {})
-    await run_action(db, inst, _node(path="a.md", text="x", ueberschrift="Fälle"))
-    argumente = mcp_stub[0][1]
-    assert argumente["section"] == {"type": "heading", "target": "Fälle"}
+    inst = await _instance(db, anna, {})
+    await run_action(db, inst, _node(path="a.md", text="x", heading="Fälle"))
+    arguments = mcp_stub[0][1]
+    assert arguments["section"] == {"type": "heading", "target": "Fälle"}
     # Ohne das schlägt der Aufruf an einer Notiz fehl, die den Abschnitt noch nicht hat.
-    assert argumente["createTargetIfMissing"] is True
+    assert arguments["createTargetIfMissing"] is True
 
 
 async def test_nothing_is_written_without_text(db, mcp_stub):
     """A flow that has nothing to write must not fail because of it: the note is an aside,
     not the purpose of the run."""
     anna = await make_user(db, "anna")
-    inst = await _instanz(db, anna, {"spam": {}})
+    inst = await _instance(db, anna, {"spam": {}})
 
     r = await run_action(db, inst, _node(path="a.md", text="{{ spam.befunde_text }}"))
 
@@ -109,10 +109,10 @@ async def test_a_missing_tool_is_an_error_not_text():
     """Der Fall vom 19.08.2026: Ohne Server-Präfix fand die Sitzung nichts, antwortete mit
     einem Hinweis ALS TEXT, und der Aufrufer verbuchte das als Erfolg. Die Notiz blieb leer,
     der Ablauf meldete grün."""
-    from app.worker.mcp_client import McpNichtVerfuegbar, MultiMcpSession
+    from app.worker.mcp_client import McpNotAvailable, MultiMcpSession
 
     session = MultiMcpSession()          # kein Gateway, keine Server
-    with pytest.raises(McpNichtVerfuegbar):
+    with pytest.raises(McpNotAvailable):
         await session.call("obsidian_append_to_note", {"content": "x"})
 
 

@@ -61,10 +61,10 @@ async def test_creating_from_a_template_brings_the_whole_flow(client, db):
     # The description comes from the template when none was given.
     assert "Webhook" in d["description"]
 
-    versionen = (await client.get(f"/workflows/{d['id']}/versions", headers=auth(anna))).json()
-    graph = versionen[0]["graph"]
-    typen = sorted({n["type"] for n in graph["nodes"]})
-    assert typen == ["auto_action", "decision", "end", "start"]
+    versions = (await client.get(f"/workflows/{d['id']}/versions", headers=auth(anna))).json()
+    graph = versions[0]["graph"]
+    types = sorted({n["type"] for n in graph["nodes"]})
+    assert types == ["auto_action", "decision", "end", "start"]
     assert len(graph["edges"]) == 4
 
 

@@ -90,16 +90,16 @@ async def ensure_for_asset(db: AsyncSession, asset) -> Artifact:
     object as with every other artifact.
     """
     if asset.artifact_id:
-        vorhanden = await db.get(Artifact, asset.artifact_id)
-        if vorhanden is not None:
-            return vorhanden
+        existing = await db.get(Artifact, asset.artifact_id)
+        if existing is not None:
+            return existing
     kind = await type_by_key(db, "hardware")
     if kind is None:                       # register not seeded yet
         await ensure_builtin_types(db)
         kind = await type_by_key(db, "hardware")
     from ..models.hardware import HardwareModel
-    modell = await db.get(HardwareModel, asset.model_id) if asset.model_id else None
-    title = " · ".join(x for x in [modell.name if modell else "Exemplar",
+    model = await db.get(HardwareModel, asset.model_id) if asset.model_id else None
+    title = " · ".join(x for x in [model.name if model else "Exemplar",
                                    asset.serial_number or ""] if x)
     wanted_kind = Artifact(
         type_id=kind.id, project_id=asset.project_id, title=title[:500],
@@ -114,9 +114,9 @@ async def ensure_for_asset(db: AsyncSession, asset) -> Artifact:
 async def ensure_for_issue(db: AsyncSession, issue) -> Artifact:
     """Artefakt-Zeile eines Tickets — anlegen, falls sie fehlt."""
     if issue.artifact_id:
-        vorhanden = await db.get(Artifact, issue.artifact_id)
-        if vorhanden is not None:
-            return vorhanden
+        existing = await db.get(Artifact, issue.artifact_id)
+        if existing is not None:
+            return existing
     kind = await type_by_key(db, "ticket")
     if kind is None:
         await ensure_builtin_types(db)
@@ -252,18 +252,18 @@ async def backfill_hardware_artifacts(db: AsyncSession) -> int:
     if offen:
         await db.flush()
 
-    instanzen = (await db.execute(
+    instances = (await db.execute(
         select(WorkflowInstance).where(
             WorkflowInstance.hardware_asset_id.isnot(None),
             WorkflowInstance.artifact_id.is_(None)))).scalars().all()
-    for inst in instanzen:
+    for inst in instances:
         asset = await db.get(HardwareAsset, inst.hardware_asset_id)
         if asset is not None and asset.artifact_id:
             inst.artifact_id = asset.artifact_id
-    if offen or instanzen:
+    if offen or instances:
         await db.commit()
         log.info("Artifacts added later: %d units, %d process instances",
-                 len(offen), len(instanzen))
+                 len(offen), len(instances))
     return len(offen)
 
 
@@ -343,7 +343,7 @@ async def reconcile(db: AsyncSession) -> dict:
     from ..models.agents import Run
     from ..models.enums import TicketAgentStatus as _TS
     from .dispatcher import sync_board_status
-    laufend = (await db.execute(
+    running = (await db.execute(
         select(Issue, Run.phase)
         .join(Run, Run.issue_id == Issue.id)
         .where(Run.status == "running", Run.finished_at.is_(None),
@@ -351,20 +351,20 @@ async def reconcile(db: AsyncSession) -> dict:
                # a run is still trailing.
                Issue.agent_status.is_distinct_from(_TS.done)))).all()
     seen: set[int] = set()
-    for issue, phase in laufend:
+    for issue, phase in running:
         if issue.id in seen:
             continue
         seen.add(issue.id)
         target = _TS.planning if phase == "planning" else _TS.in_progress
-        vorher = (getattr(issue.agent_status, "value", "—"), issue.status_id)
+        before = (getattr(issue.agent_status, "value", "—"), issue.status_id)
         if issue.agent_status in (_TS.planning, _TS.in_progress):
             await sync_board_status(db, issue)   # the state is right, only the column lags
         else:
             await set_ticket_status(db, issue, target)
         issue.agent_working = True
-        if vorher != (getattr(issue.agent_status, "value", "—"), issue.status_id):
+        if before != (getattr(issue.agent_status, "value", "—"), issue.status_id):
             log.info("Reconciliation: %s is running (%s), stood on %s/column %s -> %s/column %s",
-                     issue.key, phase, vorher[0], vorher[1],
+                     issue.key, phase, before[0], before[1],
                      getattr(issue.agent_status, "value", "—"), issue.status_id)
     result["laufende_richtiggestellt"] = len(seen)
 

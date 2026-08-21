@@ -13,11 +13,11 @@ import {
 /**
  * Das Postfach.
  *
- * Drei Spalten wie in jedem Mail-Programm, und aus demselben Grund: Ordner ändern sich
- * selten, die Liste oft, die Nachricht bei jedem Klick. Was Traccoon dazugibt, steht am
- * Ende einer Mail und an jedem Anhang — die **Aktionen**: ein Knopf startet einen Ablauf und
- * legt Konto, Ordner, UID und den gewählten Anhang in dessen Kontext. „Anhang nach
- * Paperless" ist damit kein Sonderfall im Code, sondern ein Ablauf im Editor.
+ * Three columns like in every mail program, and for the same reason: folders change rarely,
+ * the list often, the message with every click. What Traccoon adds sits at the end of a mail
+ * and on every attachment — the **actions**: a button starts a flow and puts account, folder,
+ * UID and the chosen attachment into its context. "Attachment to Paperless" is thereby no
+ * special case in the code but a flow in the editor.
  */
 interface Header {
   uid: number; subject: string; from: string; date: string; size: number;
@@ -56,20 +56,20 @@ export default function Mail() {
 
   const { data: konten } = useQuery({
     queryKey: ["mail-accounts"], queryFn: () => api.get<MailKonto[]>("/mailbox/accounts") });
-  // Damit man sieht, wo Post liegt, ohne hineinzugehen. Selten abgefragt: dahinter steckt je
+  // So one can see where mail waits without going in. Asked rarely: behind it sits one
   // Postfach eine IMAP-Verbindung.
   const { data: ungelesen } = useQuery({
     queryKey: ["mail-unread"],
     queryFn: () => api.get<{ accounts: { account_id: number; unseen: number | null }[] }>(
       "/mailbox/unread"),
-    // Beim Zurückwechseln in den Tab sofort nachsehen: wer eine Minute weg war, will nicht
-    // bis zur nächsten Runde warten. Global ist das aus, für Post ist es richtig.
+    // Look again immediately when switching back into the tab: whoever was away for a minute
+    // does not want to wait for the next round. Globally that is off, for mail it is right.
     refetchInterval: 60_000, refetchOnWindowFocus: true, retry: false,
   });
   useEffect(() => {
     if (kontoId !== null || !konten?.length) return;
-    // Zuletzt geöffnetes Postfach zuerst — es steht am Menschen und gilt deshalb auch nach
-    // einer neuen Anmeldung und auf einem anderen Rechner.
+    // The mailbox opened last comes first — it is stored on the person and therefore applies
+    // after a new login and on another machine as well.
     const gemerkt = konten.find((k) => k.id === user?.mail_last_account_id);
     setKontoId((gemerkt || konten.find((k) => k.enabled) || konten[0]).id);
   }, [konten, kontoId, user]);
@@ -211,10 +211,10 @@ export default function Mail() {
 }
 
 /**
- * Die Einstellungen des offenen Postfachs — derselbe Dialog wie im Konto.
+ * The settings of the open mailbox — the same dialog as in the account.
  *
- * Zweimal zu bauen hieße, ihn zweimal zu pflegen: Ordner, Kennwörter und das Archiv-Muster
- * gehören zusammen, egal von welcher Seite man sie aufruft.
+ * Building it twice would mean maintaining it twice: folders, passwords and the archive
+ * pattern belong together, no matter from which side one opens them.
  */
 function KontoSettings({ konto, onClose, onFehler: onError }: {
   konto: MailKonto; onClose: () => void; onFehler: (m: string) => void;
@@ -237,37 +237,37 @@ function KontoSettings({ konto, onClose, onFehler: onError }: {
 }
 
 /**
- * Die Ordner als Baum — mit Einrückung, Aufklappen und Ungelesen-Zahl.
+ * The folders as a tree — with indentation, expanding and unread counts.
  *
- * Eine flache Liste reicht, solange jemand fünf Ordner hat. Bei einem gewachsenen Postfach
- * mit Archiv nach Jahren, Projekten und Verteilern ist sie eine Wand: Man sucht den Ordner,
- * den man sucht, und findet ihn zwischen dreißig gleich aussehenden Zeilen nicht wieder.
- * Zugeklappt wird der Zweig, nicht der Zugriff — ein Klick auf den Elternordner öffnet ihn
+ * A flat list is enough as long as somebody has five folders. With a grown mailbox that
+ * archives by year, project and mailing list it is a wall: one looks for the folder one is
+ * looking for and cannot find it again among thirty identical-looking rows. What is collapsed
+ * is the branch, not the access — a click on the parent folder opens it
  * trotzdem.
  */
 function FolderBaum({ ordner: folder, aktiv, onWaehlen }: {
   ordner: Folder[] | undefined; aktiv: string; onWaehlen: (name: string) => void;
 }) {
-  // Zugeklappt beginnen: ein gewachsenes Postfach hat Archive nach Jahren und Verteiler nach
-  // Absendern, und die will man beim Öffnen nicht alle sehen. Was man täglich braucht, sind
-  // die sechs Sonderordner — der Rest ist einen Klick entfernt.
+  // Start collapsed: a grown mailbox has archives by year and mailing lists by sender, and one
+  // does not want to see all of those when opening it. What one needs daily are the six
+  // special folders — the rest is one click away.
   const [auf, setAuf] = useState<Set<string>>(new Set());
   if (!folder) return <Listing><ListingLeer>Ordner werden geladen…</ListingLeer></Listing>;
 
   const hatKinder = (o: Folder) => folder.some((k) => k.parent === o.name);
   /**
-   * Ungelesenes eines Zweiges: der Ordner selbst und alles darunter.
+   * Unread of a branch: the folder itself and everything below it.
    *
-   * Ohne das bliebe ein zugeklappter Zweig stumm — man sähe „Archive" ohne Zahl und wüsste
-   * nicht, dass in `Archive/2026/08` etwas Ungelesenes liegt. Deshalb steht am zugeklappten
-   * Ordner die Summe und am aufgeklappten nur das Eigene: sonst zählte man dieselbe
-   * Nachricht in jeder Ebene noch einmal.
+   * Without that a collapsed branch would stay mute — one would see "Archive" without a count
+   * and would not know that something unread lies in `Archive/2026/08`. That is why the sum
+   * stands on the collapsed folder and only its own on the expanded one: otherwise one would
+   * count the same message again at every level.
    */
   const sum_total = (o: Folder): number => folder
     .filter((k) => k.parent === o.name)
     .reduce((zahl, k) => zahl + sum_total(k), o.unseen || 0);
-  // Sichtbar ist, wessen Vorfahren alle aufgeklappt sind. Der aktive Ordner bleibt es immer
-  // — sonst verschwände unter den Füßen, worin man gerade liest.
+  // Visible is whatever has all its ancestors expanded. The active folder always stays so —
+  // otherwise what one is currently reading in would vanish from under one's feet.
   const visible = (o: Folder) => {
     if (o.name === aktiv || !o.parent) return true;
     let eltern = o.parent;
@@ -308,8 +308,8 @@ function FolderBaum({ ordner: folder, aktiv, onWaehlen }: {
               const zu = hatKinder(o) && !auf.has(o.name);
               const zahl = zu ? sum_total(o) : o.unseen;
               if (!zahl) return <span />;
-              // Zugeklappt und nur in den Kindern etwas: die Zahl gehört dem Zweig, nicht dem
-              // Ordner — leiser dargestellt, damit man den Unterschied sieht.
+              // Collapsed and something only in the children: the count belongs to the branch,
+              // not to the folder — shown more quietly so one sees the difference.
               const nurKinder = zu && !o.unseen;
               return (
                 <Etikett farbe={nurKinder ? "neutral" : "brand"}
@@ -325,7 +325,7 @@ function FolderBaum({ ordner: folder, aktiv, onWaehlen }: {
   );
 }
 
-/** Was man mit einem ganzen Ordner tun kann — beides mit Rückfrage, beides selten. */
+/** What one can do with a whole folder — both with a confirmation, both rare. */
 function FolderHandgriffe({ kontoId, ordner: folder, onGeloescht, onFehler: onError }: {
   kontoId: number; ordner: string; onGeloescht: () => void; onFehler: (m: string) => void;
 }) {
@@ -384,12 +384,12 @@ function FolderHandgriffe({ kontoId, ordner: folder, onGeloescht, onFehler: onEr
 }
 
 /**
- * HTML einer fremden Mail anzeigen, ohne ihr das Fenster zu überlassen.
+ * Show the HTML of a foreign mail without handing it the window.
  *
- * Drei Schlösser übereinander: der Server hat schon gesäubert (nh3), der Rahmen hier ist ein
- * `sandbox`-iframe ohne Skriptrecht, und eine Inhaltsrichtlinie im Dokument selbst lässt
- * nichts nachladen. Fernbilder hängen als `data-fern` in der Mail und werden erst auf Klick
- * zu `src` — ein geladenes Bild ist eine Rückmeldung an den Absender, dass gelesen wurde.
+ * Three locks on top of each other: the server has already cleaned up (nh3), the frame here is
+ * a `sandbox` iframe without script rights, and a content policy in the document itself lets
+ * nothing be loaded. Remote images hang in the mail as `data-fern` and become `src` only on a
+ * click — a loaded image is a signal back to the sender that it was read.
  */
 function HtmlAnsicht({ html, fernbilder }: { html: string; fernbilder: boolean }) {
   const [bilder, setBilder] = useState(false);
@@ -444,7 +444,7 @@ function MessagesListing({ kontoId, ordner: folder, suche, onOeffnen: onOpen_it,
     // Not before an account is picked: `kontoId` is null on the first render, and the
     // request went out as `accounts/null/messages` — a 422 on every visit to the page.
     enabled: !!kontoId,
-    // Neue Post soll in der Liste auftauchen, nicht nur im Zähler daneben.
+    // New mail should turn up in the list, not only in the counter next to it.
     refetchInterval: 60_000, refetchOnWindowFocus: true,
   });
   useEffect(() => {
@@ -503,13 +503,13 @@ function MessagesListing({ kontoId, ordner: folder, suche, onOeffnen: onOpen_it,
 /**
  * Ein Anhang zum Ansehen.
  *
- * Vorher stand dort ein Link auf die API-Adresse — und der Browser schickt den Token nicht
- * mit, den er nicht kennt. Was ankam, war „Not authenticated". Jetzt wird die Datei mit
- * Anmeldung geholt und hier gezeigt; was sich nicht zeigen lässt, kann man immer noch
+ * Before, a link to the API address stood there — and the browser does not send along a token
+ * it does not know. What arrived was "Not authenticated". Now the file is fetched with the
+ * login and shown here; what cannot be shown can still be
  * speichern.
  *
- * Die Blob-Adresse wird beim Schließen wieder freigegeben: Sonst hält jeder angesehene
- * Anhang seinen Speicher, bis die Seite neu lädt.
+ * The blob address is released again on closing: otherwise every viewed attachment keeps its
+ * memory until the page reloads.
  */
 function AttachmentDialog({ pfad: path, anhang: attachment, onClose }: {
   pfad: string; anhang: Attachment; onClose: () => void;
@@ -526,8 +526,8 @@ function AttachmentDialog({ pfad: path, anhang: attachment, onClose }: {
       .then(async ({ blob, typ: t }) => {
         if (!lebt) return;
         setKind(t);
-        // Text wird gelesen, nicht eingebettet: In einem Rahmen stünde er ohne Umbruch und
-        // mit der Schrift der Seite, die er nicht meint.
+        // Text is read, not embedded: inside a frame it would stand without wrapping and in
+        // the font of the page, which is not the one it means.
         if (t.startsWith("text/") || t.includes("json")) setText(await blob.text());
         else {
           adresse = URL.createObjectURL(blob);
@@ -593,8 +593,8 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
     queryKey: ["mail-actions"], queryFn: () => api.get<Action[]>("/mailbox/actions"),
     staleTime: 5 * 60_000,
   });
-  // Für „Verschieben nach…": dieselbe Abfrage wie die Ordnerspalte, also aus dem Zwischen-
-  // speicher und ohne zweiten Gang zum Postfach.
+  // For "Move to…": the same query as the folder column, so from the cache and without a
+  // second trip to the mailbox.
   const { data: allFolder } = useQuery({
     queryKey: ["mail-folders", kontoId],
     queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${kontoId}/folders?counts=true`),
@@ -607,10 +607,10 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
   /**
    * Empfänger einer Antwort.
    *
-   * `allen` nimmt zusätzlich alle mit, die schon dabei waren — abzüglich der eigenen
-   * Adressen, denn sich selbst zu antworten ist der Klassiker, den man erst nach dem
-   * Absenden bemerkt. Steht ein `Reply-To` in der Mail, gilt das vor dem Absender: genau
-   * dafür ist es da.
+   * `allen` additionally takes along everyone who was already on it — minus one's own
+   * addresses, because answering oneself is the classic one notices only after sending. If a
+   * `Reply-To` stands in the mail it takes precedence over the sender: that is exactly what it
+   * is there for.
    */
   const answerFields = (allen: boolean): Record<string, string> => {
     const eigene = new Set((identitaeten || []).map((i) => i.email.toLowerCase()));
@@ -632,7 +632,7 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
     };
   };
 
-  /** Gäbe „Allen antworten" mehr Adressen als „Antworten"? Nur dann lohnt der Knopf. */
+  /** Would "Reply all" give more addresses than "Reply"? Only then is the button worth it. */
   const mehrRecipient = (): boolean => {
     const eigene = new Set((identitaeten || []).map((i) => i.email.toLowerCase()));
     const fremde = (listing: Adresse[] | undefined) =>
@@ -643,12 +643,12 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
   };
 
   /**
-   * Die Identität, unter der geantwortet wird: die, an die die Mail ging.
+   * The identity one answers under: the one the mail went to.
    *
-   * Wer als Kassenwart angeschrieben wird, antwortet als Kassenwart — nicht unter der
-   * Adresse, die zufällig als Vorgabe eingetragen ist. Gesucht wird in allen Empfängerfeldern
-   * der ursprünglichen Nachricht; findet sich nichts (Verteiler, Alias, den es hier nicht
-   * gibt), bleibt es bei der Vorgabe des Kontos.
+   * Whoever is written to as the treasurer answers as the treasurer — not under the address
+   * that happens to be entered as the default. The search covers all recipient fields of the
+   * original message; if nothing is found (a mailing list, an alias that does not exist here),
+   * the default of the account stands.
    */
   const passendeIdentity = (): number | undefined => {
     const recipient = [...(m?.to || []), ...(m?.cc || [])]
@@ -666,8 +666,8 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
     onSuccess: (r) => setLauf(`Ablauf gestartet (Vorgang ${r.instance_id})`),
     onError: (e) => onError(e instanceof ApiError ? e.message : "Aktion fehlgeschlagen"),
   });
-  // Alle Handgriffe enden gleich: Liste und Ordnerzahlen stimmen nicht mehr, und die
-  // Nachricht ist nicht mehr da, wo man sie gerade gelesen hat — also zurück zur Liste.
+  // All handgrips end the same way: the list and the folder counts no longer hold, and the
+  // message is no longer where one was just reading it — so back to the list.
   const danach = () => {
     qc.invalidateQueries({ queryKey: ["mail-list"] });
     qc.invalidateQueries({ queryKey: ["mail-folders"] });
@@ -869,8 +869,8 @@ function VerfassenDialog({ kontoId, start, onClose, onFehler: onError }: {
   const [attachments, setAttachments] = useState<
     { filename: string; content_type: string; data_base64: string; size: number }[]>([]);
 
-  /** Datei einlesen. Base64 im Browser, weil der Server die Nachricht baut und nicht der
-   *  Browser — eine Stelle, an der Entwurf und Versand dasselbe tun. */
+  /** Read a file in. Base64 in the browser, because the server builds the message and not the
+   *  browser — one place where draft and sending do the same thing. */
   const fileRead = (file: File) => new Promise<string>((done, schiefgelaufen) => {
     const leser = new FileReader();
     leser.onload = () => done(String(leser.result).split(",")[1] || "");
@@ -879,8 +879,8 @@ function VerfassenDialog({ kontoId, start, onClose, onFehler: onError }: {
   });
   useEffect(() => {
     if (identity !== null || !identitaeten?.length) return;
-    // Reihenfolge der Wahl: was der Aufrufer mitgibt (die angeschriebene Adresse), sonst die
-    // Vorgabe des Kontos, sonst die erste.
+    // Order of the choice: what the caller passes in (the address that was written to),
+    // otherwise the default of the account, otherwise the first one.
     const gewuenscht = identitaeten.find((i) => String(i.id) === (start.identity || ""));
     setIdentity((gewuenscht || identitaeten.find((i) => i.is_default) || identitaeten[0]).id);
   }, [identitaeten, identity, start.identity]);
@@ -905,8 +905,8 @@ function VerfassenDialog({ kontoId, start, onClose, onFehler: onError }: {
   });
 
   return (
-    // Festgehalten: Wer eine Mail schreibt, verliert bei einem danebengegangenen Klick
-    // sonst den halben Text. Geschlossen wird über ✕, Abbrechen, Entwurf oder Senden.
+    // Held in place: whoever is writing a mail otherwise loses half the text on a misplaced
+    // click. It is closed through ✕, cancel, draft or send.
     <Dialog breit festhalten titel="Nachricht verfassen" onClose={onClose}
       fuss={
         <div className="flex items-center gap-2">

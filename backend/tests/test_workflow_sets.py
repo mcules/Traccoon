@@ -21,19 +21,19 @@ async def test_the_default_preset_applies_without_action(db, seeded):
 
 async def test_an_own_preset_applies_to_my_owned_projects(db, seeded):
     owner = await make_user(db, "owner")
-    fremd = await make_user(db, "fremd")
-    meins = await make_project(db, "MEIN", "Meins")
-    anderes = await make_project(db, "AND", "Anderes")
-    await add_member(db, meins, owner, ProjectRole.owner)
-    await add_member(db, anderes, fremd, ProjectRole.owner)
+    foreign = await make_user(db, "fremd")
+    mine = await make_project(db, "MEIN", "Meins")
+    different = await make_project(db, "AND", "Anderes")
+    await add_member(db, mine, owner, ProjectRole.owner)
+    await add_member(db, different, foreign, ProjectRole.owner)
     # Only a member (not the owner), so my set does NOT apply here.
-    await add_member(db, anderes, owner, ProjectRole.member)
+    await add_member(db, different, owner, ProjectRole.member)
 
-    eigener = await sets.create_user_set(db, owner, "Meine Prozesse")
+    own = await sets.create_user_set(db, owner, "Meine Prozesse")
 
-    meine = await sets.resolve_source(db, meins.id, LIFECYCLE)
-    assert meine["set"].id == eigener.id and meine["origin"] == "user"
-    assert (await sets.resolve_source(db, anderes.id, LIFECYCLE))["origin"] == "builtin"
+    my = await sets.resolve_source(db, mine.id, LIFECYCLE)
+    assert my["set"].id == own.id and my["origin"] == "user"
+    assert (await sets.resolve_source(db, different.id, LIFECYCLE))["origin"] == "builtin"
 
 
 async def test_adjusting_detaches_and_resetting_binds_again(db, seeded):
@@ -41,19 +41,19 @@ async def test_adjusting_detaches_and_resetting_binds_again(db, seeded):
     proj = await make_project(db, "TST", "Test")
     await add_member(db, proj, owner, ProjectRole.owner)
 
-    kopie = await sets.customize(db, proj, LIFECYCLE, owner.id)
-    assert kopie.project_id == proj.id and kopie.set_id is None
+    copy = await sets.customize(db, proj, LIFECYCLE, owner.id)
+    assert copy.project_id == proj.id and copy.set_id is None
     info = await sets.resolve_source(db, proj.id, LIFECYCLE)
-    assert info["origin"] == "project" and info["definition"].id == kopie.id
+    assert info["origin"] == "project" and info["definition"].id == copy.id
 
     # Adjusting twice creates no second copy.
-    assert (await sets.customize(db, proj, LIFECYCLE, owner.id)).id == kopie.id
+    assert (await sets.customize(db, proj, LIFECYCLE, owner.id)).id == copy.id
 
     assert await sets.reset(db, proj, LIFECYCLE) is True
     assert (await sets.resolve_source(db, proj.id, LIFECYCLE))["origin"] == "builtin"
     # The copy is kept as an archive (history, running instances).
-    await db.refresh(kopie)
-    assert kopie.archived_at is not None
+    await db.refresh(copy)
+    assert copy.archived_at is not None
 
 
 async def test_resetting_leaves_a_running_instance_untouched(db, seeded, client):
@@ -64,16 +64,16 @@ async def test_resetting_leaves_a_running_instance_untouched(db, seeded, client)
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     await add_member(db, proj, owner, ProjectRole.owner)
-    kopie = await sets.customize(db, proj, WorkflowSlot.ticket_intake.value, owner.id)
+    copy = await sets.customize(db, proj, WorkflowSlot.ticket_intake.value, owner.id)
 
-    inst = await start_workflow(db, kopie, subject_kind=WorkflowSubjectKind.standalone,
+    inst = await start_workflow(db, copy, subject_kind=WorkflowSubjectKind.standalone,
                                 context={"ignore": True}, actor_id=owner.id, advance_now=False)
     await sets.reset(db, proj, WorkflowSlot.ticket_intake.value)
 
     await db.refresh(inst)
     assert inst.status == WorkflowInstanceStatus.running
-    assert inst.version_id == kopie.current_version_id
-    assert await db.get(WorkflowDefinition, kopie.id) is not None
+    assert inst.version_id == copy.current_version_id
+    assert await db.get(WorkflowDefinition, copy.id) is not None
 
 
 async def test_the_slot_overview_shows_the_origin(client, db, seeded):
@@ -108,10 +108,10 @@ async def test_seeding_is_idempotent(db, seeded):
     from sqlalchemy import func, select
     from app.models.workflow import WorkflowVersion
 
-    vorher = (await db.execute(select(func.count()).select_from(WorkflowVersion))).scalar()
+    before = (await db.execute(select(func.count()).select_from(WorkflowVersion))).scalar()
     await ensure_builtin_set(db)
     await ensure_builtin_set(db)
-    assert (await db.execute(select(func.count()).select_from(WorkflowVersion))).scalar() == vorher
+    assert (await db.execute(select(func.count()).select_from(WorkflowVersion))).scalar() == before
 
 
 async def test_another_persons_preset_is_off_limits(client, db, seeded):

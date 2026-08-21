@@ -30,36 +30,36 @@ NOW = dt.datetime.now(dt.timezone.utc)
 
 
 @pytest.fixture(autouse=True)
-def kein_redis(monkeypatch):
+def no_redis(monkeypatch):
     """No real Redis in the test, and what was sent is checkable."""
     import app.core.redis as redismod
-    gesendet: list[tuple[str, str]] = []
+    sent: list[tuple[str, str]] = []
 
     class _R:
-        async def publish(self, kanal, daten):
-            gesendet.append((kanal, daten))
+        async def publish(self, channel, data):
+            sent.append((channel, data))
 
     monkeypatch.setattr(redismod, "get_redis", lambda: _R())
-    return gesendet
+    return sent
 
 
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
-async def ticket(db, projekt, nummer: int = 1) -> Issue:
-    kind = IssueType(project_id=projekt.id, name="Aufgabe")
-    status = WorkflowStatus(project_id=projekt.id, name="To Do", category=StatusCategory.todo)
-    db.add_all([kind, status, IssueCounter(project_id=projekt.id, last_number=0)])
+async def ticket(db, project, number: int = 1) -> Issue:
+    kind = IssueType(project_id=project.id, name="Aufgabe")
+    status = WorkflowStatus(project_id=project.id, name="To Do", category=StatusCategory.todo)
+    db.add_all([kind, status, IssueCounter(project_id=project.id, last_number=0)])
     await db.commit()
-    i = Issue(project_id=projekt.id, number=nummer, key=f"{projekt.key}-{nummer}",
+    i = Issue(project_id=project.id, number=number, key=f"{project.key}-{number}",
               type_id=kind.id, status_id=status.id, summary="Tu was", reporter_id=1, rank="1")
     db.add(i)
     await db.commit()
     return i
 
 
-async def lauf(db, *, issue=None, projekt=None, status="success", agent="developer") -> Run:
+async def make_run(db, *, issue=None, project=None, status="success", agent="developer") -> Run:
     r = Run(issue_id=issue.id if issue else None,
-            project_id=projekt.id if projekt else (issue.project_id if issue else None),
+            project_id=project.id if project else (issue.project_id if issue else None),
             agent=agent, phase="execute", provider="claude_code", model="sonnet",
             status=status, started_at=NOW - dt.timedelta(minutes=5),
             finished_at=None if status == "running" else NOW - dt.timedelta(minutes=1))
@@ -68,10 +68,10 @@ async def lauf(db, *, issue=None, projekt=None, status="success", agent="develop
     return r
 
 
-async def steps(db, run: Run, count: int, *, ab_seconds: int = 300) -> list[RunStep]:
+async def steps(db, run: Run, count: int, *, from_seconds: int = 300) -> list[RunStep]:
     """Legacy rows (`kind=''`) with an ascending timestamp: one event per row."""
     rows = [RunStep(run_id=run.id, seq=i + 1, role="assistant", content=f"Schritt {i + 1}",
-                    created_at=NOW - dt.timedelta(seconds=ab_seconds - i * 10))
+                    created_at=NOW - dt.timedelta(seconds=from_seconds - i * 10))
             for i in range(count)]
     db.add_all(rows)
     await db.commit()
@@ -96,10 +96,10 @@ async def deploy_steps(db, run_id: int) -> list[RunStep]:
 # ── Idempotenz ───────────────────────────────────────────────────────────────
 
 async def test_watching_twice_tells_it_once(db):
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    run = await lauf(db, issue=issue, status="running")
-    dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="building")
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    run = await make_run(db, issue=issue, status="running")
+    dep = await deployment(db, issue_id=issue.id, project_id=project.id, status="building")
 
     assert await dw.tick(db) == 1
     assert await dw.tick(db) == 0
@@ -119,7 +119,7 @@ async def test_watching_twice_tells_it_once(db):
     assert "fertig gebaut" in steps_[-1].content
 
 
-@pytest.mark.parametrize("announced,status,erwartet", [
+@pytest.mark.parametrize("announced, status, expected", [
     ("", "building", ["start"]),
     ("building", "ok", ["ok"]),
     ("building", "failed", ["fail"]),
@@ -133,8 +133,8 @@ async def test_watching_twice_tells_it_once(db):
     ("", "pending", []),
     ("pending", "cancelled", []),
 ])
-def test_states_for(announced, status, erwartet):
-    assert dw.states_for(announced, status) == erwartet
+def test_states_for(announced, status, expected):
+    assert dw.states_for(announced, status) == expected
 
 
 # ── Ankerwahl ────────────────────────────────────────────────────────────────
@@ -142,46 +142,46 @@ def test_states_for(announced, status, erwartet):
 async def test_the_anchor_for_an_agent_tool_is_the_waiting_run(db):
     """`worktree <> ''` means: an agent called `deploy` and is waiting inline. The row
     belongs to ITS run, not to the most recent one, which may long be a review."""
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    wartend = await lauf(db, issue=issue, status="running")
-    juenger = await lauf(db, issue=issue, status="success", agent="reviewer")
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    waiting = await make_run(db, issue=issue, status="running")
+    younger = await make_run(db, issue=issue, status="success", agent="reviewer")
 
-    await deployment(db, issue_id=issue.id, project_id=projekt.id,
+    await deployment(db, issue_id=issue.id, project_id=project.id,
                      worktree="/workspace/tra-1", status="building")
     await dw.tick(db)
-    assert len(await deploy_steps(db, wartend.id)) == 1
-    assert await deploy_steps(db, juenger.id) == []
+    assert len(await deploy_steps(db, waiting.id)) == 1
+    assert await deploy_steps(db, younger.id) == []
 
 
 async def test_the_anchor_for_a_merge_is_the_newest_run(db):
     """Without a worktree no agent waited (merge, workflow), and then the most recent run of
     the ticket tells it, because it is the one the room is showing right now."""
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    aelter = await lauf(db, issue=issue, status="running")
-    juenger = await lauf(db, issue=issue, status="success", agent="reviewer")
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    older = await make_run(db, issue=issue, status="running")
+    younger = await make_run(db, issue=issue, status="success", agent="reviewer")
 
-    await deployment(db, issue_id=issue.id, project_id=projekt.id, worktree="",
+    await deployment(db, issue_id=issue.id, project_id=project.id, worktree="",
                      source="merge", status="building")
     await dw.tick(db)
-    assert len(await deploy_steps(db, juenger.id)) == 1
-    assert await deploy_steps(db, aelter.id) == []
+    assert len(await deploy_steps(db, younger.id)) == 1
+    assert await deploy_steps(db, older.id) == []
 
 
-async def test_a_maintenance_update_raises_no_event(db, kein_redis):
+async def test_a_maintenance_update_raises_no_event(db, no_redis):
     """**A decision, not an oversight.** A self-deploy recreates the backend container that
     supplies the stage: the WebSocket falls in the middle of the animation, and the process
     that would draw it dies of it. Animating a process that kills the animator is a category
     error; these rows live in the list, not in the room."""
-    projekt = await make_project(db, "TRA", "Traccoon")
-    run = await lauf(db, projekt=projekt)           # there WOULD be a run to hang it off
-    dep = await deployment(db, project_id=projekt.id, self_deploy=True, stack_dir="",
+    project = await make_project(db, "TRA", "Traccoon")
+    run = await make_run(db, project=project)           # there WOULD be a run to hang it off
+    dep = await deployment(db, project_id=project.id, self_deploy=True, stack_dir="",
                            source="maintenance", status="building")
 
     assert await dw.tick(db) == 0
     assert await deploy_steps(db, run.id) == []
-    assert kein_redis == []
+    assert no_redis == []
     # Acknowledging happens regardless; otherwise the row would lie on the table every beat.
     await db.refresh(dep)
     assert dep.announced_status == "building"
@@ -190,19 +190,19 @@ async def test_a_maintenance_update_raises_no_event(db, kein_redis):
 async def test_no_event_without_a_run(db):
     """A ticket without a single run has no anchor. Better a gap than a row in a run that has
     nothing to do with the deploy."""
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    await deployment(db, issue_id=issue.id, project_id=projekt.id, status="ok")
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    await deployment(db, issue_id=issue.id, project_id=project.id, status="ok")
     assert await dw.tick(db) == 0
 
 
 async def test_existing_stock_stays_silent(db):
     """The 186 existing rows have `announced_status=''` and would otherwise all be "new": the
     first beat would tell three months of history as if it had just happened."""
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    run = await lauf(db, issue=issue)
-    await deployment(db, issue_id=issue.id, project_id=projekt.id, status="ok",
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    run = await make_run(db, issue=issue)
+    await deployment(db, issue_id=issue.id, project_id=project.id, status="ok",
                      created_at=NOW - dt.timedelta(days=12))
     assert await dw.tick(db) == 0
     assert await deploy_steps(db, run.id) == []
@@ -211,10 +211,10 @@ async def test_existing_stock_stays_silent(db):
 async def test_a_started_story_is_told_to_its_end(db):
     """The opening was told, the outcome only after a long backend outage: the window must
     not drop the row now, because otherwise the rack would stay building forever."""
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    run = await lauf(db, issue=issue, status="running")
-    await deployment(db, issue_id=issue.id, project_id=projekt.id, status="ok",
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    run = await make_run(db, issue=issue, status="running")
+    await deployment(db, issue_id=issue.id, project_id=project.id, status="ok",
                      announced_status="building",
                      created_at=NOW - dt.timedelta(days=2))
     assert await dw.tick(db) == 1
@@ -234,10 +234,10 @@ async def test_deployment_finished_fires_once(db, monkeypatch):
 
     monkeypatch.setattr(eventsmod, "emit", fake_emit)
 
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    await lauf(db, issue=issue, status="running")
-    dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="building")
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    await make_run(db, issue=issue, status="running")
+    dep = await deployment(db, issue_id=issue.id, project_id=project.id, status="building")
 
     await dw.tick(db)
     assert seen == []                       # `building` is no conclusion
@@ -266,8 +266,8 @@ async def test_deployment_finished_even_without_a_stage(db, monkeypatch):
 
     monkeypatch.setattr(eventsmod, "emit", fake_emit)
 
-    projekt = await make_project(db, "TRA", "Traccoon")
-    await deployment(db, project_id=projekt.id, self_deploy=True, stack_dir="",
+    project = await make_project(db, "TRA", "Traccoon")
+    await deployment(db, project_id=project.id, self_deploy=True, stack_dir="",
                      source="maintenance", status="ok")
     await dw.tick(db)
     assert seen == ["deployment.finished"]
@@ -297,9 +297,9 @@ def ctx() -> RunCtx:
 
 def test_existing_stock_hangs_on_the_last_line_before_it():
     lines = [_Line(100, 60), _Line(101, 40), _Line(102, 10)]
-    anker = deploy_anchor_step_id(lines, _Dep().created_at)
-    assert anker == 101
-    ev = deployment_events(_Dep(), ctx(), anchor_step_id=anker)[0]
+    anchor = deploy_anchor_step_id(lines, _Dep().created_at)
+    assert anchor == 101
+    ev = deployment_events(_Dep(), ctx(), anchor_step_id=anchor)[0]
     assert ev["kind"] == "deploy" and ev["seq"] == 101 * SEQ_SLOTS + 3
     assert ev["deployment_id"] == 42 and ev["state"] == "ok"
     assert ev["target"] == "/stacks/tra" and ev["log_head"] == "alles gut"
@@ -310,9 +310,9 @@ def test_a_slot3_collision_moves_to_the_preceding_line():
     borrow. It has precedence (it ends a run, while the deployment illustrates one), so the
     deployment slips back one row."""
     lines = [_Line(100, 60), _Line(101, 40), _Line(102, 10)]
-    anker = deploy_anchor_step_id(lines, _Dep().created_at, blocked={101})
-    assert anker == 100
-    ev = deployment_events(_Dep(), ctx(), anchor_step_id=anker)[0]
+    anchor = deploy_anchor_step_id(lines, _Dep().created_at, blocked={101})
+    assert anchor == 100
+    ev = deployment_events(_Dep(), ctx(), anchor_step_id=anchor)[0]
     assert ev["seq"] == 100 * SEQ_SLOTS + 3
     # And when the preceding row is taken as well, it goes further back.
     assert deploy_anchor_step_id(lines, _Dep().created_at, blocked={100, 101}) is None
@@ -335,11 +335,11 @@ def test_stock_without_a_showable_status_stays_silent(status):
 
 async def test_the_api_shows_a_stock_deployment_in_its_place(client, db):
     user = await make_user(db, "anna", admin=True)
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    run = await lauf(db, issue=issue)
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    run = await make_run(db, issue=issue)
     lines = await steps(db, run, 3)
-    dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="failed",
+    dep = await deployment(db, issue_id=issue.id, project_id=project.id, status="failed",
                            log="❌ Wächter: Tests rot",
                            created_at=lines[1].created_at + dt.timedelta(seconds=2))
 
@@ -353,18 +353,18 @@ async def test_the_api_shows_a_stock_deployment_in_its_place(client, db):
     assert deploys[0]["seq"] == lines[1].id * SEQ_SLOTS + 3
     assert [e["seq"] for e in events] == sorted(e["seq"] for e in events)
     # The synthesised `run_end` boundary still stands behind everything.
-    ende = [e for e in events if e["kind"] == "run_end"][0]
-    assert ende["seq"] > deploys[0]["seq"]
+    end = [e for e in events if e["kind"] == "run_end"][0]
+    assert end["seq"] > deploys[0]["seq"]
 
 
 async def test_the_api_does_not_tell_it_twice(client, db):
     """What the watcher wrote as a real row is not borrowed a second time."""
     user = await make_user(db, "anna", admin=True)
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    run = await lauf(db, issue=issue, status="running")
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    run = await make_run(db, issue=issue, status="running")
     await steps(db, run, 2)
-    dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="ok")
+    dep = await deployment(db, issue_id=issue.id, project_id=project.id, status="ok")
     await dw.tick(db)   # writes start plus ok as real rows
 
     r = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(user))
@@ -375,13 +375,13 @@ async def test_the_api_does_not_tell_it_twice(client, db):
 
 # ── The live path ────────────────────────────────────────────────────────────
 
-async def test_the_watcher_sends_into_the_channel(db, kein_redis):
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    await lauf(db, issue=issue, status="running")
-    await deployment(db, issue_id=issue.id, project_id=projekt.id, status="building")
+async def test_the_watcher_sends_into_the_channel(db, no_redis):
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    await make_run(db, issue=issue, status="running")
+    await deployment(db, issue_id=issue.id, project_id=project.id, status="building")
     await dw.tick(db)
-    assert len(kein_redis) == 1 and '"kind": "deploy"' in kein_redis[0][1]
+    assert len(no_redis) == 1 and '"kind": "deploy"' in no_redis[0][1]
 
 
 async def test_the_publish_step_swallows_a_redis_outage(db, monkeypatch):
@@ -389,15 +389,15 @@ async def test_the_publish_step_swallows_a_redis_outage(db, monkeypatch):
     an error."""
     import app.core.redis as redismod
 
-    class _Tot:
+    class _Dead:
         async def publish(self, *a, **k):
             raise RuntimeError("Redis weg")
 
-    monkeypatch.setattr(redismod, "get_redis", lambda: _Tot())
-    projekt = await make_project(db, "TRA", "Traccoon")
-    issue = await ticket(db, projekt)
-    run = await lauf(db, issue=issue, status="running")
-    await deployment(db, issue_id=issue.id, project_id=projekt.id, status="building")
+    monkeypatch.setattr(redismod, "get_redis", lambda: _Dead())
+    project = await make_project(db, "TRA", "Traccoon")
+    issue = await ticket(db, project)
+    run = await make_run(db, issue=issue, status="running")
+    await deployment(db, issue_id=issue.id, project_id=project.id, status="building")
 
     assert await dw.tick(db) == 1               # no error upwards
     assert len(await deploy_steps(db, run.id)) == 1   # and the row stands

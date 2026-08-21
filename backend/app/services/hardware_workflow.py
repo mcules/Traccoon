@@ -218,10 +218,10 @@ async def start_hardware_instance(db, asset: HardwareAsset, actor_id: int | None
     )
 
 
-_ALT_ACTION = {"set_purchase_status": "set_status"}
+_OLD_ACTION = {"set_purchase_status": "set_status"}
 
 
-def _vergleichsform(graph: dict) -> dict:
+def _comparisonform(graph: dict) -> dict:
     """Reduce the graph to what makes it up in substance, regardless of notation.
 
     Actions existed in a flat (`{"action": "name", "status": …}`) and a nested form, and the
@@ -230,19 +230,19 @@ def _vergleichsform(graph: dict) -> dict:
     fields) stays in: that is how a real adjustment is recognised.
     """
     def action(cfg: dict) -> dict:
-        roh = cfg.get("action")
-        if isinstance(roh, str):
+        raw = cfg.get("action")
+        if isinstance(raw, str):
             # Flat form: everything except name and label is a parameter.
-            name = roh
+            name = raw
             params = {k: v for k, v in cfg.items()
                       if k not in ("action", "kind", "label", "group")}
             remainder = {k: v for k, v in cfg.items() if k in ("label", "group")}
-        elif isinstance(roh, dict):
-            name, params = roh.get("action", ""), dict(roh.get("params") or {})
+        elif isinstance(raw, dict):
+            name, params = raw.get("action", ""), dict(raw.get("params") or {})
             remainder = {k: v for k, v in cfg.items() if k not in ("action", "kind")}
         else:
             return cfg
-        return {**remainder, "action": {"action": _ALT_ACTION.get(name, name), "params": params}}
+        return {**remainder, "action": {"action": _OLD_ACTION.get(name, name), "params": params}}
 
     nodes = []
     for n in graph.get("nodes") or []:
@@ -269,7 +269,7 @@ async def refresh_generated_definitions(db) -> int:
             WorkflowDefinition.project_id.isnot(None),
             WorkflowDefinition.archived_at.is_(None),
         ))).scalars().all()
-    erneuert = 0
+    renewed = 0
     for d in rows:
         current = (await db.get(WorkflowVersion, d.current_version_id)
                    if d.current_version_id else None)
@@ -278,7 +278,7 @@ async def refresh_generated_definitions(db) -> int:
         new = build_hardware_graph(await _project_steps(db, d.project_id))
         if new == current.graph:
             continue
-        if _vergleichsform(current.graph or {}) != _vergleichsform(new):
+        if _comparisonform(current.graph or {}) != _comparisonform(new):
             continue  # adjusted in substance: do not touch
         last = (await db.execute(
             select(WorkflowVersion).where(WorkflowVersion.definition_id == d.id)
@@ -292,7 +292,7 @@ async def refresh_generated_definitions(db) -> int:
         db.add(version)
         await db.flush()
         d.current_version_id = version.id
-        erneuert += 1
-    if erneuert:
+        renewed += 1
+    if renewed:
         await db.commit()
-    return erneuert
+    return renewed

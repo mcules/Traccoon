@@ -6,7 +6,7 @@ topple a run, and everything that worked before keeps working.
 import datetime as dt
 
 import pytest
-from app.services.workflow_expr import auswerten, fill, katalog
+from app.services.workflow_expr import evaluate, fill, catalog
 
 pytestmark = pytest.mark.asyncio
 
@@ -45,12 +45,12 @@ async def test_lists_and_deep_paths():
 
 
 async def test_computing_and_formatting_timestamps():
-    heute = dt.datetime.now(tz=dt.timezone.utc)
-    assert fill('{{ now | date:"%Y" }}', CTX) == str(heute.year)
+    today = dt.datetime.now(tz=dt.timezone.utc)
+    assert fill('{{ now | date:"%Y" }}', CTX) == str(today.year)
     # Two hours later is another point in time: what is checked is the shift itself.
-    vorher = auswerten("now", CTX)
-    nachher = auswerten('jetzt | add_time:2,"h"', CTX)
-    assert dt.datetime.fromisoformat(nachher) - dt.datetime.fromisoformat(vorher) \
+    before = evaluate("now", CTX)
+    nachher = evaluate('jetzt | add_time:2,"h"', CTX)
+    assert dt.datetime.fromisoformat(nachher) - dt.datetime.fromisoformat(before) \
         >= dt.timedelta(hours=1, minutes=59)
     # An ISO timestamp from the context can be formatted just as well.
     assert fill('{{ zeit | date:"%d.%m.%Y" }}',
@@ -72,7 +72,7 @@ async def test_boolean_values_read_as_expected():
 
 async def test_the_catalog_explains_every_filter():
     """The list feeds the help in the editor: a filter without an explanation is worthless there."""
-    entries = katalog()
+    entries = catalog()
     assert {"truncate", "default", "date", "count", "times"} <= {e["name"] for e in entries}
     assert all(e["hilfe"] for e in entries)
 
@@ -136,5 +136,5 @@ async def test_max_answers_the_question_a_decision_cannot_ask():
 
 async def test_new_filters_stand_in_the_catalog():
     """Was der Editor nicht anbietet, findet niemand."""
-    namen = {e["name"] for e in katalog()}
-    assert {"field", "basename", "max", "min"} <= namen
+    names = {e["name"] for e in catalog()}
+    assert {"field", "basename", "max", "min"} <= names

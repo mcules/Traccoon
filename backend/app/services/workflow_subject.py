@@ -30,8 +30,8 @@ def _field(definition, version_graph: dict) -> str:
     return ""
 
 
-def _dig(daten, path: str):
-    cur = daten
+def _dig(data, path: str):
+    cur = data
     for part in str(path).split("."):
         if isinstance(cur, dict) and part in cur:
             cur = cur[part]
@@ -42,7 +42,7 @@ def _dig(daten, path: str):
     return cur
 
 
-async def subjekt_aus_payload(db: AsyncSession, definition, payload: dict, ctx: dict, *,
+async def subject_from_payload(db: AsyncSession, definition, payload: dict, ctx: dict, *,
                                owner_id: int | None) -> tuple[int | None, int | None, str]:
     """(issue_id, hardware_asset_id, error). An empty error means everything is fine.
 
@@ -62,12 +62,12 @@ async def subjekt_aus_payload(db: AsyncSession, definition, payload: dict, ctx: 
                             f"({definition.subject_kind.value}); im Start-Knoten ist aber "
                             f"kein Feld dafür benannt.")
 
-    roh = _dig(payload, path)
-    if roh is None:
-        roh = _dig(ctx, path)
-    if roh is None or str(roh).strip() == "":
+    raw = _dig(payload, path)
+    if raw is None:
+        raw = _dig(ctx, path)
+    if raw is None or str(raw).strip() == "":
         return None, None, f"Feld {path!r} fehlt in der Nutzlast — kein Artefakt bestimmbar."
-    value = str(roh).strip()
+    value = str(raw).strip()
 
     if definition.subject_kind == WorkflowSubjectKind.issue:
         from ..models.ticket import Issue
@@ -107,13 +107,13 @@ async def _may(db: AsyncSession, owner_id: int | None, project_id: int | None) -
     from ..models.user import User
 
     person = await db.get(User, owner_id)
-    projekt = await db.get(Project, project_id)
-    if person is None or projekt is None:
+    project = await db.get(Project, project_id)
+    if person is None or project is None:
         return False
     if person.global_role == GlobalRole.admin:
         return True
     try:
-        access = await build_access(projekt, person, db)
+        access = await build_access(project, person, db)
     except Exception:  # noqa: BLE001, a 403 or 404 means no access
         return False
     return access.has_role(ProjectRole.member)

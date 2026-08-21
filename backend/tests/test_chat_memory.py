@@ -19,7 +19,7 @@ async def anna(db):
 
 
 @pytest.fixture(autouse=True)
-def kein_echtes_modell(monkeypatch):
+def no_real_model(monkeypatch):
     """Mock away the agent and token resolution; every test sets the aux model itself."""
     async def fake_load_agent(*a, **kw):
         class A:
@@ -34,7 +34,7 @@ def kein_echtes_modell(monkeypatch):
     monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
 
 
-async def _chat(db, anna, question: str, answer: str, *, days_alt: int = 0,
+async def _chat(db, anna, question: str, answer: str, *, days_old: int = 0,
                 agent: str | None = None) -> AssistantTask:
     meta = {"chat_text": question}
     if agent:
@@ -44,8 +44,8 @@ async def _chat(db, anna, question: str, answer: str, *, days_alt: int = 0,
     db.add(t)
     await db.commit()
     await db.refresh(t)
-    if days_alt:
-        t.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days_alt)
+    if days_old:
+        t.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days_old)
         await db.commit()
     return t
 
@@ -64,8 +64,8 @@ async def test_a_short_conversation_stays_verbatim(db, anna, monkeypatch):
     for i in range(3):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
     new = await _chat(db, anna, "Und jetzt?", "")
-    verlauf = await worker._chat_history(db, new)
-    assert [w["body"] for w in verlauf if w["role"] == "user"] == ["Frage 0", "Frage 1", "Frage 2"]
+    history = await worker._chat_history(db, new)
+    assert [w["body"] for w in history if w["role"] == "user"] == ["Frage 0", "Frage 1", "Frage 2"]
     assert not hasattr(aux, "seen")
     assert (await db.execute(select(ChatSummary))).scalars().first() is None
 
@@ -75,16 +75,16 @@ async def test_older_parts_move_into_the_summary(db, anna, monkeypatch):
     for i in range(16):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
     new = await _chat(db, anna, "Und jetzt?", "")
-    verlauf = await worker._chat_history(db, new)
+    history = await worker._chat_history(db, new)
 
-    assert verlauf[0]["label"] == "Woran du dich erinnerst"
-    assert "News-Jobs offen" in verlauf[0]["body"]
+    assert history[0]["label"] == "Woran du dich erinnerst"
+    assert "News-Jobs offen" in history[0]["body"]
     # The most recent 8 stand there verbatim, the oldest no longer.
-    woertlich = [w["body"] for w in verlauf if w["role"] == "user"]
-    assert "Frage 15" in woertlich and "Frage 0" not in woertlich
+    literal = [w["body"] for w in history if w["role"] == "user"]
+    assert "Frage 15" in literal and "Frage 0" not in literal
 
     s = (await db.execute(select(ChatSummary))).scalars().one()
-    assert s.agent == "assistent" and s.bis_task_id > 0
+    assert s.agent == "assistent" and s.to_task_id > 0
 
 
 async def test_the_summary_is_extended_not_replaced(db, anna, monkeypatch):
@@ -124,13 +124,13 @@ async def test_without_aux_the_old_memory_remains(db, anna, monkeypatch):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
     await worker._chat_history(db, await _chat(db, anna, "x", ""))
 
-    async def kaputt(*a, **kw):
+    async def broken(*a, **kw):
         return None
-    monkeypatch.setattr("app.worker.aux.aux_chat", kaputt)
+    monkeypatch.setattr("app.worker.aux.aux_chat", broken)
     for i in range(16, 32):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
-    verlauf = await worker._chat_history(db, await _chat(db, anna, "y", ""))
-    assert "Stand von gestern" in verlauf[0]["body"]
+    history = await worker._chat_history(db, await _chat(db, anna, "y", ""))
+    assert "Stand von gestern" in history[0]["body"]
 
 
 async def test_a_specialist_agent_has_its_own_conversation(db, anna, monkeypatch):
@@ -138,13 +138,13 @@ async def test_a_specialist_agent_has_its_own_conversation(db, anna, monkeypatch
     await _chat(db, anna, "Assistenten-Sache", "ok")
     await _chat(db, anna, "GameProj-Sache", "ok", agent="gameproj-operator")
     new = await _chat(db, anna, "Weiter", "", agent="gameproj-operator")
-    verlauf = await worker._chat_history(db, new)
-    assert [w["body"] for w in verlauf if w["role"] == "user"] == ["GameProj-Sache"]
+    history = await worker._chat_history(db, new)
+    assert [w["body"] for w in history if w["role"] == "user"] == ["GameProj-Sache"]
 
 
 async def test_very_old_conversations_no_longer_count(db, anna, monkeypatch):
     _mock_aux(monkeypatch, "- egal")
-    await _chat(db, anna, "Uralt", "ok", days_alt=30)
+    await _chat(db, anna, "Uralt", "ok", days_old=30)
     await _chat(db, anna, "Neulich", "ok")
-    verlauf = await worker._chat_history(db, await _chat(db, anna, "Weiter", ""))
-    assert [w["body"] for w in verlauf if w["role"] == "user"] == ["Neulich"]
+    history = await worker._chat_history(db, await _chat(db, anna, "Weiter", ""))
+    assert [w["body"] for w in history if w["role"] == "user"] == ["Neulich"]

@@ -27,7 +27,7 @@ from ..models.workflow import WorkflowDefinition, WorkflowVersion
 
 log = logging.getLogger("traccoon.jobs")
 
-ALTE_KINDS = ("prompt", "script", "http", "")
+OLD_KINDS = ("prompt", "script", "http", "")
 
 # Was jeder wiederkehrende Ablauf mitbekommt, ohne dass es im Parametersatz steht
 # (`scheduler._start_workflow_job` legt es in den Startkontext).
@@ -64,9 +64,9 @@ def _task(job: Job) -> str:
 _COL, _ROW = 260, 130
 
 
-def _n(node_id: str, ntype: str, line: int, config: dict, spalte: int = 0) -> dict:
+def _n(node_id: str, ntype: str, line: int, config: dict, column: int = 0) -> dict:
     return {"id": node_id, "type": ntype,
-            "position": {"x": spalte * _COL, "y": line * _ROW},
+            "position": {"x": column * _COL, "y": line * _ROW},
             "data": {"config": config}}
 
 
@@ -84,7 +84,7 @@ def _action(_name: str, _label: str, **params) -> dict:
     return {"label": _label, "action": {"action": _name, "params": params}}
 
 
-def _arbeitsschritt(job: Job, target_name: str = "") -> tuple[dict, str, dict]:
+def _workstep(job: Job, target_name: str = "") -> tuple[dict, str, dict]:
     """Der Schritt, der die eigentliche Arbeit macht.
 
     Zurück kommen der Knoten, der Ausdruck für sein Ergebnis und die Bedingung, an der man
@@ -120,10 +120,10 @@ def _key(name: str) -> str:
 
 
 def _graph(job: Job, target_name: str = "") -> dict:
-    arbeit, result_text, error_bedingung = _arbeitsschritt(job, target_name)
+    work, result_text, error_condition = _workstep(job, target_name)
     nodes = [
         _n("start", "start", 0, {"label": job.name, "trigger": {"kind": "job"}}),
-        arbeit,
+        work,
         # Die Antwort ist das Ergebnis des Jobs: Der Lauf trägt sie in seine Historie zurück,
         # genau wie ein wartender Webhook sie an seinen Aufrufer zurückgibt.
         _n("answer", "auto_action", 2, _action(
@@ -139,7 +139,7 @@ def _graph(job: Job, target_name: str = "") -> dict:
     if job.result_html:
         nodes.insert(2, _n("ablegen", "auto_action", 2, _action(
             "document", "In die Ablage legen", storage=_key(job.name), name=job.name,
-            text=result_text, format="markdown"), spalte=1))
+            text=result_text, format="markdown"), column=1))
         edges = [_e("start", "arbeit"), _e("arbeit", "ablegen"), _e("ablegen", "answer")]
 
     report = job.notify_mode or "always"
@@ -149,26 +149,26 @@ def _graph(job: Job, target_name: str = "") -> dict:
         return {"nodes": nodes, "edges": edges}
 
     text = "{{ document.title }}\n{{ document.url }}" if job.result_html else result_text
-    melde_node = _n("melden", "auto_action", 4, _action(
-        "notify", "Bescheid geben", kind="job", title=f"Job: {job.name}", text=text), spalte=-1)
+    report_node = _n("melden", "auto_action", 4, _action(
+        "notify", "Bescheid geben", kind="job", title=f"Job: {job.name}", text=text), column=-1)
 
     if report == "always":
-        nodes += [melde_node, _n("fertig", "end", 5, {"label": "Gemeldet", "outcome": "completed"})]
+        nodes += [report_node, _n("fertig", "end", 5, {"label": "Gemeldet", "outcome": "completed"})]
         edges += [_e("answer", "melden"), _e("melden", "fertig")]
         return {"nodes": nodes, "edges": edges}
 
     # on_output / on_error: erst hinsehen, dann melden.
     if report == "on_error":
-        bedingung, label = error_bedingung, "fehlgeschlagen"
+        condition, label = error_condition, "fehlgeschlagen"
     else:
-        bedingung, label = {"!=": [{"var": "answer"}, ""]}, "hat etwas gesagt"
+        condition, label = {"!=": [{"var": "answer"}, ""]}, "hat etwas gesagt"
     nodes += [
         _n("melden_wenn", "decision", 3, {
             "label": "Melden?",
-            "branches": [{"handle": "melden", "label": label, "guard": bedingung},
+            "branches": [{"handle": "melden", "label": label, "guard": condition},
                          {"handle": "still", "label": "still bleiben"}],
             "default_handle": "still"}),
-        melde_node,
+        report_node,
         _n("fertig", "end", 5, {"label": "Fertig", "outcome": "completed"}),
     ]
     edges += [_e("answer", "melden_wenn"), _e("melden_wenn", "melden", "melden"),
@@ -194,10 +194,10 @@ async def as_flow(db: AsyncSession, job: Job) -> None:
         target_name = target.name if target else ""
     # Name und Schlüssel beschreiben die Sache, nicht den Auslöser: Der Job heißt schon so,
     # wie das gemeint ist, was er tut — „KI- & Tech-News“, nicht „Job: 3“.
-    from .workflow_templates import freier_key
+    from .workflow_templates import free_key
     d = WorkflowDefinition(
         project_id=job.project_id,
-        key=await freier_key(db, job.name, job.project_id), name=job.name,
+        key=await free_key(db, job.name, job.project_id), name=job.name,
         description=f"Aus der Job-Art „{job.kind or 'prompt'}“ umgestellt.",
         subject_kind=WorkflowSubjectKind.standalone, enabled=True, created_by=job.user_id)
     db.add(d)
@@ -217,7 +217,7 @@ async def as_flow(db: AsyncSession, job: Job) -> None:
 
 async def convert(db: AsyncSession) -> int:
     """Stellt jeden Job um, der noch eine alte Art trägt. Gibt die Anzahl zurück."""
-    jobs = (await db.execute(select(Job).where(Job.kind.in_(ALTE_KINDS)))).scalars().all()
+    jobs = (await db.execute(select(Job).where(Job.kind.in_(OLD_KINDS)))).scalars().all()
     for job in jobs:
         await as_flow(db, job)
     if jobs:

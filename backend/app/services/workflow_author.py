@@ -37,7 +37,7 @@ log = logging.getLogger("workflow_author")
 
 DEFAULT_MODEL = os.getenv("DEFAULT_CLAUDE_MODEL", "claude-sonnet-4-5")
 MAX_TOOLS = 220          # prompt cap, the picker in the editor stays complete
-SPALTE, LINE = 260, 130     # same grid the shipped graphs use
+COLUMN, LINE = 260, 130     # same grid the shipped graphs use
 
 KONTRAKT = """\
 Du zeichnest Abläufe für Traccoon als gerichteten Graphen. Antworte AUSSCHLIESSLICH mit
@@ -107,7 +107,7 @@ REGELN (daran wird geprüft, ein Verstoß macht den Ablauf unbrauchbar):
 """
 
 
-def _json_aus(text: str) -> dict:
+def _json_from(text: str) -> dict:
     """Pull JSON out of a model answer, tolerating code fences and preambles."""
     t = (text or "").strip()
     t = re.sub(r"^```(?:json)?|```$", "", t, flags=re.MULTILINE).strip()
@@ -123,27 +123,27 @@ def _json_aus(text: str) -> dict:
     return {}
 
 
-def _tiefen(nodes: list[dict], edges: list[dict]) -> dict[str, int]:
+def _deep(nodes: list[dict], edges: list[dict]) -> dict[str, int]:
     """How far each node sits from the start, used for a readable layout."""
     start = next((n["id"] for n in nodes if n.get("type") == "start"), None)
-    tiefe: dict[str, int] = {}
+    depth: dict[str, int] = {}
     if start is None:
-        return tiefe
-    rand, t = [start], 0
-    tiefe[start] = 0
-    while rand and t < 200:
+        return depth
+    edge, t = [start], 0
+    depth[start] = 0
+    while edge and t < 200:
         t += 1
         naechste = []
-        for nid in rand:
+        for nid in edge:
             for e in edges:
-                if e.get("source") == nid and e.get("target") not in tiefe:
-                    tiefe[e["target"]] = t
+                if e.get("source") == nid and e.get("target") not in depth:
+                    depth[e["target"]] = t
                     naechste.append(e["target"])
-        rand = naechste
-    return tiefe
+        edge = naechste
+    return depth
 
 
-def anordnen(graph: dict) -> dict:
+def arrange(graph: dict) -> dict:
     """Set positions: one row per step, siblings side by side.
 
     The model should think about the flow, not about the layout. Without positions every
@@ -151,17 +151,17 @@ def anordnen(graph: dict) -> dict:
     """
     nodes = graph.get("nodes") or []
     edges = graph.get("edges") or []
-    tiefe = _tiefen(nodes, edges)
-    belegt: dict[int, int] = {}
+    depth = _deep(nodes, edges)
+    taken: dict[int, int] = {}
     for n in nodes:
-        t = tiefe.get(n.get("id"), 0)
-        spalte = belegt.get(t, 0)
-        belegt[t] = spalte + 1
-        n["position"] = {"x": spalte * SPALTE, "y": t * LINE}
+        t = depth.get(n.get("id"), 0)
+        column = taken.get(t, 0)
+        taken[t] = column + 1
+        n["position"] = {"x": column * COLUMN, "y": t * LINE}
     return {"nodes": nodes, "edges": edges}
 
 
-def _config_von(n: dict) -> dict:
+def _config_from(n: dict) -> dict:
     """Find the config, no matter how deep the model buried it.
 
     The contract asks for `data.config`, but models just as happily write `config` right
@@ -170,13 +170,13 @@ def _config_von(n: dict) -> dict:
     run looked like: six nodes without a single label.
     """
     data = n.get("data") if isinstance(n.get("data"), dict) else {}
-    for kandidat in (data.get("config"), n.get("config"), data):
-        if isinstance(kandidat, dict) and kandidat:
-            return {k: v for k, v in kandidat.items() if k not in ("config", "runtimeState")}
+    for candidate in (data.get("config"), n.get("config"), data):
+        if isinstance(candidate, dict) and candidate:
+            return {k: v for k, v in candidate.items() if k not in ("config", "runtimeState")}
     return {}
 
 
-def _nachbessern(nodes: list[dict]) -> None:
+def _repair(nodes: list[dict]) -> None:
     """Close small omissions here instead of burning a model round on them.
 
     Both otherwise cost time and look like a system error to the person watching: a
@@ -188,22 +188,22 @@ def _nachbessern(nodes: list[dict]) -> None:
         if n["type"] == "decision" and cfg.get("branches") and not cfg.get("default_handle"):
             branches = [b for b in cfg["branches"] if isinstance(b, dict) and b.get("handle")]
             if branches:
-                ohne_guard = next((b for b in branches if not b.get("guard")), branches[-1])
-                cfg["default_handle"] = ohne_guard["handle"]
+                without_guard = next((b for b in branches if not b.get("guard")), branches[-1])
+                cfg["default_handle"] = without_guard["handle"]
         if n["type"] == "end" and not cfg.get("outcome"):
             cfg["outcome"] = "completed"
 
 
-def _saeubern(roh: dict) -> dict:
+def _clean(raw: dict) -> dict:
     """Keep only what a graph may contain, and make sure edges have ids."""
     nodes, edges = [], []
-    for i, n in enumerate(roh.get("nodes") or []):
+    for i, n in enumerate(raw.get("nodes") or []):
         if not isinstance(n, dict) or not n.get("id") or not n.get("type"):
             continue
         nodes.append({"id": str(n["id"]), "type": str(n["type"]),
-                      "data": {"config": _config_von(n)}})
-    _nachbessern(nodes)
-    for i, e in enumerate(roh.get("edges") or []):
+                      "data": {"config": _config_from(n)}})
+    _repair(nodes)
+    for i, e in enumerate(raw.get("edges") or []):
         if not isinstance(e, dict) or not e.get("source") or not e.get("target"):
             continue
         edge = {"id": str(e.get("id") or f"e{i}"),
@@ -216,7 +216,7 @@ def _saeubern(roh: dict) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-async def _werkzeugliste(db: AsyncSession, owner_id: int | None) -> str:
+async def _toollist(db: AsyncSession, owner_id: int | None) -> str:
     from .workflow_tools import tools
     try:
         alle = await tools(db, owner_id)
@@ -232,8 +232,8 @@ async def _werkzeugliste(db: AsyncSession, owner_id: int | None) -> str:
     return header + "):\n" + "\n".join(lines)
 
 
-async def entwerfen(db: AsyncSession, *, owner_id: int, description: str,
-                    subject_kind: WorkflowSubjectKind, vorhanden: dict | None = None,
+async def compose(db: AsyncSession, *, owner_id: int, description: str,
+                    subject_kind: WorkflowSubjectKind, existing: dict | None = None,
                     token_name: str = "") -> dict:
     """Returns {"graph": {...}, "fehler": [...], "erklaerung": "..."}.
 
@@ -245,54 +245,54 @@ async def entwerfen(db: AsyncSession, *, owner_id: int, description: str,
     if not token:
         raise RuntimeError("No Claude access stored (Settings -> providers)")
 
-    from .workflow_expr import katalog as filter_katalog
+    from .workflow_expr import catalog as filter_catalog
 
     filter_text = "Filter für {{ … | filter:arg }}:\n" + "\n".join(
-        f"- {f['name']}: {f['hilfe']}" for f in filter_katalog())
+        f"- {f['name']}: {f['hilfe']}" for f in filter_catalog())
     parts = [KONTRAKT, "\n" + filter_text,
              f"\nGegenstand des Ablaufs: subject_kind={subject_kind.value}."]
     if subject_kind != WorkflowSubjectKind.issue:
         parts.append("Kein Ticket im Rücken: agent_task, comment und die Ticket-Status-"
                      "Aktionen stehen NICHT zur Verfügung.")
-    tools_text = await _werkzeugliste(db, owner_id)
+    tools_text = await _toollist(db, owner_id)
     if tools_text:
         parts.append("\n" + tools_text)
     system = "\n".join(parts)
 
-    if vorhanden and (vorhanden.get("nodes") or []):
+    if existing and (existing.get("nodes") or []):
         task = ("Hier ist der bestehende Ablauf:\n"
-                   f"{json.dumps(_saeubern(vorhanden), ensure_ascii=False)}\n\n"
+                   f"{json.dumps(_clean(existing), ensure_ascii=False)}\n\n"
                    f"Baue ihn nach diesem Wunsch um: {description}\n"
                    "Behalte, was nicht betroffen ist — inklusive der Knoten-IDs.")
     else:
         task = f"Zeichne einen Ablauf für: {description}"
 
-    verlauf = [{"role": "user", "content": task}]
+    history = [{"role": "user", "content": task}]
     graph: dict = {"nodes": [], "edges": []}
-    erklaerung = ""
+    explanation = ""
     error: list[str] = []
 
     for runde in range(2):
         resp = await llm_router.chat(
             provider="claude_code", model=DEFAULT_MODEL,
-            messages=[{"role": "system", "content": system}, *verlauf],
+            messages=[{"role": "system", "content": system}, *history],
             temperature=0.2, max_tokens=8000, tokens={"claude_code": token})
-        roh = _json_aus(resp.text or "")
-        if not roh.get("nodes"):
+        raw = _json_from(resp.text or "")
+        if not raw.get("nodes"):
             error = ["Das Modell hat keinen Graphen geliefert."]
             break
-        erklaerung = str(roh.get("erklaerung") or "")[:500]
-        graph = anordnen(_saeubern(roh))
+        explanation = str(raw.get("erklaerung") or "")[:500]
+        graph = arrange(_clean(raw))
         error = validate_graph(subject_kind, graph)
         if not error or runde == 1:
             break
         # Fix-up round with the very sentences the editor would show.
         log.info("The draft has %d errors, so one correction", len(error))
-        verlauf += [
+        history += [
             {"role": "assistant", "content": resp.text or ""},
             {"role": "user", "content":
              "Die Prüfung meldet:\n" + "\n".join(f"- {f}" for f in error)
              + "\nGib den vollständigen, korrigierten Graphen erneut als JSON aus."},
         ]
 
-    return {"graph": graph, "fehler": error, "erklaerung": erklaerung}
+    return {"graph": graph, "fehler": error, "erklaerung": explanation}

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.enums import ProjectRole
 from ..models.invitation import InvitationStatus, ProjectInvitation
@@ -87,7 +87,7 @@ async def invite_member(
     """Invites a user by e-mail. If the user already exists (known from another project for
     instance), they are assigned DIRECTLY, without the detour over mail."""
     if ROLE_RANK[data.role] > ROLE_RANK[access.role]:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.role_higher_than_own",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.role_higher_than_own",
                      "Cannot hand out a role higher than one's own")
     email = data.email.strip().lower()
     project = access.project
@@ -102,7 +102,7 @@ async def invite_member(
             )
         ).scalar_one_or_none()
         if dup is not None:
-            raise Fehler(status.HTTP_409_CONFLICT, "err.already_member", "Already a member")
+            raise Error(status.HTTP_409_CONFLICT, "err.already_member", "Already a member")
         m = ProjectMember(
             project_id=project.id, user_id=target.id, role=data.role,
             ai_assign=default_ai_assign(data.role),
@@ -154,7 +154,7 @@ async def revoke_invitation(
 ):
     inv = await db.get(ProjectInvitation, invitation_id)
     if inv is None or inv.project_id != access.project.id:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.invitation_not_found", "Invitation not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.invitation_not_found", "Invitation not found")
     inv.status = InvitationStatus.revoked
     await db.commit()
 
@@ -179,7 +179,7 @@ async def _load_valid(db: AsyncSession, token: str) -> tuple[ProjectInvitation |
 async def preview_invitation(token: str, db: AsyncSession = Depends(get_session)):
     inv, project, reason = await _load_valid(db, token)
     if inv is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.invitation_not_found", "Invitation not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.invitation_not_found", "Invitation not found")
     return InvitationPreview(
         project_key=project.key if project else "?",
         project_name=project.name if project else "?",
@@ -195,11 +195,11 @@ async def accept_invitation(
 ):
     inv, project, reason = await _load_valid(db, token)
     if inv is None or project is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.invitation_not_found", "Invitation not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.invitation_not_found", "Invitation not found")
     if reason is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, reason)
     if inv.email != user.email.lower():
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.invitation_other_address",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.invitation_other_address",
                      "This invitation is addressed to another e-mail address")
     dup = (
         await db.execute(

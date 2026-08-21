@@ -15,7 +15,7 @@ TRANSLITERATION = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss",
                            "ú": "u", "ù": "u", "ç": "c", "ñ": "n"})
 
 
-def slug(text: str, laenge: int = 100) -> str:
+def slug(text: str, length: int = 100) -> str:
     """Kleinbuchstaben, Ziffern, Bindestriche — leer, wenn nichts davon übrig bleibt."""
-    roh = (text or "").lower().translate(TRANSLITERATION)
-    return re.sub(r"[^a-z0-9]+", "-", roh).strip("-")[:laenge]
+    raw = (text or "").lower().translate(TRANSLITERATION)
+    return re.sub(r"[^a-z0-9]+", "-", raw).strip("-")[:length]

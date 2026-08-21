@@ -29,7 +29,7 @@ from ..services.assistant_inbox import (
 )
 from ..services.artifacts import set_ticket_status
 from ..services.comments import add_system_comment, apply_user_comment
-from ..services.spam_review import entscheide_batch, entscheiden, karte, zurueckholen
+from ..services.spam_review import decide_batch, decide, karte, reclaim
 from ..worker.assistant_gate import apply_perm_decision
 from .mdtg import clip, safe
 
@@ -114,9 +114,9 @@ async def _vocabulary() -> str:
     if VOICE_VOCABULARY:
         words += [w.strip() for w in VOICE_VOCABULARY.replace(".", ",").split(",")]
     seen: set[str] = set()
-    sauber = [w for w in words
+    clean = [w for w in words
               if w and len(w) > 1 and not (w.lower() in seen or seen.add(w.lower()))]
-    text = ", ".join(sauber[:VOCABULARY_MAX_WORDS]) + ("." if sauber else "")
+    text = ", ".join(clean[:VOCABULARY_MAX_WORDS]) + ("." if clean else "")
     _vocabulary_cache = (now, text)
     return text
 
@@ -143,7 +143,7 @@ _AUDIO_MIME_WHITELIST: dict[str, str] = {
 }
 
 
-def _upload_name_kind(medienart: str, mime_type: str | None) -> tuple[str, str]:
+def _upload_name_kind(mediakind: str, mime_type: str | None) -> tuple[str, str]:
     """File name and content type matching the actual media type, NOT `audio.ogg` /
     `application/octet-stream` across the board: `voice` really is OGG/Opus, but `audio`
     uploads are often MP3/M4A/WAV and `video_note` is an MP4 container (a video plus an audio
@@ -156,9 +156,9 @@ def _upload_name_kind(medienart: str, mime_type: str | None) -> tuple[str, str]:
     checked against `_AUDIO_MIME_WHITELIST` instead of taking the raw value as the HTTP content
     type. An unknown or suspicious value falls back to a safe default.
     """
-    if medienart == "video_note":
+    if mediakind == "video_note":
         return "video_note.mp4", "video/mp4"
-    if medienart == "audio":
+    if mediakind == "audio":
         mime = (mime_type or "").strip().lower()
         extension = _AUDIO_MIME_WHITELIST.get(mime)
         if extension is None:
@@ -169,7 +169,7 @@ def _upload_name_kind(medienart: str, mime_type: str | None) -> tuple[str, str]:
     return "voice.ogg", "audio/ogg"
 
 
-async def _nach_wav(audio: bytes) -> bytes:
+async def _to_wav(audio: bytes) -> bytes:
     """Telegram-Audio in 16-kHz-Mono-WAV wandeln.
 
     The audio path of llama.cpp (miniaudio) takes WAV/MP3/FLAC, but Telegram delivers OGG/Opus,
@@ -188,20 +188,20 @@ async def _nach_wav(audio: bytes) -> bytes:
     return wav
 
 
-def _asr_text(roh: str) -> str:
+def _asr_text(raw: str) -> str:
     """Peel the payload out of the model answer.
 
     Qwen3-ASR writes its control markers into the text: "language German<asr_text>…". Without
     this cut that would stand in the chat as "🎙 understood" and go on to the
     Assistenten weiter.
     """
-    text = roh.split("<asr_text>")[-1]
-    for marke in ("</asr_text>", "<|im_end|>"):
-        text = text.split(marke)[0]
+    text = raw.split("<asr_text>")[-1]
+    for mark in ("</asr_text>", "<|im_end|>"):
+        text = text.split(mark)[0]
     return text.strip()
 
 
-async def _transkribieren_qwen(audio: bytes, medienart: str, mime_type: str | None) -> str:
+async def _transcribe_qwen(audio: bytes, mediakind: str, mime_type: str | None) -> str:
     """Qwen3-ASR on the integrated GPU, a language model with audio input.
 
     The difference to Whisper is the handling of proper names: Whisper gets a word list as
@@ -210,7 +210,7 @@ async def _transkribieren_qwen(audio: bytes, medienart: str, mime_type: str | No
     against "ABC-31 in Traccoon" (here), at 0.5 s instead of 3.1 s on the CPU.
     """
     import httpx
-    wav = await _nach_wav(audio)
+    wav = await _to_wav(audio)
     vocabulary = await _vocabulary()
     hint = f"Eigennamen, die vorkommen können: {vocabulary}\n" if vocabulary else ""
     body = {
@@ -224,11 +224,11 @@ async def _transkribieren_qwen(audio: bytes, medienart: str, mime_type: str | No
     async with httpx.AsyncClient(timeout=max(120.0, VOICE_MAX_SECONDS + 60.0)) as client:
         resp = await client.post(f"{ASR_URL}/v1/chat/completions", json=body)
         resp.raise_for_status()
-        inhalt = resp.json()["choices"][0]["message"]["content"]
-    return _asr_text(inhalt)
+        content = resp.json()["choices"][0]["message"]["content"]
+    return _asr_text(content)
 
 
-async def _transkribieren(audio: bytes, medienart: str = "voice",
+async def _transcribe(audio: bytes, mediakind: str = "voice",
                            mime_type: str | None = None) -> str:
     """Transcribe a voice message locally. German first (the most common case), and on an EMPTY
     result (not on a technical error) a second attempt without a language (auto detection). A
@@ -251,13 +251,13 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
         # audio unreadable) it falls back to Whisper instead of losing the message: a second
         # path that already runs is worth more than an honest refusal.
         try:
-            return await _transkribieren_qwen(audio, medienart, mime_type)
+            return await _transcribe_qwen(audio, mediakind, mime_type)
         except Exception as exc:  # noqa: BLE001
             log.warning("Qwen3-ASR failed (%s), continuing with Whisper", exc)
     if not WHISPER_URL:
         raise RuntimeError("no WHISPER_URL configured (the local whisper container is missing)")
     timeout = max(120.0, VOICE_MAX_SECONDS + 60.0)
-    dateiname, content_type = _upload_name_kind(medienart, mime_type)
+    filename, content_type = _upload_name_kind(mediakind, mime_type)
     vocabulary = await _vocabulary()
     async with httpx.AsyncClient(timeout=timeout) as client:
         for language in ("de", None):
@@ -274,7 +274,7 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
             # passed through to the caller: a second attempt would only repeat the same error
             # and cost time on top.
             resp = await client.post(f"{WHISPER_URL}/asr", params=params,
-                                     files={"audio_file": (dateiname, audio, content_type)})
+                                     files={"audio_file": (filename, audio, content_type)})
             resp.raise_for_status()
             text = (resp.json().get("text") or "").strip()
             if text:
@@ -286,7 +286,7 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
 _DEC_TEXT = {"once": "einmal", "always": "immer", "never": "nie"}
 
 
-async def _erledigt(cq: CallbackQuery, vermerk: str) -> None:
+async def _done(cq: CallbackQuery, note: str) -> None:
     """Remove the keyboard and write the outcome onto the question.
 
     That way one sees in the history at once what is still open: answered questions carry no
@@ -297,7 +297,7 @@ async def _erledigt(cq: CallbackQuery, vermerk: str) -> None:
     msg = cq.message
     if msg is None:
         return
-    line = f"<i>{safe(vermerk)} · {_now().strftime('%d.%m. %H:%M')}</i>"
+    line = f"<i>{safe(note)} · {_now().strftime('%d.%m. %H:%M')}</i>"
     try:
         # html_text keeps the formatting of the original message (bold, lines).
         await msg.edit_text(f"{msg.html_text}\n\n{line}", parse_mode="HTML")
@@ -323,14 +323,14 @@ def _now() -> dt.datetime:
 # `Notification.media_path`. A second exit would be the kind of duplication this repository
 # argues against everywhere else.
 
-def _teilbloecke_ende(roh: bytes, i: int) -> int:
+def _subblocks_end(raw: bytes, i: int) -> int:
     """End of a chain of GIF sub blocks (length byte, data, …, 0x00)."""
-    while i < len(roh) and roh[i]:
-        i += roh[i] + 1
+    while i < len(raw) and raw[i]:
+        i += raw[i] + 1
     return i + 1
 
 
-def _gif_masse(roh: bytes) -> dict[str, int]:
+def _gif_mass(raw: bytes) -> dict[str, int]:
     """Width, height and duration from the GIF itself, an empty dict when it is none.
 
     Why measure at all instead of entering fixed values: this exit knows only "a file", not its
@@ -341,42 +341,42 @@ def _gif_masse(roh: bytes) -> dict[str, int]:
     Unreadable or not a GIF means claiming nothing, and Telegram measures for itself after loading.
     """
     try:
-        if not roh.startswith(b"GIF") or len(roh) < 13:
+        if not raw.startswith(b"GIF") or len(raw) < 13:
             return {}
-        breite = int.from_bytes(roh[6:8], "little")
-        hoehe = int.from_bytes(roh[8:10], "little")
+        width = int.from_bytes(raw[6:8], "little")
+        height = int.from_bytes(raw[8:10], "little")
         i = 13
-        if roh[10] & 0x80:                       # skip the global colour table
-            i += 3 * (2 ** ((roh[10] & 7) + 1))
-        hundertstel = 0
-        while i < len(roh):
-            marke = roh[i]
-            if marke == 0x21:                    # Erweiterung
-                label = roh[i + 1]
+        if raw[10] & 0x80:                       # skip the global colour table
+            i += 3 * (2 ** ((raw[10] & 7) + 1))
+        hundredth = 0
+        while i < len(raw):
+            mark = raw[i]
+            if mark == 0x21:                    # Erweiterung
+                label = raw[i + 1]
                 i += 2
-                if label == 0xF9 and i + 4 <= len(roh):
+                if label == 0xF9 and i + 4 <= len(raw):
                     # Graphic control: block size, flags, delay (1/100 s).
-                    hundertstel += int.from_bytes(roh[i + 2:i + 4], "little")
-                i = _teilbloecke_ende(roh, i)
-            elif marke == 0x2C:                  # Bildbeschreibung
-                kennzeichen = roh[i + 9]
+                    hundredth += int.from_bytes(raw[i + 2:i + 4], "little")
+                i = _subblocks_end(raw, i)
+            elif mark == 0x2C:                  # Bildbeschreibung
+                marker = raw[i + 9]
                 i += 10
-                if kennzeichen & 0x80:           # lokale Farbtabelle
-                    i += 3 * (2 ** ((kennzeichen & 7) + 1))
+                if marker & 0x80:           # lokale Farbtabelle
+                    i += 3 * (2 ** ((marker & 7) + 1))
                 i += 1                           # LZW minimum code size
-                i = _teilbloecke_ende(roh, i)
+                i = _subblocks_end(raw, i)
             else:                                # 0x3B (end) or something unexpected
                 break
-        masse = {"width": breite, "height": hoehe}
-        if hundertstel:
+        masse = {"width": width, "height": height}
+        if hundredth:
             # Telegram wants whole seconds; a film under one second is still one.
-            masse["duration"] = max(1, round(hundertstel / 100))
+            masse["duration"] = max(1, round(hundredth / 100))
         return masse
     except Exception:  # noqa: BLE001
         return {}
 
 
-async def _zustellen(bot, n, text: str, markup) -> None:
+async def _deliver(bot, n, text: str, markup) -> None:
     """Deliver one notification, with media when some lies there, otherwise as text.
 
     Three decisions come together here:
@@ -396,22 +396,22 @@ async def _zustellen(bot, n, text: str, markup) -> None:
         if path and os.path.isfile(path):
             from aiogram.types import BufferedInputFile
             with open(path, "rb") as fh:
-                roh = fh.read()
-            file = BufferedInputFile(roh, filename=os.path.basename(path))
+                raw = fh.read()
+            file = BufferedInputFile(raw, filename=os.path.basename(path))
             # Telegram cuts captions at 1024 characters: uncut, the message is rejected instead
             # of merely trimmed.
-            beschriftung = text[:1024]
+            label = text[:1024]
             kind = (n.media_kind or "").strip() or "animation"
             if kind == "photo":
-                await bot.send_photo(int(n.chat_id), photo=file, caption=beschriftung,
+                await bot.send_photo(int(n.chat_id), photo=file, caption=label,
                                      parse_mode="HTML", reply_markup=markup)
             elif kind == "document":
-                await bot.send_document(int(n.chat_id), document=file, caption=beschriftung,
+                await bot.send_document(int(n.chat_id), document=file, caption=label,
                                         parse_mode="HTML", reply_markup=markup)
             else:
-                await bot.send_animation(int(n.chat_id), animation=file, caption=beschriftung,
+                await bot.send_animation(int(n.chat_id), animation=file, caption=label,
                                          parse_mode="HTML", reply_markup=markup,
-                                         **_gif_masse(roh))
+                                         **_gif_mass(raw))
         else:
             if path:
                 log.warning("Medium %s not readable, notification %s goes as text", path, n.id)
@@ -429,7 +429,7 @@ async def _acting_user(db, chat_id: str) -> User | None:
     return (await db.execute(select(User).where(User.global_role == GlobalRole.admin).order_by(User.id))).scalars().first()
 
 
-async def _voice_transkript(bot, m) -> str | None:
+async def _voice_transcript(bot, m) -> str | None:
     """Resolve a voice message (voice/audio/video_note) into text, including visible feedback so
     that mishearings are noticed at once (the lesson of 2026-07-29: better an honest refusal
     than silence).
@@ -447,7 +447,7 @@ async def _voice_transkript(bot, m) -> str | None:
     if media is None:
         return None
     duration = getattr(media, "duration", 0) or 0
-    groesse = getattr(media, "file_size", 0) or 0
+    size = getattr(media, "file_size", 0) or 0
     # Both signals are to be checked INDEPENDENTLY, not as alternatives: a short `duration`
     # (possibly forged or simply wrong) on an actually very large `file_size` must not skip the
     # size check, otherwise exactly the memory and CPU risk this check prevents would occur.
@@ -457,12 +457,12 @@ async def _voice_transkript(bot, m) -> str | None:
                        f"{VOICE_MAX_SECONDS // 60} Min.) — bitte kürzer aufnehmen oder "
                        f"als Text schicken.")
         return ""
-    if groesse and groesse > VOICE_MAX_BYTES:
-        await m.answer(f"🙉 Datei zu groß ({groesse // (1024 * 1024)} MB, Grenze "
+    if size and size > VOICE_MAX_BYTES:
+        await m.answer(f"🙉 Datei zu groß ({size // (1024 * 1024)} MB, Grenze "
                        f"{VOICE_MAX_BYTES // (1024 * 1024)} MB) — bitte kürzer "
                        f"aufnehmen oder als Text schicken.")
         return ""
-    if not duration and not groesse:
+    if not duration and not size:
         # Neither `duration` nor `file_size` usable. WITHOUT one of the two checks a file of
         # arbitrary size would be loaded completely into memory unchecked and passed on to
         # Whisper (a memory and CPU risk). Better an honest refusal than loading blindly.
@@ -472,16 +472,16 @@ async def _voice_transkript(bot, m) -> str | None:
         return ""
     try:
         file = await bot.get_file(media.file_id)
-        puffer = await bot.download_file(file.file_path)
-        roh = puffer.read() if hasattr(puffer, "read") else bytes(puffer)
+        buffer = await bot.download_file(file.file_path)
+        raw = buffer.read() if hasattr(buffer, "read") else bytes(buffer)
     except Exception as exc:  # noqa: BLE001
         log.warning("Voice message %s not loadable: %s", media.file_id, exc)
         await m.answer("🙉 Sprachnachricht konnte nicht geladen werden — bitte als Text schicken.")
         return ""
-    medienart = "voice" if m.voice else ("video_note" if m.video_note else "audio")
+    mediakind = "voice" if m.voice else ("video_note" if m.video_note else "audio")
     mime_type = getattr(media, "mime_type", None)
     try:
-        text = await _transkribieren(roh, medienart=medienart, mime_type=mime_type)
+        text = await _transcribe(raw, mediakind=mediakind, mime_type=mime_type)
     except Exception as exc:  # noqa: BLE001
         log.warning("Transcription failed: %s", exc)
         await m.answer(f"🙉 Transkription nicht möglich ({exc}) — bitte als Text schicken.")
@@ -606,20 +606,20 @@ async def run_bot() -> None:
                         elif n.kind == "spam_digest" and n.spam_verdict_id:
                             # The collection hangs on the first case: through it the key of the
                             # whole set is found.
-                            erster = await db.get(SpamVerdict, n.spam_verdict_id)
-                            markup = (_spam_digest_kb(erster.digest_batch)
-                                      if erster and erster.digest_batch else None)
+                            first = await db.get(SpamVerdict, n.spam_verdict_id)
+                            markup = (_spam_digest_kb(first.digest_batch)
+                                      if first and first.digest_batch else None)
                         else:
                             markup = _kb_for(n.kind, issue_key, req_id)
                         # `_zustellen` decides between text and media, and sets `notified_at`
                         # in every case (otherwise an endless retry).
-                        await _zustellen(bot, n, text, markup)
+                        await _deliver(bot, n, text, markup)
                     await db.commit()
             except Exception:  # noqa: BLE001
                 log.exception("notifier error")
             await asyncio.sleep(3)
 
-    async def _agent_rollen(db, user_id: int | None) -> list[str]:
+    async def _agent_roles(db, user_id: int | None) -> list[str]:
         """Die Agenten, die dieser Mensch ansprechen kann.
 
         Aus der Datenbank statt aus einer Liste im Code: Wer einen Agenten anlegt, soll ihn
@@ -638,9 +638,9 @@ async def run_bot() -> None:
     async def _start(m: Message):
         async with SessionLocal() as db:
             user = await _acting_user(db, m.chat.id)
-            rollen = await _agent_rollen(db, user.id if user else None)
-        agenten = " \u00b7 /agent <" + "|".join(rollen) + "> <Text>" if rollen else ""
-        await m.answer("\U0001f99d Traccoon-Bot. /tasks \u00b7 /comment <KEY> <Text>" + agenten)
+            roles = await _agent_roles(db, user.id if user else None)
+        agents = " \u00b7 /agent <" + "|".join(roles) + "> <Text>" if roles else ""
+        await m.answer("\U0001f99d Traccoon-Bot. /tasks \u00b7 /comment <KEY> <Text>" + agents)
 
     @dp.message(Command("tasks"))
     async def _tasks(m: Message):
@@ -693,9 +693,9 @@ async def run_bot() -> None:
 
         async with SessionLocal() as db:
             user = await _acting_user(db, m.chat.id)
-            rollen = await _agent_rollen(db, user.id if user else None)
-            if not name or name not in rollen:
-                known = ", ".join(rollen) or "keine"
+            roles = await _agent_roles(db, user.id if user else None)
+            if not name or name not in roles:
+                known = ", ".join(roles) or "keine"
                 await m.answer("Nutzung: /agent <name> <Frage oder Auftrag>\n"
                                f"Verfuegbar: {known}")
                 return
@@ -715,14 +715,14 @@ async def run_bot() -> None:
         # An answer by voice message: the same quoted reference as with text, only transcribed.
         text = m.text
         if text is None:
-            gehoert = await _voice_transkript(bot, m)
-            if gehoert is None:
+            belongs = await _voice_transcript(bot, m)
+            if belongs is None:
                 await m.answer("🙉 Damit kann ich noch nichts anfangen — schick es mir als "
                                "Text oder Sprachnachricht.")
                 return
-            if not gehoert:
+            if not belongs:
                 return   # _voice_transkript has already sent the refusal
-            text = gehoert
+            text = belongs
 
         # Banking two factor: an answer to the "banking sync needs a 2FA code for <source>"
         # card, passing the OTP on to submit_auth through the banking tool server.
@@ -790,7 +790,7 @@ async def run_bot() -> None:
         # text. Transcribed locally (faster-whisper), no cloud call.
         if not await _allowed(m.from_user.id):
             return
-        text = await _voice_transkript(bot, m)
+        text = await _voice_transcript(bot, m)
         if not text:
             return   # None never happens here (the filter only matches audio); "" means already refused
         await _chat_task(m, text=text)
@@ -827,11 +827,11 @@ async def run_bot() -> None:
                     iss.hold_reason = None
                     await db.commit()
                     await cq.answer("OK")
-                    await _erledigt(cq, "✅ Plan freigegeben" if data.startswith("approve:")
+                    await _done(cq, "✅ Plan freigegeben" if data.startswith("approve:")
                                     else "✖ Plan abgelehnt")
                 else:
                     await cq.answer("nicht mehr offen")
-                    await _erledigt(cq, "⏭ nicht mehr offen (anderswo entschieden)")
+                    await _done(cq, "⏭ nicht mehr offen (anderswo entschieden)")
             elif data.startswith("accept:"):
                 key = data.split(":", 1)[1]
                 iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
@@ -844,10 +844,10 @@ async def run_bot() -> None:
                     await enqueue_task({"kind": "accept", "task_id": f"accept-{iss.key}",
                                         "issue_id": iss.id, "project_id": iss.project_id})
                     await cq.answer("Abgenommen")
-                    await _erledigt(cq, "✅ Abgenommen")
+                    await _done(cq, "✅ Abgenommen")
                 else:
                     await cq.answer("nicht mehr offen")
-                    await _erledigt(cq, "⏭ nicht mehr offen (anderswo entschieden)")
+                    await _done(cq, "⏭ nicht mehr offen (anderswo entschieden)")
             elif data.startswith("perm:"):
                 _, dec, rid = data.split(":", 2)
                 pr = await db.get(PermRequest, int(rid))
@@ -868,29 +868,29 @@ async def run_bot() -> None:
                         iss.continuation_count += 1
                     await db.commit()
                     await cq.answer(f"Berechtigung: {dec}")
-                    await _erledigt(cq, f"🔑 Berechtigung: {_DEC_TEXT.get(dec, dec)}")
+                    await _done(cq, f"🔑 Berechtigung: {_DEC_TEXT.get(dec, dec)}")
                 else:
                     await cq.answer("schon entschieden")
-                    await _erledigt(cq, "⏭ schon entschieden")
+                    await _done(cq, "⏭ schon entschieden")
             elif data.startswith("atask:"):
                 _, action, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))
                 if t is None:
                     await cq.answer("Not found")
-                    await _erledigt(cq, "⏭ Aufgabe nicht mehr vorhanden")
+                    await _done(cq, "⏭ Aufgabe nicht mehr vorhanden")
                 elif t.status not in ("new", "error"):
                     await cq.answer(f"schon erledigt ({t.status})")
-                    await _erledigt(cq, f"⏭ schon erledigt ({t.status})")
+                    await _done(cq, f"⏭ schon erledigt ({t.status})")
                 elif action == "reject":
                     await reject_assistant_task(db, t)
                     await cq.answer("Verworfen")
-                    await _erledigt(cq, "❌ Verworfen")
+                    await _done(cq, "❌ Verworfen")
                 else:
                     scope = {"sender": "sender", "category": "category"}.get(action, "once")
                     # Quick approval by chat is redacted (safe); unredacted is handled by the web inbox.
                     await approve_assistant_task(db, t, scope=scope, redaction="redacted")
                     await cq.answer("Freigegeben" + ("" if scope == "once" else " + gemerkt"))
-                    await _erledigt(cq, "✅ Freigegeben" + {
+                    await _done(cq, "✅ Freigegeben" + {
                         "sender": " · Absender künftig automatisch",
                         "category": " · Kategorie künftig automatisch"}.get(scope, ""))
             elif data.startswith("spam:"):
@@ -898,29 +898,29 @@ async def run_bot() -> None:
                 v = await db.get(SpamVerdict, int(vid))
                 if v is None:
                     await cq.answer("Not found")
-                    await _erledigt(cq, "⏭ Urteil nicht mehr vorhanden")
+                    await _done(cq, "⏭ Urteil nicht mehr vorhanden")
                 elif v.status not in ("pending", "spam", "ham"):
                     await cq.answer(f"schon erledigt ({v.status})")
-                    await _erledigt(cq, f"⏭ schon erledigt ({v.status})")
+                    await _done(cq, f"⏭ schon erledigt ({v.status})")
                 else:
                     # A row already decided may be decided again: the mistake often only shows
                     # when the mail is missing. `entscheiden` counts the old assessment back out
                     # of the memory.
-                    ist_spam = answer == "yes"
-                    result = await entscheiden(db, v, ist_spam, decided_by="telegram")
-                    await cq.answer("Als Spam markiert" if ist_spam else "Als erwünscht gemerkt")
-                    header = "✅ Spam · verschoben" if ist_spam else "🚫 Kein Spam · Absender gemerkt"
-                    await _erledigt(cq, f"{header}\n{result}")
+                    is_spam = answer == "yes"
+                    result = await decide(db, v, is_spam, decided_by="telegram")
+                    await cq.answer("Als Spam markiert" if is_spam else "Als erwünscht gemerkt")
+                    header = "✅ Spam · verschoben" if is_spam else "🚫 Kein Spam · Absender gemerkt"
+                    await _done(cq, f"{header}\n{result}")
             elif data.startswith("spamundo:"):
                 _, vid = data.split(":", 1)
                 v = await db.get(SpamVerdict, int(vid))
                 if v is None:
                     await cq.answer("Not found")
-                    await _erledigt(cq, "⏭ Urteil nicht mehr vorhanden")
+                    await _done(cq, "⏭ Urteil nicht mehr vorhanden")
                 else:
-                    result = await zurueckholen(db, v)
+                    result = await reclaim(db, v)
                     await cq.answer("Zurückgeholt")
-                    await _erledigt(cq, f"↩️ Zurückgeholt · Absender gemerkt\n{result}")
+                    await _done(cq, f"↩️ Zurückgeholt · Absender gemerkt\n{result}")
 
             elif data.startswith("spamall:"):
                 _, answer, batch = data.split(":", 2)
@@ -930,7 +930,7 @@ async def run_bot() -> None:
                         SpamVerdict.status == "pending").order_by(SpamVerdict.id))).scalars().all()
                     if not cases:
                         await cq.answer("nichts mehr offen")
-                        await _erledigt(cq, "⏭ nichts mehr offen")
+                        await _done(cq, "⏭ nichts mehr offen")
                     else:
                         # Every case gets a card of its own, so the collective card itself is
                         # handled.
@@ -941,26 +941,26 @@ async def run_bot() -> None:
                                 f"<b>{safe(title)}</b>\n{safe(text)}",
                                 parse_mode="HTML", reply_markup=_spam_kb(v.id))
                         await cq.answer(f"{len(cases)} einzeln")
-                        await _erledigt(cq, f"👉 {len(cases)} Fälle einzeln zugestellt")
+                        await _done(cq, f"👉 {len(cases)} Fälle einzeln zugestellt")
                 else:
-                    ist_spam = answer == "yes"
-                    count, error = await entscheide_batch(db, batch, ist_spam,
+                    is_spam = answer == "yes"
+                    count, error = await decide_batch(db, batch, is_spam,
                                                             decided_by="telegram")
                     await cq.answer(f"{count} entschieden")
-                    header = ("✅ alle als Spam verschoben" if ist_spam
+                    header = ("✅ alle als Spam verschoben" if is_spam
                             else "🚫 alle als erwünscht gemerkt")
-                    await _erledigt(cq, f"{header} ({count})"
+                    await _done(cq, f"{header} ({count})"
                                     + (f" · {error} nicht verschiebbar" if error else ""))
             elif data.startswith("aperm:"):
                 _, dec, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))
                 if t is None or t.status != "awaiting":
                     await cq.answer("schon entschieden")
-                    await _erledigt(cq, "⏭ schon entschieden")
+                    await _done(cq, "⏭ schon entschieden")
                 else:
                     await apply_perm_decision(db, t, dec)
                     await cq.answer(f"Freigabe: {dec}")
-                    await _erledigt(cq, f"🔑 Freigabe: {_DEC_TEXT.get(dec, dec)}")
+                    await _done(cq, f"🔑 Freigabe: {_DEC_TEXT.get(dec, dec)}")
         await cq.answer()
 
     log.info("Traccoon bot started (allowed=%s)", ALLOWED or "alle")

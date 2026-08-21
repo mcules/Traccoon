@@ -79,16 +79,16 @@ async def listeners(db: AsyncSession, event: str, project_id: int | None) -> lis
         if not t or t.get("event") != event:
             continue
         # A project set on the trigger narrows it further.
-        gewuenscht = t.get("project_id")
-        if gewuenscht and int(gewuenscht) != (project_id or 0):
+        wanted = t.get("project_id")
+        if wanted and int(wanted) != (project_id or 0):
             continue
-        if not await _may_hoeren(db, d, project_id):
+        if not await _may_listen(db, d, project_id):
             continue
         hits.append(d)
     return hits
 
 
-async def _may_hoeren(db: AsyncSession, d: WorkflowDefinition, project_id: int | None) -> bool:
+async def _may_listen(db: AsyncSession, d: WorkflowDefinition, project_id: int | None) -> bool:
     """May this flow react to an event FROM THIS PROJECT?
 
     A free-standing flow belongs to a person but hangs off no project. Without this check
@@ -112,11 +112,11 @@ async def _may_hoeren(db: AsyncSession, d: WorkflowDefinition, project_id: int |
         return False
     if owner.global_role == GlobalRole.admin:
         return True
-    projekt = await db.get(Project, project_id)
-    if projekt is None:
+    project = await db.get(Project, project_id)
+    if project is None:
         return False
     try:
-        await build_access(projekt, owner, db)   # raises when access is missing
+        await build_access(project, owner, db)   # raises when access is missing
     except Exception:                              # noqa: BLE001, 403/404 means not listening
         log.info("Flow %s does not listen to project %s: the owner has no access",
                  d.key, project_id)
@@ -134,7 +134,7 @@ async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,
     (creating a ticket, writing a comment) must not depend on it.
     """
     ctx = {"event": {"name": event, "project_id": project_id}, **(payload or {})}
-    gestartet: list[int] = []
+    started: list[int] = []
     for d in await listeners(db, event, project_id):
         version = await db.get(WorkflowVersion, d.current_version_id)
         t = trigger_of(version.graph if version else {}) or {}
@@ -163,8 +163,8 @@ async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,
                                    if sk == WorkflowSubjectKind.hardware_asset else None),
                 context=ctx, actor_id=actor_id, source=f"event:{event}", source_ref=source_ref,
             )
-            gestartet.append(inst.id)
+            started.append(inst.id)
             log.info("Event %s started flow %s (instance %s)", event, d.key, inst.id)
         except Exception:  # noqa: BLE001, a broken flow must not disturb the trigger
             log.exception("Event %s: flow %s could not start", event, d.key)
-    return gestartet
+    return started

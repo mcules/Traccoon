@@ -19,7 +19,7 @@ class _Session:
     """MCP session as a dummy: what the real server would answer."""
 
     def __init__(self, answer: str, tools: list | None = None):
-        self.answer, self.tools, self.aufrufe = answer, tools or [], []
+        self.answer, self.tools, self.calls = answer, tools or [], []
 
     async def __aenter__(self):
         return self
@@ -31,7 +31,7 @@ class _Session:
         return self.tools
 
     async def call(self, name, arguments):
-        self.aufrufe.append((name, arguments))
+        self.calls.append((name, arguments))
         return self.answer
 
 
@@ -53,7 +53,7 @@ async def anna(db):
 
 async def test_only_ones_own_servers_are_on_offer(db, anna, monkeypatch):
     """A flow gets nowhere its owner is not allowed to go."""
-    server = await workflow_tools._server_des_besitzers(db, anna.id)
+    server = await workflow_tools._server_of_owner(db, anna.id)
     assert [s["name"] for s in server] == ["obsidian"]
 
 
@@ -89,7 +89,7 @@ async def test_the_call_lands_in_the_context(db, anna, monkeypatch):
 
     assert result["ok"] is True
     # Templates in the arguments are filled; otherwise {{mail.subject}} would stand there literally.
-    assert session.aufrufe == [("obsidian__obsidian_append_to_note",
+    assert session.calls == [("obsidian__obsidian_append_to_note",
                                 {"path": "Rechnung.md", "content": "Test"})]
     assert inst.context["tool"]["ok"] is True
     assert inst.context["tool"]["json"] == {"ok": True, "path": "Notiz.md"}

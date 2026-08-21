@@ -8,12 +8,12 @@ import datetime as dt
 import pytest
 from app.services.appsettings import get_setting, set_setting
 from app.worker import curator
-from app.worker.curator import PIN, _parts, due, kuratiere_notiz
+from app.worker.curator import PIN, _parts, due, curate_note
 from conftest import make_user
 
 # Long enough for tidying up to be worth it at all (MINDEST_ZEICHEN), and this is what real
 # memory notes look like: one sentence per line, not two words.
-NOTIZ = "\n".join(f"- Erkenntnis {i}: Der Mensch möchte das dauerhaft so gehandhabt wissen."
+NOTE = "\n".join(f"- Erkenntnis {i}: Der Mensch möchte das dauerhaft so gehandhabt wissen."
                   for i in range(40))
 PATH = "KI/Gedaechtnis/Mensch.md"
 
@@ -21,22 +21,22 @@ PATH = "KI/Gedaechtnis/Mensch.md"
 class FakeMcp:
     """Vault replacement: remembers what was written and what was appended."""
 
-    def __init__(self, inhalt: str = NOTIZ, schreibfehler: str | None = None):
-        self.notizen = {PATH: inhalt}
-        self.angehaengt: dict[str, str] = {}
-        self.schreibfehler = schreibfehler
+    def __init__(self, content: str = NOTE, typo: str | None = None):
+        self.notes = {PATH: content}
+        self.appended: dict[str, str] = {}
+        self.typo = typo
 
     async def call(self, tool: str, args: dict):
         path = (args.get("target") or {}).get("path", "")
         if tool == "obsidian__obsidian_get_note":
-            return self.notizen.get(path, "")
+            return self.notes.get(path, "")
         if tool == "obsidian__obsidian_append_to_note":
-            if self.schreibfehler == "archiv":
+            if self.typo == "archiv":
                 raise RuntimeError("Archive not writable")
-            self.angehaengt[path] = self.angehaengt.get(path, "") + args["content"]
+            self.appended[path] = self.appended.get(path, "") + args["content"]
             return "ok"
         if tool == "obsidian__obsidian_write_note":
-            self.notizen[path] = args["content"]
+            self.notes[path] = args["content"]
             return "ok"
         return "ok"
 
@@ -47,8 +47,8 @@ def _aux(monkeypatch, answer):
     monkeypatch.setattr("app.worker.aux.aux_chat", fake)
 
 
-async def _lauf(db, mcp, owner_id=1):
-    return await kuratiere_notiz(db, mcp, owner_id=owner_id, path=PATH, agent=None,
+async def _run(db, mcp, owner_id=1):
+    return await curate_note(db, mcp, owner_id=owner_id, path=PATH, agent=None,
                                  tokens={}, base_urls={})
 
 
@@ -63,63 +63,63 @@ def test_answer_split():
 async def test_a_short_note_is_left_alone(db, monkeypatch):
     _aux(monkeypatch, "### BEHALTEN\n- eins")
     mcp = FakeMcp("- nur eine Zeile")
-    assert await _lauf(db, mcp) is None
-    assert mcp.notizen[PATH] == "- nur eine Zeile"
+    assert await _run(db, mcp) is None
+    assert mcp.notes[PATH] == "- nur eine Zeile"
 
 
 async def test_pruning_shortens_and_archives(db, monkeypatch):
-    behalten = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
-    _aux(monkeypatch, f"### BEHALTEN\n{behalten}\n### ARCHIV\n- Erkenntnis 39: alt.")
+    keep = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
+    _aux(monkeypatch, f"### BEHALTEN\n{keep}\n### ARCHIV\n- Erkenntnis 39: alt.")
     mcp = FakeMcp()
-    bericht = await _lauf(db, mcp)
-    assert bericht and "40 → 20" in bericht
-    assert "Erkenntnis 0" in mcp.notizen[PATH] and "Erkenntnis 39" not in mcp.notizen[PATH]
+    report = await _run(db, mcp)
+    assert report and "40 → 20" in report
+    assert "Erkenntnis 0" in mcp.notes[PATH] and "Erkenntnis 39" not in mcp.notes[PATH]
     # What is sorted out is not gone but lies in the archive beside it.
-    archiv = mcp.angehaengt["KI/Gedaechtnis/Archiv-Mensch.md"]
-    assert "Erkenntnis 39" in archiv and "Aussortiert am" in archiv
+    archive = mcp.appended["KI/Gedaechtnis/Archiv-Mensch.md"]
+    assert "Erkenntnis 39" in archive and "Aussortiert am" in archive
 
 
 async def test_pinned_material_has_to_survive(db, monkeypatch):
     """If a pin is missing in the result, nothing is written at all: the human nailed this
     line down explicitly."""
-    inhalt = NOTIZ + f"\n- {PIN} Niemals ohne Rückfrage deployen"
+    content = NOTE + f"\n- {PIN} Niemals ohne Rückfrage deployen"
     _aux(monkeypatch, "### BEHALTEN\n" + "\n".join(
         f"- Erkenntnis {i}: zusammengefasst." for i in range(20)))
-    mcp = FakeMcp(inhalt)
-    assert await _lauf(db, mcp) is None
-    assert mcp.notizen[PATH] == inhalt
+    mcp = FakeMcp(content)
+    assert await _run(db, mcp) is None
+    assert mcp.notes[PATH] == content
 
 
 async def test_clear_cutting_is_refused(db, monkeypatch):
     """Two thirds gone is no longer tidying up."""
     _aux(monkeypatch, "### BEHALTEN\n- eins\n### ARCHIV\n- der ganze Rest")
     mcp = FakeMcp()
-    assert await _lauf(db, mcp) is None
-    assert mcp.notizen[PATH] == NOTIZ
+    assert await _run(db, mcp) is None
+    assert mcp.notes[PATH] == NOTE
 
 
 async def test_a_format_error_leaves_everything_standing(db, monkeypatch):
     _aux(monkeypatch, "Klar, ich habe aufgeräumt! Hier das Ergebnis: ...")
     mcp = FakeMcp()
-    assert await _lauf(db, mcp) is None
-    assert mcp.notizen[PATH] == NOTIZ
+    assert await _run(db, mcp) is None
+    assert mcp.notes[PATH] == NOTE
 
 
 async def test_without_aux_nothing_happens(db, monkeypatch):
     _aux(monkeypatch, None)
     mcp = FakeMcp()
-    assert await _lauf(db, mcp) is None
-    assert mcp.notizen[PATH] == NOTIZ
+    assert await _run(db, mcp) is None
+    assert mcp.notes[PATH] == NOTE
 
 
 async def test_a_stuck_archive_keeps_the_note_unchanged(db, monkeypatch):
     """Archive first, truncate afterwards: if the archive jams, nothing may be truncated,
     because otherwise what was sorted out would be gone without replacement."""
-    behalten = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
-    _aux(monkeypatch, f"### BEHALTEN\n{behalten}\n### ARCHIV\n- Erkenntnis 39: alt.")
-    mcp = FakeMcp(schreibfehler="archiv")
-    assert await _lauf(db, mcp) is None
-    assert mcp.notizen[PATH] == NOTIZ
+    keep = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
+    _aux(monkeypatch, f"### BEHALTEN\n{keep}\n### ARCHIV\n- Erkenntnis 39: alt.")
+    mcp = FakeMcp(typo="archiv")
+    assert await _run(db, mcp) is None
+    assert mcp.notes[PATH] == NOTE
 
 
 async def test_at_most_once_a_day(db, monkeypatch):
@@ -134,9 +134,9 @@ async def test_at_most_once_a_day(db, monkeypatch):
 
 
 async def test_a_successful_run_remembers_the_moment(db, monkeypatch):
-    behalten = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
-    _aux(monkeypatch, f"### BEHALTEN\n{behalten}\n### ARCHIV\nkeine")
-    await _lauf(db, FakeMcp(), owner_id=7)
+    keep = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
+    _aux(monkeypatch, f"### BEHALTEN\n{keep}\n### ARCHIV\nkeine")
+    await _run(db, FakeMcp(), owner_id=7)
     assert await get_setting(db, f"curator_last:7:{PATH}", "") != ""
     assert await due(db, 7, PATH) is False
 
@@ -146,12 +146,12 @@ async def test_without_an_own_model_no_curation_happens(db, monkeypatch):
     lack of a setting, it would cost money unasked AND write in the vault of the human."""
     from app.worker import __main__ as worker
 
-    gelaufen = {}
+    ran = {}
 
-    async def fake_kuratiere(*a, **kw):
-        gelaufen["ja"] = True
+    async def fake_curate(*a, **kw):
+        ran["ja"] = True
         return []
 
-    monkeypatch.setattr("app.worker.curator.kuratiere", fake_kuratiere)
+    monkeypatch.setattr("app.worker.curator.curate", fake_curate)
     await worker._handle_curator({"owner_id": 1, "agent_role": "assistent"})
-    assert not gelaufen
+    assert not ran

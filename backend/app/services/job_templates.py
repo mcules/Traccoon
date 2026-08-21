@@ -80,7 +80,7 @@ def listing() -> list[dict]:
             for k, v in JOB_TEMPLATES.items()]
 
 
-def anwenden(key: str, params: dict | None = None) -> dict:
+def apply(key: str, params: dict | None = None) -> dict:
     """Template to job fields (including `args` = default parameters, overridden by `params`).
 
     An unknown key raises a KeyError; the caller turns that into its own error message.

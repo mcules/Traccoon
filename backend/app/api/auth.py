@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..core.security import create_access_token, hash_password, verify_password
 from ..db import get_session
 from ..models.enums import GlobalRole, UserStatus
@@ -40,7 +40,7 @@ async def register(data: RegisterIn, db: AsyncSession = Depends(get_session)):
         await db.execute(select(User).where((User.email == email) | (User.username == data.username)))
     ).scalar_one_or_none()
     if exists is not None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.e_mail_user_name_already_taken",
+        raise Error(status.HTTP_409_CONFLICT, "err.e_mail_user_name_already_taken",
                      "E-mail or user name already taken")
 
     # The first real user (except the system) automatically becomes an active admin.
@@ -71,16 +71,16 @@ async def login(data: LoginIn, db: AsyncSession = Depends(get_session)):
     email = data.email.lower()
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None or not verify_password(data.password, user.password_hash):
-        raise Fehler(status.HTTP_401_UNAUTHORIZED, "err.invalid_credentials",
+        raise Error(status.HTTP_401_UNAUTHORIZED, "err.invalid_credentials",
                      "Invalid credentials")
     if user.status == UserStatus.pending:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.account_waiting_enabled",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.account_waiting_enabled",
                      "The account is waiting to be enabled")
     if user.status == UserStatus.disabled:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.account_deactivated",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.account_deactivated",
                      "The account is deactivated")
     if user.status == UserStatus.placeholder:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.placeholder_account_has_no_login",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.placeholder_account_has_no_login",
                      "A placeholder account has no login")
     return TokenOut(access_token=create_access_token(user.id))
 
@@ -122,7 +122,7 @@ async def change_password(
     db: AsyncSession = Depends(get_session),
 ):
     if not verify_password(data.old_password, user.password_hash):
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.old_password_wrong",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.old_password_wrong",
                      "The old password is wrong")
     user.password_hash = hash_password(data.new_password)
     user.password_changed_at = dt.datetime.now(tz=dt.timezone.utc)

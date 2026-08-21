@@ -8,23 +8,23 @@ turn on it on 2026-08-07.
 """
 import pytest
 
-from app.worker.runtime import deploy_gesperrt
+from app.worker.runtime import deploy_locked
 
 
 def test_blocked_without_a_stack_directory():
-    reason = deploy_gesperrt("")
+    reason = deploy_locked("")
     assert "kein eigenes Stack-Verzeichnis" in reason
     assert "check" in reason          # the agent learns what to do instead
 
 
 def test_traccoon_itself_is_blocked(monkeypatch):
     monkeypatch.setenv("SELF_STACK_DIR", "/opt/docker/stacks/traccoon")
-    assert "Wartungs-Update" in deploy_gesperrt("/opt/docker/stacks/traccoon/")
+    assert "Wartungs-Update" in deploy_locked("/opt/docker/stacks/traccoon/")
 
 
 def test_a_foreign_project_may_not(monkeypatch):
     monkeypatch.setenv("SELF_STACK_DIR", "/opt/docker/stacks/traccoon")
-    assert deploy_gesperrt("/opt/docker/stacks/gameproj") == ""
+    assert deploy_locked("/opt/docker/stacks/gameproj") == ""
 
 
 @pytest.mark.parametrize("selbst", ["", "/opt/docker/stacks/traccoon"])
@@ -32,5 +32,5 @@ def test_without_a_configured_own_path_the_verdict_stays_stable(monkeypatch, sel
     """The worker container does not know `SELF_STACK_DIR` today, so the empty check has to
     carry on its own, and a set path must not lock foreign targets."""
     monkeypatch.setenv("SELF_STACK_DIR", selbst)
-    assert deploy_gesperrt("") != ""
-    assert deploy_gesperrt("/opt/docker/stacks/gameproj") == ""
+    assert deploy_locked("") != ""
+    assert deploy_locked("/opt/docker/stacks/gameproj") == ""

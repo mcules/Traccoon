@@ -103,7 +103,7 @@ class McpSession:
         return "\n".join(parts) or "(kein Output)"
 
 
-class McpNichtVerfuegbar(RuntimeError):
+class McpNotAvailable(RuntimeError):
     """The tool cannot be reached at all: no server carries its prefix, and no gateway.
 
     Deliberately an exception and not a sentence in the return value. This used to answer
@@ -139,7 +139,7 @@ class MultiMcpSession:
             if name.startswith(f"{server}__"):
                 return await sess.call(name[len(server) + 2:], arguments)
         if self._gateway is None:
-            raise McpNichtVerfuegbar(
+            raise McpNotAvailable(
                 f"kein MCP-Server für {name!r}: kein Server dieses Namens registriert und "
                 f"kein Gateway eingerichtet")
         return await self._gateway.call(name, arguments)

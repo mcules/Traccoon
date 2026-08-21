@@ -14,7 +14,7 @@ import pytest
 from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
 from app.models.notification import Notification
 from app.models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowVersion
-from app.services.notify import zustellen
+from app.services.notify import deliver
 from app.services.workflow_actions import run_action
 from sqlalchemy import select
 
@@ -30,36 +30,36 @@ async def _lines(db) -> list[Notification]:
 
 async def test_a_second_notice_within_the_window_stays_away(db):
     anna = await make_user(db, "anna")
-    first = await zustellen(db, user=anna, kind="test", title="Alarm",
-                            drossel_key="shelter.diebstahl", drossel_minutes=15)
-    zweite = await zustellen(db, user=anna, kind="test", title="Alarm",
-                             drossel_key="shelter.diebstahl", drossel_minutes=15)
+    first = await deliver(db, user=anna, kind="test", title="Alarm",
+                            throttle_key="shelter.diebstahl", throttle_minutes=15)
+    second = await deliver(db, user=anna, kind="test", title="Alarm",
+                             throttle_key="shelter.diebstahl", throttle_minutes=15)
     await db.commit()
     assert first["kanal"] != "gedrosselt"
-    assert zweite["unterdrueckt"] is True and zweite["wieder_ab"]
+    assert second["unterdrueckt"] is True and second["wieder_ab"]
     assert len(await _lines(db)) == 1, "no bell row either, otherwise the noise only moves elsewhere"
 
 
 async def test_after_the_window_another_one_goes_out(db):
     anna = await make_user(db, "anna")
-    await zustellen(db, user=anna, kind="test", title="Alarm",
-                    drossel_key="k", drossel_minutes=15)
+    await deliver(db, user=anna, kind="test", title="Alarm",
+                    throttle_key="k", throttle_minutes=15)
     await db.commit()
-    (alt,) = await _lines(db)
-    alt.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=16)
+    (old,) = await _lines(db)
+    old.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=16)
     await db.commit()
 
-    weg = await zustellen(db, user=anna, kind="test", title="Alarm",
-                          drossel_key="k", drossel_minutes=15)
+    path = await deliver(db, user=anna, kind="test", title="Alarm",
+                          throttle_key="k", throttle_minutes=15)
     await db.commit()
-    assert weg.get("unterdrueckt") is not True
+    assert path.get("unterdrueckt") is not True
     assert len(await _lines(db)) == 2
 
 
 async def test_different_keys_do_not_disturb_each_other(db):
     anna = await make_user(db, "anna")
-    await zustellen(db, user=anna, kind="test", title="A", drossel_key="a", drossel_minutes=60)
-    await zustellen(db, user=anna, kind="test", title="B", drossel_key="b", drossel_minutes=60)
+    await deliver(db, user=anna, kind="test", title="A", throttle_key="a", throttle_minutes=60)
+    await deliver(db, user=anna, kind="test", title="B", throttle_key="b", throttle_minutes=60)
     await db.commit()
     assert len(await _lines(db)) == 2
 
@@ -67,12 +67,12 @@ async def test_different_keys_do_not_disturb_each_other(db):
 async def test_two_people_do_not_mute_each_other(db):
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
-    await zustellen(db, user=anna, kind="test", title="A", drossel_key="gleich",
-                    drossel_minutes=60)
-    weg = await zustellen(db, user=bert, kind="test", title="A", drossel_key="gleich",
-                          drossel_minutes=60)
+    await deliver(db, user=anna, kind="test", title="A", throttle_key="gleich",
+                    throttle_minutes=60)
+    path = await deliver(db, user=bert, kind="test", title="A", throttle_key="gleich",
+                          throttle_minutes=60)
     await db.commit()
-    assert weg.get("unterdrueckt") is not True
+    assert path.get("unterdrueckt") is not True
     assert len(await _lines(db)) == 2
 
 
@@ -80,12 +80,12 @@ async def test_without_throttling_everything_stays_as_before(db):
     """Regression protection: every existing notification goes through unchanged."""
     anna = await make_user(db, "anna")
     for _ in range(3):
-        await zustellen(db, user=anna, kind="test", title="Immer wieder")
+        await deliver(db, user=anna, kind="test", title="Immer wieder")
     await db.commit()
     assert len(await _lines(db)) == 3
 
 
-async def _instanz(db, anna) -> WorkflowInstance:
+async def _instance(db, anna) -> WorkflowInstance:
     d = WorkflowDefinition(project_id=None, key="dros", name="Dros", created_by=anna.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
@@ -110,31 +110,31 @@ def _node(params: dict) -> dict:
 async def test_a_node_throttles_itself(db):
     """A number should be enough; nobody would think up the key otherwise."""
     anna = await make_user(db, "anna")
-    inst = await _instanz(db, anna)
+    inst = await _instance(db, anna)
     p = {"to": {"mode": "user", "user_id": anna.id}, "title": "Alarm", "drossel_minuten": 15}
     first = await run_action(db, inst, _node(p))
-    zweite = await run_action(db, inst, _node(p))
+    second = await run_action(db, inst, _node(p))
     await db.commit()
     assert first.get("unterdrueckt") is not True
-    assert zweite["unterdrueckt"] is True
+    assert second["unterdrueckt"] is True
     assert len(await _lines(db)) == 1
 
 
 async def test_a_key_from_the_context_separates_the_cases(db):
     """Two kinds of alarm on the same node must not swallow each other."""
     anna = await make_user(db, "anna")
-    inst = await _instanz(db, anna)
+    inst = await _instance(db, anna)
 
     def p(kind):
         return {"to": {"mode": "user", "user_id": anna.id}, "title": kind,
                 "drossel_key": "{{ geraet }}." + kind, "drossel_minuten": 60}
 
     await run_action(db, inst, _node(p("vibration")))
-    zweite_kind = await run_action(db, inst, _node(p("lowBattery")))
-    wiederholung = await run_action(db, inst, _node(p("vibration")))
+    second_kind = await run_action(db, inst, _node(p("lowBattery")))
+    repeat = await run_action(db, inst, _node(p("vibration")))
     await db.commit()
-    assert zweite_kind.get("unterdrueckt") is not True
-    assert wiederholung["unterdrueckt"] is True
+    assert second_kind.get("unterdrueckt") is not True
+    assert repeat["unterdrueckt"] is True
     lines = await _lines(db)
     assert len(lines) == 2
-    assert {z.drossel_key for z in lines} == {"shelter.vibration", "shelter.lowBattery"}
+    assert {z.throttle_key for z in lines} == {"shelter.vibration", "shelter.lowBattery"}

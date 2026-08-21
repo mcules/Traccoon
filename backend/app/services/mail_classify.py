@@ -100,7 +100,7 @@ def _parse_json(text: str) -> dict:
 async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str,
                          sender: str, subject: str, body: str,
                          classify_agent: str = "", spam_hints: list[str] | None = None,
-                         spam_beispiele: list[str] | None = None) -> dict:
+                         spam_examples: list[str] | None = None) -> dict:
     """Returns {category, priority, sensitive, redacted_summary, spam_score, spam_reason}. On
     every error a safe fallback (sensitive=True, empty summary): in case of doubt give
     NOTHING to the outside. Provider, model and token come from the classifying agent (when
@@ -137,9 +137,9 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
     if spam_hints:
         parts.append("\nTechnische Befunde zu dieser Mail:\n"
                      + "\n".join(f"- {h}" for h in spam_hints[:8]))
-    if spam_beispiele:
+    if spam_examples:
         parts.append("\nFrühere Entscheidungen des Empfängers (daran ausrichten):\n"
-                     + "\n".join(spam_beispiele[:6]))
+                     + "\n".join(spam_examples[:6]))
     parts.append(f"\n--- Mailtext ---\n{(body or '')[:8000]}")
     user_msg = "\n".join(parts)
     try:
@@ -170,58 +170,58 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
         "redacted_summary": str(data.get("redacted_summary", "")).strip()[:2000],
         "spam_score": _spam_score(data.get("spam_score")),
         "spam_reason": str(data.get("spam_reason", "") or "").strip()[:200],
-        "betrug": ja(data.get("betrug")),
-        "merkmale": merkmale(data.get("merkmale")),
+        "betrug": yes(data.get("betrug")),
+        "merkmale": features(data.get("merkmale")),
     }
 
 
-def ja(roh) -> bool:
+def yes(raw) -> bool:
     """A yes out of a model answer.
 
     Deliberately not `bool(...)`: `bool("false")` is True, and small models answer with the
     strings "false", "nein" or "0" as readily as with a real boolean. Everything that is not
     clearly a yes counts as a no, because this flag carries a mail over the auto threshold.
     """
-    if isinstance(roh, bool):
-        return roh
-    if isinstance(roh, (int, float)):
-        return roh >= 1
-    return str(roh or "").strip().lower() in ("true", "1", "ja", "yes", "y", "wahr")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return raw >= 1
+    return str(raw or "").strip().lower() in ("true", "1", "ja", "yes", "y", "wahr")
 
 
-def merkmale(roh) -> list[dict]:
+def features(raw) -> list[dict]:
     """The findings of the model, in the shape the rules already use: key plus plain text.
 
     Normalised on the way in, because the key is counted later (statistics, memory) and an
     invented spelling would become a category of its own. Capped at five: whoever names ten
     reasons has stopped looking and started listing.
     """
-    if not isinstance(roh, list):
+    if not isinstance(raw, list):
         return []
     out: list[dict] = []
     seen: set[str] = set()
-    for entry in roh:
+    for entry in raw:
         if not isinstance(entry, dict):
             continue
-        kennung = re.sub(r"[^a-z0-9_]+", "_", str(entry.get("kennung") or "").strip().lower())
-        kennung = kennung.strip("_")[:40]
+        ident = re.sub(r"[^a-z0-9_]+", "_", str(entry.get("kennung") or "").strip().lower())
+        ident = ident.strip("_")[:40]
         text = str(entry.get("text") or "").strip()[:160]
-        if not kennung or kennung in seen:
+        if not ident or ident in seen:
             continue
-        seen.add(kennung)
-        out.append({"kennung": kennung, "text": text})
+        seen.add(ident)
+        out.append({"kennung": ident, "text": text})
         if len(out) >= 5:
             break
     return out
 
 
-def _spam_score(roh) -> float:
+def _spam_score(raw) -> float:
     """0.0 to 1.0 from a model statement. Small models like to deliver '80' or '0,8' instead
     of 0.8; both are caught instead of silently becoming a 0."""
-    if roh is None or roh == "":
+    if raw is None or raw == "":
         return 0.0
     try:
-        value = float(str(roh).replace(",", ".").strip().rstrip("%"))
+        value = float(str(raw).replace(",", ".").strip().rstrip("%"))
     except ValueError:
         return 0.0
     if value > 1.0:

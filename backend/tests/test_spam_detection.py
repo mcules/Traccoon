@@ -12,7 +12,7 @@ from app.models.notification import Notification
 from app.services import spam_learn, spam_review
 from app.services.spam_rules import evaluate, features, mail_text
 from app.services.vault_contacts import (
-    adressen_aus_notiz, bekannte_domains, namens_kollision, sync_contacts,
+    addresses_from_note, known_domains, named_collision, sync_contacts,
 )
 from conftest import make_user
 from sqlalchemy import select
@@ -46,7 +46,7 @@ def _mail(**over) -> dict:
 # --- Regeln -------------------------------------------------------------------------
 
 async def test_a_clean_mail_without_suspicion():
-    res = evaluate(_mail(), meine_adressen=frozenset({"ich@meine-domain.de"}))
+    res = evaluate(_mail(), my_addresses=frozenset({"ich@meine-domain.de"}))
     assert res.score == 0.0
     assert res.sender_email == "info@shop.de"
     assert res.signals == []
@@ -62,7 +62,7 @@ async def test_the_forgery_pattern_fires():
                "Return-Path": "<bounce@4t7k.ru>",
                "Received-Count": 1,
            }}),
-        meine_adressen=frozenset({"ich@meine-domain.de"}))
+        my_addresses=frozenset({"ich@meine-domain.de"}))
     assert "spf_fail" in res.signals
     assert "dmarc_fail" in res.signals
     assert "returnpath_mismatch" in res.signals
@@ -70,7 +70,7 @@ async def test_the_forgery_pattern_fires():
     assert "absender_name_taeuscht" in res.signals
     assert "billig_tld" in res.signals
     assert res.score >= 0.9
-    assert not res.ist_newsletter
+    assert not res.is_newsletter
 
 
 async def test_a_bounce_subdomain_is_not_a_mismatch():
@@ -89,7 +89,7 @@ async def test_a_newsletter_stays_a_newsletter():
         "Return-Path": "<bounce@shop.de>",
         "List-Unsubscribe": "<https://shop.de/abmelden>",
         "Precedence": "bulk", "Received-Count": 3}))
-    assert res.ist_newsletter
+    assert res.is_newsletter
     assert res.score == 0.0
 
 
@@ -97,20 +97,20 @@ async def test_bulk_mail_without_an_unsubscribe_path():
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass", "Precedence": "bulk", "Received-Count": 3}))
     assert "kein_unsubscribe_bei_bulk" in res.signals
-    assert not res.ist_newsletter
+    assert not res.is_newsletter
 
 
 async def test_blind_copy_sending_stands_out():
     """One's own address stands nowhere, which is typical of bulk sending by blind copy."""
     res = evaluate(_mail(to=[{"name": "", "addr": "irgendwer@example.org"}]),
-                   meine_adressen=frozenset({"ich@meine-domain.de"}))
+                   my_addresses=frozenset({"ich@meine-domain.de"}))
     assert "bcc_blast" in res.signals
 
 
 async def test_own_domain_as_a_placeholder():
     """Whoever receives a whole domain cannot enumerate their aliases."""
     res = evaluate(_mail(to=[{"name": "", "addr": "shop-alias@meine-domain.de"}]),
-                   meine_adressen=frozenset({"*@meine-domain.de"}))
+                   my_addresses=frozenset({"*@meine-domain.de"}))
     assert "bcc_blast" not in res.signals
 
 
@@ -118,18 +118,18 @@ async def test_an_alias_is_kept_as_a_feature():
     """The addressed alias is a signal of its own: an alias only one provider knows and that
     suddenly receives foreign advertising has been sold."""
     res = evaluate(_mail(to=[{"name": "", "addr": "shop-alias@meine-domain.de"}]))
-    merkmale = features(res, "Ihre Bestellung")
-    assert "to:shop-alias@meine-domain.de" in merkmale
-    assert "from:info@shop.de" in merkmale
-    assert "dom:shop.de" in merkmale
+    feature_list = features(res, "Ihre Bestellung")
+    assert "to:shop-alias@meine-domain.de" in feature_list
+    assert "from:info@shop.de" in feature_list
+    assert "dom:shop.de" in feature_list
 
 
 async def test_a_freemail_domain_is_not_a_feature():
     """Everybody hangs off gmx.de, so the domain says nothing."""
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "wer@example.org"}]}))
-    merkmale = features(res, "Hallo")
-    assert "dom:gmx.de" not in merkmale
-    assert "from:wer@example.org" in merkmale
+    feature_list = features(res, "Hallo")
+    assert "dom:gmx.de" not in feature_list
+    assert "from:wer@example.org" in feature_list
 
 
 # --- Echtheit: Ausrichtung ------------------------------------------------------------
@@ -143,7 +143,7 @@ async def test_a_dkim_pass_from_a_foreign_domain_stands_out():
         "Return-Path": "<bounce@shop.de>",
         "DKIM-Domains": ["versender-xy.top"], "Received-Count": 3}))
     assert "dkim_nicht_ausgerichtet" in res.signals
-    assert not res.ist_newsletter
+    assert not res.is_newsletter
 
 
 async def test_a_passing_dmarc_ends_the_alignment_question():
@@ -209,7 +209,7 @@ async def test_the_server_verdict_beats_the_newsletter_brake():
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<bounce@shop.de>", "X-Spam-Level": "***********",
         "List-Unsubscribe": "<https://shop.de/ab>", "Received-Count": 3}))
-    assert not res.ist_newsletter
+    assert not res.is_newsletter
 
 
 # --- Forwarding, self-forgery, click counters (learned from real mailboxes) -------------
@@ -220,7 +220,7 @@ async def test_an_srs_return_path_is_no_suspicion():
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<SRS0=m6Wz=GK=shop.de=info@meine-domain.de>", "Received-Count": 3}),
-        meine_adressen=frozenset({"*@meine-domain.de"}))
+        my_addresses=frozenset({"*@meine-domain.de"}))
     assert "returnpath_mismatch" not in res.signals
 
 
@@ -231,7 +231,7 @@ async def test_a_verp_bounce_address_does_not_fire():
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<SRS0=YnP1=GK=bounce.dienst.de=bounces+145129-0b4c-shop.de@meine-domain.de>",
         "Received-Count": 3}),
-        meine_adressen=frozenset({"*@meine-domain.de"}))
+        my_addresses=frozenset({"*@meine-domain.de"}))
     assert "returnpath_mismatch" not in res.signals
 
 
@@ -239,7 +239,7 @@ async def test_mail_from_my_own_address():
     """"From you to you" without a passed check: the oldest trick."""
     res = evaluate(_mail(**{"from": [{"name": "Ich", "addr": "ich@meine-domain.de"}],
                             "headers": {"Received-Count": 1}}),
-                   meine_adressen=frozenset({"*@meine-domain.de"}))
+                   my_addresses=frozenset({"*@meine-domain.de"}))
     assert "absender_bin_ich" in res.signals
 
 
@@ -248,7 +248,7 @@ async def test_real_own_mail_stays_unsuspicious():
                             "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
                                         "Return-Path": "<ich@meine-domain.de>",
                                         "Received-Count": 3}}),
-                   meine_adressen=frozenset({"*@meine-domain.de"}))
+                   my_addresses=frozenset({"*@meine-domain.de"}))
     assert "absender_bin_ich" not in res.signals
 
 
@@ -268,7 +268,7 @@ async def test_a_link_on_the_sender_domain_is_no_deception():
 
 async def test_a_link_i_know_hides_nothing():
     res = evaluate(_mail(links=[{"href": "https://www.amazon.de/x", "text": "dpd.de"}]),
-                   bekannte_domains=frozenset({"amazon.de"}))
+                   known_domains=frozenset({"amazon.de"}))
     assert "link_text_taeuscht" not in res.signals
 
 
@@ -304,19 +304,19 @@ async def test_a_known_brand_as_a_foreign_subdomain():
     """`sparkasse.de.sicherheit.top` pulls a known brand into the visible address without
     owning it."""
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "info@sparkasse.de.sicherheit.top"}]}),
-                   bekannte_domains=frozenset({"sparkasse.de"}))
+                   known_domains=frozenset({"sparkasse.de"}))
     assert "marke_als_subdomain" in res.signals
 
 
 async def test_a_known_brand_with_a_hyphen():
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "info@sparkasse-de.top"}]}),
-                   bekannte_domains=frozenset({"sparkasse.de"}))
+                   known_domains=frozenset({"sparkasse.de"}))
     assert "marke_als_subdomain" in res.signals
 
 
 async def test_a_real_known_domain_is_no_abuse():
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "info@sparkasse.de"}]}),
-                   bekannte_domains=frozenset({"sparkasse.de"}))
+                   known_domains=frozenset({"sparkasse.de"}))
     assert "marke_als_subdomain" not in res.signals
 
 
@@ -455,7 +455,7 @@ async def test_the_mail_text_finds_every_field():
 # --- Vault-Kontakte ------------------------------------------------------------------
 
 async def test_addresses_from_a_note_keep_their_origin_apart():
-    notiz = (
+    note = (
         "---\n"
         "tags:\n  - kontakt\n"
         "email: rainer@example.net\n"
@@ -465,15 +465,15 @@ async def test_addresses_from_a_note_keep_their_origin_apart():
         "---\n\n"
         "# Rainer\n\nSchrieb mir von buero@firma.de aus.\n"
     )
-    gefunden = dict(adressen_aus_notiz(notiz))
-    assert gefunden["rainer@example.net"] == "frontmatter"
-    assert gefunden["dl1abc@verband.de"] == "frontmatter"
-    assert gefunden["buero@firma.de"] == "body"
+    found = dict(addresses_from_note(note))
+    assert found["rainer@example.net"] == "frontmatter"
+    assert found["dl1abc@verband.de"] == "frontmatter"
+    assert found["buero@firma.de"] == "body"
 
 
 async def test_example_addresses_are_left_out():
-    notiz = "---\nemail: max@example.com\n---\n\nText\n"
-    assert adressen_aus_notiz(notiz) == []
+    note = "---\nemail: max@example.com\n---\n\nText\n"
+    assert addresses_from_note(note) == []
 
 
 async def test_the_vault_reconcile_mirrors(db, tmp_path):
@@ -508,7 +508,7 @@ async def test_an_empty_vault_does_not_clear_anything(db, tmp_path):
 
 # --- Chef-Masche (BEC) ------------------------------------------------------------------
 
-async def _kontakt(db, owner_id, name: str, email: str) -> None:
+async def _contact(db, owner_id, name: str, email: str) -> None:
     db.add(AssistantContact(owner_user_id=owner_id, email=email, name=name,
                             domain=email.split("@", 1)[1], source_kind="frontmatter"))
     await db.commit()
@@ -518,39 +518,39 @@ async def test_a_known_name_from_a_foreign_address(db):
     """No link, no attachment, no technical forgery: only a borrowed name. Only the contact
     stock gives that away."""
     user = await make_user(db, "dennis")
-    await _kontakt(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
-    assert await namens_kollision(db, user.id, "Rainer Beispiel", "r.beispiel@gmx-mail.top") \
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    assert await named_collision(db, user.id, "Rainer Beispiel", "r.beispiel@gmx-mail.top") \
         == "Rainer Beispiel"
 
 
 async def test_the_same_person_is_no_collision(db):
     user = await make_user(db, "dennis")
-    await _kontakt(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
-    assert await namens_kollision(db, user.id, "Rainer Beispiel", "r.beispiel@example.net") == ""
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    assert await named_collision(db, user.id, "Rainer Beispiel", "r.beispiel@example.net") == ""
 
 
 async def test_salutation_and_reversed_spelling(db):
     user = await make_user(db, "dennis")
-    await _kontakt(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
-    assert await namens_kollision(db, user.id, "Herr Dr. Rainer Beispiel", "x@fremd.top")
-    assert await namens_kollision(db, user.id, "Beispiel, Rainer", "x@fremd.top")
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    assert await named_collision(db, user.id, "Herr Dr. Rainer Beispiel", "x@fremd.top")
+    assert await named_collision(db, user.id, "Beispiel, Rainer", "x@fremd.top")
 
 
 async def test_a_one_word_name_does_not_fire(db):
     """"Info" or "support" are not people, and a single part name would match by chance
     constantly."""
     user = await make_user(db, "dennis")
-    await _kontakt(db, user.id, "Support", "support@shop.de")
-    assert await namens_kollision(db, user.id, "Support", "support@fremd.top") == ""
+    await _contact(db, user.id, "Support", "support@shop.de")
+    assert await named_collision(db, user.id, "Support", "support@fremd.top") == ""
 
 
 async def test_known_domains_without_prose(db):
     user = await make_user(db, "dennis")
-    await _kontakt(db, user.id, "Rainer", "rainer@sparkasse.de")
+    await _contact(db, user.id, "Rainer", "rainer@sparkasse.de")
     db.add(AssistantContact(owner_user_id=user.id, email="wer@zufall.top",
                             domain="zufall.top", source_kind="body"))
     await db.commit()
-    domains = await bekannte_domains(db, user.id)
+    domains = await known_domains(db, user.id)
     assert "sparkasse.de" in domains
     assert "zufall.top" not in domains
 
@@ -563,35 +563,35 @@ async def test_the_boss_scam_raises_suspicion(db):
     does it become a question.
     """
     user = await _owner(db)
-    await _kontakt(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
-    urteil = await spam_review.beurteilen(db, user.id, _mail(
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "Rainer Beispiel", "addr": "r.beispiel.buero@gmail.com"}],
            "reply_to": [{"name": "", "addr": "kasse@zahlung-xy.top"}],
            "subject": "Dringend: kurze Bitte",
            "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
                        "X-Priority": "1", "Received-Count": 3}}),
         cls={"spam_score": 0.5, "category": "privat"})
-    assert urteil["score"] >= urteil["frage_ab"]
-    assert any("Rainer Beispiel" in g for g in urteil["reasons"])
+    assert verdict["score"] >= verdict["frage_ab"]
+    assert any("Rainer Beispiel" in g for g in verdict["reasons"])
 
 
 async def test_a_borrowed_name_alone_carries_no_verdict(db):
     """An acquaintance writing from their second address must not pass as fraud: the vault
     never knows all the addresses of a person."""
     user = await _owner(db)
-    await _kontakt(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
-    urteil = await spam_review.beurteilen(db, user.id, _mail(
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "Rainer Beispiel", "addr": "rainer.beispiel@example.org"}],
            "subject": "Bilder von gestern"}),
         cls={"spam_score": 0.1, "category": "privat"})
-    assert urteil["score"] < urteil["frage_ab"]
+    assert verdict["score"] < verdict["frage_ab"]
 
 
 # --- Memory ---------------------------------------------------------------------------
 
-async def _urteil(db, owner_id, merkmale, **over) -> SpamVerdict:
+async def _verdict(db, owner_id, feature_list, **over) -> SpamVerdict:
     fields = {"sender_email": "wer@spam.xyz", "subject": "Gewinn", **over}
-    v = SpamVerdict(owner_user_id=owner_id, features=merkmale, **fields)
+    v = SpamVerdict(owner_user_id=owner_id, features=feature_list, **fields)
     db.add(v)
     await db.commit()
     await db.refresh(v)
@@ -601,46 +601,46 @@ async def _urteil(db, owner_id, merkmale, **over) -> SpamVerdict:
 async def test_decisions_affect_the_next_mail(db):
     """The core: what the human decides has to change future assessments."""
     user = await make_user(db, "dennis")
-    merkmale = ["from:wer@spam.xyz", "dom:spam.xyz", "wort:gewinn"]
+    feature_list = ["from:wer@spam.xyz", "dom:spam.xyz", "wort:gewinn"]
 
-    vorher, _, sicher = await spam_learn.bewerten(db, user.id, merkmale)
-    assert vorher == 0.5 and not sicher      # no opinion without an observation
+    before, _, safe = await spam_learn.rate(db, user.id, feature_list)
+    assert before == 0.5 and not safe      # no opinion without an observation
 
     for _ in range(3):
-        v = await _urteil(db, user.id, merkmale)
-        await spam_learn.merken(db, v, True)
+        v = await _verdict(db, user.id, feature_list)
+        await spam_learn.remember(db, v, True)
         v.status = "spam"
     await db.commit()
 
-    nachher, reasons, sicher = await spam_learn.bewerten(db, user.id, merkmale)
-    assert nachher > vorher
-    assert sicher, "a sender decided unanimously three times counts as resolved"
+    nachher, reasons, safe = await spam_learn.rate(db, user.id, feature_list)
+    assert nachher > before
+    assert safe, "a sender decided unanimously three times counts as resolved"
     assert any("3× Spam" in g for g in reasons)
 
 
 async def test_a_wanted_sender_is_learned(db):
     user = await make_user(db, "dennis")
-    merkmale = ["from:news@verband.de", "dom:verband.de"]
+    feature_list = ["from:news@verband.de", "dom:verband.de"]
     for _ in range(3):
-        v = await _urteil(db, user.id, merkmale)
-        await spam_learn.merken(db, v, False)
+        v = await _verdict(db, user.id, feature_list)
+        await spam_learn.remember(db, v, False)
         v.status = "ham"
     await db.commit()
 
-    score, _, sicher = await spam_learn.bewerten(db, user.id, merkmale)
-    assert score < 0.5 and sicher
+    score, _, safe = await spam_learn.rate(db, user.id, feature_list)
+    assert score < 0.5 and safe
 
 
 async def test_changing_ones_mind_undoes_the_old_count(db):
     """An error must not stay in the memory forever."""
     user = await make_user(db, "dennis")
-    merkmale = ["from:news@verband.de"]
-    v = await _urteil(db, user.id, merkmale)
-    await spam_learn.merken(db, v, True)
+    feature_list = ["from:news@verband.de"]
+    v = await _verdict(db, user.id, feature_list)
+    await spam_learn.remember(db, v, True)
     v.status = "spam"
     await db.commit()
 
-    await spam_learn.merken(db, v, False, vorher="spam")
+    await spam_learn.remember(db, v, False, before="spam")
     await db.commit()
     from app.models.assistant import SpamFeatureStat
     row = (await db.execute(select(SpamFeatureStat).where(
@@ -650,9 +650,9 @@ async def test_changing_ones_mind_undoes_the_old_count(db):
 
 async def test_examples_for_the_prompt(db):
     user = await make_user(db, "dennis")
-    v = await _urteil(db, user.id, ["from:wer@spam.xyz"])
-    await spam_review.entscheiden(db, v, True, decided_by="telegram")
-    lines = await spam_learn.beispiele(db, user.id)
+    v = await _verdict(db, user.id, ["from:wer@spam.xyz"])
+    await spam_review.decide(db, v, True, decided_by="telegram")
+    lines = await spam_learn.examples(db, user.id)
     assert lines and "SPAM" in lines[0]
 
 
@@ -670,9 +670,9 @@ async def test_a_known_contact_is_left_in_peace(db):
     db.add(AssistantContact(owner_user_id=user.id, email="info@shop.de", domain="shop.de",
                             source_kind="frontmatter"))
     await db.commit()
-    urteil = await spam_review.beurteilen(db, user.id, _mail(),
+    verdict = await spam_review.judge(db, user.id, _mail(),
                                           cls={"spam_score": 0.8, "category": "werbung"})
-    assert urteil["bekannter_kontakt"] is True
+    assert verdict["bekannter_kontakt"] is True
 
 
 async def test_a_forged_known_contact_stands_out(db):
@@ -681,63 +681,63 @@ async def test_a_forged_known_contact_stands_out(db):
     db.add(AssistantContact(owner_user_id=user.id, email="info@shop.de", domain="shop.de",
                             source_kind="frontmatter"))
     await db.commit()
-    urteil = await spam_review.beurteilen(db, user.id, _mail(headers={
+    verdict = await spam_review.judge(db, user.id, _mail(headers={
         "Authentication-Results": "mx; spf=fail; dmarc=fail",
         "Return-Path": "<b@4t7k.ru>", "Received-Count": 1,
     }), cls={"spam_score": 0.5, "category": "sonstiges"})
-    assert urteil["bekannter_kontakt"] is False
-    assert urteil["score"] >= urteil["frage_ab"]
-    assert any("Fälschungsverdacht" in g for g in urteil["reasons"])
+    assert verdict["bekannter_kontakt"] is False
+    assert verdict["score"] >= verdict["frage_ab"]
+    assert any("Fälschungsverdacht" in g for g in verdict["reasons"])
 
 
 async def test_high_suspicion_passes_the_immediate_threshold(db):
     """Whether that becomes an immediate card is decided by the flow; the height of the
     suspicion is decided here (see test_mail_intake_flow.py)."""
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, _mail(
+    verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "", "addr": "x@4t7k.xyz"}],
            "reply_to": [{"name": "", "addr": "kasse@anders.ru"}],
            "headers": {"Authentication-Results": "mx; spf=fail; dkim=fail; dmarc=fail",
                        "Return-Path": "<b@anders.ru>", "Received-Count": 1}}),
         cls={"spam_score": 0.95, "spam_reason": "Paket-Vorwand", "category": "spam"})
-    assert urteil["score"] >= urteil["sofort_ab"]
+    assert verdict["score"] >= verdict["sofort_ab"]
 
 
 async def test_middling_suspicion_stays_below_the_immediate_threshold(db):
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, _mail(headers={
+    verdict = await spam_review.judge(db, user.id, _mail(headers={
         "Authentication-Results": "mx; spf=softfail", "Received-Count": 1}),
         cls={"spam_score": 0.6, "category": "werbung"})
-    assert urteil["frage_ab"] <= urteil["score"] < urteil["sofort_ab"]
+    assert verdict["frage_ab"] <= verdict["score"] < verdict["sofort_ab"]
 
 
 async def test_the_unsuspicious_stays_below_the_asking_threshold(db):
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, _mail(),
+    verdict = await spam_review.judge(db, user.id, _mail(),
                                           cls={"spam_score": 0.1, "category": "rechnung"})
-    assert urteil["score"] < urteil["frage_ab"]
+    assert verdict["score"] < verdict["frage_ab"]
 
 
 async def test_a_settled_sender_is_not_asked_about_again(db):
     """After three unanimous "wanted" the question should stop; that is the purpose of the
     learning."""
     user = await _owner(db)
-    merkmale = features(evaluate(_mail(headers={"Authentication-Results": "mx; spf=softfail",
+    feature_list = features(evaluate(_mail(headers={"Authentication-Results": "mx; spf=softfail",
                                                 "Received-Count": 1})), "Ihre Bestellung")
     for _ in range(3):
-        v = await _urteil(db, user.id, merkmale, sender_email="info@shop.de")
-        await spam_learn.merken(db, v, False)
+        v = await _verdict(db, user.id, feature_list, sender_email="info@shop.de")
+        await spam_learn.remember(db, v, False)
         v.status = "ham"
     await db.commit()
 
-    urteil = await spam_review.beurteilen(db, user.id, _mail(headers={
+    verdict = await spam_review.judge(db, user.id, _mail(headers={
         "Authentication-Results": "mx; spf=softfail", "Received-Count": 1}),
         cls={"spam_score": 0.7, "category": "werbung"})
     # The memory pulls the verdict below the question threshold, so the same mail no longer
     # triggers a second question. (It does not count as "settled": a forgery signal, here the
     # failed SPF, deliberately lifts the acquittal out of the memory.)
-    assert urteil["learned_score"] < 0.5
-    assert urteil["score"] < urteil["frage_ab"]
+    assert verdict["learned_score"] < 0.5
+    assert verdict["score"] < verdict["frage_ab"]
 
 
 # --- Decision plus execution -------------------------------------------------------
@@ -745,38 +745,38 @@ async def test_a_settled_sender_is_not_asked_about_again(db):
 @pytest.fixture
 def imap_stub(monkeypatch):
     """Replace `imap-mcp` by a transcript."""
-    aufrufe = []
+    calls = []
 
     async def fake_call_tool(url, tool, arguments, **kw):
-        aufrufe.append((tool, arguments))
+        calls.append((tool, arguments))
         return {"content": [{"type": "text", "text": "verschoben nach Spam"}]}
 
     monkeypatch.setattr(spam_review, "call_tool", fake_call_tool)
-    return aufrufe
+    return calls
 
 
 async def test_confirmation_moves_it_and_learns(db, imap_stub):
     user = await _owner(db)
-    v = await _urteil(db, user.id, ["from:wer@spam.xyz", "wort:gewinn"],
+    v = await _verdict(db, user.id, ["from:wer@spam.xyz", "wort:gewinn"],
                       account="privat", folder="INBOX", uid=4711)
-    result = await spam_review.entscheiden(db, v, True)
+    result = await spam_review.decide(db, v, True)
 
     assert imap_stub == [("mark_spam", {"account": "privat", "folder": "INBOX", "uid": 4711})]
     assert "verschoben" in result
     assert v.status == "spam" and v.decided_by == "telegram"
-    score, _, _ = await spam_learn.bewerten(db, user.id, ["from:wer@spam.xyz"])
+    score, _, _ = await spam_learn.rate(db, user.id, ["from:wer@spam.xyz"])
     assert score > 0.5
 
 
 async def test_a_refusal_notes_the_sender(db, imap_stub):
     """"Not spam" is more than a no: the sender should not stand out at all in future."""
     user = await _owner(db)
-    v = await _urteil(db, user.id, ["from:news@verband.de"], account="privat", folder="INBOX",
+    v = await _verdict(db, user.id, ["from:news@verband.de"], account="privat", folder="INBOX",
                       uid=99)
     v.sender_email, v.sender_domain = "news@verband.de", "verband.de"
     await db.commit()
 
-    await spam_review.entscheiden(db, v, False)
+    await spam_review.decide(db, v, False)
     assert imap_stub[0][0] == "mark_not_spam"
     rule = (await db.execute(select(AssistantPolicy).where(
         AssistantPolicy.match_value == "news@verband.de"))).scalar_one()
@@ -788,17 +788,17 @@ async def test_a_failed_move_keeps_the_decision(db, monkeypatch):
     memory; otherwise they would have to take it once more."""
     from app.services.mcp_client import McpError
 
-    async def kaputt(*a, **k):
+    async def broken(*a, **k):
         raise McpError("Connection refused")
 
-    monkeypatch.setattr(spam_review, "call_tool", kaputt)
+    monkeypatch.setattr(spam_review, "call_tool", broken)
     user = await _owner(db)
-    v = await _urteil(db, user.id, ["from:wer@spam.xyz"], account="privat", folder="INBOX",
+    v = await _verdict(db, user.id, ["from:wer@spam.xyz"], account="privat", folder="INBOX",
                       uid=1)
-    result = await spam_review.entscheiden(db, v, True)
+    result = await spam_review.decide(db, v, True)
     assert result.startswith("nicht verschoben")
     assert v.status == "spam"
-    score, _, _ = await spam_learn.bewerten(db, user.id, ["from:wer@spam.xyz"])
+    score, _, _ = await spam_learn.rate(db, user.id, ["from:wer@spam.xyz"])
     assert score > 0.5
 
 
@@ -806,11 +806,11 @@ async def test_the_digest_card_bundles_and_decides(db, imap_stub):
     import datetime as dt
 
     user = await _owner(db)
-    alt = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(hours=5)
+    old = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(hours=5)
     for i in range(3):
-        v = await _urteil(db, user.id, [f"from:wer{i}@spam.xyz"], account="privat",
+        v = await _verdict(db, user.id, [f"from:wer{i}@spam.xyz"], account="privat",
                           folder="INBOX", uid=100 + i, score=0.6)
-        v.created_at = alt
+        v.created_at = old
     await db.commit()
 
     assert await spam_review.digest_due(db) == 1
@@ -818,8 +818,8 @@ async def test_the_digest_card_bundles_and_decides(db, imap_stub):
         Notification.kind == "spam_digest"))).scalar_one()
     assert "3 Spam-Verdachtsfälle" in karte.title
 
-    erster = await db.get(SpamVerdict, karte.spam_verdict_id)
-    count, error = await spam_review.entscheide_batch(db, erster.digest_batch, True)
+    first = await db.get(SpamVerdict, karte.spam_verdict_id)
+    count, error = await spam_review.decide_batch(db, first.digest_batch, True)
     assert (count, error) == (3, 0)
     assert len(imap_stub) == 3
     offen = (await db.execute(select(SpamVerdict).where(
@@ -833,7 +833,7 @@ async def test_the_digest_card_skips_those_already_reported(db):
     import datetime as dt
 
     user = await _owner(db)
-    v = await _urteil(db, user.id, ["from:wer@spam.xyz"], score=0.95)
+    v = await _verdict(db, user.id, ["from:wer@spam.xyz"], score=0.95)
     v.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(hours=5)
     db.add(Notification(user_id=user.id, spam_verdict_id=v.id, kind="spam_review",
                         chat_id="4242", title="🚩", body="…"))
@@ -862,11 +862,11 @@ def _phish(**over) -> dict:
 
 
 async def test_disguised_bulk_mail_stands_out():
-    res = evaluate(_phish(), meine_adressen=frozenset({"ich@meine-domain.de"}))
+    res = evaluate(_phish(), my_addresses=frozenset({"ich@meine-domain.de"}))
     assert "abmeldung_nur_behauptet" in res.signals
     assert "geschaeft_an_rollenadresse" in res.signals
     # An unsubscribe path that does not exist in the body does not make a newsletter of it.
-    assert res.ist_newsletter is False
+    assert res.is_newsletter is False
     assert res.score >= 0.9
 
 
@@ -874,11 +874,11 @@ async def test_a_facade_counts_only_when_the_technical_side_is_lacking():
     """Google Play, OpenAI and eQSL have no `<a href>` in the body and are genuine anyway:
     large senders unsubscribe over one-click in the header (RFC 8058). Whoever passes their
     checks may build their HTML as they like."""
-    sauber = _phish(**{"headers": {
+    clean = _phish(**{"headers": {
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "List-Unsubscribe": "<mailto:abmelden@unbekannt.example>",
         "Return-Path": "<bounce@unbekannt.example>", "Received-Count": 3}})
-    res = evaluate(sauber, meine_adressen=frozenset({"ich@meine-domain.de"}))
+    res = evaluate(clean, my_addresses=frozenset({"ich@meine-domain.de"}))
     assert "abmeldung_nur_behauptet" not in res.signals
     assert "html_ohne_links" not in res.signals
 
@@ -887,20 +887,20 @@ async def test_a_role_address_without_a_business_case_is_harmless():
     """Strangers write to `fragen@` constantly; that is the purpose of the address."""
     res = evaluate(_phish(subject="Frage zum nächsten Treffen",
                           body_text="Hallo, wann trefft ihr euch?"),
-                   meine_adressen=frozenset({"ich@meine-domain.de"}))
+                   my_addresses=frozenset({"ich@meine-domain.de"}))
     assert "geschaeft_an_rollenadresse" not in res.signals
 
 
 async def test_an_invoice_to_a_personal_address_is_harmless():
     res = evaluate(_phish(**{"to": [{"name": "", "addr": "ich@meine-domain.de"}]}),
-                   meine_adressen=frozenset({"ich@meine-domain.de"}))
+                   my_addresses=frozenset({"ich@meine-domain.de"}))
     assert "geschaeft_an_rollenadresse" not in res.signals
 
 
 async def test_accounting_is_not_a_role_address():
     """Some roles do have contracts, and the list separates that deliberately."""
     res = evaluate(_phish(**{"to": [{"name": "", "addr": "buchhaltung@verein.de"}]}),
-                   meine_adressen=frozenset({"ich@meine-domain.de"}))
+                   my_addresses=frozenset({"ich@meine-domain.de"}))
     assert "geschaeft_an_rollenadresse" not in res.signals
 
 
@@ -908,17 +908,17 @@ async def test_a_nonbusiness_domain_beats_any_address():
     """With some domains there is no contractual business, and there `vorstand@` or
     `buchhaltung@` is no exception either, because it simply does not exist. That is a
     statement of the human (`spam_keine_geschaeftsdomains`), not a heuristic."""
-    ohne = frozenset({"mitmachverein.de"})
-    for adresse in ("fragen@mitmachverein.de", "vorstand@mitmachverein.de",
+    without = frozenset({"mitmachverein.de"})
+    for address in ("fragen@mitmachverein.de", "vorstand@mitmachverein.de",
                     "buchhaltung@mitmachverein.de", "michael@mitmachverein.de"):
-        res = evaluate(_phish(**{"to": [{"name": "", "addr": adresse}]}),
-                       meine_adressen=frozenset({"ich@meine-domain.de"}),
-                       nonbusiness_domains=ohne)
-        assert "geschaeft_an_domain_ohne_geschaeft" in res.signals, adresse
+        res = evaluate(_phish(**{"to": [{"name": "", "addr": address}]}),
+                       my_addresses=frozenset({"ich@meine-domain.de"}),
+                       nonbusiness_domains=without)
+        assert "geschaeft_an_domain_ohne_geschaeft" in res.signals, address
 
     # Without that statement it stays with the weaker role heuristic.
     res = evaluate(_phish(**{"to": [{"name": "", "addr": "buchhaltung@mitmachverein.de"}]}),
-                   meine_adressen=frozenset({"ich@meine-domain.de"}))
+                   my_addresses=frozenset({"ich@meine-domain.de"}))
     assert "geschaeft_an_domain_ohne_geschaeft" not in res.signals
     assert "geschaeft_an_rollenadresse" not in res.signals
 
@@ -927,12 +927,12 @@ async def test_a_nonbusiness_domain_without_a_business_case_is_harmless():
     """The domain keeps receiving completely normal post, only no invoices."""
     res = evaluate(_phish(subject="Frage zum Treffen", body_text="Wann trefft ihr euch?",
                           **{"to": [{"name": "", "addr": "fragen@mitmachverein.de"}]}),
-                   meine_adressen=frozenset({"ich@meine-domain.de"}),
+                   my_addresses=frozenset({"ich@meine-domain.de"}),
                    nonbusiness_domains=frozenset({"mitmachverein.de"}))
     assert "geschaeft_an_domain_ohne_geschaeft" not in res.signals
 
 
-def _marken_mail(**over) -> dict:
+def _brands_mail(**over) -> dict:
     """The Bank phishing of 2026-08-19: technically flawless, forged only in the name.
 
     SPF and DKIM pass because the sender owns their own throwaway domain, an unsubscribe
@@ -963,10 +963,10 @@ def _marken_mail(**over) -> dict:
 
 
 async def test_a_brand_in_the_display_name_without_backing():
-    res = evaluate(_marken_mail(), meine_adressen=frozenset({"vorstand@verein.example"}))
+    res = evaluate(_brands_mail(), my_addresses=frozenset({"vorstand@verein.example"}))
     assert "marke_im_anzeigenamen" in res.signals
     # The unsubscribe footer must not save it: whoever forges the name is not a newsletter.
-    assert res.ist_newsletter is False
+    assert res.is_newsletter is False
 
 
 async def test_a_brand_with_backing_stays_quiet():
@@ -974,8 +974,8 @@ async def test_a_brand_with_backing_stays_quiet():
     for name, addr in (("Bank", "service@bank.com"),
                        ("Amazon.de", "versand@shopmailer.com"),
                        ("Sparkasse Bamberg", "news@sparkasse-musterstadt.de")):
-        res = evaluate(_marken_mail(**{"from": [{"name": name, "addr": addr}]}),
-                       meine_adressen=frozenset({"vorstand@verein.example"}))
+        res = evaluate(_brands_mail(**{"from": [{"name": name, "addr": addr}]}),
+                       my_addresses=frozenset({"vorstand@verein.example"}))
         assert "marke_im_anzeigenamen" not in res.signals, name
 
 
@@ -983,31 +983,31 @@ async def test_a_free_name_is_not_a_brand():
     """A name that names no brand claims nothing: "Support" or "Dipl.-Ing." say nothing about
     who is writing, and an ambiguous abbreviation would fire on every second private mail."""
     for name in ("Support", "Dipl.-Ing. Klaus Meier", "Ups, da war noch was"):
-        res = evaluate(_marken_mail(**{"from": [{"name": name, "addr": "a@b.example"}]}),
-                       meine_adressen=frozenset({"vorstand@verein.example"}))
+        res = evaluate(_brands_mail(**{"from": [{"name": name, "addr": "a@b.example"}]}),
+                       my_addresses=frozenset({"vorstand@verein.example"}))
         assert "marke_im_anzeigenamen" not in res.signals, name
 
 
 async def test_a_blocklist_hit_counts_without_a_score():
     """The own mail server had the link on a blacklist and let the mail through anyway,
     because 1.6 of 7 points is not enough. The entry itself is the finding."""
-    res = evaluate(_marken_mail(), meine_adressen=frozenset({"vorstand@verein.example"}))
+    res = evaluate(_brands_mail(), my_addresses=frozenset({"vorstand@verein.example"}))
     assert "server_blockliste" in res.signals
     assert "server_spam_mittel" not in res.signals      # 1.6 points stay under the threshold
 
 
 async def test_a_whitelist_is_not_a_blocklist_hit():
     """RCVD_IN_DNSWL_MED looks similar and means the opposite."""
-    header = dict(_marken_mail()["headers"])
+    header = dict(_brands_mail()["headers"])
     header["X-Spam-Status"] = "No, score=-0.1 required=7.0 tests=DKIM_VALID,RCVD_IN_DNSWL_MED"
-    res = evaluate(_marken_mail(headers=header), meine_adressen=frozenset({"vorstand@verein.example"}))
+    res = evaluate(_brands_mail(headers=header), my_addresses=frozenset({"vorstand@verein.example"}))
     assert "server_blockliste" not in res.signals
 
 
 async def test_phishing_passes_the_asking_threshold():
     """All three findings together: the mail has to become a question, not pass silently."""
-    mail = _marken_mail()
-    res = evaluate(mail, meine_adressen=frozenset({"vorstand@verein.example"}),
+    mail = _brands_mail()
+    res = evaluate(mail, my_addresses=frozenset({"vorstand@verein.example"}),
                    nonbusiness_domains=frozenset({"verein.example"}), body=mail_text(mail))
     assert {"marke_im_anzeigenamen", "server_blockliste",
             "geschaeft_an_domain_ohne_geschaeft"} <= set(res.signals)
@@ -1016,8 +1016,8 @@ async def test_phishing_passes_the_asking_threshold():
 
 # --- Die Identität, die sich die Mail selbst gibt ---------------------------------------
 
-def _anspruch(name: str, addr: str, betreff: str, text: str, links: list) -> dict:
-    return _mail(**{"from": [{"name": name, "addr": addr}], "subject": betreff,
+def _claim(name: str, addr: str, subject: str, text: str, links: list) -> dict:
+    return _mail(**{"from": [{"name": name, "addr": addr}], "subject": subject,
                     "body_text": text,
                     "links": [{"href": h, "text": t} for h, t in links],
                     "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
@@ -1030,56 +1030,56 @@ async def test_an_identity_without_backing_needs_no_brand_list():
     The mail delivers the comparison value itself — it names the domain it claims to belong
     to. Whether that name stands on a list is irrelevant.
     """
-    mail = _anspruch("Stadtwerke Hintertupfing", "service@stw-abrechnung.info",
+    mail = _claim("Stadtwerke Hintertupfing", "service@stw-abrechnung.info",
                      "Ihre Abschlagszahlung konnte nicht gebucht werden",
                      "Bitte prüfen Sie Ihre Daten. Fragen? service@stadtwerke-hintertupfing.de",
                      [("https://kunden-portal-swh.top/login", "Jetzt prüfen")])
-    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+    res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" in res.signals
     assert "marke_im_anzeigenamen" not in res.signals      # steht auf keiner Liste
-    assert res.ist_newsletter is False
+    assert res.is_newsletter is False
 
 
 async def test_real_mail_links_to_its_own_house():
     """The hardest honest case, taken from the real inbox: `Versicherung via Vergleichsportal` sends over the
     comparison portal, names versicherung.de in the imprint — and links to click.email.versicherung.de.
     Exactly that link is the cover, and it is the reason the rule stays quiet."""
-    mail = _anspruch("Versicherung via Vergleichsportal", "agd7e36j9xadmv2.v@as.vergleich.de",
+    mail = _claim("Versicherung via Vergleichsportal", "agd7e36j9xadmv2.v@as.vergleich.de",
                      "Willkommen bei Versicherung, Herr Muster!",
                      "Herzlich willkommen! Es gelten die auf www.versicherung-empfehlen.de genannten "
                      "Bedingungen. Versicherung Versicherung AG, Rheinstraße 7A. www.versicherung.de",
                      [("https://click.email.versicherung.de/?qs=abc", "Zum Kundenportal")])
-    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+    res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" not in res.signals
 
 
 async def test_an_own_domain_is_no_foreign_claim():
     """Every mail quotes my address; that is not a claimed identity."""
-    mail = _anspruch("Newsletter", "news@fremd.example", "Nachricht für meine-domain.de",
+    mail = _claim("Newsletter", "news@fremd.example", "Nachricht für meine-domain.de",
                      "Unsere Nachricht hat Sie über ich@meine-domain.de erreicht.",
                      [("https://fremd.example/x", "hier")])
-    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+    res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" not in res.signals
 
 
 async def test_a_mentioned_partner_is_no_claim():
     """Whoever mentions a service provider in passing does not present themselves as one."""
-    mail = _anspruch("Der Verein", "info@verein.example", "Einladung zur Versammlung",
+    mail = _claim("Der Verein", "info@verein.example", "Einladung zur Versammlung",
                      "Die Anmeldung läuft über eventbrite.com, bitte bis Freitag.",
                      [("https://verein.example/anmeldung", "Anmeldung")])
-    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+    res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" not in res.signals
 
 
 async def test_without_links_no_verdict_about_the_target():
     """Without a single link there is nothing to compare, and a mention alone says nothing."""
-    mail = _anspruch("Bank Support", "support@fremd.example", "Ihr Konto",
+    mail = _claim("Bank Support", "support@fremd.example", "Ihr Konto",
                      "Melden Sie sich bei support@bank.com.", [])
-    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+    res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" in res.signals or "marke_im_anzeigenamen" in res.signals
 
@@ -1101,55 +1101,55 @@ async def test_a_model_fraud_verdict_prevails_over_weak_rules(db):
     """The mixture caps at 0.76 with a single rule signal, so no auto threshold was ever
     reachable, however sure the model was."""
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, await _n26(), cls={
+    verdict = await spam_review.judge(db, user.id, await _n26(), cls={
         "spam_score": 0.95, "category": "sonstiges", "betrug": True,
         "spam_reason": "Phishing-Versuch mit gefälschtem Absender",
         "merkmale": [{"kennung": "marke_fremde_domain", "text": "gibt sich als Bank aus"}]})
-    assert urteil["score"] >= 0.95
-    assert urteil["modellurteil"] is True
-    assert urteil["art"] == "phishing"
-    assert any("Betrugsversuch" in g for g in urteil["reasons"])
-    assert "llm:marke_fremde_domain" in urteil["features"]
+    assert verdict["score"] >= 0.95
+    assert verdict["modellurteil"] is True
+    assert verdict["art"] == "phishing"
+    assert any("Betrugsversuch" in g for g in verdict["reasons"])
+    assert "llm:marke_fremde_domain" in verdict["features"]
     assert {"quelle": "modell", "kennung": "marke_fremde_domain",
-            "text": "gibt sich als Bank aus"} in urteil["befunde"]
+            "text": "gibt sich als Bank aus"} in verdict["befunde"]
 
 
 async def test_the_newsletter_brake_does_not_stop_the_fraud(db):
     """A phish that hangs an unsubscribe link under its footer is a "newsletter" to the
     rules. This test pins the ORDER: the floor has to come after the brake."""
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, await _n26(headers={
+    verdict = await spam_review.judge(db, user.id, await _n26(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "List-Unsubscribe": "<https://fremde-firma.example/ab>", "Received-Count": 3,
     }), cls={"spam_score": 0.95, "category": "werbung", "betrug": True})
-    assert urteil["score"] >= 0.95
+    assert verdict["score"] >= 0.95
 
 
 async def test_without_a_fraud_flag_the_blend_stays_as_before(db):
     """Without the flag nothing changes: the same mail keeps its mixed value."""
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, await _n26(), cls={
+    verdict = await spam_review.judge(db, user.id, await _n26(), cls={
         "spam_score": 0.95, "category": "sonstiges", "betrug": False})
-    assert urteil["modellurteil"] is False
-    assert urteil["score"] < 0.95
+    assert verdict["modellurteil"] is False
+    assert verdict["score"] < 0.95
 
 
 async def test_the_wording_replaces_the_missing_field(db):
     """Models older than the field say it in the reason. Above the floor that counts."""
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, await _n26(), cls={
+    verdict = await spam_review.judge(db, user.id, await _n26(), cls={
         "spam_score": 0.95, "category": "sonstiges",
         "spam_reason": "Phishing mit gefälschtem Absender"})
-    assert urteil["modellurteil"] is True and urteil["score"] >= 0.95
+    assert verdict["modellurteil"] is True and verdict["score"] >= 0.95
 
 
 async def test_negated_wording_fires_nothing(db):
     """"kein Betrug, nur Werbung" must not become the opposite verdict."""
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
+    verdict = await spam_review.judge(db, user.id, _mail(), cls={
         "spam_score": 0.3, "category": "werbung", "spam_reason": "kein Betrug, nur Werbung"})
-    assert urteil["modellurteil"] is False
-    assert urteil["score"] < urteil["frage_ab"]
+    assert verdict["modellurteil"] is False
+    assert verdict["score"] < verdict["frage_ab"]
 
 
 async def test_a_known_contact_is_no_shield_against_recognised_fraud(db):
@@ -1159,23 +1159,23 @@ async def test_a_known_contact_is_no_shield_against_recognised_fraud(db):
     db.add(AssistantContact(owner_user_id=user.id, email="info@shop.de", domain="shop.de",
                             source_kind="frontmatter"))
     await db.commit()
-    urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
+    verdict = await spam_review.judge(db, user.id, _mail(), cls={
         "spam_score": 0.95, "category": "sonstiges", "betrug": True})
-    assert urteil["bekannter_kontakt"] is False
-    assert urteil["score"] >= 0.95
+    assert verdict["bekannter_kontakt"] is False
+    assert verdict["score"] >= 0.95
 
 
 async def test_a_learned_ham_sender_is_no_shield_against_fraud(db):
     """Three harmless mails do not vouch for the fourth: an account can be taken over."""
     user = await make_user(db, "dennis")
     for _ in range(3):
-        v = await _urteil(db, user.id, ["from:info@shop.de"], sender_email="info@shop.de")
-        await spam_learn.merken(db, v, False)
+        v = await _verdict(db, user.id, ["from:info@shop.de"], sender_email="info@shop.de")
+        await spam_learn.remember(db, v, False)
     await db.commit()
-    urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
+    verdict = await spam_review.judge(db, user.id, _mail(), cls={
         "spam_score": 0.95, "category": "sonstiges", "betrug": True})
-    assert urteil["geklaert"] is False
-    assert urteil["score"] >= 0.95
+    assert verdict["geklaert"] is False
+    assert verdict["score"] >= 0.95
 
 
 async def test_a_learned_spam_sender_stays_settled(db):
@@ -1183,17 +1183,17 @@ async def test_a_learned_spam_sender_stays_settled(db):
     the auto threshold and must not be switched off along with it."""
     user = await make_user(db, "dennis")
     for _ in range(3):
-        v = await _urteil(db, user.id, ["from:info@shop.de"], sender_email="info@shop.de")
-        await spam_learn.merken(db, v, True)
+        v = await _verdict(db, user.id, ["from:info@shop.de"], sender_email="info@shop.de")
+        await spam_learn.remember(db, v, True)
     await db.commit()
-    urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
+    verdict = await spam_review.judge(db, user.id, _mail(), cls={
         "spam_score": 0.95, "category": "sonstiges", "betrug": True})
-    assert urteil["geklaert"] is True and urteil["geklaert_urteil"] == "spam"
+    assert verdict["geklaert"] is True and verdict["geklaert_urteil"] == "spam"
 
 
 # --- Der Fall vom 2026-08-20: der PayPal-Beleg im Spam-Ordner ------------------------
 
-async def _gelernt(db, owner_id, feature: str, spam: int, ham: int):
+async def _learned(db, owner_id, feature: str, spam: int, ham: int):
     from app.models.assistant import SpamFeatureStat
     db.add(SpamFeatureStat(owner_user_id=owner_id, feature=feature,
                            spam_count=spam, ham_count=ham))
@@ -1208,22 +1208,22 @@ async def test_ones_own_address_decides_nothing(db):
     entschieden wird, sammelt sie einseitig Zähler — und wurde so zur selbsterfüllenden Regel.
     """
     user = await _owner(db)
-    await _gelernt(db, user.id, "to:paypal@meine.domain", spam=4, ham=0)
+    await _learned(db, user.id, "to:paypal@meine.domain", spam=4, ham=0)
 
-    score, reasons, sicher = await spam_learn.bewerten(
+    score, reasons, safe = await spam_learn.rate(
         db, user.id, ["to:paypal@meine.domain"])
-    assert sicher is False, "die eigene Adresse darf nichts allein entscheiden"
+    assert safe is False, "die eigene Adresse darf nichts allein entscheiden"
 
 
 async def test_agreement_means_without_contradiction(db):
     """Zwei starke Merkmale, die in verschiedene Richtungen zeigen, sind keine Einigkeit."""
     user = await _owner(db)
-    await _gelernt(db, user.id, "from:service@paypal.de", spam=0, ham=282)
-    await _gelernt(db, user.id, "dom:zahlung-xy.top", spam=9, ham=0)
+    await _learned(db, user.id, "from:service@paypal.de", spam=0, ham=282)
+    await _learned(db, user.id, "dom:zahlung-xy.top", spam=9, ham=0)
 
-    _score, _reasons, sicher = await spam_learn.bewerten(
+    _score, _reasons, safe = await spam_learn.rate(
         db, user.id, ["from:service@paypal.de", "dom:zahlung-xy.top"])
-    assert sicher is False
+    assert safe is False
 
 
 async def test_a_known_sender_against_a_fraud_suspicion_gets_asked(db):
@@ -1235,9 +1235,9 @@ async def test_a_known_sender_against_a_fraud_suspicion_gets_asked(db):
     Zurückholen von vorn los.
     """
     user = await _owner(db)
-    await _gelernt(db, user.id, "from:service@paypal.de", spam=0, ham=282)
+    await _learned(db, user.id, "from:service@paypal.de", spam=0, ham=282)
 
-    urteil = await spam_review.beurteilen(db, user.id, _mail(
+    verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "PayPal", "addr": "service@paypal.de"}],
            "subject": "Beleg für Ihre Zahlung",
            "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
@@ -1245,21 +1245,21 @@ async def test_a_known_sender_against_a_fraud_suspicion_gets_asked(db):
         cls={"spam_score": 0.95, "category": "phishing",
              "spam_reason": "Phishing-Versuch mit fremder Marke"})
 
-    assert urteil["score"] < 1.0
-    assert urteil["score"] >= urteil["frage_ab"], "gezeigt wird sie trotzdem"
-    assert urteil["geklaert"] is False, "nichts ist geklärt, solange man sich streitet"
-    assert any("erwünscht" in g for g in urteil["reasons"])
+    assert verdict["score"] < 1.0
+    assert verdict["score"] >= verdict["frage_ab"], "gezeigt wird sie trotzdem"
+    assert verdict["geklaert"] is False, "nichts ist geklärt, solange man sich streitet"
+    assert any("erwünscht" in g for g in verdict["reasons"])
 
 
 async def test_an_unknown_sender_stays_fraud(db):
     """Die Bremse gilt nur für Absender, die dieses Postfach wirklich kennt."""
     user = await _owner(db)
-    urteil = await spam_review.beurteilen(db, user.id, _mail(
+    verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "PayPal", "addr": "service@paypal-sicherheit.top"}],
            "subject": "Ihr Konto wurde gesperrt"}),
         cls={"spam_score": 0.95, "category": "phishing",
              "spam_reason": "Phishing-Versuch mit fremder Marke"})
-    assert urteil["score"] >= 0.95
+    assert verdict["score"] >= 0.95
 
 
 async def test_whoever_contradicts_once_is_not_asked_again(db):
@@ -1270,12 +1270,12 @@ async def test_whoever_contradicts_once_is_not_asked_again(db):
     wenn er die Erkennung für kaputt hält.
     """
     user = await _owner(db)
-    await _gelernt(db, user.id, "from:service@paypal.de", spam=0, ham=282)
+    await _learned(db, user.id, "from:service@paypal.de", spam=0, ham=282)
     db.add(SpamVerdict(owner_user_id=user.id, sender_email="service@paypal.de",
                        subject="Beleg", status="ham", decided_by="mailbox", features=[]))
     await db.commit()
 
-    urteil = await spam_review.beurteilen(db, user.id, _mail(
+    verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "PayPal", "addr": "service@paypal.de"}],
            "subject": "Beleg für Ihre Zahlung",
            "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
@@ -1283,20 +1283,20 @@ async def test_whoever_contradicts_once_is_not_asked_again(db):
         cls={"spam_score": 0.95, "category": "phishing",
              "spam_reason": "Phishing-Versuch mit fremder Marke"})
 
-    assert urteil["score"] < urteil["frage_ab"], "die Frage ist beantwortet"
-    assert any("ausdrücklich" in g for g in urteil["reasons"])
+    assert verdict["score"] < verdict["frage_ab"], "die Frage ist beantwortet"
+    assert any("ausdrücklich" in g for g in verdict["reasons"])
 
 
 async def test_one_contradiction_is_no_free_pass(db):
     """Eine gefälschte Mail unter demselben Namen bleibt Betrug — sonst wäre der einmal
     freigegebene Absender die bequemste Tür ins Haus."""
     user = await _owner(db)
-    await _gelernt(db, user.id, "from:service@paypal.de", spam=0, ham=282)
+    await _learned(db, user.id, "from:service@paypal.de", spam=0, ham=282)
     db.add(SpamVerdict(owner_user_id=user.id, sender_email="service@paypal.de",
                        subject="Beleg", status="ham", decided_by="mailbox", features=[]))
     await db.commit()
 
-    urteil = await spam_review.beurteilen(db, user.id, _mail(
+    verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "PayPal", "addr": "service@paypal.de"}],
            "reply_to": [{"name": "", "addr": "kasse@ganz-woanders.top"}],
            "subject": "Ihr Konto wurde gesperrt",
@@ -1304,4 +1304,4 @@ async def test_one_contradiction_is_no_free_pass(db):
                        "Return-Path": "<b@ganz-woanders.top>", "Received-Count": 1}}),
         cls={"spam_score": 0.95, "category": "phishing",
              "spam_reason": "Phishing-Versuch mit gefälschtem Absender"})
-    assert urteil["score"] >= urteil["frage_ab"]
+    assert verdict["score"] >= verdict["frage_ab"]

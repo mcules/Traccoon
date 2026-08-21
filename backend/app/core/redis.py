@@ -25,16 +25,16 @@ ACTIVE = PREFIX + "active_processes"
 # away, the run is demonstrably dead, and exactly that separates "still working for a long
 # time" from "has disappeared". The expiry is clearly above the refresh beat so that a GC
 # hiccup in the worker does not raise a false alarm.
-PULS_TAKT = 15
-PULS_TTL = 90
+PULSE_BEAT = 15
+PULSE_TTL = 90
 # Results stay for a day. Formerly one hour, which was too short: a result fetched only after
 # a backend outage was gone with it and the work lost.
 RESULT_TTL = 86400
 # This long a run may stay without ANY sign of life before it counts as disappeared.
-GNADENFRIST = 300
+GRACE = 300
 # Beat of the liveness check (the result poll runs faster but costs only one query). As a
 # module constant so that tests can pull it to 0.
-PRUEF_TAKT = 5.0
+CHECK_BEAT = 5.0
 
 _redis: Redis | None = None
 
@@ -67,13 +67,13 @@ async def enqueue_task(payload: dict) -> None:
     await get_redis().lpush(QUEUE, json.dumps(payload))
 
 
-def puls_key(task_id: str) -> str:
+def pulse_key(task_id: str) -> str:
     """Key of the sign of life. The worker writes it (with its own connection) and the backend
     reads it, so the name belongs here, not in either of the two."""
     return f"{PREFIX}alive:{task_id}"
 
 
-async def lauf_lebt(task_id: str) -> bool:
+async def run_alive(task_id: str) -> bool:
     """Does this assignment still exist, no matter how long it has been running?
 
     Three sources, each sufficient on its own:
@@ -86,7 +86,7 @@ async def lauf_lebt(task_id: str) -> bool:
     still running; a killed worker leaves stale entries there (hence the pulse).
     """
     r = get_redis()
-    if await r.get(puls_key(task_id)) is not None:
+    if await r.get(pulse_key(task_id)) is not None:
         return True
     for listing in (QUEUE, PROCESSING):
         for raw in await r.lrange(listing, 0, -1):
@@ -99,7 +99,7 @@ async def lauf_lebt(task_id: str) -> bool:
 
 
 async def wait_result(task_id: str, timeout: float | None = None, poll: float = 0.4,
-                      gnadenfrist: float = GNADENFRIST) -> dict | None:
+                      grace: float = GRACE) -> dict | None:
     """Waits for result:{task_id}, as long as the run lives, not by the clock.
 
     An agent run may take hours (implementation plus review rounds hang off ONE assignment).
@@ -115,10 +115,10 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
     """
     r = get_redis()
     key = f"{PREFIX}result:{task_id}"
-    uhr = asyncio.get_running_loop().time
-    start = uhr()
-    tot_seit: float | None = None
-    naechste_check = 0.0
+    clock = asyncio.get_running_loop().time
+    start = clock()
+    dead_since: float | None = None
+    next_check = 0.0
     last_notice = start
     while True:
         try:
@@ -132,20 +132,20 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
             # forever. Try again on the next round.
             log.warning("Fetching the result for %s failed, trying again", task_id,
                         exc_info=True)
-        now = uhr()
+        now = clock()
         if timeout and now - start >= timeout:
             return None
         # Check the sign of life only every few seconds: the result poll runs fast, while the
         # check costs several Redis queries.
-        if now >= naechste_check:
-            naechste_check = now + PRUEF_TAKT
-            if await lauf_lebt(task_id):
-                tot_seit = None
-            elif tot_seit is None:
-                tot_seit = now
-            elif now - tot_seit >= gnadenfrist:
+        if now >= next_check:
+            next_check = now + CHECK_BEAT
+            if await run_alive(task_id):
+                dead_since = None
+            elif dead_since is None:
+                dead_since = now
+            elif now - dead_since >= grace:
                 log.warning("Run %s without a sign of life for %.0fs, counts as disappeared",
-                            task_id, now - tot_seit)
+                            task_id, now - dead_since)
                 return None
         if now - last_notice >= 1800:
             last_notice = now

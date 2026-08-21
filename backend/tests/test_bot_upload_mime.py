@@ -41,8 +41,8 @@ def test_no_mime_type_falls_back_to_a_safe_default():
 def test_a_tampered_mime_type_does_not_reach_the_content_type():
     """The actual attack vector: a prepared mime_type with control or special characters must
     NEVER end up one to one as an HTTP content type header value."""
-    boesartig = "audio/mpeg\r\nX-Injected: 1"
-    name, mime = _upload_name_kind("audio", boesartig)
+    malicious = "audio/mpeg\r\nX-Injected: 1"
+    name, mime = _upload_name_kind("audio", malicious)
     assert mime == "audio/mpeg"
     assert "\r" not in mime and "\n" not in mime
     assert name == "audio.mp3"

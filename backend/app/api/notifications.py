@@ -42,7 +42,7 @@ _TICKET_STATE = {
 }
 
 
-def _offen():
+def _open():
     """Condition: this notification still waits for a decision.
 
     Deliberately asked over the subject and not over a flag on the notification itself. A
@@ -80,7 +80,7 @@ def _q_own(user: User):
 def _q_visible(user: User, alle: bool = False):
     if alle:
         return _q_own(user)
-    return and_(_q_own(user), or_(Notification.notified_at.is_(None), _offen()))
+    return and_(_q_own(user), or_(Notification.notified_at.is_(None), _open()))
 
 
 @router.get("")
@@ -96,10 +96,10 @@ async def list_notifications(all: bool = False, user: User = Depends(get_current
     targets: dict[int, tuple[str, str]] = {}
     if ids:
         from ..models.project import Project
-        for issue_key, projekt_key, iid in (await db.execute(
+        for issue_key, project_key, iid in (await db.execute(
                 select(Issue.key, Project.key, Issue.id)
                 .join(Project, Project.id == Issue.project_id).where(Issue.id.in_(ids)))).all():
-            targets[iid] = (issue_key, projekt_key)
+            targets[iid] = (issue_key, project_key)
     return [{"id": n.id, "kind": n.kind, "title": n.title, "body": n.body,
              "issue_id": n.issue_id, "project_id": n.project_id,
              "issue_key": targets.get(n.issue_id or 0, ("", ""))[0],

@@ -29,7 +29,7 @@ from . import workflow_templates as templates
 
 log = logging.getLogger("traccoon.webhooks")
 
-ALTE_MODI = ("task", "notify", "assistant")
+OLD_MODI = ("task", "notify", "assistant")
 
 
 def _tpl(text: str | None) -> str:
@@ -37,15 +37,15 @@ def _tpl(text: str | None) -> str:
     return re.sub(r"\{([A-Za-z0-9_.]+)\}", r"{{ \1 }}", text or "")
 
 
-def _eigener_title(sub: WebhookSub) -> str:
+def _own_title(sub: WebhookSub) -> str:
     """Der Titel, sofern er einer ist.
 
     „{title}“ ist die unangetastete Voreinstellung: Der Assistenten-Weg hat sie nie benutzt
     (er nahm den Betreff der Mail), und die Nutzlast eines Melders hat selten ein Feld
     `title`. Übernähme man sie, stünde der Platzhalter am Ende als Text in der Überschrift.
     """
-    roh = (sub.title_template or "").strip()
-    return "" if roh in ("", "{title}") else _tpl(roh)
+    raw = (sub.title_template or "").strip()
+    return "" if raw in ("", "{title}") else _tpl(raw)
 
 
 def _node(graph: dict, node_id: str) -> dict:
@@ -55,12 +55,12 @@ def _node(graph: dict, node_id: str) -> dict:
     raise KeyError(f"Vorlage ohne Knoten '{node_id}'")
 
 
-def _setze_params(graph: dict, node_id: str, params: dict) -> None:
+def _set_params(graph: dict, node_id: str, params: dict) -> None:
     cfg = _node(graph, node_id)["data"]["config"]
     cfg["action"]["params"] = params
 
 
-def _ist_mail(sub: WebhookSub) -> bool:
+def _is_mail(sub: WebhookSub) -> bool:
     """Ob dieser Assistenten-Webhook der Mail-Eingang ist.
 
     `classify_agent` gab es nur für ihn (lokale Vorklassifizierung vor dem Assistenten); der
@@ -74,16 +74,16 @@ def _ist_mail(sub: WebhookSub) -> bool:
 async def _recipient(db: AsyncSession, sub: WebhookSub) -> int | None:
     """Wer die Nachricht bekommt: der Mensch hinter dem Chat, sonst der Besitzer."""
     if sub.notify_chat:
-        wer = (await db.execute(select(User).where(
+        who = (await db.execute(select(User).where(
             User.telegram_chat_id == sub.notify_chat))).scalars().first()
-        if wer is not None:
-            return wer.id
+        if who is not None:
+            return who.id
         log.warning("Webhook %s: Chat %s gehört zu niemandem — die Nachricht geht künftig "
                     "an den Besitzer", sub.route, sub.notify_chat)
     return sub.owner_user_id
 
 
-def _sachname(route: str) -> str:
+def _itemname(route: str) -> str:
     """Aus einer Route ein Name für die Sache: `ha-battery-low` → „Ha battery low“.
 
     Was der Ablauf tut, weiß nur der Mensch — aber wie er heißt, soll wenigstens nicht vom
@@ -95,12 +95,12 @@ def _sachname(route: str) -> str:
 
 
 async def _as_flow(db: AsyncSession, sub: WebhookSub, key: str, graph: dict,
-                      projekt_id: int | None = None) -> None:
-    name = _sachname(sub.route)
+                      project_id: int | None = None) -> None:
+    name = _itemname(sub.route)
     d = await templates.create(
         db, key, owner_id=sub.owner_user_id,
-        def_key=await templates.freier_key(db, name, projekt_id),
-        name=name, graph=graph, projekt_id=projekt_id)
+        def_key=await templates.free_key(db, name, project_id),
+        name=name, graph=graph, project_id=project_id)
     await db.flush()
     sub.mode = "workflow"
     sub.workflow_definition_id = d.id
@@ -110,11 +110,11 @@ async def _as_flow(db: AsyncSession, sub: WebhookSub, key: str, graph: dict,
 async def convert(db: AsyncSession) -> int:
     """Stellt alles um, was noch einen alten Modus trägt. Gibt die Anzahl zurück."""
     subs = (await db.execute(select(WebhookSub).where(
-        WebhookSub.mode.in_(ALTE_MODI)))).scalars().all()
+        WebhookSub.mode.in_(OLD_MODI)))).scalars().all()
     if not subs:
         return 0
     for sub in subs:
-        if sub.mode == "assistant" and _ist_mail(sub):
+        if sub.mode == "assistant" and _is_mail(sub):
             # Der Mail-Eingang war nie Sache des Webhooks: Er meldet, dass eine Mail da ist,
             # und wer darauf hört, entscheidet der Ablauf. Was die Schritte über den Eingang
             # wissen müssen, stand vorher fest im Code und steht jetzt im Kontext.
@@ -139,10 +139,10 @@ async def convert(db: AsyncSession) -> int:
         if sub.mode == "assistant":
             graph = templates.graph("webhook-assistent")
             task = _tpl(sub.prompt_tmpl) or (
-                f"{_eigener_title(sub)}\n\n{_tpl(sub.body_template)}".strip())
-            _setze_params(graph, "auftrag", {
+                f"{_own_title(sub)}\n\n{_tpl(sub.body_template)}".strip())
+            _set_params(graph, "auftrag", {
                 "agent": sub.agent or "assistent",
-                "titel": _eigener_title(sub),
+                "titel": _own_title(sub),
                 "task": task,
                 # `auto_run` hieß „ohne Rückfrage laufen“ — der Schalter am Knoten fragt
                 # andersherum, deshalb die Umkehrung.
@@ -153,9 +153,9 @@ async def convert(db: AsyncSession) -> int:
 
         if sub.mode == "notify":
             graph = templates.graph("webhook-melden")
-            _setze_params(graph, "melden", {
+            _set_params(graph, "melden", {
                 "to": {"mode": "user", "user_id": await _recipient(db, sub)},
-                "title": _eigener_title(sub) or sub.route,
+                "title": _own_title(sub) or sub.route,
                 "text": _tpl(sub.body_template),
             })
             await _as_flow(db, sub, "webhook-melden", graph)
@@ -164,16 +164,16 @@ async def convert(db: AsyncSession) -> int:
         # mode == "task"
         graph = templates.graph("webhook-ticket")
         params = {"project_id": sub.project_id,
-                  "summary": _eigener_title(sub) or f"Webhook {sub.route}",
+                  "summary": _own_title(sub) or f"Webhook {sub.route}",
                   "description": _tpl(sub.body_template)}
         if sub.agent:
             params["assigned_agent"] = sub.agent
             params["start_agent_status"] = sub.status_new or "planning"
-        _setze_params(graph, "ticket", params)
+        _set_params(graph, "ticket", params)
         # Der Ablauf gehört in das Projekt, in dem er anlegt. Sonst wäre das Zielprojekt für
         # ihn ein fremdes, und `create_ticket` verlangte vom Besitzer eine Mitgliedschaft,
         # die der Webhook nie gebraucht hat.
-        await _as_flow(db, sub, "webhook-ticket", graph, projekt_id=sub.project_id)
+        await _as_flow(db, sub, "webhook-ticket", graph, project_id=sub.project_id)
 
     await db.commit()
     return len(subs)

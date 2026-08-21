@@ -468,7 +468,7 @@ def _run_end_fields(src: dict) -> dict:
     }
 
 
-def entdoppeln_seq(events: list[dict]) -> int:
+def dedupe_seq(events: list[dict]) -> int:
     """Resolve duplicate `seq` in an **already sorted** list, the trap of every log that spans
     sessions. Returns how many were moved.
 
@@ -492,14 +492,14 @@ def entdoppeln_seq(events: list[dict]) -> int:
     (`office_film`) and the room (`api/office.GET /office/events`) mix the same sessions and
     must not resolve the collision twice, possibly differently.
     """
-    vorher = -1
-    verschoben = 0
+    before = -1
+    moved = 0
     for ev in events:
-        if ev["seq"] <= vorher:
-            ev["seq"] = vorher + 1
-            verschoben += 1
-        vorher = ev["seq"]
-    return verschoben
+        if ev["seq"] <= before:
+            ev["seq"] = before + 1
+            moved += 1
+        before = ev["seq"]
+    return moved
 
 
 def run_boundary_events(run, ctx: RunCtx, *, first_step_id: int | None,
@@ -605,9 +605,9 @@ def deploy_anchor_step_id(steps, created_at: dt.datetime | None, *,
     better a gap than a deploy standing before its own trigger.
     """
     cutoff = _as_utc(created_at)
-    frei = [s.id for s in steps
+    free = [s.id for s in steps
             if cutoff is None or (_as_utc(s.created_at) or cutoff) <= cutoff]
-    for step_id in reversed(frei):
+    for step_id in reversed(free):
         if step_id not in blocked:
             return step_id
     return None

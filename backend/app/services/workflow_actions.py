@@ -117,14 +117,14 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     from ..models.user import SYSTEM_USER_ID
 
     pid = _as_int(_interp(params.get("project_id"), ctx)) if params.get("project_id") is not None else None
-    fremdes_target = pid is not None and pid != inst.project_id
+    foreign_target = pid is not None and pid != inst.project_id
     pid = pid or inst.project_id
     if pid is None:
         raise ValueError("create_ticket: no project_id (neither a parameter nor the instance project)")
     # A flow may only create where the person behind it could create as well. Without this
     # check a free-standing flow would be a way into foreign projects: the definition
     # belongs to its creator, the target project does not.
-    if fremdes_target and inst.started_by is not None:
+    if foreign_target and inst.started_by is not None:
         from ..api.deps import build_access
         from ..models.enums import GlobalRole, ProjectRole
         from ..models.user import User as _User
@@ -266,7 +266,7 @@ async def _webhook(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
 # Before the artifact registry there was one action per subject. Both are `set_status`
 # today, but the old names still sit in published versions, and those are immutable
 # (running instances hang off them). So they are redirected instead of maintained twice.
-_ALT_ACTIONS = {"set_agent_status", "set_purchase_status"}
+_OLD_ACTIONS = {"set_agent_status", "set_purchase_status"}
 
 # Which agent status triggers which notification, identical to the earlier post-processing
 # in the dispatcher so messenger and bell behave unchanged.
@@ -285,7 +285,7 @@ async def _issue_of(db, inst: WorkflowInstance):
     return await db.get(Issue, inst.issue_id)
 
 
-async def _artefakt_von(db, inst: WorkflowInstance):
+async def _artifact_from(db, inst: WorkflowInstance):
     """The shared artifact row of the flow, which the custom fields hang off.
 
     Prefers the binding on the instance. Older instances (from before the shared identity)
@@ -321,38 +321,38 @@ async def _set_field(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     key = str(_interp(params.get("field") or params.get("key") or "", ctx)).strip()
     if not key:
         return {"action": "set_field", "applied": False, "reason": "kein Feld angegeben"}
-    artefakt = await _artefakt_von(db, inst)
-    if artefakt is None:
+    artifact = await _artifact_from(db, inst)
+    if artifact is None:
         return {"action": "set_field", "applied": False, "reason": "kein Artefakt an diesem Ablauf"}
 
-    field = next((f for f in await af.fields_of(db, artefakt.type_id, artefakt.project_id)
+    field = next((f for f in await af.fields_of(db, artifact.type_id, artifact.project_id)
                  if f.key == key), None)
     if field is None:
         raise ValueError(f"The field '{key}' does not exist on this artifact")
 
     # Values may arrive as a list, as a single value or comma separated.
-    roh = params.get("values", params.get("value"))
-    if roh is None:
+    raw = params.get("values", params.get("value"))
+    if raw is None:
         new = []
-    elif isinstance(roh, list):
-        new = [_interp(v, ctx) for v in roh]
+    elif isinstance(raw, list):
+        new = [_interp(v, ctx) for v in raw]
     else:
-        text = str(_interp(roh, ctx))
+        text = str(_interp(raw, ctx))
         new = [t.strip() for t in text.split(",")] if "," in text else [text]
     new = [v for v in new if str(v).strip() != ""]
 
-    modus = str(params.get("mode") or "set").lower()
-    if modus in ("add", "remove"):
-        vorhanden = [str(v) for v in (await af.values_of(db, artefakt.id)).get(key, [])]
-        if modus == "add":
-            new = vorhanden + [str(v) for v in new if str(v) not in vorhanden]
+    mode = str(params.get("mode") or "set").lower()
+    if mode in ("add", "remove"):
+        existing = [str(v) for v in (await af.values_of(db, artifact.id)).get(key, [])]
+        if mode == "add":
+            new = existing + [str(v) for v in new if str(v) not in existing]
         else:
-            weg = {str(v) for v in new}
-            new = [v for v in vorhanden if v not in weg]
+            path = {str(v) for v in new}
+            new = [v for v in existing if v not in path]
 
-    gesetzt = await af.set_values(db, artefakt.id, field, new)
+    gesetzt = await af.set_values(db, artifact.id, field, new)
     inst.context = {**ctx, "fields": {**(ctx.get("fields") or {}), key: gesetzt}}
-    return {"action": "set_field", "field": key, "mode": modus, "values": gesetzt}
+    return {"action": "set_field", "field": key, "mode": mode, "values": gesetzt}
 
 
 async def _set_status(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
@@ -631,10 +631,10 @@ async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     from .workflow_tools import call
 
     name = str(_interp(params.get("tool") or params.get("name") or "", ctx)).strip()
-    argumente = _interp_deep(params.get("arguments") or params.get("args") or {}, ctx)
-    if not isinstance(argumente, dict):
-        argumente = {}
-    result = await call(db, await _owner(db, inst), name, argumente)
+    arguments = _interp_deep(params.get("arguments") or params.get("args") or {}, ctx)
+    if not isinstance(arguments, dict):
+        arguments = {}
+    result = await call(db, await _owner(db, inst), name, arguments)
     key = str(params.get("context_key") or "tool")
     inst.context = {**ctx, key: result}
     if params.get("fail_on_error") and not result["ok"]:
@@ -643,7 +643,7 @@ async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
             "error": result.get("error")}
 
 
-async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def _note_append(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Append a line to a note in the vault, and create the note when it is missing.
 
     Parameters, all with `{{path}}` templating from the context:
@@ -662,7 +662,7 @@ async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
 
     path = str(_interp(params.get("path") or params.get("path") or "", ctx)).strip()
     text = str(_interp(params.get("text") or "", ctx)).strip()
-    ueberschrift = str(_interp(params.get("heading") or params.get("heading") or "",
+    heading = str(_interp(params.get("heading") or params.get("heading") or "",
                                ctx)).strip()
     key = str(params.get("context_key") or "note")
     if not path or not text:
@@ -670,22 +670,22 @@ async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
         inst.context = {**ctx, key: {"ok": False, "error": "kein Pfad oder kein Text"}}
         return {"action": "note_append", "ok": False, "reason": "leer"}
 
-    argumente: dict = {"target": {"type": "path", "path": path}, "content": text}
-    if ueberschrift:
+    arguments: dict = {"target": {"type": "path", "path": path}, "content": text}
+    if heading:
         # A section is addressed as an object, and it has to be created when it is missing:
         # otherwise the call fails on a note that does not carry that heading yet. Without
         # this the line lands at the end of the file, which is where nobody looks for a task.
-        argumente["section"] = {"type": "heading", "target": ueberschrift}
-        argumente["createTargetIfMissing"] = True
+        arguments["section"] = {"type": "heading", "target": heading}
+        arguments["createTargetIfMissing"] = True
     # With the server prefix: without it the session finds no tool and answers with a HINT
     # AS TEXT, and `aufrufen` reports ok because it got an answer. The note stays empty and
     # nobody notices. The name may be overridden, for a vault hanging off another server.
     tool = str(params.get("tool") or "obsidian__obsidian_append_to_note").strip()
-    result = await call(db, await _owner(db, inst), tool, argumente)
+    result = await call(db, await _owner(db, inst), tool, arguments)
     inst.context = {**ctx, key: result}
-    # Der Rueckgabewert nennt die Aktion so, wie sie heisst. Er landet im Schritt-Protokoll
-    # und nicht im Kontext — der Kontext-Schluessel `notiz` bleibt deshalb, wie er ist:
-    # Der steht in gespeicherten Graphen.
+    # The return value names the action the way it is called. It lands in the step log and
+    # not in the context — the context key `notiz` therefore stays as it is: it appears in
+    # stored graphs.
     return {"action": "note_append", "path": path, "ok": result["ok"],
             "error": result.get("error")}
 
@@ -735,7 +735,7 @@ async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
                                                                 "status_code", "ok")}}
 
 
-def _zahl(params: dict, ctx: dict, *namen, default: float = 0.0) -> float:
+def _number(params: dict, ctx: dict, *names, default: float = 0.0) -> float:
     """A numeric parameter that may also come from the context.
 
     Numbers used to sit literally in the node. As soon as the same flow is used more than
@@ -743,20 +743,20 @@ def _zahl(params: dict, ctx: dict, *namen, default: float = 0.0) -> float:
     as `{{ still_stunden }}`. Without substitution the step fails on a text that was meant
     as a number.
     """
-    for name in namen:
+    for name in names:
         if name in params and params[name] not in (None, ""):
-            roh = _interp(params[name], ctx)
-            if isinstance(roh, str):
-                roh = roh.strip().replace(",", ".")
+            raw = _interp(params[name], ctx)
+            if isinstance(raw, str):
+                raw = raw.strip().replace(",", ".")
             try:
-                return float(roh)
+                return float(raw)
             except (TypeError, ValueError):
-                raise ValueError(f"'{name}': '{roh}' is not a number")
+                raise ValueError(f"'{name}': '{raw}' is not a number")
     return default
 
 
-def _kein_messwert(inst: WorkflowInstance, ctx: dict, params: dict, key: str,
-                   reason: str, roh=None, last=None, unit: str = "") -> dict:
+def _no_measurement(inst: WorkflowInstance, ctx: dict, params: dict, key: str,
+                   reason: str, raw=None, last=None, unit: str = "") -> dict:
     """Nothing recorded, but nothing broken either.
 
     Two cases end up here: the value is missing (an event without a reading) or it is not
@@ -765,15 +765,15 @@ def _kein_messwert(inst: WorkflowInstance, ctx: dict, params: dict, key: str,
     into the message.
     """
     key_ctx = str(params.get("context_key") or "metric")
-    vorher = ctx.get(key_ctx) if isinstance(ctx.get(key_ctx), dict) else {}
-    inst.context = {**ctx, key_ctx: {**vorher, "series": key, "ignored": True,
+    before = ctx.get(key_ctx) if isinstance(ctx.get(key_ctx), dict) else {}
+    inst.context = {**ctx, key_ctx: {**before, "series": key, "ignored": True,
                                      "warn": False, "value": last, "unit": unit,
-                                     "raw": roh}}
+                                     "raw": raw}}
     return {"action": "metric_record", "series": key, "ignored": True, "skipped": True,
             "reason": reason, "last_good": last}
 
 
-async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def _measurement(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Record a number, and read off where the series is heading.
 
     A flow used to see only the moment: "battery 25 %" became a message and was gone. Only
@@ -799,64 +799,64 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     key = str(_interp(params.get("series") or "", ctx)).strip()
     if not key:
         raise ValueError("messwert: no series given")
-    roh = _interp(params.get("value"), ctx)
-    if isinstance(roh, str):
-        roh = roh.strip().replace("%", "").replace(",", ".")
+    raw = _interp(params.get("value"), ctx)
+    if isinstance(raw, str):
+        raw = raw.strip().replace("%", "").replace(",", ".")
     # A missing value is usually not a defect but the nature of the thing: a tracker
     # reports "I am online" or "I am down" without a position, and therefore without a
     # charge level. The step then has nothing to do and should not look as if something
     # broke. Whoever needs the value sets `pflicht`.
-    missing = roh is None or (isinstance(roh, str) and roh.lower() in ("", "none", "null"))
+    missing = raw is None or (isinstance(raw, str) and raw.lower() in ("", "none", "null"))
     if missing and not params.get("required"):
         # The last known reading stays in the context: on a failure notice it is the
         # most interesting number still available.
-        known = await metrics.reihe(db, await _owner(db, inst), key)
-        return _kein_messwert(inst, ctx, params, key, "kein Wert in der Nutzlast",
+        known = await metrics.series(db, await _owner(db, inst), key)
+        return _no_measurement(inst, ctx, params, key, "kein Wert in der Nutzlast",
                               last=known.last_value if known else None,
                               unit=known.unit if known else "")
     try:
-        value = float(roh)
+        value = float(raw)
     except (TypeError, ValueError):
-        raise ValueError(f"messwert: '{roh}' is not a number")
+        raise ValueError(f"messwert: '{raw}' is not a number")
 
     # Devices report nonsense when they do not know something: the tracker sends
     # `batteryLevel: 127` as soon as the charge is unknown. A single point like that bends
     # the line from "empty in two weeks" into "rising slightly", so a value outside the
     # bounds never enters the series.
-    hat_unten = params.get("min", params.get("minimum")) not in (None, "")
-    hat_oben = params.get("max", params.get("maximum")) not in (None, "")
-    unten = _zahl(params, ctx, "min", "minimum") if hat_unten else None
-    oben = _zahl(params, ctx, "max", "maximum") if hat_oben else None
-    ausserhalb = ((unten is not None and value < unten)
-                  or (oben is not None and value > oben))
-    if ausserhalb:
+    has_below = params.get("min", params.get("minimum")) not in (None, "")
+    has_above = params.get("max", params.get("maximum")) not in (None, "")
+    below = _number(params, ctx, "min", "minimum") if has_below else None
+    above = _number(params, ctx, "max", "maximum") if has_above else None
+    outside = ((below is not None and value < below)
+                  or (above is not None and value > above))
+    if outside:
         # During alarms the tracker reported "231 %", and without this bound that went out.
-        vorhanden = await metrics.reihe(db, await _owner(db, inst), key)
-        return _kein_messwert(inst, ctx, params, key, f"außerhalb {unten}…{oben}", roh=value,
-                              last=vorhanden.last_value if vorhanden else None,
-                              unit=vorhanden.unit if vorhanden else "")
+        existing = await metrics.series(db, await _owner(db, inst), key)
+        return _no_measurement(inst, ctx, params, key, f"außerhalb {below}…{above}", raw=value,
+                              last=existing.last_value if existing else None,
+                              unit=existing.unit if existing else "")
 
-    target = _zahl(params, ctx, "target")
-    vorwarn = _zahl(params, ctx, "warn_days", default=7.0)
-    window = int(_zahl(params, ctx, "window_days",
+    target = _number(params, ctx, "target")
+    forewarn = _number(params, ctx, "warn_days", default=7.0)
+    window = int(_number(params, ctx, "window_days",
                         default=float(metrics.WINDOW_DAYS)))
 
     owner = await _owner(db, inst)
-    reihe, _point = await metrics.record(
+    series_row, _point = await metrics.record(
         db, owner, key, value,
         name=str(_interp(params.get("name") or "", ctx)),
         unit=str(params.get("unit") or ""),
         context={"instanz": inst.id, "definition": inst.definition_id})
-    state = await metrics.trend(db, reihe, target=target, window_days=window)
-    warnen = metrics.vorwarnen(reihe, state["days_left"], vorwarn) if vorwarn > 0 else False
-    state = {**state, "series": key, "target": target, "warn_days": vorwarn, "warn": warnen}
+    state = await metrics.trend(db, series_row, target=target, window_days=window)
+    warn = metrics.forewarn(series_row, state["days_left"], forewarn) if forewarn > 0 else False
+    state = {**state, "series": key, "target": target, "warn_days": forewarn, "warn": warn}
     key_ctx = str(params.get("context_key") or "metric")
     inst.context = {**ctx, key_ctx: state}
     return {"action": "metric_record", "series": key, "value": value,
-            "per_day": state["per_day"], "days_left": state["days_left"], "warn": warnen}
+            "per_day": state["per_day"], "days_left": state["days_left"], "warn": warn}
 
 
-async def _messreihe_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def _series_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Look at a series without feeding it, for flows that come from the clock.
 
     `messwert` answers "where do we stand after this value", here the question is "where do
@@ -880,12 +880,12 @@ async def _messreihe_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -
     key = str(_interp(params.get("series") or "", ctx)).strip()
     if not key:
         raise ValueError("messreihe_lesen: no series given")
-    still_ab = _zahl(params, ctx, "silence_hours", "silent_from")
+    still_from = _number(params, ctx, "silence_hours", "silent_from")
     key_ctx = str(params.get("context_key") or "metric")
 
     owner = await _owner(db, inst)
-    reihe = await metrics.reihe(db, owner, key)
-    if reihe is None:
+    series_row = await metrics.series(db, owner, key)
+    if series_row is None:
         # Not an error: a typo in the key would otherwise be a red run every hour. The
         # flow decides for itself whether it cares (`gefunden`).
         inst.context = {**ctx, key_ctx: {"series": key, "found": False, "silent": False,
@@ -893,102 +893,102 @@ async def _messreihe_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -
         return {"action": "metric_read", "series": key, "found": False}
 
     state = await metrics.trend(
-        db, reihe, target=_zahl(params, ctx, "target"),
-        window_days=int(_zahl(params, ctx, "window_days",
+        db, series_row, target=_number(params, ctx, "target"),
+        window_days=int(_number(params, ctx, "window_days",
                                default=float(metrics.WINDOW_DAYS))))
     alter = state.get("age_hours")
-    still = bool(still_ab > 0 and alter is not None and alter >= still_ab)
-    report = metrics.silence_report(reihe, alter, still_ab)
-    state = {**state, "series": key, "found": True, "silence_hours": still_ab,
+    still = bool(still_from > 0 and alter is not None and alter >= still_from)
+    report = metrics.silence_report(series_row, alter, still_from)
+    state = {**state, "series": key, "found": True, "silence_hours": still_from,
              "silent": still, "report_silence": report}
     inst.context = {**ctx, key_ctx: state}
     return {"action": "metric_read", "series": key, "value": state["value"],
             "age_hours": alter, "silent": still, "report_silence": report}
 
 
-async def _mail_konto(db, params: dict, ctx: dict):
-    """Konto, Ordner und Nummer der Mail, um die es geht.
+async def _mail_account(db, params: dict, ctx: dict):
+    """Account, folder and number of the mail this is about.
 
-    Vorgabe ist die Mail aus dem Auslöser (`mail` im Kontext) — das ist der Normalfall, wenn
-    ein Knopf am Postfach oder der Mail-Eingang den Ablauf gestartet hat. Wer eine andere
-    meint, sagt es im Knoten.
+    The default is the mail from the trigger (`mail` in the context) — the normal case when a
+    button on the mailbox or the mail intake started the flow. Whoever means a different one
+    says so in the node.
     """
     from ..models.mail import MailAccount
 
     mail = dict(ctx.get("mail") or {})
-    konto_id = params.get("account_id") or mail.get("account_id")
+    account_id = params.get("account_id") or mail.get("account_id")
     uid = params.get("uid") or mail.get("uid")
     folder = str(_interp(params.get("folder") or "", ctx)).strip() \
         or str(mail.get("folder") or "INBOX")
-    if konto_id is None or uid in (None, ""):
+    if account_id is None or uid in (None, ""):
         return None, folder, None
-    konto = await db.get(MailAccount, int(konto_id))
-    return konto, folder, int(uid)
+    account = await db.get(MailAccount, int(account_id))
+    return account, folder, int(uid)
 
 
-async def _cache_leeren(konto_id: int) -> None:
-    """Was der Ablauf am Postfach ändert, darf die Oberfläche nicht aus dem Cache lesen."""
-    from .mailbox_cache import entwerten
+async def _cache_empty(account_id: int) -> None:
+    """What the flow changes on the mailbox must not be read from the cache by the UI."""
+    from .mailbox_cache import invalidate
 
-    await entwerten(konto_id)
+    await invalidate(account_id)
 
 
 async def _mail_flag(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Eine Mail markieren: gelesen, wichtig, beantwortet.
 
-    Der häufigste Handgriff überhaupt und bis jetzt der einzige, den ein Ablauf nicht tun
-    konnte: Wer eine Mail einsortiert oder beantwortet hat, will sie danach als gelesen
-    wissen, ohne sie noch einmal anzufassen.
+    The most common handgrip of all and until now the only one a flow could not do: whoever
+    has filed or answered a mail wants it marked as read afterwards without touching it a
+    second time.
 
     Parameter: `flag` (seen | flagged | answered, Vorgabe `seen`), `on` (Vorgabe an),
-    `folder`/`uid`/`account_id` (Vorgabe: die Mail aus dem Auslöser).
+    `folder`/`uid`/`account_id` (default: the mail from the trigger).
     """
     from . import mailbox
 
-    konto, folder, uid = await _mail_konto(db, params, ctx)
-    if konto is None or uid is None:
+    account, folder, uid = await _mail_account(db, params, ctx)
+    if account is None or uid is None:
         return {"action": "mail_flag", "set": False,
                 "reason": "keine Mail im Kontext (Auslöser ist keine Mail-Aktion?)"}
     flag = str(_interp(params.get("flag") or "", ctx)).strip().lower() or "seen"
-    an = _ja(params.get("on"), ctx) if params.get("on") is not None else True
-    await mailbox.flag(konto, folder, uid, flag, an)
-    await _cache_leeren(konto.id)
+    an = _yes(params.get("on"), ctx) if params.get("on") is not None else True
+    await mailbox.flag(account, folder, uid, flag, an)
+    await _cache_empty(account.id)
     return {"action": "mail_flag", "set": True, "flag": flag, "on": an, "uid": uid}
 
 
 async def _mail_move(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Eine Mail in einen Ordner verschieben — oder ins Archiv, wenn keiner genannt ist.
+    """Move a mail into a folder — or into the archive if none is named.
 
-    Ohne Ziel gilt, was am Konto als Archiv eingetragen ist, samt Muster: So kann ein Ablauf
-    „erledigt, weg damit" sagen, ohne den Ordnernamen zu kennen.
+    Without a target, whatever is entered as the archive on the account applies, pattern
+    included: that way a flow can say "done, away with it" without knowing the folder name.
     """
     from . import mailbox
 
-    konto, folder, uid = await _mail_konto(db, params, ctx)
-    if konto is None or uid is None:
+    account, folder, uid = await _mail_account(db, params, ctx)
+    if account is None or uid is None:
         return {"action": "mail_move", "moved": False,
                 "reason": "keine Mail im Kontext (Auslöser ist keine Mail-Aktion?)"}
     target = str(_interp(params.get("target") or "", ctx)).strip()
     if target:
-        await mailbox.move(konto, folder, uid, target)
-    elif konto.folder_archive:
-        target = await mailbox.archivieren(konto, folder, uid)
+        await mailbox.move(account, folder, uid, target)
+    elif account.folder_archive:
+        target = await mailbox.archive(account, folder, uid)
     else:
         return {"action": "mail_move", "moved": False,
                 "reason": "kein Ziel genannt und kein Archiv am Konto"}
-    await _cache_leeren(konto.id)
+    await _cache_empty(account.id)
     return {"action": "mail_move", "moved": True, "target": target, "uid": uid}
 
 
 async def _mail_attachment(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Holt den Anhang einer Mail in den Kontext — als Base64, wie ihn Werkzeuge erwarten.
+    """Fetches the attachment of a mail into the context — as base64, the way tools expect it.
 
-    Der Auslöser einer Mail-Aktion legt nur die Beschreibung des Anhangs in den Kontext
-    (Name, Typ, Größe): eine Liste von zwanzig Mails soll keine zwanzig PDF durchs Netz
-    ziehen. Wer den Inhalt wirklich braucht, holt ihn hier — und zwar genau einmal, an der
-    Stelle im Ablauf, an der er gebraucht wird.
+    The trigger of a mail action puts only the description of the attachment into the context
+    (name, type, size): a list of twenty mails must not drag twenty PDFs across the network.
+    Whoever really needs the content fetches it here — exactly once, at the point in the flow
+    where it is needed.
 
-    Parameter: `index` (Vorgabe: der Anhang aus dem Auslöser), `context_key` (Vorgabe
+    Parameters: `index` (default: the attachment from the trigger), `context_key` (default
     `attachment`), `max_mb` (Vorgabe 25).
     """
     import base64
@@ -998,37 +998,37 @@ async def _mail_attachment(db, inst: WorkflowInstance, params: dict, ctx: dict) 
 
     mail = dict(ctx.get("mail") or {})
     attachment = dict(ctx.get("anhang") or {})
-    konto_id = mail.get("account_id")
+    account_id = mail.get("account_id")
     index = params.get("index")
     index = int(index) if index not in (None, "") else attachment.get("index")
-    if konto_id is None or mail.get("uid") is None or index is None:
+    if account_id is None or mail.get("uid") is None or index is None:
         return {"action": "mail_attachment", "fetched": False,
                 "grund": "kein Anhang im Kontext (Auslöser ist keine Mail-Aktion?)"}
-    konto = await db.get(MailAccount, int(konto_id))
-    if konto is None:
+    account = await db.get(MailAccount, int(account_id))
+    if account is None:
         return {"action": "mail_attachment", "fetched": False, "grund": "Konto gibt es nicht mehr"}
 
-    name, kind, daten = await mailbox.attachment(konto, str(mail.get("folder") or "INBOX"),
+    name, kind, data = await mailbox.attachment(account, str(mail.get("folder") or "INBOX"),
                                             int(mail["uid"]), int(index))
     limit = int(float(params.get("max_mb") or 25) * 1024 * 1024)
-    if len(daten) > limit:
-        # Lieber eine klare Ansage als ein Kontext, der die Datenbankzeile sprengt.
-        raise ValueError(f"Anhang {name} ist {len(daten) // 1024 // 1024} MB groß "
+    if len(data) > limit:
+        # A clear word is better than a context that blows up the database row.
+        raise ValueError(f"Anhang {name} ist {len(data) // 1024 // 1024} MB groß "
                          f"(Grenze {limit // 1024 // 1024} MB)")
     key = str(params.get("context_key") or "attachment")
-    inst.context = {**ctx, key: {"filename": name, "content_type": kind, "size": len(daten),
-                                 "base64": base64.b64encode(daten).decode()}}
-    return {"action": "mail_attachment", "fetched": True, "filename": name, "size": len(daten),
+    inst.context = {**ctx, key: {"filename": name, "content_type": kind, "size": len(data),
+                                 "base64": base64.b64encode(data).decode()}}
+    return {"action": "mail_attachment", "fetched": True, "filename": name, "size": len(data),
             "context_key": key}
 
 
-def _ja(value, ctx: dict) -> bool:
-    """Ein Schalter, der auch aus dem Lauf kommen darf.
+def _yes(value, ctx: dict) -> bool:
+    """A switch that may also come from the run.
 
-    Fest (`true`), aus dem Kontext (`"{{ policy.auto }}"`) oder als Bedingung in derselben
-    Sprache, die die Weichen sprechen (`{"!": {"var": "policy.auto"}}`). Ohne das müsste ein
-    Ablauf für „mal so, mal so“ zwei Knoten führen, die sich nur in einem Häkchen
-    unterscheiden — und beide gepflegt werden wollen.
+    Fixed (`true`), from the context (`"{{ policy.auto }}"`) or as a condition in the same
+    language the decisions speak (`{"!": {"var": "policy.auto"}}`). Without that a flow would
+    have to keep two nodes for "sometimes this way, sometimes that way" which differ in one
+    checkbox only — and both want maintaining.
     """
     if isinstance(value, bool):
         return value
@@ -1044,7 +1044,7 @@ def _ja(value, ctx: dict) -> bool:
     return bool(value)
 
 
-async def _assistent_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
+async def _assistant_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
                              node_id: str) -> dict:
     """Give the personal assistant a free assignment — no mail, no ticket, no project.
 
@@ -1057,16 +1057,16 @@ async def _assistent_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
       titel        heading in the inbox (default: first line of the assignment)
       agent        role of the agent (default `assistent`)
       freigabe     true = the item waits for the person, false (default) = it runs at once.
-                   Darf auch aus dem Lauf kommen (`{{ … }}` oder eine Bedingung, siehe `_ja`)
+                   May also come from the run (`{{ … }}` or a condition, see `_ja`)
       warten       true = the step waits for the run and puts its answer into the context
       context_key  where the answer lands (default `assistent`)
       timeout_sek  limit for the wait (0 = the engine default)
 
-    Und was der Mail-Weg mitbrachte, bis es ihn nicht mehr gibt — dieselben Angaben, nur
-    ohne Mail: `art` (wonach der Eingang sortiert, Vorgabe `assignment`), `quelle`/`referenz`
-    (der Schlüssel gegen Doppelanlage; ohne sie Ablauf und Knoten), `zusammenfassung`,
-    `volltext` samt `schwaerzen` (der Volltext wird nur bei `unredacted` überhaupt
-    gespeichert), `hinweis` und `meta` für alles Weitere.
+    And what the mail path brought along, until it no longer exists — the same entries, only
+    without the mail: `art` (what the intake sorts by, default `assignment`), `quelle`/`referenz`
+    (the key against duplicate creation; without them, flow and node), `zusammenfassung`,
+    `volltext` together with `schwaerzen` (the full text is stored only with `unredacted`),
+    `hinweis` and `meta` for everything else.
 
     Idempotent per node and instance: a repeated pass (restart, retry) picks up the existing
     item instead of commissioning the work a second time.
@@ -1077,13 +1077,13 @@ async def _assistent_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
     from ..models.assistant import AssistantTask
 
     assignment = str(_interp(params.get("task") or params.get("prompt") or "", ctx)).strip()
-    rolle = str(_interp(params.get("agent") or "", ctx)).strip() or "assistent"
+    role = str(_interp(params.get("agent") or "", ctx)).strip() or "assistent"
     title = str(_interp(params.get("title") or "", ctx)).strip() \
         or (assignment.splitlines()[0][:200] if assignment else "")
     if not (assignment or title):
-        # Ein Auftragstext ist der Normalfall, aber nicht die Bedingung: Ein Eingang, der
-        # seine Sache mitbringt (Betreff, Zusammenfassung, Volltext), ist auch ohne Prompt
-        # bearbeitbar — der Assistent hat dann seinen eigenen.
+        # An assignment text is the normal case but not the condition: an intake that brings
+        # its own matter along (subject, summary, full text) can be worked on without a prompt
+        # as well — the assistant then has its own.
         return {"action": "assistant_task", "started": False, "reason": "kein Auftrag"}
     owner = params.get("owner_id") or inst.started_by or _dig(ctx, "intake.owner_id")
     try:
@@ -1096,19 +1096,19 @@ async def _assistent_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
         return {"action": "assistant_task", "started": False,
                 "reason": "kein Besitzer (weder am Ablauf noch am Knoten)"}
 
-    # Woran die Doppelanlage erkannt wird. Ohne eigene Angabe ist es der Knoten selbst (ein
-    # Neustart soll nicht zweimal beauftragen); mit eigener Angabe die Sache, um die es geht
-    # — dieselbe Mail über zwei Wege bleibt ein Eingang.
+    # How duplicate creation is recognised. Without an entry of its own it is the node itself
+    # (a restart must not assign twice); with an entry of its own it is the matter at hand
+    # — the same mail arriving on two paths stays one intake.
     source = str(_interp(params.get("source") or "", ctx)).strip() or f"ablauf:{inst.definition_id}"
     source_ref = str(_interp(params.get("reference") or "", ctx)).strip() or f"{inst.id}:{node_id}"
     task = (await db.execute(select(AssistantTask).where(
         AssistantTask.source == source,
         AssistantTask.source_ref == source_ref))).scalar_one_or_none()
-    new_angelegt = task is None
+    new_created = task is None
     if task is None:
-        grant = _ja(params.get("approval"), ctx)
-        schwaerzen = str(_interp(params.get("redaction") or "", ctx)).strip() or "redacted"
-        volltext = str(_interp(params.get("full_text") or "", ctx))
+        grant = _yes(params.get("approval"), ctx)
+        redact = str(_interp(params.get("redaction") or "", ctx)).strip() or "redacted"
+        fulltext = str(_interp(params.get("full_text") or "", ctx))
         extra = _interp_deep(params.get("meta"), ctx) if isinstance(params.get("meta"), dict) else {}
         task = AssistantTask(
             owner_user_id=owner,
@@ -1119,14 +1119,14 @@ async def _assistent_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
             priority=str(_interp(params.get("priority")
                                  or params.get("priority") or "normal", ctx)) or "normal",
             redacted_summary=str(_interp(params.get("summary") or "", ctx)),
-            redaction=schwaerzen,
+            redaction=redact,
             action_hint=str(_interp(params.get("hint") or "", ctx))[:500],
-            # Der Volltext wird nur gespeichert, wenn nicht geschwärzt werden soll. Sonst
-            # läge das, wovor die Schwärzung schützt, gleich daneben.
-            raw_body=volltext if (volltext and schwaerzen == "unredacted") else None,
+            # The full text is stored only when nothing is to be redacted. Otherwise what the
+            # redaction protects against would lie right next to it.
+            raw_body=fulltext if (fulltext and redact == "unredacted") else None,
             # The assignment IS the prompt; the worker takes it out of `meta.prompt`, the
             # same way it takes the ported mail prompt of a webhook.
-            meta={**extra, "agent": rolle, "prompt": assignment,
+            meta={**extra, "agent": role, "prompt": assignment,
                   "ablauf": {"instanz": inst.id, "knoten": node_id,
                              "definition": inst.definition_id}},
             status="new" if grant else "approved",
@@ -1135,61 +1135,61 @@ async def _assistent_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
         await db.flush()
 
     task_id = f"assistant-{task.id}"
-    wait = _ja(params.get("wait"), ctx)
-    if new_angelegt and task.status == "approved":
+    wait = _yes(params.get("wait"), ctx)
+    if new_created and task.status == "approved":
         await enqueue_task({"kind": "assistant", "task_id": task_id,
                             "assistant_task_id": int(task.id)})
-    result = {"action": "assistant_task", "task_id": task.id, "agent": rolle,
+    result = {"action": "assistant_task", "task_id": task.id, "agent": role,
                 "status": task.status, "started": task.status == "approved",
-                "reused": not new_angelegt}
+                "reused": not new_created}
     if wait and task.status == "approved":
         result["_wait"] = {"task_id": task_id,
                              "timeout": int(params.get("timeout_sec") or 0),
                              "context_key": str(params.get("context_key") or "assistant")}
-    # `assignment` und `task` tragen dasselbe: Der Mail-Weg hat immer `task` gelesen, und die
-    # Karte danach soll den Eingang finden, ohne zu wissen, welcher Knoten ihn angelegt hat.
+    # `assignment` and `task` carry the same thing: the mail path always read `task`, and the
+    # card afterwards must find the intake without knowing which node created it.
     inst.context = {**ctx, "task": {"task_id": task.id, "status": task.status,
-                                    "agent": rolle},
+                                    "agent": role},
                     "task": {"id": task.id, "status": task.status,
                              "auto": task.status == "approved"}}
     return result
 
 
-async def _agent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict,
+async def _agent_run(db, inst: WorkflowInstance, params: dict, ctx: dict,
                      node_id: str) -> dict:
-    """Einen Agenten arbeiten lassen und auf sein Ergebnis warten — ohne Ticket, ohne Eingang.
+    """Let an agent work and wait for its result — without a ticket, without an intake.
 
-    Der dritte Weg, einen Agenten zu starten, und bis jetzt der einzige, den ein Ablauf nicht
-    gehen konnte: `agent_task` verlangt ein Ticket, `assistent_auftrag` legt einen Eingang an,
-    und der freie Lauf steckte in der Job-Art `prompt` fest. Hier ist er ein Knoten — damit
-    lässt sich „fragen, prüfen, melden“ bauen, statt drei Jobs hintereinanderzuhängen.
+    The third way to start an agent and until now the only one a flow could not take:
+    `agent_task` demands a ticket, `assistent_auftrag` creates an intake, and the free run was
+    stuck in the job kind `prompt`. Here it is a node — which makes "ask, check, report"
+    buildable instead of chaining three jobs one after another.
 
     Parameter:
-      auftrag      was der Agent tun soll ({{…}} aus dem Kontext), nötig
+      auftrag      what the agent is to do ({{…}} from the context), required
       agent        Rolle (Vorgabe `assistent`)
       titel        Überschrift des Laufs (Vorgabe: erste Zeile des Auftrags)
-      context_key  wohin das Ergebnis kommt (Vorgabe `lauf`) — `.output` ist der Text
-      timeout_sek  Zeitgrenze (0 = Vorgabe der Engine)
-      warten       aus: nur anstoßen, nicht auf das Ergebnis warten (Vorgabe: an)
+      context_key  where the result goes (default `lauf`) — `.output` is the text
+      timeout_sek  time limit (0 = the engine default)
+      warten       off: only kick it off, do not wait for the result (default: on)
     """
     from ..core.redis import enqueue_task
 
     task = str(_interp(params.get("task") or params.get("prompt") or "", ctx)).strip()
     if not task:
         return {"action": "agent_run", "started": False, "reason": "kein Auftrag"}
-    rolle = str(_interp(params.get("agent") or "", ctx)).strip() or "assistent"
+    role = str(_interp(params.get("agent") or "", ctx)).strip() or "assistent"
     title = str(_interp(params.get("title") or "", ctx)).strip() or task.splitlines()[0][:200]
     owner = params.get("owner_id") or inst.started_by
     if owner is None:
-        # Ohne Besitzer kein Token und keine Werkzeuge — der Lauf startete und stünde sofort
-        # mit leeren Händen da.
+        # Without an owner there is no token and there are no tools — the run would start and
+        # stand there empty-handed at once.
         return {"action": "agent_run", "started": False, "reason": "kein Besitzer"}
 
     task_id = f"lauf-{inst.id}-{node_id}"
-    await enqueue_task({"kind": "agent_frei", "task_id": task_id, "agent": rolle,
+    await enqueue_task({"kind": "agent_frei", "task_id": task_id, "agent": role,
                         "prompt": task, "name": title, "owner_id": int(owner)})
-    result = {"action": "agent_run", "started": True, "agent": rolle, "task_id": task_id}
-    if params.get("wait") is None or _ja(params.get("wait"), ctx):
+    result = {"action": "agent_run", "started": True, "agent": role, "task_id": task_id}
+    if params.get("wait") is None or _yes(params.get("wait"), ctx):
         result["_wait"] = {"task_id": task_id,
                              "timeout": int(params.get("timeout_sec") or 0),
                              "context_key": str(params.get("context_key") or "run")}
@@ -1197,27 +1197,28 @@ async def _agent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict,
 
 
 async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Einen Punkt in eine Datenreihe schreiben — gleich welcher Art.
+    """Write a point into a data series — whatever its kind.
 
-    Es gibt genau eine Sorte Reihe im Kern, mit einer Art daran (Zahl, Standort, Text). Also
-    gibt es auch genau eine Aktion, die hineinschreibt; welche Felder gelten, entscheidet die
-    Art. Drei Aktionen fuer "haenge einen Punkt an" waeren dieselbe Dreifachstruktur, die es
-    in den Tabellen nicht mehr gibt.
+    There is exactly one sort of series in the core, with a kind attached (number, location,
+    text). So there is exactly one action that writes into it; which fields apply is decided
+    by the kind. Three actions for "append a point" would be the same triple structure that no
+    longer exists in the tables.
 
-    Gedacht ist das fuer Quellen, die ihre Daten nebenbei mitschicken: Traccar schickt zu
-    jedem Alarm die ganze Position samt Akkustand mit. Wer selbst und laufend meldet, nimmt
-    besser den Aufnahmepfad (`/api/ingest/<token>`) — der kostet keine Ablauf-Instanz je Punkt.
+    This is meant for sources that send their data along in passing: with every alarm Traccar
+    sends the whole position including the battery level. Whoever reports by themselves and
+    continuously is better served by the ingest path (`/api/ingest/<token>`) — that one costs
+    no flow instance per point.
 
-    Parameter (`reihe`, `art`, `wert`, `quelle` und `pflicht` gehen auch deutsch, weil
+    Parameters (`reihe`, `art`, `wert`, `quelle` and `pflicht` work in German too, because
     `workflow_terms.PARAMS` sie abbildet):
       series       Schluessel der Reihe (`tracker.shelter`), noetig
-      kind         number | location | text — nur noetig, wenn die Reihe neu entsteht
-      value        bei `number`: die Zahl
-      lat · lon    bei `location`: die Koordinaten
-      title · body bei `text`: Ueberschrift und Text
-      ts           Zeitstempel (Vorgabe: jetzt) — Unix-Sekunden oder ISO
-      accuracy · altitude · speed · course · battery   was ein Geraet sonst mitschickt
-      name · color Anzeigename und Farbe, wenn die Reihe neu entsteht
+      kind         number | location | text — needed only when the series is newly created
+      value        with `number`: the number
+      lat · lon    with `location`: the coordinates
+      title · body with `text`: heading and text
+      ts           timestamp (default: now) — unix seconds or ISO
+      accuracy · altitude · speed · course · battery   what a device otherwise sends along
+      name · color display name and colour when the series is newly created
       source       woher der Punkt kam (Vorgabe `flow`)
       required     ohne Wert abbrechen statt uebergehen
       context_key  wo das Ergebnis landet (Vorgabe `series`)
@@ -1231,33 +1232,33 @@ async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
     key_ctx = str(params.get("context_key") or "series")
     owner = await _owner(db, inst)
 
-    # Die Art steht an der Reihe, sobald es sie gibt. Der Parameter zaehlt nur beim Anlegen —
-    # sonst koennte ein Ablauf die Art einer bestehenden Reihe unter sich wegziehen.
-    vorhanden = await series.reihe(db, owner, key)
-    kind = vorhanden.kind if vorhanden else str(params.get("kind") or "number").strip()
+    # The kind sits on the series as soon as it exists. The parameter counts only on creation
+    # — otherwise a flow could pull the kind of an existing series out from under it.
+    existing = await series.series(db, owner, key)
+    kind = existing.kind if existing else str(params.get("kind") or "number").strip()
     if kind not in ("number", "location", "text"):
         raise ValueError(f"reihe: unbekannte Art '{kind}'")
 
-    entry, missing = _entry_bauen(kind, params, ctx, series_formats)
+    entry, missing = _entry_build(kind, params, ctx, series_formats)
     if missing:
         if params.get("required"):
             raise ValueError(f"reihe: {missing}")
-        # Der Normalfall, nicht der Fehler: Ein Geraet meldet auch seinen Zustand, wenn es
-        # gerade keinen Fix hat oder einen Wert nicht kennt.
+        # The normal case, not the error: a device reports its state as well when it has no
+        # fix at the moment or does not know a value.
         inst.context = {**ctx, key_ctx: {"series": key, "kind": kind,
                                                 "stored": False, "reason": missing}}
         return {"action": "series_record", "series": key, "kind": kind,
                 "stored": False, "ignored": True, "skipped": True, "reason": missing}
 
-    reihe = vorhanden or await series.reihe(
+    series_row = existing or await series.series(
         db, owner, key, kind=kind, create=True,
         name=str(_interp(params.get("name") or "", ctx)).strip(),
-        farbe=str(params.get("color") or ""))
+        color=str(params.get("color") or ""))
 
-    result = await series.ingest(db, reihe, [entry])
-    state = reihe.state or {}
+    result = await series.ingest(db, series_row, [entry])
+    state = series_row.state or {}
     aus = {"series": key, "kind": kind, "stored": result["accepted"] > 0,
-           "skipped": result["skipped"], "points": reihe.points,
+           "skipped": result["skipped"], "points": series_row.points,
            **{n: state.get(n) for n in ("value", "lat", "lon", "battery", "accuracy", "title")
               if state.get(n) is not None},
            "places": state.get("places") or [],
@@ -1266,15 +1267,15 @@ async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
     return {"action": "series_record", **aus}
 
 
-def _entry_bauen(kind: str, params: dict, ctx: dict, formate) -> tuple[dict, str]:
-    """Aus den Parametern einen Punkt machen. Zweiter Rueckgabewert nennt, was fehlt."""
-    ts = formate.moment(_interp(params.get("ts"), ctx))
+def _entry_build(kind: str, params: dict, ctx: dict, formats) -> tuple[dict, str]:
+    """Turn the parameters into a point. The second return value names what is missing."""
+    ts = formats.moment(_interp(params.get("ts"), ctx))
     source = str(params.get("source") or "flow")
 
     if kind == "location":
-        # Ueber dieselbe Formatschicht wie der Aufnahmepfad: Dann gelten hier dieselben
-        # Regeln fuer Komma-Zahlen, Zeitstempel und den Akku als Bruchteil oder Prozent.
-        points = formate.normalise({
+        # Through the same format layer as the ingest path: then the same rules apply here for
+        # comma numbers, timestamps and the battery as a fraction or a percentage.
+        points = formats.normalise({
             "lat": _interp(params.get("lat"), ctx), "lon": _interp(params.get("lon"), ctx),
             "ts": _interp(params.get("ts"), ctx),
             "accuracy": _interp(params.get("accuracy"), ctx),
@@ -1296,32 +1297,32 @@ def _entry_bauen(kind: str, params: dict, ctx: dict, formate) -> tuple[dict, str
         return {"title": title[:200], "body": text, "ts": ts, "source": source,
                 "format": str(params.get("format") or "markdown")}, ""
 
-    roh = _interp(params.get("value"), ctx)
-    if isinstance(roh, str):
-        roh = roh.strip().replace("%", "").replace(",", ".")
-    if roh is None or (isinstance(roh, str) and roh.lower() in ("", "none", "null")):
+    raw = _interp(params.get("value"), ctx)
+    if isinstance(raw, str):
+        raw = raw.strip().replace("%", "").replace(",", ".")
+    if raw is None or (isinstance(raw, str) and raw.lower() in ("", "none", "null")):
         return {}, "kein Wert in der Nutzlast"
     try:
-        return {"value": float(roh), "ts": ts, "source": source}, ""
+        return {"value": float(raw), "ts": ts, "source": source}, ""
     except (TypeError, ValueError):
-        return {}, f"'{roh}' ist keine Zahl"
+        return {}, f"'{raw}' ist keine Zahl"
 
 
-async def _dokument(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Einen Text in einer Ablage hinlegen — das Gegenstück zum Messwert.
+async def _document(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Put a text down in a store — the counterpart to the measurement.
 
-    Ein Ablauf konnte seinen Text nirgends lassen: Der Rückblick, den ein Agent jeden Morgen
-    schreibt, landete im Ausgabefeld eines Job-Laufs, abgeschnitten und ohne Ansicht. Eine
-    Ablage ist ein Name und eine Folge von Fassungen; was drinsteht, weiß der Ablauf.
+    A flow had nowhere to leave its text: the review an agent writes every morning ended up in
+    the output field of a job run, truncated and without a view. A store is a name and a
+    sequence of versions; what is in it is the flow's business.
 
     Parameter:
-      ablage       Schlüssel der Ablage (`ki-tech-news`), nötig
-      text         der Text selbst ({{…}} aus dem Kontext), nötig
-      titel        Überschrift dieser Fassung (Vorgabe: erste Überschrift oder Zeile)
-      name         Anzeigename der Ablage, wenn sie neu entsteht
-      format       markdown (Vorgabe) oder text
-      behalten     wie viele Fassungen aufgehoben werden (Vorgabe 60)
-      context_key  wo der Verweis landet (Vorgabe `dokument`) — `.url` ist der Link
+      ablage       key of the store (`ki-tech-news`), required
+      text         the text itself ({{…}} from the context), required
+      titel        heading of this version (default: first heading or line)
+      name         display name of the store when it is newly created
+      format       markdown (default) or text
+      behalten     how many versions are kept (default 60)
+      context_key  where the reference lands (default `dokument`) — `.url` is the link
     """
     from ..config import settings
     from . import documents
@@ -1331,27 +1332,27 @@ async def _dokument(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     if not key:
         return {"action": "document", "stored": False, "reason": "keine Ablage genannt"}
     if not text.strip():
-        # Nichts hinlegen ist besser als eine leere Fassung: Sie verdrängte im Verlauf eine
-        # echte und stünde als „Stand von heute" da, obwohl nichts erarbeitet wurde.
+        # Putting nothing down is better than an empty version: it would displace a real one
+        # in the history and stand there as "today's state" although nothing was worked out.
         return {"action": "document", "stored": False, "reason": "kein Text"}
     owner = params.get("owner_id") or inst.started_by
     title = str(_interp(params.get("title") or "", ctx)).strip()
     if not title:
         first = next((z.strip("# ").strip() for z in text.splitlines() if z.strip()), "")
         title = first[:200]
-    entry = await documents.hinlegen(
+    entry = await documents.put(
         db, int(owner) if owner is not None else None, key,
         title=title, text=text,
         format=str(params.get("format") or "markdown"),
         name=str(_interp(params.get("name") or "", ctx)).strip(),
-        behalten=int(params.get("keep") or 0),
+        keep=int(params.get("keep") or 0),
         context={"ablauf": inst.definition_id, "instanz": inst.id,
                  **({"job": (inst.context or {}).get("job")} if (inst.context or {}).get("job") else {})})
     key_ctx = str(params.get("context_key") or "document")
     inst.context = {**ctx, key_ctx: {
         "id": entry.id, "storage": key, "title": title,
-        # Der Link, der in eine Meldung gehört. Ohne Basis-Adresse bleibt er relativ — dann
-        # ist er in der Oberfläche richtig und im Messenger unbrauchbar, was besser ist als
+        # The link that belongs in a report. Without a base address it stays relative — then
+        # it is right in the UI and useless in the messenger, which is better than
         # ein Link auf „localhost".
         "url": f"{settings.app_base_url.rstrip('/')}/documents/{key}"
                if settings.app_base_url else f"/documents/{key}"}}
@@ -1359,9 +1360,9 @@ async def _dokument(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
             "storage": key, "context_key": key_ctx}
 
 
-async def _dokument_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Die letzte Fassung einer Ablage in den Kontext holen — für Abläufe, die auf dem
-    aufbauen, was beim letzten Mal herauskam."""
+async def _document_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Fetch the latest version of a store into the context — for flows that build on what
+    came out the last time."""
     from . import documents
 
     key = str(_interp(params.get("storage") or params.get("key") or "", ctx)).strip()
@@ -1377,12 +1378,12 @@ async def _dokument_read(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     return {"action": "document_read", "found": entry is not None, "storage": key}
 
 
-async def _job_pausieren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Den Zeitplan anhalten, aus dem dieser Lauf kommt.
+async def _job_pause(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Halt the schedule this run comes from.
 
-    Ein Skript-Job konnte sich mit einem eigenen Rückgabewert selbst stilllegen („erledigt,
-    weck mich nicht wieder“). Das steckte in der Job-Art fest; als Knoten kann es jeder
-    Ablauf — die Erinnerung, die aufhört, wenn die Sache getan ist.
+    A script job could shut itself down with a return value of its own ("done, do not wake me
+    again"). That was stuck in the job kind; as a node every flow can do it — the reminder
+    that stops once the matter is settled.
     """
     from ..models.ops import Job
 
@@ -1393,30 +1394,30 @@ async def _job_pausieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     job = await db.get(Job, int(job_id))
     if job is None:
         return {"action": "job_pause", "paused": False, "reason": "Job nicht gefunden"}
-    job.paused = not _ja(params.get("resume"), ctx)
+    job.paused = not _yes(params.get("resume"), ctx)
     return {"action": "job_pause", "paused": job.paused, "job_id": job.id}
 
 
-async def _skript(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Ein hinterlegtes Skript ausführen — dieselbe Prüfung wie beim Skript-Job.
+async def _script(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Run a stored script — the same check as with the script job.
 
-    Nur was im erlaubten Verzeichnis liegt, läuft; der Pfad kommt aus dem Ablauf, nicht aus
+    Only what lies in the allowed directory runs; the path comes from the flow, not from
     der Nutzlast eines Fremden.
     """
     import asyncio
 
     from .scheduler import _resolve_script
 
-    befehl = str(_interp(params.get("command") or "", ctx)).strip()
-    skript = _resolve_script(befehl)
-    if not skript:
+    command = str(_interp(params.get("command") or "", ctx)).strip()
+    script = _resolve_script(command)
+    if not script:
         return {"action": "script", "ok": False,
-                "error": f"Skript nicht im erlaubten Verzeichnis: {befehl}"}
-    argumente = _interp_deep(params.get("args") or [], ctx)
+                "error": f"Skript nicht im erlaubten Verzeichnis: {command}"}
+    arguments = _interp_deep(params.get("args") or [], ctx)
     limit = int(params.get("timeout_sec") or 600)
     try:
         p = await asyncio.create_subprocess_exec(
-            skript, *[str(a) for a in argumente],
+            script, *[str(a) for a in arguments],
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         aus, _ = await asyncio.wait_for(p.communicate(), timeout=limit)
         rc = p.returncode or 0
@@ -1451,9 +1452,9 @@ def _answer(inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
 async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     cfg = _config(node)
     action, params = _normalize_action(cfg)
-    # Englisch ist die Vorgabe; die deutschen Namen bleiben lesbar, weil sie in
-    # veröffentlichten Fassungen stehen (`services/workflow_terms.py` schreibt sie um,
-    # aber eine Instanz kann an einer alten Fassung hängen).
+    # English is the default; the German names stay readable because they appear in published
+    # versions (`services/workflow_terms.py` rewrites them, but an instance can still hang on
+    # an old version).
     action = terms.normalise_action(action)
     params = terms.normalise_params(params)
     ctx = dict(inst.context or {})
@@ -1493,7 +1494,7 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     if action == "tool_call":
         return await _tool_call(db, inst, params, ctx)
 
-    if action in _ALT_ACTIONS or action == "set_status":
+    if action in _OLD_ACTIONS or action == "set_status":
         return await _set_status(db, inst, params, ctx)
 
     if action == "set_field":
@@ -1543,75 +1544,75 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         return await _mail_attachment(db, inst, params, ctx)
 
     if action == "agent_run":
-        return await _agent_lauf(db, inst, params, ctx, str(node.get("id") or ""))
+        return await _agent_run(db, inst, params, ctx, str(node.get("id") or ""))
 
     if action == "script":
-        return await _skript(db, inst, params, ctx)
+        return await _script(db, inst, params, ctx)
 
     if action == "document":
-        return await _dokument(db, inst, params, ctx)
+        return await _document(db, inst, params, ctx)
 
     if action == "document_read":
-        return await _dokument_read(db, inst, params, ctx)
+        return await _document_read(db, inst, params, ctx)
 
     if action == "job_pause":
-        return await _job_pausieren(db, inst, params, ctx)
+        return await _job_pause(db, inst, params, ctx)
 
     if action == "assistant_task":
-        return await _assistent_task(db, inst, params, ctx, str(node.get("id") or ""))
+        return await _assistant_task(db, inst, params, ctx, str(node.get("id") or ""))
 
     if action == "answer":
         return _answer(inst, params, ctx)
 
     if action == "note_append":
-        return await _notiz_anhaengen(db, inst, params, ctx)
+        return await _note_append(db, inst, params, ctx)
 
     if action == "series_record":
         return await _series_write(db, inst, params, ctx)
     if action == "metric_record":
-        return await _messwert(db, inst, params, ctx)
+        return await _measurement(db, inst, params, ctx)
 
     if action == "metric_read":
-        return await _messreihe_read(db, inst, params, ctx)
+        return await _series_read(db, inst, params, ctx)
 
     if action == "notify":
         target = await _resolve_target(db, inst, params.get("to") or {})
         title = _interp(params.get("title") or "Workflow-Benachrichtigung", ctx)
         body = _interp(params.get("text") or params.get("message") or "", ctx)
         from ..models.user import User
-        from .notify import zustellen
+        from .notify import deliver
         # The channel is optional: without one the person decides how they are reached. A
         # flow often learns its recipient only at runtime and cannot know which messenger
         # they use.
-        kanal = str(_interp(params.get("channel") or "", ctx)).strip()
+        channel = str(_interp(params.get("channel") or "", ctx)).strip()
         recipient = await db.get(User, target) if target is not None else None
         # Throttle: "at most the same thing every N minutes". Without a key of its own the
         # node throttles itself, because for the normal case a number should be enough
         # without inventing a name. A key with `{{ … }}` separates by device or kind of
         # alarm so two different incidents do not mute each other.
-        drossel = float(params.get("throttle_minutes") or 0)
-        drossel_key = str(_interp(params.get("throttle_key") or "", ctx)).strip()
-        if drossel > 0 and not drossel_key:
-            drossel_key = f"ablauf:{inst.definition_id}:{node.get('id')}"
-        # Art und Bezug machen aus der Nachricht eine Karte, auf der man handeln kann: der
-        # Bot hängt seine Knöpfe an der Art auf und findet über den Bezug die Sache, um die
-        # es geht (ein Spam-Urteil zum Zurückholen, ein Eingang zum Freigeben). Ohne beides
-        # bleibt es eine gewöhnliche Meldung — der Normalfall.
+        throttle = float(params.get("throttle_minutes") or 0)
+        throttle_key = str(_interp(params.get("throttle_key") or "", ctx)).strip()
+        if throttle > 0 and not throttle_key:
+            throttle_key = f"ablauf:{inst.definition_id}:{node.get('id')}"
+        # Kind and reference turn the message into a card one can act on: the bot hangs its
+        # buttons on the kind and finds through the reference the matter at hand (a spam
+        # verdict to take back, an intake to approve). Without both it stays an ordinary
+        # report — the normal case.
         kind = str(_interp(params.get("kind") or "", ctx)).strip() \
             or "workflow_notify"
-        roh_reference = params.get("ref") if isinstance(params.get("ref"), dict) else {}
+        raw_reference = params.get("ref") if isinstance(params.get("ref"), dict) else {}
         reference: dict[str, int] = {}
-        for field, value in roh_reference.items():
+        for field, value in raw_reference.items():
             value = _interp(value, ctx)
-            zahl = _as_int(value)
-            if zahl is not None:
-                reference[str(field)] = zahl
-        weg = await zustellen(db, user=recipient, kind=kind, title=title,
-                              body=body, kanal=kanal, project_id=inst.project_id,
+            number = _as_int(value)
+            if number is not None:
+                reference[str(field)] = number
+        path = await deliver(db, user=recipient, kind=kind, title=title,
+                              body=body, channel=channel, project_id=inst.project_id,
                               issue_id=inst.issue_id, reference=reference or None,
-                              drossel_key=drossel_key, drossel_minutes=drossel)
+                              throttle_key=throttle_key, throttle_minutes=throttle)
         return {"action": "notify", "user_id": target, "kind": kind,
-                **({"bezug": reference} if reference else {}), **weg}
+                **({"bezug": reference} if reference else {}), **path}
 
     # Unknown or deliberate noop action: not an error, so the workflow keeps running.
     return {"action": "noop", "requested": action}

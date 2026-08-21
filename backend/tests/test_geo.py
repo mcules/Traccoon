@@ -1,7 +1,7 @@
 """Die Kugelrechnung, an Strecken gemessen, die man nachschlagen kann."""
 import math
 
-from app.services.geo import distance_m, rahmen
+from app.services.geo import distance_m, frame
 
 
 def test_a_known_distance():
@@ -21,7 +21,7 @@ def test_the_same_point_is_zero():
 
 def test_the_bounding_box_encloses_the_radius():
     lat, lon, r = 50.0825, 10.5663, 150.0
-    lat_min, lat_max, lon_min, lon_max = rahmen(lat, lon, r)
+    lat_min, lat_max, lon_min, lon_max = frame(lat, lon, r)
     # Die Kanten liegen mindestens so weit weg wie der Radius — sonst schnitte die
     # Vorauswahl Punkte ab, die drin liegen.
     assert distance_m(lat, lon, lat_max, lon) >= r
@@ -30,6 +30,6 @@ def test_the_bounding_box_encloses_the_radius():
 
 
 def test_the_bounding_box_does_not_degenerate_at_the_pole():
-    _, _, lon_min, lon_max = rahmen(90.0, 0.0, 1000.0)
+    _, _, lon_min, lon_max = frame(90.0, 0.0, 1000.0)
     assert lon_min == -180.0 and lon_max == 180.0
-    assert all(math.isfinite(w) for w in rahmen(89.999, 0.0, 1000.0))
+    assert all(math.isfinite(w) for w in frame(89.999, 0.0, 1000.0))

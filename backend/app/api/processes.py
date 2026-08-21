@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.enums import (
     WorkflowInstanceStatus, WorkflowSubjectKind, WorkflowTokenState,
@@ -55,7 +55,7 @@ def _aware(value: dt.datetime | None) -> dt.datetime | None:
     return value
 
 
-async def _sichtbare_projekte(db: AsyncSession, user: User) -> dict[int, Project]:
+async def _visible_projects(db: AsyncSession, user: User) -> dict[int, Project]:
     """Projects this user may see: determined once, only read afterwards."""
     alle = (await db.execute(select(Project))).scalars().all()
     out: dict[int, Project] = {}
@@ -89,7 +89,7 @@ class SlotOverviewOut(BaseModel):
     published: bool = False
     updated_at: dt.datetime | None = None
     # Projects with their own copy of this slot: those no longer follow the set.
-    abweichungen: list[DeviationOut] = []
+    deviations: list[DeviationOut] = []
 
 
 @router.get("/processes/slots", response_model=list[SlotOverviewOut])
@@ -106,17 +106,17 @@ async def slot_overview(
         s = (await db.execute(select(WorkflowSet).where(
             WorkflowSet.key == sets.BUILTIN_SET_KEY))).scalars().first()
         if s is None:
-            raise Fehler(status.HTTP_404_NOT_FOUND, "err.no_global_default_set",
+            raise Error(status.HTTP_404_NOT_FOUND, "err.no_global_default_set",
                          "No global default set")
     else:
         s = await db.get(WorkflowSet, set_id)
         if s is None:
-            raise Fehler(status.HTTP_404_NOT_FOUND, "err.process_set_not_found",
+            raise Error(status.HTTP_404_NOT_FOUND, "err.process_set_not_found",
                          "Process set not found")
 
-    visible = await _sichtbare_projekte(db, user)
+    visible = await _visible_projects(db, user)
     # Project-owned copies per slot (not archived): those are exactly the deviations.
-    kopien = (await db.execute(select(WorkflowDefinition).where(
+    copies = (await db.execute(select(WorkflowDefinition).where(
         WorkflowDefinition.slot.isnot(None),
         WorkflowDefinition.project_id.isnot(None),
         WorkflowDefinition.archived_at.is_(None),
@@ -132,7 +132,7 @@ async def slot_overview(
                 project_name=visible[k.project_id].name, definition_id=k.id,
                 published=bool(k.current_version_id),
             )
-            for k in kopien if k.slot == slot and k.project_id in visible
+            for k in copies if k.slot == slot and k.project_id in visible
         ]
         out.append(SlotOverviewOut(
             slot=slot, name=meta["name"], description=meta["description"],
@@ -140,7 +140,7 @@ async def slot_overview(
             definition_id=d.id if d else None, definition_name=d.name if d else None,
             version=version.version if version else None,
             published=bool(version), updated_at=d.updated_at if d else None,
-            abweichungen=sorted(abw, key=lambda a: a.project_key),
+            deviations=sorted(abw, key=lambda a: a.project_key),
         ))
     return out
 
@@ -149,10 +149,10 @@ async def slot_overview(
 
 # From when does a waiting step count as "stuck"? If a flow waits for a human, that is
 # normal, but after a day without a stir one wants to see it anyway.
-HANGS_AB_HOURS = 24
+HANGS_FROM_HOURS = 24
 
 
-class LaufOut(BaseModel):
+class RunOut(BaseModel):
     id: int
     definition_id: int
     definition_name: str
@@ -166,7 +166,7 @@ class LaufOut(BaseModel):
     # Current stop: node label and what is being waited for.
     node_label: str | None = None
     waiting_for: str | None = None
-    seit: dt.datetime | None = None
+    since: dt.datetime | None = None
     hours: float | None = None
     hangs: bool = False
     error: str | None = None
@@ -183,8 +183,8 @@ def _label(graph: dict, node_id: str | None) -> str | None:
     return node_id
 
 
-@router.get("/processes/running", response_model=list[LaufOut])
-async def laufende(
+@router.get("/processes/running", response_model=list[RunOut])
+async def running(
     include_done: bool = False, only_stuck: bool = False, limit: int = 200,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
@@ -202,9 +202,9 @@ async def laufende(
             [WorkflowInstanceStatus.completed, WorkflowInstanceStatus.cancelled]))
     rows = (await db.execute(q.order_by(WorkflowInstance.id.desc()).limit(limit))).scalars().all()
 
-    visible = await _sichtbare_projekte(db, user)
+    visible = await _visible_projects(db, user)
     now = _now()
-    out: list[LaufOut] = []
+    out: list[RunOut] = []
     for inst in rows:
         if inst.project_id is not None and inst.project_id not in visible:
             continue
@@ -221,10 +221,10 @@ async def laufende(
         step = (await db.execute(select(WorkflowStepRun).where(
             WorkflowStepRun.instance_id == inst.id,
         ).order_by(WorkflowStepRun.id.desc()))).scalars().first()
-        seit = _aware((step.entered_at if step else None) or inst.started_at)
-        hours = round((now - seit).total_seconds() / 3600, 1) if seit else None
+        since = _aware((step.entered_at if step else None) or inst.started_at)
+        hours = round((now - since).total_seconds() / 3600, 1) if since else None
         hangs = (inst.status == WorkflowInstanceStatus.failed
-                  or bool(hours and hours >= HANGS_AB_HOURS))
+                  or bool(hours and hours >= HANGS_FROM_HOURS))
         if only_stuck and not hangs:
             continue
 
@@ -236,7 +236,7 @@ async def laufende(
         elif inst.hardware_asset_id:
             ref = f"HW-{inst.hardware_asset_id}"
 
-        out.append(LaufOut(
+        out.append(RunOut(
             id=inst.id, definition_id=inst.definition_id,
             definition_name=d.name if d else "—", slot=d.slot if d else None,
             project_id=inst.project_id,
@@ -244,7 +244,7 @@ async def laufende(
             subject_kind=inst.subject_kind, subject_ref=ref, status=inst.status,
             node_label=_label(graph, token.node_id if token else (step.node_id if step else None)),
             waiting_for=token.waiting_for if token else None,
-            seit=seit, hours=hours, hangs=hangs,
+            since=since, hours=hours, hangs=hangs,
             error=inst.error, started_at=inst.started_at,
         ))
     return out
@@ -280,8 +280,8 @@ async def trigger(
     """
     from ..models.ops import Job, WebhookSub
 
-    visible = await _sichtbare_projekte(db, user)
-    ereignis_label = dict(ev.BUILTIN_EVENTS)
+    visible = await _visible_projects(db, user)
+    event_label = dict(ev.BUILTIN_EVENTS)
 
     defs = (await db.execute(select(WorkflowDefinition).where(
         WorkflowDefinition.archived_at.is_(None)))).scalars().all()
@@ -308,7 +308,7 @@ async def trigger(
         name = str(t["event"])
         out.append(TriggerOut(
             **header(d), kind="event", source=name,
-            label=ereignis_label.get(name, name),
+            label=event_label.get(name, name),
             only_project_id=t.get("project_id") or None,
             enabled=bool(d.enabled),
         ))
@@ -349,9 +349,9 @@ async def trigger(
                                     label=f"Aufruf aus „{d.name}“"))
 
     # 4) Everything without a trigger: runs only when a human (or code) starts it.
-    mit_trigger = {a.definition_id for a in out}
+    with_trigger = {a.definition_id for a in out}
     for d in known.values():
-        if d.id in mit_trigger or not d.current_version_id:
+        if d.id in with_trigger or not d.current_version_id:
             continue
         out.append(TriggerOut(**header(d), kind="manual", source="",
                                 label="Nur manuell bzw. aus dem Programm",
@@ -362,14 +362,14 @@ async def trigger(
 
 # ── Event catalog (for the selection in the editor and the overview) ─────────
 
-class EreignisOut(BaseModel):
+class EventOut(BaseModel):
     event: str
     label: str
     listeners: int
 
 
-@router.get("/processes/events", response_model=list[EreignisOut])
-async def ereignisse(
+@router.get("/processes/events", response_model=list[EventOut])
+async def events(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
     """All known events with the number of flows listening for them."""
@@ -383,5 +383,5 @@ async def ereignisse(
         t = ev.trigger_of(version.graph if version else {})
         if t and t.get("event"):
             counter[str(t["event"])] = counter.get(str(t["event"]), 0) + 1
-    return [EreignisOut(event=e, label=l, listeners=counter.get(e, 0))
+    return [EventOut(event=e, label=l, listeners=counter.get(e, 0))
             for e, l in ev.BUILTIN_EVENTS]

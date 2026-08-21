@@ -15,7 +15,7 @@ from app.services.appsettings import set_setting
 from app.services import workflow_templates
 from sqlalchemy import select
 
-from conftest import make_webhook, melde, make_user
+from conftest import make_webhook, report, make_user
 
 
 @pytest.fixture
@@ -28,21 +28,21 @@ async def owner(db):
     await db.commit()
     # So that the question comes as a card of its own immediately in the test instead of
     # waiting for the digest beat: what is checked is the path, not the height of the threshold.
-    await set_setting(db, spam_review.SOFORT_AB_KEY, "0.5")
+    await set_setting(db, spam_review.IMMEDIATE_FROM_KEY, "0.5")
     return user
 
 
 @pytest.fixture
 def imap_stub(monkeypatch):
     """Replace `imap-mcp` by a transcript."""
-    aufrufe = []
+    calls = []
 
     async def fake_call_tool(url, tool, arguments, **kw):
-        aufrufe.append((tool, arguments))
+        calls.append((tool, arguments))
         return {"content": [{"type": "text", "text": "verschoben nach Spam"}]}
 
     monkeypatch.setattr(spam_review, "call_tool", fake_call_tool)
-    return aufrufe
+    return calls
 
 
 def _mail(**over) -> dict:
@@ -60,7 +60,7 @@ def _mail(**over) -> dict:
     return payload
 
 
-def _verdaechtig(uid: int = 5001) -> dict:
+def _suspicious(uid: int = 5001) -> dict:
     """A mail that tears every threshold: an invented sender, a redirected reply, and nothing
     passes the authenticity check."""
     return _mail(uid=uid, **{
@@ -79,7 +79,7 @@ async def _report(db, owner, payload, *, classify_agent: str = "") -> WorkflowIn
     """
     sub = await make_webhook(db, owner, "mail-test", mode="assistant", agent="assistent",
                              classify_agent=classify_agent)
-    ids = await melde(db, sub, payload)
+    ids = await report(db, sub, payload)
     assert len(ids) == 1, "exactly one shipped mail inbox should start"
     return await db.get(WorkflowInstance, ids[0])
 
@@ -98,7 +98,7 @@ async def test_an_unremarkable_mail_goes_to_the_assistant(db, owner):
 
 async def test_a_suspicion_waits_for_the_answer(db, owner, imap_stub):
     """Nothing is moved before a human has answered; that is the guard rail."""
-    inst = await _report(db, owner, _verdaechtig())
+    inst = await _report(db, owner, _suspicious())
 
     assert inst.status == WorkflowInstanceStatus.waiting
     step = (await db.execute(select(WorkflowStepRun).where(
@@ -110,15 +110,15 @@ async def test_a_suspicion_waits_for_the_answer(db, owner, imap_stub):
     assert imap_stub == []
     # The card with the buttons comes from the spam detection, not as a second workflow
     # message; otherwise two messages about the same mail would stand in the chat.
-    karten = (await db.execute(select(Notification))).scalars().all()
-    assert [k.kind for k in karten] == ["spam_review"]
+    maps = (await db.execute(select(Notification))).scalars().all()
+    assert [k.kind for k in maps] == ["spam_review"]
 
 
 async def test_an_answer_from_telegram_advances_the_flow(db, owner, imap_stub):
-    inst = await _report(db, owner, _verdaechtig())
+    inst = await _report(db, owner, _suspicious())
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
 
-    result = await spam_review.entscheiden(db, verdict, True)
+    result = await spam_review.decide(db, verdict, True)
 
     assert imap_stub == [("mark_spam", {"account": "privat", "folder": "INBOX", "uid": 5001})]
     assert "verschoben" in result
@@ -127,16 +127,16 @@ async def test_an_answer_from_telegram_advances_the_flow(db, owner, imap_stub):
     await db.refresh(inst)
     assert inst.status == WorkflowInstanceStatus.completed
     # And learning happens as well: the same address stands out faster next time.
-    score, _, _ = await spam_learn.bewerten(db, owner.id, ["from:x@4t7k.xyz"])
+    score, _, _ = await spam_learn.rate(db, owner.id, ["from:x@4t7k.xyz"])
     assert score > 0.5
 
 
 async def test_not_spam_leads_the_mail_to_the_assistant(db, owner, imap_stub):
     """"Not spam" is no waste bin: the mail should be handled completely normally afterwards."""
-    inst = await _report(db, owner, _verdaechtig())
+    inst = await _report(db, owner, _suspicious())
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
 
-    await spam_review.entscheiden(db, verdict, False)
+    await spam_review.decide(db, verdict, False)
 
     assert imap_stub[0][0] == "mark_not_spam"
     await db.refresh(inst)
@@ -153,7 +153,7 @@ async def test_a_settled_sender_is_filed_away_without_asking(db, owner, imap_stu
                         features=["from:werber@versand.example"], status="spam")
         db.add(v)
         await db.flush()
-        await spam_learn.merken(db, v, True)
+        await spam_learn.remember(db, v, True)
     await db.commit()
 
     inst = await _report(db, owner, _mail(
@@ -166,11 +166,11 @@ async def test_a_settled_sender_is_filed_away_without_asking(db, owner, imap_stu
 
     assert inst.status == WorkflowInstanceStatus.completed
     assert imap_stub[0][0] == "mark_spam"
-    frisch = (await db.execute(select(SpamVerdict).where(
+    fresh = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.workflow_instance_id == inst.id))).scalars().one()
-    assert frisch.status == "spam" and frisch.decided_by == "auto"
+    assert fresh.status == "spam" and fresh.decided_by == "auto"
     karte = (await db.execute(select(Notification).where(
-        Notification.spam_verdict_id == frisch.id))).scalars().one()
+        Notification.spam_verdict_id == fresh.id))).scalars().one()
     assert "gelernt" in karte.title.lower()
 
 
@@ -178,8 +178,8 @@ async def test_a_settled_sender_is_filed_away_without_asking(db, owner, imap_stu
 
 async def test_the_auto_threshold_moves_it_without_asking(db, owner, imap_stub):
     """Above the auto threshold nothing is asked any more; the card carries the way back."""
-    await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
-    inst = await _report(db, owner, _verdaechtig(uid=8001))
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.5")
+    inst = await _report(db, owner, _suspicious(uid=8001))
 
     assert inst.status == WorkflowInstanceStatus.completed
     assert imap_stub[0][0] == "mark_spam"
@@ -191,18 +191,18 @@ async def test_the_auto_threshold_moves_it_without_asking(db, owner, imap_stub):
 
 
 async def test_recovering_learns_the_sender_as_wanted(db, owner, imap_stub):
-    await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
-    await _report(db, owner, _verdaechtig(uid=8002))
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.5")
+    await _report(db, owner, _suspicious(uid=8002))
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
 
-    result = await spam_review.zurueckholen(db, verdict)
+    result = await spam_review.reclaim(db, verdict)
 
     assert imap_stub[-1][0] == "mark_not_spam"
     assert "verschoben" in result or result
     await db.refresh(verdict)
     assert verdict.status == "ham"
     # And the sender is remembered: the same error does not happen again.
-    score, _, _ = await spam_learn.bewerten(db, owner.id, ["from:x@4t7k.xyz"])
+    score, _, _ = await spam_learn.rate(db, owner.id, ["from:x@4t7k.xyz"])
     assert score < 0.5
     from app.models.assistant import AssistantPolicy
     rule = (await db.execute(select(AssistantPolicy).where(
@@ -212,7 +212,7 @@ async def test_recovering_learns_the_sender_as_wanted(db, owner, imap_stub):
 
 async def test_auto_is_off_by_default(db, owner, imap_stub):
     """Without an explicit decision of the human it stays with the question."""
-    inst = await _report(db, owner, _verdaechtig(uid=8003))
+    inst = await _report(db, owner, _suspicious(uid=8003))
     assert inst.status == WorkflowInstanceStatus.waiting
     assert imap_stub == []
 
@@ -221,7 +221,7 @@ async def test_the_server_verdict_files_it_away_without_asking(db, owner, imap_s
     """The case from 2026-08-18: four mails with `***SPAM***` in the subject, rated with 13
     points by the own server, and still an overall verdict of only ~0.55. Without the special
     path every auto threshold would stay ineffective."""
-    await set_setting(db, spam_review.AUTO_AB_KEY, "0.95")
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.95")
     inst = await _report(db, owner, _mail(uid=9001, **{
         "from": [{"name": "Dr. Beispiel Person", "addr": "support@suchmaschine.example"}],
         "subject": "***SPAM*** Löwen-Deal: 8,3 kg Fettverlust pro Monat",
@@ -250,7 +250,7 @@ async def test_the_server_verdict_stays_quiet_while_auto_is_off(db, owner, imap_
 
 # ── Melden ist ein Schritt, kein Nebeneffekt ─────────────────────────────────
 
-async def _melde_node_abschalten(db, node_id: str) -> None:
+async def _report_node_disable(db, node_id: str) -> None:
     """Den Melde-Schritt abschalten — dasselbe, was das Häkchen im Editor tut."""
     import copy
 
@@ -259,12 +259,12 @@ async def _melde_node_abschalten(db, node_id: str) -> None:
 
     d = (await db.execute(select(WorkflowDefinition).where(
         WorkflowDefinition.key == "mail-eingang"))).scalars().first()
-    alt = await db.get(WorkflowVersion, d.current_version_id)
-    graph = copy.deepcopy(alt.graph)
+    old = await db.get(WorkflowVersion, d.current_version_id)
+    graph = copy.deepcopy(old.graph)
     hits = [n for n in graph["nodes"] if n["id"] == node_id]
     assert hits, f"Knoten {node_id} steht nicht im ausgelieferten Ablauf"
     hits[0]["data"]["config"].update(deaktiviert=True, deaktiviert_modus="ueberspringen")
-    new = WorkflowVersion(definition_id=d.id, version=alt.version + 1, graph=graph,
+    new = WorkflowVersion(definition_id=d.id, version=old.version + 1, graph=graph,
                           status=WorkflowVersionStatus.published)
     db.add(new)
     await db.flush()
@@ -279,10 +279,10 @@ async def test_reporting_can_be_switched_off_without_the_filing(db, owner, imap_
     wollte, hätte den Schritt abschalten müssen — und damit das Urteil, an dem Verschieben
     und Lernen hängen. Jetzt trifft der Schalter nur die Nachricht.
     """
-    await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
-    await _melde_node_abschalten(db, "melde_auto")
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.5")
+    await _report_node_disable(db, "melde_auto")
 
-    inst = await _report(db, owner, _verdaechtig(uid=8100))
+    inst = await _report(db, owner, _suspicious(uid=8100))
 
     assert inst.status == WorkflowInstanceStatus.completed
     assert imap_stub[0][0] == "mark_spam", "die Mail wird weiterhin weggeräumt"
@@ -293,8 +293,8 @@ async def test_reporting_can_be_switched_off_without_the_filing(db, owner, imap_
 
 async def test_the_notify_node_attaches_the_card_to_the_verdict(db, owner, imap_stub):
     """Die Karte muss handhabbar bleiben: der Knopf „zurückholen" braucht den Bezug."""
-    await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
-    inst = await _report(db, owner, _verdaechtig(uid=8101))
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.5")
+    inst = await _report(db, owner, _suspicious(uid=8101))
 
     assert inst.status == WorkflowInstanceStatus.completed
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
@@ -310,10 +310,10 @@ async def test_the_setting_switches_off_the_notice_not_the_filing(db, owner, ima
     neben dem ausgelieferten Ablauf, also zweimal pro Mail. Deswegen liest die Weiche vor dem
     Melde-Schritt den Wert aus dem Urteil.
     """
-    await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.5")
     await set_setting(db, spam_review.AUTO_REPORT_KEY, "0")
 
-    inst = await _report(db, owner, _verdaechtig(uid=8200))
+    inst = await _report(db, owner, _suspicious(uid=8200))
 
     assert inst.status == WorkflowInstanceStatus.completed
     assert imap_stub[0][0] == "mark_spam", "die Mail wird weiterhin weggeräumt"
@@ -327,7 +327,7 @@ async def test_the_question_remains_despite_auto_reporting_being_off(db, owner, 
     Rückfrage weggeräumt wird."""
     await set_setting(db, spam_review.AUTO_REPORT_KEY, "0")
 
-    inst = await _report(db, owner, _verdaechtig(uid=8201))
+    inst = await _report(db, owner, _suspicious(uid=8201))
 
     assert inst.status == WorkflowInstanceStatus.waiting, "die Frage steht noch offen"
     karte = (await db.execute(select(Notification))).scalars().one()
@@ -337,7 +337,7 @@ async def test_the_question_remains_despite_auto_reporting_being_off(db, owner, 
 # ── Das Urteil des lokalen Modells im Ablauf ─────────────────────────────────
 
 @pytest.fixture
-def modell_stub(monkeypatch):
+def model_stub(monkeypatch):
     """Replace the local classification. `mail_actions` imports it inside the function, so
     patching the module the function reads from is what takes hold."""
     from app.services import mail_classify
@@ -362,15 +362,15 @@ def _n26(uid: int = 9101) -> dict:
                     "Return-Path": "<b@fremde-firma.example>", "Received-Count": 3}})
 
 
-async def _report_klassifiziert(db, owner, payload) -> WorkflowInstance:
+async def _report_classified(db, owner, payload) -> WorkflowInstance:
     return await _report(db, owner, payload, classify_agent="mail_classifier")
 
 
-async def test_the_model_verdict_files_it_away_without_asking(db, owner, imap_stub, modell_stub):
+async def test_the_model_verdict_files_it_away_without_asking(db, owner, imap_stub, model_stub):
     """The case of 2026-08-19: rules 0.4, model 0.95, and the mixture landed at 0.731."""
-    modell_stub()
-    await set_setting(db, spam_review.AUTO_AB_KEY, "0.95")
-    inst = await _report_klassifiziert(db, owner, _n26())
+    model_stub()
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.95")
+    inst = await _report_classified(db, owner, _n26())
 
     assert inst.status == WorkflowInstanceStatus.completed
     assert imap_stub[0][0] == "mark_spam"
@@ -378,23 +378,23 @@ async def test_the_model_verdict_files_it_away_without_asking(db, owner, imap_st
     assert verdict.status == "spam" and verdict.decided_by == "auto"
     assert verdict.rule_score < 0.5, "die Regeln allein hätten es nie getragen"
     assert verdict.kind == "phishing"
-    assert any(b["quelle"] == "modell" for b in verdict.befunde)
+    assert any(b["quelle"] == "modell" for b in verdict.findings)
     karte = (await db.execute(select(Notification))).scalars().one()
     assert karte.kind == "spam_auto"
 
 
-async def test_the_model_verdict_stays_quiet_while_auto_is_off(db, owner, imap_stub, modell_stub):
+async def test_the_model_verdict_stays_quiet_while_auto_is_off(db, owner, imap_stub, model_stub):
     """Auto off is a deliberate decision of a human; the model does not overrule it."""
-    modell_stub()
-    inst = await _report_klassifiziert(db, owner, _n26(uid=9102))
+    model_stub()
+    inst = await _report_classified(db, owner, _n26(uid=9102))
     assert inst.status == WorkflowInstanceStatus.waiting
     assert imap_stub == []
 
 
-async def test_without_a_fraud_verdict_everything_stays_as_it_was(db, owner, imap_stub, modell_stub):
+async def test_without_a_fraud_verdict_everything_stays_as_it_was(db, owner, imap_stub, model_stub):
     """Advertising the model is sure about is still not fraud, and stays a question."""
-    modell_stub(betrug=False, category="werbung", spam_reason="unerwünschte Werbung")
-    await set_setting(db, spam_review.AUTO_AB_KEY, "0.95")
-    inst = await _report_klassifiziert(db, owner, _n26(uid=9103))
+    model_stub(betrug=False, category="werbung", spam_reason="unerwünschte Werbung")
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.95")
+    inst = await _report_classified(db, owner, _n26(uid=9103))
     assert inst.status == WorkflowInstanceStatus.waiting
     assert imap_stub == []

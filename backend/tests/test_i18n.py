@@ -43,8 +43,8 @@ async def test_create_rename_disable_delete_a_language(client, db):
     assert entry["builtin"] is False
 
     assert (await client.delete("/i18n/locales/fr", headers=h)).status_code == 204
-    danach = (await client.get("/i18n/locales", headers=h)).json()
-    assert not [s for s in danach if s["locale"] == "fr"]
+    after = (await client.get("/i18n/locales", headers=h)).json()
+    assert not [s for s in after if s["locale"] == "fr"]
     assert (await client.get("/i18n/fr", headers=h)).json()["texts"] == {}
 
 
@@ -89,15 +89,15 @@ async def test_the_server_catalog_is_available_for_translation(client, db):
     anna = await make_user(db, "anna")
     r = await client.get("/i18n/server-catalog", headers=auth(anna))
     assert r.status_code == 200
-    texte = r.json()["texts"]
-    assert texte["server.onboarding.project"] == "Projekt anlegen"
-    assert all(k.startswith("server.") for k in texte)
+    texts = r.json()["texts"]
+    assert texts["server.onboarding.project"] == "Projekt anlegen"
+    assert all(k.startswith("server.") for k in texts)
 
 
 async def test_server_text_in_the_readers_language(db):
-    from app.services.i18n import tr, verwerfen
+    from app.services.i18n import tr, discard
 
-    verwerfen()
+    discard()
     assert await tr(db, "server.onboarding.project", "de") == "Projekt anlegen"
     assert await tr(db, "server.onboarding.project", "en") == "Create a project"
     # An unknown language falls back on German, not on the key: a key on the screen is worse

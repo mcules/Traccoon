@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..core.security import hash_password
 from ..db import get_session
 from ..models.enums import GlobalRole, UserStatus
@@ -76,11 +76,11 @@ async def set_user_mcp_servers(user_id: int, data: McpServersIn, _: User = Depen
 
 async def _get_manageable(user_id: int, db: AsyncSession) -> User:
     if user_id == SYSTEM_USER_ID:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.system_users_cannot_managed",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.system_users_cannot_managed",
                      "System users cannot be managed")
     u = await db.get(User, user_id)
     if u is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.user_not_found", "User not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.user_not_found", "User not found")
     return u
 
 
@@ -118,9 +118,9 @@ async def visible_users(user: User = Depends(get_current_user),
     q = select(User).where(User.id != SYSTEM_USER_ID,
                            User.status != UserStatus.disabled)
     if user.global_role != GlobalRole.admin:
-        meine = select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
-        mit_mir = select(ProjectMember.user_id).where(ProjectMember.project_id.in_(meine))
-        q = q.where(or_(User.id == user.id, User.id.in_(mit_mir),
+        my = select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
+        with_me = select(ProjectMember.user_id).where(ProjectMember.project_id.in_(my))
+        q = q.where(or_(User.id == user.id, User.id.in_(with_me),
                         User.status == UserStatus.placeholder))
     rows = (await db.execute(q.order_by(User.display_name, User.username))).scalars().all()
     return [{"id": u.id, "username": u.username, "display_name": u.display_name,
@@ -155,7 +155,7 @@ async def create_user(data: UserCreateIn, _: User = Depends(require_admin),
         cond = cond | (User.email == email)
     exists = (await db.execute(select(User).where(cond))).scalar_one_or_none()
     if exists is not None:
-        raise Fehler(status.HTTP_409_CONFLICT, "err.e_mail_user_name_already_taken",
+        raise Error(status.HTTP_409_CONFLICT, "err.e_mail_user_name_already_taken",
                      "E-mail or user name already taken")
     try:
         role = GlobalRole(data.global_role)
@@ -197,7 +197,7 @@ async def disable(
     user_id: int, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
 ):
     if user_id == admin.id:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.do_not_deactivate_yourself",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.do_not_deactivate_yourself",
                      "Do not deactivate yourself")
     u = await _get_manageable(user_id, db)
     u.status = UserStatus.disabled
@@ -221,7 +221,7 @@ async def update_user(
             )
         ).scalars().first()
         if conflict is not None:
-            raise Fehler(status.HTTP_409_CONFLICT, "err.e_mail_already_taken",
+            raise Error(status.HTTP_409_CONFLICT, "err.e_mail_already_taken",
                          "E-mail already taken")
     if data.username is not None:
         conflict = (
@@ -230,7 +230,7 @@ async def update_user(
             )
         ).scalars().first()
         if conflict is not None:
-            raise Fehler(status.HTTP_409_CONFLICT, "err.user_name_already_taken",
+            raise Error(status.HTTP_409_CONFLICT, "err.user_name_already_taken",
                          "User name already taken")
     if data.email is not None:
         u.email = data.email
@@ -270,7 +270,7 @@ async def set_role(
     db: AsyncSession = Depends(get_session),
 ):
     if user_id == admin.id and role != GlobalRole.admin:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.do_not_demote_yourself",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.do_not_demote_yourself",
                      "Do not demote yourself")
     u = await _get_manageable(user_id, db)
     u.global_role = role

@@ -11,10 +11,10 @@ from conftest import make_project, make_user
 
 @pytest.fixture
 def calls(monkeypatch):
-    aufzeichnung: list[httpx.Request] = []
+    recording: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        aufzeichnung.append(request)
+        recording.append(request)
         return httpx.Response(201, json={"id": "EXT-7"})
 
     transport = httpx.MockTransport(handler)
@@ -26,7 +26,7 @@ def calls(monkeypatch):
             super().__init__(*a, transport=transport, **kw)
 
     monkeypatch.setattr(svc.httpx, "AsyncClient", Client)
-    return aufzeichnung
+    return recording
 
 
 async def test_a_flow_calls_a_destination(db, calls):

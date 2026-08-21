@@ -20,7 +20,7 @@ import logging
 
 from sqlalchemy import func, select
 
-from ..core.redis import get_flag, lauf_lebt, peek_result, set_flag
+from ..core.redis import get_flag, run_alive, peek_result, set_flag
 from ..db import SessionLocal
 from ..models.agents import Run, RunStep
 from ..models.enums import HoldReason, StatusCategory, TicketAgentStatus
@@ -97,20 +97,20 @@ async def _ensure_testing_status(db, project_id: int, stats: list[WorkflowStatus
 # hour without being noticed anywhere: the assistant simply stayed silent, and that cannot be
 # told apart from "has nothing to say". Better to report once too often.
 WORKER_STILL_SEC = 180
-_puls_gemeldet = False
+_pulse_reported = False
 
 
-async def _check_worker_puls() -> None:
-    global _puls_gemeldet
+async def _check_worker_pulse() -> None:
+    global _pulse_reported
     from ..core.redis import PREFIX, QUEUE, get_redis
     from ..models.notification import Notification
     from ..models.user import User
     r = get_redis()
-    puls = await r.get(f"{PREFIX}runner:heartbeat")
-    wartend = await r.llen(QUEUE)
-    steht = puls is None and wartend > 0
-    if steht and not _puls_gemeldet:
-        log.error("Worker without a pulse, %s assignment(s) waiting", wartend)
+    pulse = await r.get(f"{PREFIX}runner:heartbeat")
+    waiting = await r.llen(QUEUE)
+    stands = pulse is None and waiting > 0
+    if stands and not _pulse_reported:
+        log.error("Worker without a pulse, %s assignment(s) waiting", waiting)
         async with SessionLocal() as db:
             # To the operator: without a worker neither the assistant nor an agent runs.
             admin = (await db.execute(select(User).where(User.telegram_chat_id.isnot(None))
@@ -121,13 +121,13 @@ async def _check_worker_puls() -> None:
                     user_id=admin.id, kind="worker_down",
                     title=await tr(db, "server.notify.worker_down", admin.locale),
                     body=await tr(db, "server.notify.worker_down_body", admin.locale,
-                                  wartend=wartend),
+                                  waiting=waiting),
                     chat_id=admin.telegram_chat_id))
                 await db.commit()
-        _puls_gemeldet = True
-    elif not steht and _puls_gemeldet:
+        _pulse_reported = True
+    elif not stands and _pulse_reported:
         log.info("The worker is back")
-        _puls_gemeldet = False
+        _pulse_reported = False
 
 
 # ── Betriebs-Tick ────────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ async def _tick() -> None:
     """Maintenance update: as soon as the last agent is finished, self-deploy the maintenance
     project over the deployer sidecar. During the update `agent_gate` starts no new runs
     anyway."""
-    await _check_worker_puls()
+    await _check_worker_pulse()
     if not await get_flag("update_pending"):
         return
     from ..models.ops import Deployment
@@ -200,7 +200,7 @@ async def recover_on_start() -> None:
                 # The first and best information: the pulse of the worker for this exact
                 # assignment. Without it a run counted as dead as soon as it sat on a
                 # single answer for more than five minutes, while the engine kept hanging.
-                if await lauf_lebt(run.task_id):
+                if await run_alive(run.task_id):
                     alive = True
                 if not alive and run.finished_at is None:
                     last_step = (await db.execute(select(func.max(RunStep.created_at))

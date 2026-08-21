@@ -36,10 +36,10 @@ async def _ticket(db, proj, user, agent_status: TicketAgentStatus) -> Issue:
     return issue
 
 
-def _notice(user, kind: str, *, gesendet: bool, **kw) -> Notification:
+def _notice(user, kind: str, *, sent: bool, **kw) -> Notification:
     return Notification(user_id=user.id, kind=kind, title=kind,
-                        chat_id="42" if gesendet else None,
-                        notified_at=NOW if gesendet else None, **kw)
+                        chat_id="42" if sent else None,
+                        notified_at=NOW if sent else None, **kw)
 
 
 async def _title(client, user, alle: bool = False) -> list[str]:
@@ -53,8 +53,8 @@ async def test_sent_and_finished_items_disappear(db, client):
     proj = await make_project(db, "GLO", "Glocke")
     done = await _ticket(db, proj, anna, TicketAgentStatus.done)
     db.add_all([
-        _notice(anna, "plan_review", gesendet=True, issue_id=done.id),
-        _notice(anna, "assistant", gesendet=True),
+        _notice(anna, "plan_review", sent=True, issue_id=done.id),
+        _notice(anna, "assistant", sent=True),
     ])
     await db.commit()
 
@@ -68,7 +68,7 @@ async def test_sent_and_finished_items_disappear(db, client):
 async def test_without_sending_it_stays_visible(db, client):
     """A row that never went out anywhere is the message itself, not its echo."""
     anna = await make_user(db, "anna")
-    db.add(_notice(anna, "assistant", gesendet=False))
+    db.add(_notice(anna, "assistant", sent=False))
     await db.commit()
 
     assert await _title(client, anna) == ["assistant"]
@@ -79,14 +79,14 @@ async def test_without_sending_it_stays_visible(db, client):
 async def test_a_waiting_ticket_stays_despite_sending(db, client):
     anna = await make_user(db, "anna")
     proj = await make_project(db, "GLO", "Glocke")
-    wartet = await _ticket(db, proj, anna, TicketAgentStatus.plan_review)
-    db.add(_notice(anna, "plan_review", gesendet=True, issue_id=wartet.id))
+    waits = await _ticket(db, proj, anna, TicketAgentStatus.plan_review)
+    db.add(_notice(anna, "plan_review", sent=True, issue_id=waits.id))
     await db.commit()
 
     assert await _title(client, anna) == ["plan_review"]
 
     # Plan approved: the same row now counts as done, without anybody touching it.
-    wartet.agent_status = TicketAgentStatus.approved
+    waits.agent_status = TicketAgentStatus.approved
     await db.commit()
     assert await _title(client, anna) == []
 
@@ -95,13 +95,13 @@ async def test_an_open_permission_question_remains(db, client):
     anna = await make_user(db, "anna")
     proj = await make_project(db, "GLO", "Glocke")
     issue = await _ticket(db, proj, anna, TicketAgentStatus.hold)
-    anfrage = PermRequest(issue_id=issue.id, tool="bash", resource="*", status="pending")
-    db.add_all([anfrage, _notice(anna, "blocked", gesendet=True, issue_id=issue.id)])
+    request = PermRequest(issue_id=issue.id, tool="bash", resource="*", status="pending")
+    db.add_all([request, _notice(anna, "blocked", sent=True, issue_id=issue.id)])
     await db.commit()
 
     assert await _title(client, anna) == ["blocked"]
 
-    anfrage.status = "decided"
+    request.status = "decided"
     await db.commit()
     assert await _title(client, anna) == []
 
@@ -109,14 +109,14 @@ async def test_an_open_permission_question_remains(db, client):
 async def test_assistant_and_spam_hang_on_their_own_state(db, client):
     anna = await make_user(db, "anna")
     offen = AssistantTask(source="mail", title="offen", status="new")
-    erledigt = AssistantTask(source="mail", title="erledigt", status="done")
+    done = AssistantTask(source="mail", title="erledigt", status="done")
     spam = SpamVerdict(status="pending")
-    db.add_all([offen, erledigt, spam])
+    db.add_all([offen, done, spam])
     await db.commit()
     db.add_all([
-        _notice(anna, "assistant_review", gesendet=True, assistant_task_id=offen.id),
-        _notice(anna, "assistant_review", gesendet=True, assistant_task_id=erledigt.id),
-        _notice(anna, "spam_review", gesendet=True, spam_verdict_id=spam.id),
+        _notice(anna, "assistant_review", sent=True, assistant_task_id=offen.id),
+        _notice(anna, "assistant_review", sent=True, assistant_task_id=done.id),
+        _notice(anna, "spam_review", sent=True, spam_verdict_id=spam.id),
     ])
     await db.commit()
 
@@ -127,8 +127,8 @@ async def test_assistant_and_spam_hang_on_their_own_state(db, client):
 async def test_mark_all_read_also_clears_the_hidden_ones(db, client):
     """Otherwise a hidden unread row would keep a counter alive that no bell can reach."""
     anna = await make_user(db, "anna")
-    db.add_all([_notice(anna, "assistant", gesendet=True),
-                _notice(anna, "assistant", gesendet=False)])
+    db.add_all([_notice(anna, "assistant", sent=True),
+                _notice(anna, "assistant", sent=False)])
     await db.commit()
 
     await client.post("/notifications/read-all", headers=auth(anna))

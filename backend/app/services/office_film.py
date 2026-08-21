@@ -47,7 +47,7 @@ from ..models.agents import CostEntry, Run, RunStep
 from ..models.notification import Notification
 from ..models.ticket import Issue
 from .office import (
-    EVENT_CAP_MAX, FAIL_STATUS, PriceTable, RunCtx, entdoppeln_seq, run_boundary_events,
+    EVENT_CAP_MAX, FAIL_STATUS, PriceTable, RunCtx, dedupe_seq, run_boundary_events,
     step_events,
 )
 
@@ -65,13 +65,13 @@ STD_TZ = "Europe/Berlin"
 STD_SECONDS = 25
 STD_FPS = 12
 STD_GRADE = "night"
-STD_KAPITEL = 8
-STD_BEHALTEN_DAYS = 14
+STD_CHAPTER = 8
+STD_KEEP_DAYS = 14
 
 # The same upper bound the renderer runs as `REPLAY_CAP`. The strongest real day had about
 # 2500 events; an outlier day above that would otherwise lose the morning **silently**.
 # Truncation is at the oldest end (as in `api/office.py`), and the caption says so.
-EREIGNIS_CAP = EVENT_CAP_MAX
+EVENT_CAP = EVENT_CAP_MAX
 
 # A run waiting for a person. Not to be merged with "failure": a question is not a failure but
 # an open question.
@@ -83,15 +83,15 @@ WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 # Telegram cuts a caption at 1024 characters, so it is better to shorten it here than to be cut
 # off mid word.
-UNTERTITEL_MAX = 1024
+SUBTITLE_MAX = 1024
 TITLE_MAX = 60
 
 # Response headers of the renderer. Looked up case insensitively (`_kopf`): httpx returns the
 # names in lower case, the renderer writes them capitalised.
-HEADER_KAPITEL = "X-Film-Kapitel"
-HEADER_INSELN = "X-Film-Inseln"
-HEADER_BILDER = "X-Film-Bilder"
-HEADER_GEKAPPT = "X-Film-Gekappt"
+HEADER_CHAPTER = "X-Film-Kapitel"
+HEADER_ISLANDS = "X-Film-Inseln"
+HEADER_IMAGES = "X-Film-Bilder"
+HEADER_CAPPED = "X-Film-Gekappt"
 # **Build time**, not playing time (`film.mjs`: `Date.now() - t0`). How long the film runs stands
 # nowhere: that is `frames / fps` and is computed here.
 HEADER_DURATION = "X-Film-Dauer-Ms"
@@ -99,7 +99,7 @@ HEADER_DURATION = "X-Film-Dauer-Ms"
 # How much room the HTTP call leaves under `job.run_timeout`. The job has to be able to write
 # the error itself; if the scheduler timeout beats it, the JobRun would stay on
 # „running" stehen.
-TIMEOUT_PUFFER_S = 30
+TIMEOUT_BUFFER_S = 30
 
 
 def _now() -> dt.datetime:
@@ -121,38 +121,38 @@ def _iso_ms(value: dt.datetime) -> str:
     return f"{value:%Y-%m-%dT%H:%M:%S}.{value.microsecond // 1000:03d}Z"
 
 
-def _pl(n: int, ein: str, viele: str) -> str:
-    return f"{n} {ein if n == 1 else viele}"
+def _pl(n: int, ein: str, many: str) -> str:
+    return f"{n} {ein if n == 1 else many}"
 
 
-def datum_label(moment: dt.datetime) -> str:
+def date_label(moment: dt.datetime) -> str:
     """"Wed 05.08.", in the zone `moment` brings along."""
     return f"{WEEKDAYS[moment.weekday()]} {moment:%d.%m.}"
 
 
 @dataclass
-class Tagesbilanz:
+class Dailybalance:
     """What the day was: the numbers of the caption, computed in one place."""
 
-    datum: str                      # "Wed 05.08.", local, built by Python
+    date: str                      # "Wed 05.08.", local, built by Python
     runs: int = 0
-    sitzungen: int = 0
-    ereignisse: int = 0
-    fehlschlaege: int = 0
-    rueckfragen: int = 0
-    kosten_usd: float = 0.0
+    sessions: int = 0
+    events: int = 0
+    failures: int = 0
+    questions: int = 0
+    cost_usd: float = 0.0
     # As long as any cost entry has `priced IS NULL` (today that is all 411 of them), the sum is
     # a lower bound. The "≥" is then a duty, not decoration.
-    kosten_partial: bool = False
-    laengster: dict | None = None   # {"key", "titel", "minuten"}
+    cost_partial: bool = False
+    longest: dict | None = None   # {"key", "titel", "minuten"}
     # The day had more events than a film can hold: the morning is missing.
-    gekappt: bool = False
+    capped: bool = False
 
 
 # ── The events of one day ───────────────────────────────────────────────────
 
-async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
-                           bis: dt.datetime) -> tuple[list[dict], list[dict], Tagesbilanz]:
+async def daily_events(db: AsyncSession, *, von: dt.datetime,
+                           to: dt.datetime) -> tuple[list[dict], list[dict], Dailybalance]:
     """All events of a window, **across sessions** and strictly by `seq`.
 
     Returns (events, roster, summary). The roster is exactly the set of runs the summary counts
@@ -168,22 +168,22 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
     """
     from ..api.office import _agent_row, _billed_by_run   # price and roster truth: ONE
 
-    von_utc = von.astimezone(dt.timezone.utc)
-    bis_utc = bis.astimezone(dt.timezone.utc)
-    bilanz = Tagesbilanz(datum=datum_label(von))
+    from_utc = von.astimezone(dt.timezone.utc)
+    to_utc = to.astimezone(dt.timezone.utc)
+    balance = Dailybalance(date=date_label(von))
 
     # Fetch descending and turn it around afterwards, the same truncation as in
     # `api/office.py`: the OLDEST is cut, because half a film would rather show the evening than
     # the morning. `cap + 1` reveals the truncation without a second COUNT.
     rows = (await db.execute(
         select(RunStep)
-        .where(RunStep.created_at >= von_utc, RunStep.created_at < bis_utc)
-        .order_by(RunStep.id.desc()).limit(EREIGNIS_CAP + 1)
+        .where(RunStep.created_at >= from_utc, RunStep.created_at < to_utc)
+        .order_by(RunStep.id.desc()).limit(EVENT_CAP + 1)
     )).scalars().all()
-    bilanz.gekappt = len(rows) > EREIGNIS_CAP
-    steps = sorted(rows[:EREIGNIS_CAP] if bilanz.gekappt else list(rows), key=lambda s: s.id)
+    balance.capped = len(rows) > EVENT_CAP
+    steps = sorted(rows[:EVENT_CAP] if balance.capped else list(rows), key=lambda s: s.id)
     if not steps:
-        return [], [], bilanz
+        return [], [], balance
 
     run_ids = sorted({s.run_id for s in steps})
     runs = (await db.execute(select(Run).where(Run.id.in_(run_ids)))).scalars().all()
@@ -213,42 +213,42 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
         elif kind == "run_end":
             b["hat_ende"] = True
 
-    ereignisse: list[dict] = []
+    events: list[dict] = []
     for s in steps:
         ctx = ctxs.get(s.run_id)
         if ctx is not None:
-            ereignisse.extend(step_events(s, ctx))
+            events.extend(step_events(s, ctx))
 
     for run in runs:
         b = window.get(run.id)
         if b is None:
             continue
-        grenzen = run_boundary_events(
+        limits = run_boundary_events(
             run, ctxs[run.id],
             first_step_id=None if b["hat_start"] else b["erste"],
             last_step_id=None if b["hat_ende"] else b["letzte"],
         )
         start = _utc(run.started_at)
-        ende = _utc(run.finished_at) or start
-        for ev in grenzen:
-            if ev["kind"] == "run_start" and start is not None and start < von_utc:
+        end = _utc(run.finished_at) or start
+        for ev in limits:
+            if ev["kind"] == "run_start" and start is not None and start < from_utc:
                 # Trap 1: the boundary carries `run.started_at`, so on a session across
                 # midnight that is yesterday. Unclamped the HUD clock in the opening would show
                 # the previous day, and that would look like a bug in the engine.
-                ev["ts"] = _iso_ms(von_utc)
-            elif ev["kind"] == "run_end" and ende is not None and ende >= bis_utc:
+                ev["ts"] = _iso_ms(from_utc)
+            elif ev["kind"] == "run_end" and end is not None and end >= to_utc:
                 # Trap 2: a run that only ends tomorrow has no end today. Filtering only here is
                 # deliberate: before this it is not settled whether a `run_end` boundary appears
                 # at all (a running run gets none).
                 continue
-            ereignisse.append(ev)
+            events.append(ev)
 
     # `seq` is the arrival order (`run_steps.id`), never `ts`. Across several sessions that holds
     # just as well: the row id is globally monotonic, so sorting yields ONE sequence for the
     # whole day and not twenty nested ones. On a tie the END goes before the beginning: first
     # somebody leaves the room, then the next one comes in.
-    ereignisse.sort(key=lambda e: (e["seq"], 0 if e["kind"] == "run_end" else 1))
-    _entdoppeln(ereignisse)
+    events.sort(key=lambda e: (e["seq"], 0 if e["kind"] == "run_end" else 1))
+    _dedupe(events)
     # Trap 3 as a reminder: no `session_seen` is produced here. The film has one title and
     # chapter cards; twenty headers would be twenty titles for one day.
 
@@ -256,12 +256,12 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
     billed = await _billed_by_run(db, run_ids, prices)
     roster = [_agent_row(r, billed.get(r.id)) for r in runs]
 
-    bilanz.runs = len(runs)
-    bilanz.sitzungen = len({ctx.sid for ctx in ctxs.values()})
-    bilanz.ereignisse = len(ereignisse)
-    bilanz.fehlschlaege = sum(1 for r in runs if (r.status or "") in FAIL_STATUS)
-    bilanz.rueckfragen = sum(1 for r in runs if (r.status or "") in CALLBACK_STATUS)
-    bilanz.kosten_usd = round(sum(c["cost_usd"] for c in billed.values()), 6)
+    balance.runs = len(runs)
+    balance.sessions = len({ctx.sid for ctx in ctxs.values()})
+    balance.events = len(events)
+    balance.failures = sum(1 for r in runs if (r.status or "") in FAIL_STATUS)
+    balance.questions = sum(1 for r in runs if (r.status or "") in CALLBACK_STATUS)
+    balance.cost_usd = round(sum(c["cost_usd"] for c in billed.values()), 6)
     # `_billed_by_run` resolves a NULL against TODAY's catalog, which is right for the question
     # "does this model have a price?". Under the film stands the sharper one: 411 of 413 cost
     # entries have `priced IS NULL`, so their amount came about without a recorded price, and a
@@ -269,12 +269,12 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
     # the "≥" belongs in front of it. No second price computation, one count.
     offen = await db.scalar(select(func.count()).select_from(CostEntry).where(
         CostEntry.run_id.in_(run_ids), CostEntry.priced.is_(None)))
-    bilanz.kosten_partial = any(not c["priced"] for c in billed.values()) or bool(offen)
-    bilanz.laengster = _laengster(runs, tickets)
-    return ereignisse, roster, bilanz
+    balance.cost_partial = any(not c["priced"] for c in billed.values()) or bool(offen)
+    balance.longest = _longest(runs, tickets)
+    return events, roster, balance
 
 
-def _entdoppeln(ereignisse: list[dict]) -> int:
+def _dedupe(events: list[dict]) -> int:
     """Resolve duplicate `seq`, **the** trap of the film across sessions.
 
     The body lives in `services/office.entdoppeln_seq`: since `GET /office/events` the room mixes
@@ -282,20 +282,20 @@ def _entdoppeln(ereignisse: list[dict]) -> int:
     tellings of the same transition. The name stays here, because the film
     dieser Stelle liest.
     """
-    return entdoppeln_seq(ereignisse)
+    return dedupe_seq(events)
 
 
-def _laengster(runs: list[Run], tickets: dict[int, tuple[str, str]]) -> dict | None:
+def _longest(runs: list[Run], tickets: dict[int, tuple[str, str]]) -> dict | None:
     """The longest run of the day, with its **whole** duration and not with the part visible in
     the window. A run that ran 36.5 hours ran 36.5 hours; trimming it to the window would mean
     inventing a number nobody measured. Runs without an end (still running) stay out: their
     duration is not settled yet."""
     best: tuple[float, Run] | None = None
     for run in runs:
-        start, ende = _utc(run.started_at), _utc(run.finished_at)
-        if start is None or ende is None:
+        start, end = _utc(run.started_at), _utc(run.finished_at)
+        if start is None or end is None:
             continue
-        duration = (ende - start).total_seconds()
+        duration = (end - start).total_seconds()
         if duration <= 0:
             continue
         if best is None or duration > best[0]:
@@ -310,9 +310,9 @@ def _laengster(runs: list[Run], tickets: dict[int, tuple[str, str]]) -> dict | N
 
 # ── Bildunterschrift ────────────────────────────────────────────────────────
 
-def _geld(betrag: float, *, partial: bool) -> str:
+def _money(amount: float, *, partial: bool) -> str:
     """A decimal comma, and the "≥" where it belongs."""
-    return ("≥ " if partial else "") + f"{betrag:.2f}".replace(".", ",") + " $"
+    return ("≥ " if partial else "") + f"{amount:.2f}".replace(".", ",") + " $"
 
 
 def _duration(minutes: int) -> str:
@@ -322,48 +322,48 @@ def _duration(minutes: int) -> str:
     return f"{minutes / 60:.1f}".replace(".", ",") + " h"
 
 
-def bildunterschrift(bilanz: Tagesbilanz, *, kapitel: int, inseln: int, seconds: int,
-                     gekappt: bool) -> str:
+def caption(balance: Dailybalance, *, chapter: int, islands: int, seconds: int,
+                     capped: bool) -> str:
     """The text under the film: short, at most 1024 characters (Telegram).
 
     Pure: no database, no clock. What the day was stands in the summary; what the film made of it
     comes from the response headers of the renderer. Empty statements fall away, because
     "0 failures · $0.00" is not a message but noise.
     """
-    lines = [f"🎬 Feierabend · {bilanz.datum}",
-              f"{_pl(bilanz.runs, 'Lauf', 'Läufe')} in "
-              f"{_pl(bilanz.sitzungen, 'Sitzung', 'Sitzungen')} · "
-              f"{_pl(bilanz.ereignisse, 'Ereignis', 'Ereignisse')}"]
+    lines = [f"🎬 Feierabend · {balance.date}",
+              f"{_pl(balance.runs, 'Lauf', 'Läufe')} in "
+              f"{_pl(balance.sessions, 'Sitzung', 'Sitzungen')} · "
+              f"{_pl(balance.events, 'Ereignis', 'Ereignisse')}"]
 
-    lage: list[str] = []
-    if bilanz.fehlschlaege:
-        lage.append(_pl(bilanz.fehlschlaege, "Fehlschlag", "Fehlschläge"))
-    if bilanz.rueckfragen:
-        lage.append(_pl(bilanz.rueckfragen, "Rückfrage", "Rückfragen"))
-    if bilanz.kosten_usd > 0:
-        lage.append(_geld(bilanz.kosten_usd, partial=bilanz.kosten_partial))
-    if lage:
-        lines.append(" · ".join(lage))
+    situation: list[str] = []
+    if balance.failures:
+        situation.append(_pl(balance.failures, "Fehlschlag", "Fehlschläge"))
+    if balance.questions:
+        situation.append(_pl(balance.questions, "Rückfrage", "Rückfragen"))
+    if balance.cost_usd > 0:
+        situation.append(_money(balance.cost_usd, partial=balance.cost_partial))
+    if situation:
+        lines.append(" · ".join(situation))
 
-    lang = bilanz.laengster
-    if lang:
-        title = (lang.get("titel") or "").strip()
+    long = balance.longest
+    if long:
+        title = (long.get("titel") or "").strip()
         if len(title) > TITLE_MAX:
             title = title[:TITLE_MAX - 1].rstrip() + "…"
-        stueck = f"Längster: {lang['key']}"
+        piece = f"Längster: {long['key']}"
         if title:
-            stueck += f" „{title}“"
-        lines.append(f"{stueck} · {_duration(int(lang['minuten']))}")
+            piece += f" „{title}“"
+        lines.append(f"{piece} · {_duration(int(long['minuten']))}")
 
-    schluss = f"{kapitel} von {_pl(inseln, 'Szene', 'Szenen')} · {seconds} s"
-    if gekappt:
+    end = f"{chapter} von {_pl(islands, 'Szene', 'Szenen')} · {seconds} s"
+    if capped:
         # The renderer had to truncate: the morning is missing. That belongs under the film and
         # not only in the log, otherwise somebody takes the gap for a quiet day.
-        schluss += " · gekappt"
-    lines.append(schluss)
+        end += " · gekappt"
+    lines.append(end)
 
     text = "\n".join(lines)
-    return text if len(text) <= UNTERTITEL_MAX else text[:UNTERTITEL_MAX - 1] + "…"
+    return text if len(text) <= SUBTITLE_MAX else text[:SUBTITLE_MAX - 1] + "…"
 
 
 # ── The job ─────────────────────────────────────────────────────────────────
@@ -401,7 +401,7 @@ def _window(opt: dict) -> tuple[dt.datetime, dt.datetime]:
 
 
 def _notification(*, kind: str, title: str, body: str, chat_id: str | None,
-                  medium: str = "", medienart: str = "") -> Notification:
+                  medium: str = "", mediakind: str = "") -> Notification:
     """A notification, optionally with media.
 
     The two columns `media_path`/`media_kind` were added later. Until they exist (and on a
@@ -412,7 +412,7 @@ def _notification(*, kind: str, title: str, body: str, chat_id: str | None,
     if medium:
         if hasattr(Notification, "media_path"):
             n.media_path = medium
-            n.media_kind = medienart
+            n.media_kind = mediakind
         else:
             log.warning("Notification without media columns, film %s stays text", medium)
     return n
@@ -451,17 +451,17 @@ def _header_int(header: dict, name: str, standard: int = 0) -> int:
         return standard
 
 
-def _header_ja(header: dict, name: str) -> bool:
+def _header_yes(header: dict, name: str) -> bool:
     return _header(header, name).strip().lower() in ("1", "true", "ja", "yes")
 
 
-def _prune(behalten_days: int) -> int:
+def _prune(keep_days: int) -> int:
     """Clean up old films, in the **same** job. A second job for the same directory would be a
     second schedule that will eventually stand differently from this one."""
-    if behalten_days <= 0:
+    if keep_days <= 0:
         return 0
-    limit = _now().timestamp() - behalten_days * 86400
-    weg = 0
+    limit = _now().timestamp() - keep_days * 86400
+    removed = 0
     try:
         for name in os.listdir(FILM_DIR):
             if not (name.startswith("buero-") and name.endswith(".gif")):
@@ -470,12 +470,12 @@ def _prune(behalten_days: int) -> int:
             try:
                 if os.path.getmtime(path) < limit:
                     os.remove(path)
-                    weg += 1
+                    removed += 1
             except OSError:
                 continue
     except OSError:
-        return weg
-    return weg
+        return removed
+    return removed
 
 
 async def run_film_job(db: AsyncSession, job, jr) -> None:
@@ -499,19 +499,19 @@ async def run_film_job(db: AsyncSession, job, jr) -> None:
         owner = await db.get(User, job.user_id) if getattr(job, "user_id", None) else None
         opt = {**opt, "tz": zone_of(owner).key}
     try:
-        await _film_bauen(db, job, jr, opt)
+        await _film_build(db, job, jr, opt)
     except Exception as e:  # noqa: BLE001 — bewusst alles
         jr.status, jr.error = "error", str(e)[:2000]
         log.exception("film job %s failed", getattr(job, "name", "?"))
-    weg = _prune(_int(opt, "behalten_tage", STD_BEHALTEN_DAYS))
-    if weg:
-        jr.output = (jr.output or "") + f"\n{weg} alte Filme gelöscht."
+    removed = _prune(_int(opt, "behalten_tage", STD_KEEP_DAYS))
+    if removed:
+        jr.output = (jr.output or "") + f"\n{removed} alte Filme gelöscht."
     jr.finished_at = _now()
 
 
-async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
-    von, bis = _window(opt)
-    ereignisse, _roster, bilanz = await tages_ereignisse(db, von=von, bis=bis)
+async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
+    von, to = _window(opt)
+    events, _roster, balance = await daily_events(db, von=von, to=to)
     # `notify_mode="never"` means "build it but do not send it" for the film: the file lies there
     # afterwards anyway. The finer modes (`on_output`/`on_error`) do not fit here: a film is
     # always output, and the distinction would be meaningless.
@@ -522,15 +522,15 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
     owner = await db.get(User, job.user_id) if getattr(job, "user_id", None) else None
     language = getattr(owner, "locale", None)
 
-    if not ereignisse:
+    if not events:
         # An explicit branch, not an emergency: an empty room would give 300 bit identical
         # frames. And no HTTP call, because the renderer would have nothing to render.
         jr.status = "ok"
-        jr.output = f"{bilanz.datum}: keine Läufe — kein Film."
+        jr.output = f"{balance.date}: keine Läufe — kein Film."
         if not still:
             db.add(_notification(
                 kind="film",
-                title=await tr(db, "server.notify.feierabend", language, datum=bilanz.datum),
+                title=await tr(db, "server.notify.feierabend", language, date=balance.date),
                 body=await tr(db, "server.notify.film_still", language),
                 chat_id=job.notify_chat))
         return
@@ -538,58 +538,58 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
     seconds = _int(opt, "sekunden", STD_SECONDS)
     fps = _int(opt, "fps", STD_FPS)
     payload = {
-        "events": ereignisse,
+        "events": events,
         "grade": str(opt.get("grade") or STD_GRADE),
         "sekunden": seconds,
         "fps": fps,
-        "kapitel": _int(opt, "kapitel", STD_KAPITEL),
+        "kapitel": _int(opt, "kapitel", STD_CHAPTER),
         # The renderer formats no time itself: it is told the offset.
         "tz_offset_min": int((von.utcoffset() or dt.timedelta()).total_seconds() // 60),
-        "titel": bilanz.datum,
+        "titel": balance.date,
     }
-    timeout = max(30.0, float(job.run_timeout or 600) - TIMEOUT_PUFFER_S)
-    status, daten, header = await _film_fetch(payload, timeout=timeout)
+    timeout = max(30.0, float(job.run_timeout or 600) - TIMEOUT_BUFFER_S)
+    status, data, header = await _film_fetch(payload, timeout=timeout)
 
     if status == 204:
         # The renderer could not make a single scene out of the log. That is not an error, it is
         # the same quiet day, only this time it noticed.
         jr.status = "ok"
-        jr.output = f"{bilanz.datum}: der Renderer fand keine Ereignisse (204)."
+        jr.output = f"{balance.date}: der Renderer fand keine Ereignisse (204)."
         if not still:
             db.add(_notification(
                 kind="film",
-                title=await tr(db, "server.notify.feierabend", language, datum=bilanz.datum),
+                title=await tr(db, "server.notify.feierabend", language, date=balance.date),
                 body=await tr(db, "server.notify.film_still", language),
                 chat_id=job.notify_chat))
         return
-    if status != 200 or not daten:
+    if status != 200 or not data:
         jr.status = "error"
-        jr.error = f"filmer HTTP {status}: {daten[:200].decode('utf-8', 'replace')}"
+        jr.error = f"filmer HTTP {status}: {data[:200].decode('utf-8', 'replace')}"
         return
 
     os.makedirs(FILM_DIR, exist_ok=True)
     path = os.path.join(FILM_DIR, f"buero-{von:%Y-%m-%d}.gif")
     with open(path, "wb") as fh:
-        fh.write(daten)
+        fh.write(data)
 
-    bilder = _header_int(header, HEADER_BILDER)
-    untertitel = bildunterschrift(
-        bilanz,
-        kapitel=_header_int(header, HEADER_KAPITEL),
-        inseln=_header_int(header, HEADER_INSELN),
+    images = _header_int(header, HEADER_IMAGES)
+    subtitle = caption(
+        balance,
+        chapter=_header_int(header, HEADER_CHAPTER),
+        islands=_header_int(header, HEADER_ISLANDS),
         # How long the film really runs, not how long it was ordered: the cut lands on whole
         # frames and never hits the 25 s exactly. `X-Film-Dauer-Ms` is NOT good for that, it is
         # the build time of the renderer.
-        seconds=round(bilder / fps) if bilder and fps else seconds,
-        gekappt=bilanz.gekappt or _header_ja(header, HEADER_GEKAPPT),
+        seconds=round(images / fps) if images and fps else seconds,
+        capped=balance.capped or _header_yes(header, HEADER_CAPPED),
     )
     # The bot assembles `<b>{title}</b>\n{body}`, so split at the first line that gives exactly
     # the caption again. A second title above the text would have shown the date twice.
-    header_line, _, remainder = untertitel.partition("\n")
+    header_line, _, remainder = subtitle.partition("\n")
     if not still:
         db.add(_notification(kind="film", title=header_line, body=remainder,
-                             chat_id=job.notify_chat, medium=path, medienart="animation"))
+                             chat_id=job.notify_chat, medium=path, mediakind="animation"))
     jr.status = "ok"
-    jr.output = (f"{bilanz.datum}: {_header_int(header, HEADER_KAPITEL)} von "
-                 f"{_header_int(header, HEADER_INSELN)} Szenen, {bilder} Bilder, "
-                 f"{len(daten) // 1024} kB in {_header_int(header, HEADER_DURATION)} ms → {path}")
+    jr.output = (f"{balance.date}: {_header_int(header, HEADER_CHAPTER)} von "
+                 f"{_header_int(header, HEADER_ISLANDS)} Szenen, {images} Bilder, "
+                 f"{len(data) // 1024} kB in {_header_int(header, HEADER_DURATION)} ms → {path}")

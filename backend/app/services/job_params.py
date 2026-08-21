@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 # wird durchgereicht — „seit gestern 8 Uhr“ heißt in Tokio etwas anderes als hier.
 STD_TZ = ZoneInfo("Europe/Berlin")
 
-_PLATZHALTER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+_PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
 
 def _as_text(value) -> str:
@@ -37,8 +37,8 @@ def _as_text(value) -> str:
     return str(value)
 
 
-def eingebaute_values(*, now: dt.datetime | None = None,
-                     last_lauf: dt.datetime | None = None,
+def builtin_values(*, now: dt.datetime | None = None,
+                     last_run: dt.datetime | None = None,
                      zone: ZoneInfo | None = None) -> dict[str, str]:
     """Time values practically every recurring job needs.
 
@@ -48,12 +48,12 @@ def eingebaute_values(*, now: dt.datetime | None = None,
     """
     TZ = zone or STD_TZ
     now = (now or dt.datetime.now(tz=dt.timezone.utc)).astimezone(TZ)
-    seit = (last_lauf.astimezone(TZ) if last_lauf else now - dt.timedelta(days=1))
+    since = (last_run.astimezone(TZ) if last_run else now - dt.timedelta(days=1))
     return {
         "today": now.strftime("%Y-%m-%d"),
         "now": now.strftime("%Y-%m-%d %H:%M"),
-        "since": seit.strftime("%Y-%m-%d %H:%M"),
-        "window": f"{seit.strftime('%Y-%m-%d %H:%M')} bis {now.strftime('%Y-%m-%d %H:%M')} "
+        "since": since.strftime("%Y-%m-%d %H:%M"),
+        "window": f"{since.strftime('%Y-%m-%d %H:%M')} bis {now.strftime('%Y-%m-%d %H:%M')} "
                   f"({TZ.key})",
     }
 
@@ -63,25 +63,25 @@ def parameter(args) -> dict:
     return dict(args) if isinstance(args, dict) else {}
 
 
-def rendere(prompt: str, args=None, *, now: dt.datetime | None = None,
-            last_lauf: dt.datetime | None = None, zone: ZoneInfo | None = None) -> str:
+def render(prompt: str, args=None, *, now: dt.datetime | None = None,
+            last_run: dt.datetime | None = None, zone: ZoneInfo | None = None) -> str:
     """Replace `{{name}}`: first the parameters of the job, then the built-in time values.
 
     An unknown placeholder stays VERBATIM. Emptying it silently would be the worse outcome:
     the assignment would lose a rule without a sound, instead of `{{quellen}}` standing
     visibly in the result and the error being noticed.
     """
-    values = {**eingebaute_values(now=now, last_lauf=last_lauf, zone=zone)}
+    values = {**builtin_values(now=now, last_run=last_run, zone=zone)}
     values.update({k: _as_text(v) for k, v in parameter(args).items()})
 
-    def ersetze(m: re.Match) -> str:
+    def replace(m: re.Match) -> str:
         name = m.group(1)
         return values[name] if name in values else m.group(0)
 
-    return _PLATZHALTER.sub(ersetze, prompt or "")
+    return _PLACEHOLDER.sub(replace, prompt or "")
 
 
-def offene_platzhalter(prompt: str, args=None) -> list[str]:
+def open_placeholder(prompt: str, args=None) -> list[str]:
     """Placeholders without a value, for the preview and check while creating a job."""
-    known = set(eingebaute_values()) | set(parameter(args))
-    return sorted({m.group(1) for m in _PLATZHALTER.finditer(prompt or "")} - known)
+    known = set(builtin_values()) | set(parameter(args))
+    return sorted({m.group(1) for m in _PLACEHOLDER.finditer(prompt or "")} - known)

@@ -25,7 +25,7 @@ from conftest import make_user
 pytestmark = pytest.mark.asyncio
 
 
-def token_mit(user_id: int, *, iat: dt.datetime, exp: dt.datetime) -> str:
+def token_with(user_id: int, *, iat: dt.datetime, exp: dt.datetime) -> str:
     """A token with freely chosen timestamps, the same shape as `create_access_token`."""
     return jwt.encode(
         {"sub": str(user_id), "iat": int(iat.timestamp()), "exp": int(exp.timestamp())},
@@ -40,9 +40,9 @@ def header(token: str) -> dict[str, str]:
 async def test_a_valid_token_is_extended(client, db):
     """The normal case: a new token, and the new token carries."""
     user = await make_user(db, "wandschirm")
-    alt = create_access_token(user.id)
+    old = create_access_token(user.id)
 
-    r = await client.post("/auth/refresh", headers=header(alt))
+    r = await client.post("/auth/refresh", headers=header(old))
     assert r.status_code == 200, r.text
     new = r.json()["access_token"]
     assert r.json()["token_type"] == "bearer"
@@ -57,9 +57,9 @@ async def test_an_expired_token_is_rejected(client, db):
     """A refresh extends a living session; it does not wake a dead one."""
     user = await make_user(db, "spaet")
     now = dt.datetime.now(tz=dt.timezone.utc)
-    tot = token_mit(user.id, iat=now - dt.timedelta(days=2), exp=now - dt.timedelta(hours=1))
+    dead = token_with(user.id, iat=now - dt.timedelta(days=2), exp=now - dt.timedelta(hours=1))
 
-    r = await client.post("/auth/refresh", headers=header(tot))
+    r = await client.post("/auth/refresh", headers=header(dead))
     assert r.status_code == 401
 
 
@@ -74,11 +74,11 @@ async def test_token_from_before_the_password_change(client, db):
     # Two days of distance: under SQLite `password_changed_at` comes back naive and is read
     # as local time in `deps.py`. The test should hang off the check, not off the time zone
     # of the container.
-    alt = token_mit(user.id, iat=now - dt.timedelta(days=2), exp=now + dt.timedelta(hours=1))
+    old = token_with(user.id, iat=now - dt.timedelta(days=2), exp=now + dt.timedelta(hours=1))
     user.password_changed_at = now
     await db.commit()
 
-    r = await client.post("/auth/refresh", headers=header(alt))
+    r = await client.post("/auth/refresh", headers=header(old))
     assert r.status_code == 401
 
 

@@ -109,11 +109,11 @@ async def _anchor_run(db: AsyncSession, dep: Deployment) -> Run | None:
         # Agent tool: `_do_deploy` waits inline for the result, so the triggering run is
         # still `running`, and exactly that one should walk to the rack. The fallback to the
         # most recent run takes hold when it has died at the timeout meanwhile.
-        laufend = (await db.execute(
+        running = (await db.execute(
             select(Run).where(Run.issue_id == dep.issue_id, Run.status == "running")
             .order_by(Run.id.desc()).limit(1))).scalars().first()
-        if laufend is not None:
-            return laufend
+        if running is not None:
+            return running
     return (await db.execute(
         select(Run).where(Run.issue_id == dep.issue_id)
         .order_by(Run.id.desc()).limit(1))).scalars().first()
@@ -126,8 +126,8 @@ async def announce(db: AsyncSession, dep: Deployment) -> list[RunStep]:
     status has nothing to show. Otherwise the same row would lie on the table again on every
     beat and the watcher would run in circles forever.
     """
-    vorher = dep.announced_status or ""
-    states = states_for(vorher, dep.status or "")
+    before = dep.announced_status or ""
+    states = states_for(before, dep.status or "")
     steps: list[RunStep] = []
     ctx: RunCtx | None = None
 
@@ -154,7 +154,7 @@ async def announce(db: AsyncSession, dep: Deployment) -> list[RunStep]:
     # fired. Here is the place where everything is together. Before the commit, so that the
     # acknowledgement and the started flows lie in ONE transaction: a crash in between would
     # otherwise lose the event while the acknowledgement stood.
-    if dep.status in TERMINAL_STATUS and vorher not in TERMINAL_STATUS:
+    if dep.status in TERMINAL_STATUS and before not in TERMINAL_STATUS:
         from .events import emit
         await emit(db, "deployment.finished", project_id=dep.project_id,
                    issue_id=dep.issue_id, source_ref=f"deployment:{dep.id}",
@@ -168,7 +168,7 @@ async def announce(db: AsyncSession, dep: Deployment) -> list[RunStep]:
     await db.commit()
     if steps:
         log.info("Deployment %s: %s -> %s in the room of run %s",
-                 dep.id, vorher or "—", dep.status, ctx.run_id if ctx else "—")
+                 dep.id, before or "—", dep.status, ctx.run_id if ctx else "—")
     # Send only after the commit: before it the row has no `id` and therefore no `seq`.
     for step in steps:
         await publish_step(ctx, step)
@@ -187,10 +187,10 @@ async def tick(db: AsyncSession) -> int:
             # then.
             or_(Deployment.created_at >= cutoff, Deployment.announced_status != ""),
         ).order_by(Deployment.id))).scalars().all()
-    erzaehlt = 0
+    tells = 0
     for dep in offen:
-        erzaehlt += len(await announce(db, dep))
-    return erzaehlt
+        tells += len(await announce(db, dep))
+    return tells
 
 
 async def run_deploy_watch() -> None:

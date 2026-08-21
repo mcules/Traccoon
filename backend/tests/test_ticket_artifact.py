@@ -13,7 +13,7 @@ from conftest import make_asset, make_project, make_user
 import pytest
 
 
-async def _ticket(db, proj, summary="Ein Ticket", nummer=1, status=None) -> Issue:
+async def _ticket(db, proj, summary="Ein Ticket", number=1, status=None) -> Issue:
     t = (await db.execute(select(IssueType).where(IssueType.project_id == proj.id))).scalars().first()
     s = (await db.execute(select(WorkflowStatus).where(WorkflowStatus.project_id == proj.id))).scalars().first()
     if t is None:
@@ -21,8 +21,8 @@ async def _ticket(db, proj, summary="Ein Ticket", nummer=1, status=None) -> Issu
         s = WorkflowStatus(project_id=proj.id, name="To Do", category=StatusCategory.todo, order=0)
         db.add_all([t, s, IssueCounter(project_id=proj.id, last_number=0)])
         await db.commit()
-    i = Issue(project_id=proj.id, number=nummer, key=f"{proj.key}-{nummer}", type_id=t.id,
-              status_id=s.id, summary=summary, reporter_id=1, rank=f"{nummer:04d}",
+    i = Issue(project_id=proj.id, number=number, key=f"{proj.key}-{number}", type_id=t.id,
+              status_id=s.id, summary=summary, reporter_id=1, rank=f"{number:04d}",
               agent_status=status)
     db.add(i)
     await db.commit()
@@ -75,8 +75,8 @@ async def test_the_reconcile_is_idempotent(db, register):
     await make_asset(db, "Switch", project=proj)
     await kind.reconcile(db)
 
-    zweiter = await kind.reconcile(db)
-    assert not any(zweiter.values()), zweiter
+    second = await kind.reconcile(db)
+    assert not any(second.values()), second
 
 
 async def test_setting_the_state_writes_along_immediately(db, register):
@@ -103,8 +103,8 @@ async def test_hardware_and_ticket_share_the_same_store(db, register):
     await kind.reconcile(db)
 
     lines = (await db.execute(select(Artifact))).scalars().all()
-    typen = {}
+    types = {}
     for z in lines:
         t = await db.get(type(await kind.type_by_key(db, "ticket")), z.type_id)
-        typen[t.key] = typen.get(t.key, 0) + 1
-    assert typen == {"ticket": 1, "hardware": 1}
+        types[t.key] = types.get(t.key, 0) + 1
+    assert types == {"ticket": 1, "hardware": 1}

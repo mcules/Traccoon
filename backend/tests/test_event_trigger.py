@@ -38,7 +38,7 @@ async def _flow(db, *, key: str, trigger: dict | None, project_id=None,
     return d
 
 
-async def _instanzen(db) -> list[WorkflowInstance]:
+async def _instances(db) -> list[WorkflowInstance]:
     return list((await db.execute(select(WorkflowInstance))).scalars().all())
 
 
@@ -50,7 +50,7 @@ async def test_an_event_starts_all_listeners(db):
 
     ids = await emit(db, "mail.received", payload={"betreff": "Rechnung"})
     assert len(ids) == 2
-    inst = await _instanzen(db)
+    inst = await _instances(db)
     assert {i.definition_id for i in inst} == {
         d.id for d in (await db.execute(select(WorkflowDefinition)
                                         .where(WorkflowDefinition.key.in_(["a", "b"])))).scalars()}
@@ -89,16 +89,16 @@ async def test_the_condition_filters(db):
 
 async def test_a_duplicate_notice_starts_it_only_once(db):
     await _flow(db, key="a", trigger={"event": "mail.received"})
-    erst = await emit(db, "mail.received", source_ref="uid-42")
-    zweit = await emit(db, "mail.received", source_ref="uid-42")
-    assert len(erst) == 1 and zweit == []
+    first = await emit(db, "mail.received", source_ref="uid-42")
+    second = await emit(db, "mail.received", source_ref="uid-42")
+    assert len(first) == 1 and second == []
 
 
 async def test_a_broken_flow_does_not_stop_the_others(db):
     """An event is a report, not an assignment: a broken listener must neither tear the
     trigger nor the other flows with it."""
-    kaputt = await _flow(db, key="kaputt", trigger={"event": "x"})
-    v = await db.get(WorkflowVersion, kaputt.current_version_id)
+    broken = await _flow(db, key="kaputt", trigger={"event": "x"})
+    v = await db.get(WorkflowVersion, broken.current_version_id)
     v.graph = {"nodes": [], "edges": []}          # no start node any more
     await db.commit()
     await _flow(db, key="heil", trigger={"event": "x"})
@@ -126,7 +126,7 @@ async def test_creating_a_ticket_raises_the_event(client, db, seeded):
     r = await client.post(f"/projects/{proj.id}/issues", headers=auth(owner),
                           json={"summary": "Neu"})
     assert r.status_code == 201, r.text
-    inst = await _instanzen(db)
+    inst = await _instances(db)
     assert len(inst) == 1
     assert inst[0].context["issue"]["key"] == r.json()["key"]
     assert inst[0].status == WorkflowInstanceStatus.completed

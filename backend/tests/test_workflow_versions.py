@@ -11,7 +11,7 @@ changed content produces exactly one draft, and a discarded draft leaves nothing
 import pytest
 from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
 from app.models.workflow import WorkflowDefinition, WorkflowVersion
-from app.services import workflow_graph as graf
+from app.services import workflow_graph as wgraph
 from sqlalchemy import select
 
 from conftest import auth, make_user
@@ -51,7 +51,7 @@ async def _flow(db, user, graph=None) -> WorkflowDefinition:
     return d
 
 
-async def _fassungen(db, def_id: int) -> list[WorkflowVersion]:
+async def _versions(db, def_id: int) -> list[WorkflowVersion]:
     return list((await db.execute(select(WorkflowVersion).where(
         WorkflowVersion.definition_id == def_id).order_by(WorkflowVersion.version))).scalars().all())
 
@@ -62,24 +62,24 @@ async def test_moving_is_not_a_change():
     """Drei Zentimeter nach links sind keine Aussage über das Verhalten."""
     a = _graph(x=0)
     b = _graph(x=750)
-    assert graf.gleicher_inhalt(a, b)
-    assert graf.unterschiede(a, b)["identical"] is True
+    assert wgraph.same_content(a, b)
+    assert wgraph.differences(a, b)["identical"] is True
 
 
 async def test_a_different_parameter_is_a_change():
-    assert not graf.gleicher_inhalt(_graph(tool="a"), _graph(tool="b"))
+    assert not wgraph.same_content(_graph(tool="a"), _graph(tool="b"))
 
 
 async def test_the_order_of_the_nodes_does_not_count():
     """Der Editor liefert Knoten in wechselnder Reihenfolge; das ist kein Unterschied."""
     a = _graph()
     b = {"nodes": list(reversed(a["nodes"])), "edges": list(reversed(a["edges"]))}
-    assert graf.gleicher_inhalt(a, b)
+    assert wgraph.same_content(a, b)
 
 
 async def test_differences_name_the_field_not_the_lump():
     """„Die Aktion hat sich geändert" ist keine Antwort, wenn die Aktion zwei Seiten JSON ist."""
-    u = graf.unterschiede(_graph(tool="alt"), _graph(tool="neu"))
+    u = wgraph.differences(_graph(tool="alt"), _graph(tool="neu"))
     (node,) = u["nodes_changed"]
     assert node["id"] == "tun"
     fields = {f["field"] for f in node["fields"]}
@@ -91,7 +91,7 @@ async def test_new_and_removed_nodes_and_edges():
     b = _graph()
     b["nodes"] = [n for n in b["nodes"] if n["id"] != "ende"]
     b["edges"] = [e for e in b["edges"] if e["target"] != "ende"]
-    u = graf.unterschiede(a, b)
+    u = wgraph.differences(a, b)
     assert [k["id"] for k in u["nodes_removed"]] == ["ende"]
     assert u["edges_removed"] == ["tun → ende"]
     assert u["nodes_added"] == [] and u["edges_added"] == []
@@ -108,7 +108,7 @@ async def test_viewing_creates_nothing(db, client):
 
     assert r.status_code == 200
     assert r.json()["status"] == "published", "geliefert wird die Live-Fassung, kein Klon"
-    assert len(await _fassungen(db, d.id)) == 1
+    assert len(await _versions(db, d.id)) == 1
 
 
 async def test_rearranging_saves_without_a_new_version(db, client):
@@ -119,29 +119,29 @@ async def test_rearranging_saves_without_a_new_version(db, client):
                          json={"graph": _graph(x=900)})
 
     assert r.status_code == 200 and r.json()["result"] == "layout"
-    fassungen = await _fassungen(db, d.id)
-    assert len(fassungen) == 1 and fassungen[0].status == WorkflowVersionStatus.published
+    versions = await _versions(db, d.id)
+    assert len(versions) == 1 and versions[0].status == WorkflowVersionStatus.published
     # Die Anordnung ist trotzdem da, sonst wäre das Speichern eine Lüge.
-    await db.refresh(fassungen[0])
-    assert graf.positionen(fassungen[0].graph)["start"]["x"] == 900
+    await db.refresh(versions[0])
+    assert wgraph.positions(versions[0].graph)["start"]["x"] == 900
 
 
 async def test_a_substantive_change_creates_exactly_one_draft(db, client):
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
 
-    erst = await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
+    first = await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                             json={"graph": _graph(tool="neu")})
-    assert erst.json()["result"] == "neuer_entwurf"
+    assert first.json()["result"] == "neuer_entwurf"
 
     # Zweites Speichern schreibt in denselben Entwurf, statt Nummern zu verbrauchen.
-    zweit = await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
+    second = await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                              json={"graph": _graph(tool="noch neuer")})
-    assert zweit.json()["result"] == "entwurf"
-    assert zweit.json()["version"]["id"] == erst.json()["version"]["id"]
+    assert second.json()["result"] == "entwurf"
+    assert second.json()["version"]["id"] == first.json()["version"]["id"]
 
-    fassungen = await _fassungen(db, d.id)
-    assert [f.status for f in fassungen] == [WorkflowVersionStatus.published,
+    versions = await _versions(db, d.id)
+    assert [f.status for f in versions] == [WorkflowVersionStatus.published,
                                              WorkflowVersionStatus.draft]
 
 
@@ -156,9 +156,9 @@ async def test_rearranging_in_the_draft_stays_in_the_draft(db, client):
                          json={"graph": _graph(x=500, tool="neu")})
 
     assert r.json()["result"] == "layout"
-    fassungen = await _fassungen(db, d.id)
-    assert len(fassungen) == 2
-    assert graf.positionen(fassungen[0].graph)["start"]["x"] == 0, "die Live-Fassung bleibt"
+    versions = await _versions(db, d.id)
+    assert len(versions) == 2
+    assert wgraph.positions(versions[0].graph)["start"]["x"] == 0, "die Live-Fassung bleibt"
 
 
 async def test_the_editor_receives_the_open_draft(db, client):
@@ -181,8 +181,8 @@ async def test_discarding_the_draft_leaves_nothing_behind(db, client):
     r = await client.delete(f"/workflows/{d.id}/draft", headers=auth(anna))
 
     assert r.status_code == 204
-    fassungen = await _fassungen(db, d.id)
-    assert len(fassungen) == 1 and fassungen[0].status == WorkflowVersionStatus.published
+    versions = await _versions(db, d.id)
+    assert len(versions) == 1 and versions[0].status == WorkflowVersionStatus.published
     # Und der Editor zeigt danach wieder die Live-Fassung.
     assert (await client.get(f"/workflows/{d.id}/editable",
                              headers=auth(anna))).json()["status"] == "published"
@@ -199,22 +199,22 @@ async def test_discarding_without_a_draft_is_not_an_error(db, client):
 async def test_the_diff_compares_with_the_predecessor_by_default(db, client):
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
-    zweite = WorkflowVersion(definition_id=d.id, version=2, graph=_graph(tool="neu"),
+    second = WorkflowVersion(definition_id=d.id, version=2, graph=_graph(tool="neu"),
                              status=WorkflowVersionStatus.published, created_by=anna.id)
-    db.add(zweite)
+    db.add(second)
     await db.commit()
 
-    r = await client.get(f"/workflows/{d.id}/versions/{zweite.id}/diff", headers=auth(anna))
+    r = await client.get(f"/workflows/{d.id}/versions/{second.id}/diff", headers=auth(anna))
 
-    daten = r.json()
-    assert daten["from_version"] == 1 and daten["to_version"] == 2 and daten["identical"] is False
-    assert daten["nodes_changed"][0]["fields"][0]["field"] == "action.params.wert"
+    data = r.json()
+    assert data["from_version"] == 1 and data["to_version"] == 2 and data["identical"] is False
+    assert data["nodes_changed"][0]["fields"][0]["field"] == "action.params.wert"
 
 
 async def test_a_diff_against_a_particular_version(db, client):
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
-    v1 = (await _fassungen(db, d.id))[0]
+    v1 = (await _versions(db, d.id))[0]
 
     r = await client.get(f"/workflows/{d.id}/versions/{v1.id}/diff?against={v1.id}",
                          headers=auth(anna))
@@ -226,19 +226,19 @@ async def test_rolling_back_creates_a_new_version(db, client):
     Geschichte soll zeigen, dass zurückgerollt wurde."""
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
-    v1 = (await _fassungen(db, d.id))[0]
-    zweite = WorkflowVersion(definition_id=d.id, version=2, graph=_graph(tool="neu"),
+    v1 = (await _versions(db, d.id))[0]
+    second = WorkflowVersion(definition_id=d.id, version=2, graph=_graph(tool="neu"),
                              status=WorkflowVersionStatus.published, created_by=anna.id)
-    db.add(zweite)
+    db.add(second)
     await db.flush()
-    d.current_version_id = zweite.id
+    d.current_version_id = second.id
     await db.commit()
 
     r = await client.post(f"/workflows/{d.id}/versions/{v1.id}/rollback", headers=auth(anna))
 
     assert r.status_code == 200
-    fassungen = await _fassungen(db, d.id)
-    assert len(fassungen) == 3, "die alte Fassung bleibt stehen"
+    versions = await _versions(db, d.id)
+    assert len(versions) == 3, "die alte Fassung bleibt stehen"
     await db.refresh(d)
-    assert d.current_version_id == fassungen[-1].id
-    assert graf.gleicher_inhalt(fassungen[-1].graph, _graph())
+    assert d.current_version_id == versions[-1].id
+    assert wgraph.same_content(versions[-1].graph, _graph())

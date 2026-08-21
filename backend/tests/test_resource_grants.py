@@ -133,7 +133,7 @@ async def test_a_granted_user_sees_only_the_released_asset(client, db):
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
     mast = await make_asset(db, "Mast 1", project=proj)
-    haus = await make_asset(db, "Pumpe", project=proj)
+    house = await make_asset(db, "Pumpe", project=proj)
 
     db.add(ResourceGrant(project_id=proj.id, user_id=guest.id,
                          resource_type=ResourceType.asset, resource_id=mast.id,
@@ -143,7 +143,7 @@ async def test_a_granted_user_sees_only_the_released_asset(client, db):
     r = await client.get("/hardware/assets", headers=auth(guest))
     assert r.status_code == 200
     ids = [a["id"] for a in r.json()]
-    assert mast.id in ids and haus.id not in ids
+    assert mast.id in ids and house.id not in ids
 
 
 async def test_without_a_grant_and_without_membership_nothing_is_visible(client, db):
@@ -163,16 +163,16 @@ async def test_a_recursive_location_grant_covers_the_child_location(client, db):
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
-    haus = await make_location(db, "Wasserhäuschen", project=proj)
-    mast = await make_location(db, "Mast 1", project=proj, parent=haus)
+    house = await make_location(db, "Wasserhäuschen", project=proj)
+    mast = await make_location(db, "Mast 1", project=proj, parent=house)
 
     db.add(ResourceGrant(project_id=proj.id, user_id=guest.id,
-                         resource_type=ResourceType.location, resource_id=haus.id,
+                         resource_type=ResourceType.location, resource_id=house.id,
                          level=GrantLevel.view, recursive=True))
     await db.commit()
 
     ids = [loc["id"] for loc in (await client.get("/locations", headers=auth(guest))).json()]
-    assert haus.id in ids and mast.id in ids
+    assert house.id in ids and mast.id in ids
 
 
 async def test_a_non_recursive_location_grant_does_not_cover_the_child_location(client, db):
@@ -180,16 +180,16 @@ async def test_a_non_recursive_location_grant_does_not_cover_the_child_location(
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
-    haus = await make_location(db, "Wasserhäuschen", project=proj)
-    mast = await make_location(db, "Mast 1", project=proj, parent=haus)
+    house = await make_location(db, "Wasserhäuschen", project=proj)
+    mast = await make_location(db, "Mast 1", project=proj, parent=house)
 
     db.add(ResourceGrant(project_id=proj.id, user_id=guest.id,
-                         resource_type=ResourceType.location, resource_id=haus.id,
+                         resource_type=ResourceType.location, resource_id=house.id,
                          level=GrantLevel.view, recursive=False))
     await db.commit()
 
     ids = [loc["id"] for loc in (await client.get("/locations", headers=auth(guest))).json()]
-    assert haus.id in ids and mast.id not in ids
+    assert house.id in ids and mast.id not in ids
 
 
 async def test_a_view_grant_allows_no_writing_a_manage_grant_does(client, db):
@@ -221,11 +221,11 @@ async def test_a_manage_grant_on_a_location_allows_managing_its_assets(client, d
     manager = await make_user(db, "manager")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
-    haus = await make_location(db, "Wasserhäuschen", project=proj)
-    asset = await make_asset(db, "Mast 1", project=proj, location=haus)
+    house = await make_location(db, "Wasserhäuschen", project=proj)
+    asset = await make_asset(db, "Mast 1", project=proj, location=house)
 
     db.add(ResourceGrant(project_id=proj.id, user_id=manager.id,
-                         resource_type=ResourceType.location, resource_id=haus.id,
+                         resource_type=ResourceType.location, resource_id=house.id,
                          level=GrantLevel.manage, recursive=True))
     await db.commit()
 

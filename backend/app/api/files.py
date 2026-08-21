@@ -3,7 +3,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.enums import ProjectRole
 from ..models.project import Project
@@ -64,11 +64,11 @@ async def upload_attachment(file: UploadFile, pair: tuple[Issue, Access] = Depen
                             db: AsyncSession = Depends(get_session)):
     issue, access = pair
     if not access.has_role(ProjectRole.member):
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.write_rights_required",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.write_rights_required",
                      "Write rights are required")
     raw = await file.read()
     if len(raw) > 20 * 1024 * 1024:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.file_too_large_mb",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.file_too_large_mb",
                      "File too large (>20MB)")
     a = Attachment(issue_id=issue.id, uploader_id=access.user.id, filename=file.filename or "datei",
                    mime_type=file.content_type or "application/octet-stream", size=len(raw), data=raw)
@@ -82,14 +82,14 @@ async def _attachment_access(aid: int, user: User, db: AsyncSession) -> Attachme
     """The attachment is only for members of the associated project (respectively admins)."""
     a = await db.get(Attachment, aid)
     if a is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.attachment_not_found", "Attachment not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.attachment_not_found", "Attachment not found")
     issue = await db.get(Issue, a.issue_id)
     project = await db.get(Project, issue.project_id) if issue else None
     if project is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.attachment_not_found", "Attachment not found")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.attachment_not_found", "Attachment not found")
     access = await build_access(project, user, db)
     if not access.has_role(ProjectRole.viewer):
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.no_access_project",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.no_access_project",
                      "No access to this project")
     return a
 
@@ -111,7 +111,7 @@ async def delete_attachment(aid: int, user: User = Depends(get_current_user),
         project = await db.get(Project, issue.project_id)
         access = await build_access(project, user, db)
         if not access.has_role(ProjectRole.maintainer):
-            raise Fehler(status.HTTP_403_FORBIDDEN, "err.only_uploader_maintainer_may_delete",
+            raise Error(status.HTTP_403_FORBIDDEN, "err.only_uploader_maintainer_may_delete",
                          "Only the uploader or a maintainer may delete")
     await db.delete(a)
     await db.commit()

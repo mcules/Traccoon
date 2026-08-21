@@ -13,11 +13,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.i18n import UiLocale, UiTranslation
 from ..models.user import User
-from ..services import i18n as server_texte
+from ..services import i18n as server_texts
 from .deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/i18n", tags=["i18n"])
@@ -33,19 +33,19 @@ class TextIn(BaseModel):
 
 class ImportIn(BaseModel):
     """A whole catalog at once, as it comes out of the export."""
-    texte: dict[str, str]
+    texts: dict[str, str]
     replace: bool = False   # true wipes what is not in the payload
 
 
-def _locale(roh: str) -> str:
-    kurz = (roh or "").strip().lower().replace("_", "-")[:10]
-    if not kurz or not kurz.replace("-", "").isalnum():
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.invalid_language_code",
+def _locale(raw: str) -> str:
+    short = (raw or "").strip().lower().replace("_", "-")[:10]
+    if not short or not short.replace("-", "").isalnum():
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.invalid_language_code",
                      "Invalid language code")
-    return kurz
+    return short
 
 
-NAMEN = {"de": "Deutsch", "en": "English"}
+NAMES = {"de": "Deutsch", "en": "English"}
 
 
 class LocaleIn(BaseModel):
@@ -70,14 +70,14 @@ async def list_locales(user: User = Depends(get_current_user),
     rows = (await db.execute(
         select(UiTranslation.locale, func.count(UiTranslation.id))
         .group_by(UiTranslation.locale))).all()
-    gezaehlt = {locale: count for locale, count in rows}
-    eigene = {r.locale: r for r in (await db.execute(select(UiLocale))).scalars().all()}
-    alle = sorted(set(EINGEBAUT) | set(gezaehlt) | set(eigene))
+    counted = {locale: count for locale, count in rows}
+    own = {r.locale: r for r in (await db.execute(select(UiLocale))).scalars().all()}
+    alle = sorted(set(EINGEBAUT) | set(counted) | set(own))
     return [{"locale": l,
-             "name": (eigene[l].name if l in eigene and eigene[l].name else NAMEN.get(l, l)),
-             "own_texts": gezaehlt.get(l, 0),
+             "name": (own[l].name if l in own and own[l].name else NAMES.get(l, l)),
+             "own_texts": counted.get(l, 0),
              "builtin": l in EINGEBAUT,
-             "enabled": eigene[l].enabled if l in eigene else True}
+             "enabled": own[l].enabled if l in own else True}
             for l in alle]
 
 
@@ -87,7 +87,7 @@ async def create_locale(data: LocaleIn, _: User = Depends(require_admin),
     """Create a language. It exists from now on, even before its first text."""
     lc = _locale(data.locale)
     if (await db.execute(select(UiLocale).where(UiLocale.locale == lc))).scalar_one_or_none():
-        raise Fehler(status.HTTP_409_CONFLICT, "err.language_already_exists",
+        raise Error(status.HTTP_409_CONFLICT, "err.language_already_exists",
                      "This language already exists")
     db.add(UiLocale(locale=lc, name=data.name.strip() or lc.upper()))
     await db.commit()
@@ -102,20 +102,20 @@ async def update_locale(locale: str, data: LocaleUpdate, _: User = Depends(requi
     lc = _locale(locale)
     line = (await db.execute(select(UiLocale).where(UiLocale.locale == lc))).scalar_one_or_none()
     if line is None:
-        line = UiLocale(locale=lc, name=NAMEN.get(lc, lc.upper()))
+        line = UiLocale(locale=lc, name=NAMES.get(lc, lc.upper()))
         db.add(line)
     if data.name is not None:
-        line.name = data.name.strip() or NAMEN.get(lc, lc.upper())
+        line.name = data.name.strip() or NAMES.get(lc, lc.upper())
     if data.enabled is not None:
         if lc == "de" and not data.enabled:
-            raise Fehler(status.HTTP_400_BAD_REQUEST, "err.source_language_cannot_switched_off",
+            raise Error(status.HTTP_400_BAD_REQUEST, "err.source_language_cannot_switched_off",
                          "The source language cannot be switched off")
         line.enabled = data.enabled
     await db.commit()
 
 
 @router.get("/server-catalog")
-async def server_katalog(locale: str = "", _: User = Depends(get_current_user)):
+async def server_catalog(locale: str = "", _: User = Depends(get_current_user)):
     """The German texts the server itself writes: notifications, the setup checklist.
 
     The browser knows only its own catalog. Without this list the admin area could not offer
@@ -124,8 +124,8 @@ async def server_katalog(locale: str = "", _: User = Depends(get_current_user)):
     admin area would count every one of these texts as untranslated.
     """
     lc = _locale(locale) if locale else ""
-    return {"texts": server_texte.source(),
-            "shipped": dict(server_texte.KATALOG.get(lc, {})) if lc else {}}
+    return {"texts": server_texts.source(),
+            "shipped": dict(server_texts.CATALOG.get(lc, {})) if lc else {}}
 
 
 @router.get("/{locale}")
@@ -144,20 +144,20 @@ async def set_text(locale: str, key: str, data: TextIn,
                    db: AsyncSession = Depends(get_session)):
     """Set one text. An empty text removes the override, which restores the shipped one."""
     lc = _locale(locale)
-    vorhanden = (await db.execute(select(UiTranslation).where(
+    existing = (await db.execute(select(UiTranslation).where(
         UiTranslation.locale == lc, UiTranslation.key == key))).scalar_one_or_none()
     if not data.text.strip():
-        if vorhanden is not None:
-            await db.delete(vorhanden)
+        if existing is not None:
+            await db.delete(existing)
             await db.commit()
-            server_texte.verwerfen()
+            server_texts.discard()
         return
-    if vorhanden is None:
+    if existing is None:
         db.add(UiTranslation(locale=lc, key=key, text=data.text))
     else:
-        vorhanden.text = data.text
+        existing.text = data.text
     await db.commit()
-    server_texte.verwerfen()
+    server_texts.discard()
 
 
 @router.post("/{locale}/import")
@@ -167,14 +167,14 @@ async def import_texts(locale: str, data: ImportIn, _: User = Depends(require_ad
     lc = _locale(locale)
     if data.replace:
         await db.execute(delete(UiTranslation).where(UiTranslation.locale == lc))
-    vorhanden = {r.key: r for r in (await db.execute(select(UiTranslation).where(
+    existing = {r.key: r for r in (await db.execute(select(UiTranslation).where(
         UiTranslation.locale == lc))).scalars().all()}
     written = 0
-    for key, text in (data.texte or {}).items():
+    for key, text in (data.texts or {}).items():
         if not isinstance(text, str) or not text.strip():
             continue
-        if key in vorhanden:
-            vorhanden[key].text = text
+        if key in existing:
+            existing[key].text = text
         else:
             db.add(UiTranslation(locale=lc, key=str(key)[:200], text=text[:4000]))
         written += 1
@@ -193,7 +193,7 @@ async def drop_locale(locale: str, _: User = Depends(require_admin),
     """
     lc = _locale(locale)
     if lc == "de":
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.source_language_stays",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.source_language_stays",
                      "The source language stays")
     await db.execute(delete(UiTranslation).where(UiTranslation.locale == lc))
     await db.execute(delete(UiLocale).where(UiLocale.locale == lc))

@@ -30,13 +30,13 @@ def test_run_reads_only_existing_agent_fields():
     source = Path(inspect.getfile(runtime)).read_text()
     fields = set(AgentDef.__dataclass_fields__) | {
         n for n, _ in inspect.getmembers(AgentDef, predicate=inspect.isfunction)}
-    gelesen = {
+    read = {
         node.attr
         for node in ast.walk(ast.parse(source))
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
         and node.value.id == "agent"
     }
-    assert gelesen <= fields, f"AgentDef is missing: {sorted(gelesen - fields)}"
+    assert read <= fields, f"AgentDef is missing: {sorted(read - fields)}"
 
 
 def test_error_branch_reports_the_real_error(caplog):
@@ -61,8 +61,8 @@ async def test_watchdog_reports_standstill_exactly_once(monkeypatch, caplog):
     monkeypatch.setattr(worker, "_LAST_TICK", worker.time.monotonic() - 60)
 
     with caplog.at_level(logging.ERROR):
-        gemeldet = worker.watchdog_check(False)
-    assert gemeldet and dumps == [1]
+        reported = worker.watchdog_check(False)
+    assert reported and dumps == [1]
     assert "has not ticked" in caplog.text
 
     # Second pass with a persisting standstill: no second dump (no log flooding).

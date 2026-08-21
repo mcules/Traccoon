@@ -36,7 +36,7 @@ MAX_MEMORY_CHARS = 6000
 # A single insight is a sentence, not an essay.
 MAX_ENTRY_CHARS = 600
 
-BEREICHE = ("mensch", "agent", "projekt")
+AREAS = ("mensch", "agent", "projekt")
 
 
 def _def(name: str, desc: str, props: dict, required: list[str]) -> dict:
@@ -54,7 +54,7 @@ MEMORY_TOOLS = [
          "Merke dir etwas DAUERHAFT für künftige Läufe — eine Vorgabe, Korrektur oder Vorliebe "
          "deines Menschen, die auch morgen noch gilt. Nicht für Tagesdetails, Ticket-Fakten oder "
          "Dinge, die schon im Gedächtnis stehen. Ein Satz pro Aufruf.",
-         {"bereich": {"type": "string", "enum": list(BEREICHE), "description": _AREA_DESC},
+         {"bereich": {"type": "string", "enum": list(AREAS), "description": _AREA_DESC},
           "text": {"type": "string", "description": "Die Erkenntnis als ein klarer Satz, so "
                                                     "formuliert, dass sie ohne den heutigen "
                                                     "Zusammenhang verständlich bleibt."}},
@@ -62,7 +62,7 @@ MEMORY_TOOLS = [
     _def("vergiss",
          "Entferne eine Erinnerung, die überholt oder falsch ist. Nutze das auch, wenn dein "
          "Mensch eine frühere Vorgabe ändert: erst `vergiss`, dann `erinnere_dich` mit der neuen.",
-         {"bereich": {"type": "string", "enum": list(BEREICHE), "description": _AREA_DESC},
+         {"bereich": {"type": "string", "enum": list(AREAS), "description": _AREA_DESC},
           "textfragment": {"type": "string", "description": "Ein Stück der zu löschenden Zeile; "
                                                             "alle passenden Zeilen fallen weg."}},
          ["bereich", "textfragment"]),
@@ -188,19 +188,19 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
         return NO_MEMORY
 
     if name == "gedaechtnis_suchen":
-        suche = (args.get("suche") or "").strip()
-        if not suche:
+        search = (args.get("suche") or "").strip()
+        if not search:
             return "FEHLER: `suche` fehlt."
         try:
             out = await mcp.call("obsidian__obsidian_search_notes",
-                                 {"mode": "text", "query": suche, "pathPrefix": root})
+                                 {"mode": "text", "query": search, "pathPrefix": root})
         except Exception as exc:  # noqa: BLE001
             return f"FEHLER bei der Suche: {exc}"
         return (out or "Nichts gefunden.")[:4000]
 
     area = (args.get("bereich") or "").strip().lower()
-    if area not in BEREICHE:
-        return f"FEHLER: `bereich` muss {' | '.join(BEREICHE)} sein."
+    if area not in AREAS:
+        return f"FEHLER: `bereich` muss {' | '.join(AREAS)} sein."
     path = note_path(root, area, agent_role, project_key)
     if not path:
         missing = "Projekt" if area == "projekt" else "Rolle"
@@ -211,32 +211,32 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
         text = " ".join((args.get("text") or "").split())[:MAX_ENTRY_CHARS]
         if not text:
             return "FEHLER: `text` fehlt."
-        heute = dt.datetime.now().strftime("%Y-%m-%d")
-        error = await _append_line(mcp, path, f"- [{heute}] {text}")
+        today = dt.datetime.now().strftime("%Y-%m-%d")
+        error = await _append_line(mcp, path, f"- [{today}] {text}")
         if error:
             return f"FEHLER beim Merken: {error}"
         return f"Gemerkt in {path}."
 
     if name == "vergiss":
-        frag = (args.get("textfragment") or "").strip().lower()
-        if not frag:
+        ask = (args.get("textfragment") or "").strip().lower()
+        if not ask:
             return "FEHLER: `textfragment` fehlt."
         body = await _read_note(mcp, path)
         if not body:
             return f"Nichts zu vergessen — {path} ist leer oder gibt es nicht."
-        behalten = [ln for ln in body.splitlines() if frag not in ln.lower()]
-        weg = len(body.splitlines()) - len(behalten)
-        if not weg:
-            return f"Keine Zeile in {path} enthält '{frag}' — nichts geändert."
+        keep = [ln for ln in body.splitlines() if ask not in ln.lower()]
+        removed = len(body.splitlines()) - len(keep)
+        if not removed:
+            return f"Keine Zeile in {path} enthält '{ask}' — nichts geändert."
         try:
             out = await mcp.call("obsidian__obsidian_write_note",
                                  {"target": _note_target(path), "overwrite": True,
-                                  "content": "\n".join(behalten).rstrip() + "\n"})
+                                  "content": "\n".join(keep).rstrip() + "\n"})
         except Exception as exc:  # noqa: BLE001
             return f"FEHLER beim Vergessen: {exc}"
         if _failed(out):
             return f"FEHLER beim Vergessen: {out}"
-        return f"{weg} Zeile(n) aus {path} entfernt."
+        return f"{removed} Zeile(n) aus {path} entfernt."
 
     return f"FEHLER: unbekanntes Gedächtnis-Tool '{name}'."
 

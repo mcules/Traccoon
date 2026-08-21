@@ -10,7 +10,7 @@ from ..models.assistant import AssistantTask
 from .assistant_policy import parse_sender, upsert_policy
 
 
-async def _finde_source(db: AsyncSession, owner_user_id: int | None, chat_id: str,
+async def _find_source(db: AsyncSession, owner_user_id: int | None, chat_id: str,
                         reference: str) -> int | None:
     """Which inbox item does the quoted message belong to? Returns assistant_task_id or None.
 
@@ -49,7 +49,7 @@ async def create_chat_task(db: AsyncSession, owner_user_id: int | None, text: st
         meta["agent"] = agent        # otherwise the run falls back to 'assistent'
     if reference.strip():
         meta["bezug_text"] = reference.strip()[:2000]
-        source = await _finde_source(db, owner_user_id, str(chat_id), reference)
+        source = await _find_source(db, owner_user_id, str(chat_id), reference)
         if source is not None:
             meta["bezug_task_id"] = source
     task = AssistantTask(owner_user_id=owner_user_id, kind="chat", source="telegram",

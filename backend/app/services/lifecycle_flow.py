@@ -89,7 +89,7 @@ async def start_lifecycle(db: AsyncSession, issue: Issue, actor_id: int | None =
     return inst
 
 
-async def entscheide_offene_genehmigung(
+async def decide_open_approval(
     db: AsyncSession, issue: Issue, decision: str, actor_id: int | None,
     reason: str | None = None,
 ) -> bool:
@@ -107,9 +107,9 @@ async def entscheide_offene_genehmigung(
     Returns False when there is nothing to decide right now, so that the caller can say so
     instead of reporting success.
     """
-    from .workflow_engine import entscheide_genehmigung
+    from .workflow_engine import decide_approval
 
-    return await entscheide_genehmigung(db, await live_instance(db, issue), decision,
+    return await decide_approval(db, await live_instance(db, issue), decision,
                                         actor_id=actor_id, reason=reason)
 
 

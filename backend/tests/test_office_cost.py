@@ -34,7 +34,7 @@ def router_registriert():
 
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
-async def buehne(db):
+async def stage(db):
     """User, project, ticket: the minimum for a session to be authorisable."""
     user = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
@@ -50,7 +50,7 @@ async def buehne(db):
     return user, proj, issue
 
 
-async def lauf(db, issue, *, agent="developer", parent=None, provider="claude_code",
+async def make_run(db, issue, *, agent="developer", parent=None, provider="claude_code",
                model="sonnet", in_tok=0, out_tok=0) -> Run:
     r = Run(issue_id=issue.id, project_id=issue.project_id, agent=agent, phase="execute",
             provider=provider, model=model, status="success",
@@ -63,7 +63,7 @@ async def lauf(db, issue, *, agent="developer", parent=None, provider="claude_co
     return r
 
 
-async def zug(db, run, *, provider, model, in_tok=0, out_tok=0, cache=0, seq=1):
+async def move(db, run, *, provider, model, in_tok=0, out_tok=0, cache=0, seq=1):
     """A model turn as a step row, with the model that ACTUALLY answered."""
     db.add(RunStep(run_id=run.id, seq=seq, role="assistant", kind="agent_text",
                    content="…", provider=provider, model=model, in_tokens=in_tok,
@@ -71,7 +71,7 @@ async def zug(db, run, *, provider, model, in_tok=0, out_tok=0, cache=0, seq=1):
     await db.commit()
 
 
-async def posten(db, run, *, priced, cost=1.0, provider="claude_code", model="sonnet",
+async def item(db, run, *, priced, cost=1.0, provider="claude_code", model="sonnet",
                  in_tok=0, out_tok=0, cache=0):
     db.add(CostEntry(run_id=run.id, project_id=run.project_id, issue_id=run.issue_id,
                      agent=run.agent, provider=provider, model=model, input_tokens=in_tok,
@@ -80,13 +80,13 @@ async def posten(db, run, *, priced, cost=1.0, provider="claude_code", model="so
     await db.commit()
 
 
-async def katalog(db, provider, model, *, ein=0.0, aus=0.0, cache=0.0):
+async def catalog(db, provider, model, *, ein=0.0, aus=0.0, cache=0.0):
     db.add(ProviderModel(provider=provider, model=model, display_name=model,
                          price_input=ein, price_output=aus, price_cache_read=cache))
     await db.commit()
 
 
-async def kosten(client, user, issue):
+async def cost(client, user, issue):
     r = await client.get(f"/office/sessions/issue/{issue.id}/cost", headers=auth(user))
     assert r.status_code == 200, r.text
     return r.json()
@@ -95,11 +95,11 @@ async def kosten(client, user, issue):
 # ── priced: the three states ─────────────────────────────────────────────────
 
 async def test_a_priced_item_is_complete(client, db):
-    user, _proj, issue = await buehne(db)
-    run = await lauf(db, issue)
-    await posten(db, run, priced=True, cost=2.41, in_tok=1000, out_tok=200)
+    user, _proj, issue = await stage(db)
+    run = await make_run(db, issue)
+    await item(db, run, priced=True, cost=2.41, in_tok=1000, out_tok=200)
 
-    body = await kosten(client, user, issue)
+    body = await cost(client, user, issue)
     assert body["cost_partial"] is False
     assert body["by_agent"][0]["unpriced"] is False
     assert body["by_agent"][0]["unpriced_models"] == []
@@ -109,23 +109,23 @@ async def test_a_priced_item_is_complete(client, db):
 async def test_an_old_row_without_a_catalog_entry_is_a_price_gap(client, db):
     """`priced IS NULL` is the old row that never knew the distinction. It is resolved against
     the catalog at read time, and without an entry the 0.00 is a gap."""
-    user, _proj, issue = await buehne(db)
-    run = await lauf(db, issue)
-    await posten(db, run, priced=None, cost=0.0, provider="lokal", model="qwen3.6")
+    user, _proj, issue = await stage(db)
+    run = await make_run(db, issue)
+    await item(db, run, priced=None, cost=0.0, provider="lokal", model="qwen3.6")
 
-    body = await kosten(client, user, issue)
+    body = await cost(client, user, issue)
     assert body["cost_partial"] is True
     assert body["by_agent"][0]["unpriced"] is True
     assert body["by_agent"][0]["unpriced_models"] == ["lokal/qwen3.6"]
 
 
 async def test_an_old_row_with_a_catalog_entry_counts_as_priced(client, db):
-    user, _proj, issue = await buehne(db)
-    await katalog(db, "lokal", "qwen3.6", ein=0.1, aus=0.4)
-    run = await lauf(db, issue)
-    await posten(db, run, priced=None, cost=0.0, provider="lokal", model="qwen3.6")
+    user, _proj, issue = await stage(db)
+    await catalog(db, "lokal", "qwen3.6", ein=0.1, aus=0.4)
+    run = await make_run(db, issue)
+    await item(db, run, priced=None, cost=0.0, provider="lokal", model="qwen3.6")
 
-    body = await kosten(client, user, issue)
+    body = await cost(client, user, issue)
     assert body["cost_partial"] is False
     assert body["by_agent"][0]["unpriced"] is False
 
@@ -133,13 +133,13 @@ async def test_an_old_row_with_a_catalog_entry_counts_as_priced(client, db):
 async def test_a_catalog_entry_priced_zero_is_free_not_unknown(client, db):
     """The case of the local model: all prices 0.00, but there IS an entry. Exactly this
     distinction Traccoon could not make until now."""
-    user, _proj, issue = await buehne(db)
-    await katalog(db, "lokal", "qwen3.6", ein=0.0, aus=0.0, cache=0.0)
-    run = await lauf(db, issue, provider="lokal", model="qwen3.6")
-    await zug(db, run, provider="lokal", model="qwen3.6", in_tok=MIO, out_tok=MIO)
-    await posten(db, run, priced=True, cost=0.0, provider="lokal", model="qwen3.6")
+    user, _proj, issue = await stage(db)
+    await catalog(db, "lokal", "qwen3.6", ein=0.0, aus=0.0, cache=0.0)
+    run = await make_run(db, issue, provider="lokal", model="qwen3.6")
+    await move(db, run, provider="lokal", model="qwen3.6", in_tok=MIO, out_tok=MIO)
+    await item(db, run, priced=True, cost=0.0, provider="lokal", model="qwen3.6")
 
-    body = await kosten(client, user, issue)
+    body = await cost(client, user, issue)
     assert body["cost_partial"] is False
     assert body["by_model"] == [{
         "provider": "lokal", "model": "qwen3.6", "in_tokens": MIO, "out_tokens": MIO,
@@ -153,15 +153,15 @@ async def test_a_catalog_entry_priced_zero_is_free_not_unknown(client, db):
 async def test_by_agent_sums_over_the_tree_including_delegated_runs(client, db):
     """Two runs of the same agent (execution plus continuation) and one delegated sub-agent:
     all three belong to the same session and therefore in the same bill."""
-    user, _proj, issue = await buehne(db)
-    a1 = await lauf(db, issue, agent="developer")
-    a2 = await lauf(db, issue, agent="developer")
-    sub = await lauf(db, issue, agent="reviewer", parent=a2)
-    await posten(db, a1, priced=True, cost=1.0)
-    await posten(db, a2, priced=True, cost=0.5)
-    await posten(db, sub, priced=True, cost=0.25)
+    user, _proj, issue = await stage(db)
+    a1 = await make_run(db, issue, agent="developer")
+    a2 = await make_run(db, issue, agent="developer")
+    sub = await make_run(db, issue, agent="reviewer", parent=a2)
+    await item(db, a1, priced=True, cost=1.0)
+    await item(db, a2, priced=True, cost=0.5)
+    await item(db, sub, priced=True, cost=0.25)
 
-    body = await kosten(client, user, issue)
+    body = await cost(client, user, issue)
     rows = {r["agent"]: r for r in body["by_agent"]}
     assert set(rows) == {"developer", "reviewer"}
     assert rows["developer"]["runs"] == 2
@@ -175,14 +175,14 @@ async def test_by_model_groups_by_the_model_of_the_step(client, db):
     """The run switched to the fallback provider in the middle. Grouped by `run.model` that
     would be ONE row, and the wrong one: it would attribute the tokens of one model to the
     other."""
-    user, _proj, issue = await buehne(db)
-    await katalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)
-    await katalog(db, "openai", "gpt-x", ein=1.0, aus=4.0)
-    run = await lauf(db, issue, provider="claude_code", model="sonnet")
-    await zug(db, run, provider="claude_code", model="sonnet", in_tok=MIO, seq=1)
-    await zug(db, run, provider="openai", model="gpt-x", in_tok=2 * MIO, seq=2)
+    user, _proj, issue = await stage(db)
+    await catalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)
+    await catalog(db, "openai", "gpt-x", ein=1.0, aus=4.0)
+    run = await make_run(db, issue, provider="claude_code", model="sonnet")
+    await move(db, run, provider="claude_code", model="sonnet", in_tok=MIO, seq=1)
+    await move(db, run, provider="openai", model="gpt-x", in_tok=2 * MIO, seq=2)
 
-    body = await kosten(client, user, issue)
+    body = await cost(client, user, issue)
     lines = {(r["provider"], r["model"]): r for r in body["by_model"]}
     assert set(lines) == {("claude_code", "sonnet"), ("openai", "gpt-x")}
     assert lines[("claude_code", "sonnet")]["cost_usd"] == 3.0
@@ -194,13 +194,13 @@ async def test_by_model_groups_by_the_model_of_the_step(client, db):
 async def test_billed_and_estimated_stand_side_by_side(client, db):
     """The catalog price changed after the billing. Both numbers stay: one says what it cost,
     the other what it would cost today."""
-    user, _proj, issue = await buehne(db)
-    run = await lauf(db, issue)
-    await zug(db, run, provider="claude_code", model="sonnet", in_tok=MIO)
-    await posten(db, run, priced=True, cost=1.0, in_tok=MIO)
-    await katalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)   # more expensive today
+    user, _proj, issue = await stage(db)
+    run = await make_run(db, issue)
+    await move(db, run, provider="claude_code", model="sonnet", in_tok=MIO)
+    await item(db, run, priced=True, cost=1.0, in_tok=MIO)
+    await catalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)   # more expensive today
 
-    body = await kosten(client, user, issue)
+    body = await cost(client, user, issue)
     assert body["total"]["cost_usd_billed"] == 1.0
     assert body["total"]["cost_usd_estimated"] == 3.0
     line = body["by_agent"][0]
@@ -212,13 +212,13 @@ async def test_an_old_run_without_step_tokens_falls_back_to_the_run_row(client, 
     """A run from before the instrumentation has no tokens on the steps but does have its sums
     on the run. Without this fallback the estimate would be 0 everywhere on the first day and
     the cost view useless."""
-    user, _proj, issue = await buehne(db)
-    await katalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)
-    run = await lauf(db, issue, in_tok=MIO, out_tok=MIO)
+    user, _proj, issue = await stage(db)
+    await catalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)
+    run = await make_run(db, issue, in_tok=MIO, out_tok=MIO)
     db.add(RunStep(run_id=run.id, seq=1, role="assistant", content="alt", created_at=NOW))
     await db.commit()
 
-    body = await kosten(client, user, issue)
+    body = await cost(client, user, issue)
     assert body["total"]["cost_usd_estimated"] == 18.0
     assert body["by_model"][0]["unpriced"] is False
 
@@ -226,9 +226,9 @@ async def test_an_old_run_without_step_tokens_falls_back_to_the_run_row(client, 
 async def test_a_stranger_gets_404_on_the_costs(client, db):
     """Costs are project internals: the permission comes from the session, not from the path,
     and a stranger does not even learn that the session exists."""
-    _user, _proj, issue = await buehne(db)
-    fremd = await make_user(db, "fremd")
-    await lauf(db, issue)
+    _user, _proj, issue = await stage(db)
+    foreign = await make_user(db, "fremd")
+    await make_run(db, issue)
 
-    r = await client.get(f"/office/sessions/issue/{issue.id}/cost", headers=auth(fremd))
+    r = await client.get(f"/office/sessions/issue/{issue.id}/cost", headers=auth(foreign))
     assert r.status_code == 404

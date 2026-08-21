@@ -17,7 +17,7 @@ from .api import (
     runs, secrets, skills, testenv, users, workflows, ws,
 )
 from .config import settings
-from .core.error import Fehler, error_handler
+from .core.error import Error, error_handler
 from .db import Base, SessionLocal, engine
 from .seed import seed
 from .services.dispatcher import recover_on_start, run_dispatcher
@@ -31,7 +31,7 @@ VERSION = "0.1.0"
 log = logging.getLogger("traccoon.start")
 
 
-async def _missing_noch(conn, ddl: str) -> bool:
+async def _missing_still(conn, ddl: str) -> bool:
     """Does this `ADD COLUMN IF NOT EXISTS` need to run at all?
 
     `IF NOT EXISTS` prevents the error, not the lock: for every ALTER, Postgres first takes
@@ -45,10 +45,10 @@ async def _missing_noch(conn, ddl: str) -> bool:
     been there), takes no lock at all.
     """
     if m := re.match(r"ALTER TABLE (\w+) ADD COLUMN IF NOT EXISTS (\w+)\b", ddl, re.I):
-        da = await conn.scalar(text(
+        there = await conn.scalar(text(
             "SELECT 1 FROM information_schema.columns "
             "WHERE table_name = :t AND column_name = :c"), {"t": m.group(1), "c": m.group(2)})
-        return da is None
+        return there is None
     # `CREATE INDEX IF NOT EXISTS` takes a ShareLock and thereby blocks every writer on the
     # table, so on `run_steps` the running agent. The same applies here: look first whether
     # the index still needs creating at all.
@@ -403,10 +403,30 @@ async def lifespan(app: FastAPI):
                 # What a mail was classified as, and the findings behind it. The kind is what
                 # the statistics group by, the findings are what the knowledge note is fed
                 # from; both used to exist only inside one log line.
+                # Drei weitere Attribute wurden englisch — dieselbe Regel wie oben:
+                # Attribut umbenannt heisst Spalte umbenannt, und nur Postgres sieht es.
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='spam_verdicts' AND column_name='befunde') "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='spam_verdicts' AND column_name='findings') THEN "
+                "ALTER TABLE spam_verdicts RENAME COLUMN befunde TO findings; END IF; END $$;",
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='chat_summaries' AND column_name='bis_task_id') "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='chat_summaries' AND column_name='to_task_id') THEN "
+                "ALTER TABLE chat_summaries RENAME COLUMN bis_task_id TO to_task_id; END IF; END $$;",
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='notifications' AND column_name='drossel_key') "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='notifications' AND column_name='throttle_key') THEN "
+                "ALTER TABLE notifications RENAME COLUMN drossel_key TO throttle_key; END IF; END $$;",
                 "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS art VARCHAR(40) "
                 "DEFAULT '' NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_spam_verdicts_art ON spam_verdicts (art)",
-                "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS befunde JSON "
+                "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS findings JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_assistant_tasks_archived_at "
                 "ON assistant_tasks (archived_at)",
@@ -449,7 +469,7 @@ async def lifespan(app: FastAPI):
                 "CREATE INDEX IF NOT EXISTS ix_series_token_hash "
                 "ON series (token_hash)",
             ):
-                if not await _missing_noch(conn, _ddl):
+                if not await _missing_still(conn, _ddl):
                     continue
                 try:
                     async with conn.begin_nested():
@@ -479,8 +499,8 @@ async def lifespan(app: FastAPI):
         # Abläufe sprechen englisch: Aktionsnamen, Parameter und Kontextfelder. Erst NACH den
         # Erzeugern, sonst schriebe der nächste Seed-Lauf seine frische Fassung ohne Marke
         # daneben und die Umstellung liefe bei jedem Start wieder an.
-        from .services.workflow_terms import migrate_all as begriffe_convert
-        count = await begriffe_convert(db)
+        from .services.workflow_terms import migrate_all as terms_convert
+        count = await terms_convert(db)
         if count:
             log.info("%s Ablauf-Fassung(en) auf englische Begriffe umgeschrieben", count)
         # Artifact register (ticket, hardware): maintainable in the admin area, missing
@@ -488,8 +508,8 @@ async def lifespan(app: FastAPI):
         from .services.artifacts import backfill_hardware_artifacts, ensure_builtin_types
         # First take over the labels from the earlier status model; afterwards
         # `ensure_builtin_types` creates the built-in fields without overwriting them.
-        from .services.artifact_fields import uebernimm_alte_zustaende
-        await uebernimm_alte_zustaende(db)
+        from .services.artifact_fields import adopt_old_states
+        await adopt_old_states(db)
         await ensure_builtin_types(db)
         # Only now does the old status model fall; before this the takeover would have had
         # nothing left to read.
@@ -544,7 +564,7 @@ app.add_middleware(
 
 api = FastAPI(title="Traccoon API", version=VERSION)
 # Error texts carry their key along, so a browser can show them in its own language.
-api.add_exception_handler(Fehler, error_handler)
+api.add_exception_handler(Error, error_handler)
 api.include_router(auth.router)
 api.include_router(me.router)
 api.include_router(users.router)

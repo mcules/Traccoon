@@ -17,17 +17,17 @@ from conftest import auth, make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def _flow(db, owner, key: str, graph: dict, *, veroeffentlicht=True):
+async def _flow(db, owner, key: str, graph: dict, *, published=True):
     d = WorkflowDefinition(project_id=None, key=key, name=key, created_by=owner.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
     await db.flush()
     v = WorkflowVersion(definition_id=d.id, version=1, graph=graph,
-                        status=(WorkflowVersionStatus.published if veroeffentlicht
+                        status=(WorkflowVersionStatus.published if published
                                 else WorkflowVersionStatus.draft))
     db.add(v)
     await db.flush()
-    if veroeffentlicht:
+    if published:
         d.current_version_id = v.id
     await db.commit()
     return d
@@ -47,20 +47,20 @@ def _line_fit(*, extra_node=None, extra_edges=()):
 async def test_a_subflow_calls_a_named_flow(client, db):
     anna = await make_user(db, "anna")
     kind = await _flow(db, anna, "kind", _line_fit())
-    eltern = await _flow(db, anna, "eltern", _line_fit(
+    parent = await _flow(db, anna, "eltern", _line_fit(
         extra_node={"id": "unter", "type": "subflow", "position": {"x": 0, "y": 1},
                     "data": {"config": {"definition_id": kind.id}}},
         extra_edges=[{"id": "a", "source": "s", "target": "unter"},
                      {"id": "b", "source": "unter", "target": "e",
                       "sourceHandle": "completed"}]))
 
-    r = await client.post(f"/workflows/{eltern.id}/instances", headers=auth(anna),
+    r = await client.post(f"/workflows/{parent.id}/instances", headers=auth(anna),
                           json={"subject_kind": "standalone"})
     assert r.status_code in (200, 201), r.text
 
-    kinder = (await db.execute(select(WorkflowInstance).where(
+    children = (await db.execute(select(WorkflowInstance).where(
         WorkflowInstance.definition_id == kind.id))).scalars().all()
-    assert len(kinder) == 1, "the named flow has to have run as a child instance"
+    assert len(children) == 1, "the named flow has to have run as a child instance"
 
 
 async def test_without_a_flow_the_check_complains():

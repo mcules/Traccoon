@@ -17,10 +17,10 @@ from app.services import destinations as svc
 from conftest import add_member, auth, make_project, make_user
 
 
-def _mock(aufzeichnung: list, status: int = 200, body: str = '{"ok":true}'):
+def _mock(recording: list, status: int = 200, body: str = '{"ok":true}'):
     """httpx client that records every request and answers fixedly."""
     def handler(request: httpx.Request) -> httpx.Response:
-        aufzeichnung.append(request)
+        recording.append(request)
         return httpx.Response(status, content=body, headers={"Content-Type": "application/json"})
     transport = httpx.MockTransport(handler)
 
@@ -35,9 +35,9 @@ def _mock(aufzeichnung: list, status: int = 200, body: str = '{"ok":true}'):
 
 @pytest.fixture
 def calls(monkeypatch):
-    aufzeichnung: list[httpx.Request] = []
-    monkeypatch.setattr(svc.httpx, "AsyncClient", _mock(aufzeichnung))
-    return aufzeichnung
+    recording: list[httpx.Request] = []
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _mock(recording))
+    return recording
 
 
 async def _dest(db, **kw) -> Destination:
@@ -96,10 +96,10 @@ async def test_hmac_signature_without_a_prefix(db, calls):
     d = await _dest(db, auth_type="hmac", secret_enc=encrypt_secret("s3cr3t"),
                     hmac_header="X-Webhook-Signature")
     await svc.call(db, d, method="POST", body={"a": 1})
-    gesendet = calls[0].content
-    erwartet = hmaclib.new(b"s3cr3t", gesendet, hashlib.sha256).hexdigest()
-    assert calls[0].headers["x-webhook-signature"] == erwartet
-    assert json.loads(gesendet) == {"a": 1}
+    sent = calls[0].content
+    expected = hmaclib.new(b"s3cr3t", sent, hashlib.sha256).hexdigest()
+    assert calls[0].headers["x-webhook-signature"] == expected
+    assert json.loads(sent) == {"a": 1}
 
     d.hmac_prefix = "sha256="
     await db.commit()
@@ -109,10 +109,10 @@ async def test_hmac_signature_without_a_prefix(db, calls):
 
 async def test_oauth2_fetches_a_token_and_remembers_it(db, monkeypatch):
     """Client credentials: fetch the token once, take it from the cache afterwards."""
-    aufrufe: list[httpx.Request] = []
+    calls: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        aufrufe.append(request)
+        calls.append(request)
         if request.url.path.endswith("/token"):
             return httpx.Response(200, json={"access_token": "AT-1", "expires_in": 3600})
         return httpx.Response(200, json={"ok": True})
@@ -133,10 +133,10 @@ async def test_oauth2_fetches_a_token_and_remembers_it(db, monkeypatch):
     await svc.call(db, d, method="GET", path="/x")
     await svc.call(db, d, method="GET", path="/y")
 
-    token_aufrufe = [r for r in aufrufe if r.url.path.endswith("/token")]
-    assert len(token_aufrufe) == 1, "the token was not cached"
+    token_calls = [r for r in calls if r.url.path.endswith("/token")]
+    assert len(token_calls) == 1, "the token was not cached"
     assert all(r.headers["authorization"] == "Bearer AT-1"
-               for r in aufrufe if not r.url.path.endswith("/token"))
+               for r in calls if not r.url.path.endswith("/token"))
     await db.refresh(d)
     assert d.oauth_expires_at is not None and d.oauth_token_enc
 
@@ -147,9 +147,9 @@ async def test_methods_and_body(db, calls):
         await svc.call(db, d, method=verb, body={"x": 1})
     assert [r.method for r in calls] == ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
     # With GET/HEAD/DELETE/OPTIONS the body is deliberately left out.
-    ohne = {r.method: r.content for r in calls}
-    assert ohne["GET"] == b"" and ohne["DELETE"] == b""
-    assert json.loads(ohne["POST"]) == {"x": 1}
+    without = {r.method: r.content for r in calls}
+    assert without["GET"] == b"" and without["DELETE"] == b""
+    assert json.loads(without["POST"]) == {"x": 1}
 
     with pytest.raises(ValueError):
         await svc.call(db, d, method="TRACE")
@@ -189,8 +189,8 @@ async def test_agents_only_through_released_destinations(db, calls):
     with pytest.raises(ValueError, match="not released for AI agents"):
         await svc.call_by_name(db, "intern", agents_only=True, method="GET")
 
-    frei = await svc.resolve(db, "intern")
-    frei.allow_agents = True
+    free = await svc.resolve(db, "intern")
+    free.allow_agents = True
     await db.commit()
     res = await svc.call_by_name(db, "intern", agents_only=True, method="GET")
     assert res["ok"]
@@ -235,17 +235,17 @@ async def test_a_system_wide_destination_is_admin_only(client, db):
 
 # ── Antwortgrenze je Ziel (ABC-31) ───────────────────────────────────────────
 
-GROSSE_ANSWER = json.dumps({"lage": "z" * 9000})
+LARGE_ANSWER = json.dumps({"lage": "z" * 9000})
 
 
 @pytest.fixture
-def grosse_answer(monkeypatch):
+def large_answer(monkeypatch):
     """A mock server that deliberately delivers more than the old flat cap let through."""
-    monkeypatch.setattr(svc.httpx, "AsyncClient", _mock([], body=GROSSE_ANSWER))
-    return GROSSE_ANSWER
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _mock([], body=LARGE_ANSWER))
+    return LARGE_ANSWER
 
 
-async def test_the_default_response_limit_shortens(db, grosse_answer):
+async def test_the_default_response_limit_shortens(db, large_answer):
     """Without an entry of its own it stays at 4000 characters: existing destinations do not change."""
     d = await _dest(db, name="klein")
     assert d.max_response_chars == 4000
@@ -254,15 +254,15 @@ async def test_the_default_response_limit_shortens(db, grosse_answer):
     assert "text" not in res          # too long, so only as json, the full text suppressed
 
 
-async def test_the_per_destination_response_limit_applies(db, grosse_answer):
+async def test_the_per_destination_response_limit_applies(db, large_answer):
     """A destination may let more through; otherwise an agent would plan on truncated JSON."""
     d = await _dest(db, name="gross", max_response_chars=40000)
     res = await svc.call(db, d, method="GET")
     assert res["max_chars"] == 40000
-    assert res["text"] == grosse_answer
+    assert res["text"] == large_answer
 
 
-async def test_http_call_does_not_shorten_a_second_time(db, grosse_answer):
+async def test_http_call_does_not_shorten_a_second_time(db, large_answer):
     """The agent tool must not revoke the permission of the destination."""
     from app.worker.tools_traccoon import call_traccoon_tool
     u = await make_user(db, "zielnutzer")
@@ -274,7 +274,7 @@ async def test_http_call_does_not_shorten_a_second_time(db, grosse_answer):
     assert len(out) > 9000
 
 
-async def test_http_call_reports_the_cut(db, grosse_answer):
+async def test_http_call_reports_the_cut(db, large_answer):
     """If it is truncated after all, the agent has to see it: a silent cut is worse than a
     short answer, because it plans on fragments."""
     from app.worker.tools_traccoon import call_traccoon_tool

@@ -20,7 +20,7 @@ from conftest import make_user
 pytestmark = pytest.mark.asyncio
 
 
-def _graph(task_params: dict, mit_answer: bool = False) -> dict:
+def _graph(task_params: dict, with_answer: bool = False) -> dict:
     node = [
         {"id": "s", "type": "start", "position": {"x": 0, "y": 0},
          "data": {"config": {"label": "Start", "trigger": {"kind": "webhook"}}}},
@@ -30,22 +30,22 @@ def _graph(task_params: dict, mit_answer: bool = False) -> dict:
                                         "params": task_params}}}},
     ]
     edges = [{"id": "e1", "source": "s", "target": "beauftragen"}]
-    vorher = "beauftragen"
-    if mit_answer:
+    before = "beauftragen"
+    if with_answer:
         node.append({"id": "answer", "type": "auto_action", "position": {"x": 0, "y": 2},
                        "data": {"config": {"label": "Antwort",
                                            "action": {"action": "answer", "params": {
                                                "fields": {"ergebnis": "{{ assistant.output }}",
                                                           "source": "{{ doc_id }}"}}}}}})
-        edges.append({"id": "e2", "source": vorher, "target": "answer"})
-        vorher = "answer"
+        edges.append({"id": "e2", "source": before, "target": "answer"})
+        before = "answer"
     node.append({"id": "ende", "type": "end", "position": {"x": 0, "y": 3},
                    "data": {"config": {"outcome": "completed"}}})
-    edges.append({"id": "e3", "source": vorher, "target": "ende"})
+    edges.append({"id": "e3", "source": before, "target": "ende"})
     return {"nodes": node, "edges": edges}
 
 
-async def _warte_bis_done(db, instanz_id: int, seconds: float = 3.0):
+async def _wait_to_done(db, instance_id: int, seconds: float = 3.0):
     """Dem Wächter Zeit geben: er wartet auf den Lauf und schaltet dann selbst weiter.
 
     Ohne dieses Zusehen prüfte der Test den Zustand, bevor der Hintergrund-Schritt überhaupt
@@ -56,12 +56,12 @@ async def _warte_bis_done(db, instanz_id: int, seconds: float = 3.0):
     for _ in range(int(seconds / 0.02)):
         await asyncio.sleep(0.02)
         db.expire_all()
-        inst = await db.get(WorkflowInstance, instanz_id)
+        inst = await db.get(WorkflowInstance, instance_id)
         if inst is not None and inst.status not in (WorkflowInstanceStatus.running,
                                                     WorkflowInstanceStatus.waiting):
             return inst
     db.expire_all()
-    return await db.get(WorkflowInstance, instanz_id)
+    return await db.get(WorkflowInstance, instance_id)
 
 
 async def _definition(db, name: str, graph: dict, owner):
@@ -115,18 +115,18 @@ async def test_wait_pulls_the_result_into_the_context(db, redis_stub):
                        "summary": "nichts wissenswertes"}
     user = await make_user(db, "geduldig")
     d = await _definition(db, "wait", _graph(
-        {"task": "Lies {{ doc_id }}", "wait": True}, mit_answer=True), user)
+        {"task": "Lies {{ doc_id }}", "wait": True}, with_answer=True), user)
     inst = await start_workflow(db, d, subject_kind=WorkflowSubjectKind.standalone,
                                 context={"doc_id": "77"}, actor_id=user.id)
 
-    frisch = await _warte_bis_done(db, inst.id)
-    assert frisch.context["assistant"]["output"] == "nichts wissenswertes"
+    fresh = await _wait_to_done(db, inst.id)
+    assert fresh.context["assistant"]["output"] == "nichts wissenswertes"
     # Die Antwort des Ablaufs ist gerendert, nicht die Vorlage.
-    assert frisch.context["answer"] == {"ergebnis": "nichts wissenswertes", "source": "77"}
-    assert frisch.status == WorkflowInstanceStatus.completed
+    assert fresh.context["answer"] == {"ergebnis": "nichts wissenswertes", "source": "77"}
+    assert fresh.status == WorkflowInstanceStatus.completed
 
 
-def _nur_answer() -> dict:
+def _only_answer() -> dict:
     """Ablauf, der ohne Umweg antwortet — dafür braucht es keinen Agenten."""
     return {"nodes": [
         {"id": "s", "type": "start", "position": {"x": 0, "y": 0},
@@ -143,7 +143,7 @@ def _nur_answer() -> dict:
 async def test_webhook_receives_the_answer_of_the_flow(db, client):
     """Ein Webhook ist ein Auslöser — und darf eine Antwort haben."""
     user = await make_user(db, "aufrufer")
-    d = await _definition(db, "rueckkanal", _nur_answer(), user)
+    d = await _definition(db, "rueckkanal", _only_answer(), user)
     hook = WebhookSub(public_id="test-hook-1", owner_user_id=user.id, route="rueckkanal",
                       mode="workflow", workflow_definition_id=d.id, response_timeout=5)
     db.add(hook)
@@ -168,5 +168,5 @@ async def test_webhook_without_an_answer_acknowledges_and_says_so(db, client):
 
     answer = await client.post("/hooks/test-hook-2", json={})
     assert answer.status_code == 202
-    rumpf = answer.json()
-    assert rumpf["answer"] is None and rumpf["accepted"] is True
+    base = answer.json()
+    assert base["answer"] is None and base["accepted"] is True

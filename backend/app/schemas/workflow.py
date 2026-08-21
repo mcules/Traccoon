@@ -107,7 +107,7 @@ class GraphSaveOut(BaseModel):
 
 class DiffField(BaseModel):
     field: str
-    vorher: str = ""
+    before: str = ""
     nachher: str = ""
 
 

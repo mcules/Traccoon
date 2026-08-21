@@ -54,7 +54,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, case, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..db import get_session
 from ..models.agents import CostEntry, Run, RunStep
 from ..models.enums import GlobalRole, ProjectRole
@@ -65,7 +65,7 @@ from ..models.user import User
 from ..services.office import (
     EVENT_CAP_DEFAULT, EVENT_CAP_MAX, EVENT_VERSION, LIVE_WINDOW_MS, SEQ_SLOTS,
     PriceTable, RunCtx, deploy_anchor_step_id, deploy_step_id, deployment_events,
-    entdoppeln_seq, run_boundary_events, session_id, session_seen_event, step_events,
+    dedupe_seq, run_boundary_events, session_id, session_seen_event, step_events,
     ts_text,
 )
 from .deps import Access, build_access, get_current_user, get_project_access
@@ -434,7 +434,7 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
     limit = _clamp(limit, 1, SESSION_LIMIT_MAX)
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     if status not in SESSION_STATUS:
-        raise Fehler(400, "err.status_one_of",
+        raise Error(400, "err.status_one_of",
                      "status has to be one of {allowed}", allowed=', '.join(SESSION_STATUS))
     now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - dt.timedelta(hours=since_hours)
@@ -637,19 +637,19 @@ async def _legacy_deploy_events(db: AsyncSession, *, issue_ids: set[int], steps:
     step_by_id = {s.id: s for s in steps}
     # Slot 3 is taken wherever a boundary is synthesised: `run_end` sits at `last*4+3`,
     # `run_start` at `first*4-1`, and that is slot 3 of the row before it.
-    belegt: set[int] = set()
+    taken: set[int] = set()
     for b in bounds.values():
         if b["last"] and not b["has_end"]:
-            belegt.add(b["last"])
+            taken.add(b["last"])
         if b["first"] and not b["has_start"]:
-            belegt.add(b["first"] - 1)
-    erzaehlt = {deploy_step_id(s) for s in steps} - {0}
+            taken.add(b["first"] - 1)
+    tells = {deploy_step_id(s) for s in steps} - {0}
 
     out: list[dict] = []
     for dep in deps:
-        if dep.id in erzaehlt:
+        if dep.id in tells:
             continue
-        anchor = deploy_anchor_step_id(steps, dep.created_at, blocked=belegt)
+        anchor = deploy_anchor_step_id(steps, dep.created_at, blocked=taken)
         ctx = ctxs.get(step_by_id[anchor].run_id) if anchor else None
         if ctx is None:
             continue
@@ -657,7 +657,7 @@ async def _legacy_deploy_events(db: AsyncSession, *, issue_ids: set[int], steps:
         if events:
             # Two deployments do not share a slot, otherwise the recorder would lose one of
             # them (it deduplicates by `seq` alone).
-            belegt.add(anchor)
+            taken.add(anchor)
             out.extend(events)
     return out
 
@@ -843,7 +843,7 @@ async def all_events(
     if project_id is not None:
         where = and_(where, Run.project_id == project_id)
 
-    def leer(agents=(), events=(), truncated=False) -> dict:
+    def empty(agents=(), events=(), truncated=False) -> dict:
         return {
             "v": EVENT_VERSION, "scope": "all",
             "since_hours": since_hours,
@@ -866,7 +866,7 @@ async def all_events(
     truncated = len(step_rows) > cap
     steps = sorted(step_rows[:cap] if truncated else list(step_rows), key=lambda s: s.id)
     if not steps:
-        return leer(truncated=truncated)
+        return empty(truncated=truncated)
 
     run_ids = sorted({s.run_id for s in steps})
     runs = sorted(
@@ -906,26 +906,26 @@ async def all_events(
         if ctx is not None:
             events.extend(step_events(s, ctx))
 
-    fensteranfang = ts_text(cutoff)
+    windowstart = ts_text(cutoff)
     for run in runs:
         b = window.get(run.id)
         if b is None:
             continue
-        grenzen = run_boundary_events(
+        limits = run_boundary_events(
             run, ctxs[run.id],
             first_step_id=None if b["has_start"] else b["first"],
             last_step_id=None if b["has_end"] else b["last"],
         )
         start = _aware(run.started_at)
-        ende = _aware(run.finished_at) or start
-        for ev in grenzen:
+        end = _aware(run.finished_at) or start
+        for ev in limits:
             if ev["kind"] == "run_start" and start is not None and start < cutoff:
                 # Trap 1: the boundary added afterwards carries `run.started_at`, so for a run
                 # that began before the window that is a timestamp from yesterday. Unclamped,
                 # the timeline would stretch the whole room back to yesterday, and that would
                 # look like a bug in the engine.
-                ev["ts"] = fensteranfang
-            elif ev["kind"] == "run_end" and ende is not None and ende > now:
+                ev["ts"] = windowstart
+            elif ev["kind"] == "run_end" and end is not None and end > now:
                 # Trap 2: an end beyond the edge of the window does not belong inside. Filtering
                 # only here is deliberate: before this it is not settled whether a `run_end`
                 # boundary appears at all (a running run gets none). With a trailing window
@@ -942,10 +942,10 @@ async def all_events(
     # are the same number as soon as two runs with neighbouring row ids follow each other,
     # which across sessions is the normal case. Without this `Recorder.push` would silently
     # drop the second event, and an agent would never enter.
-    entdoppeln_seq(events)
+    dedupe_seq(events)
 
     billed = await _billed_by_run(db, run_ids, await PriceTable.load(db))
-    answer = leer(
+    answer = empty(
         agents=[_agent_row(r, billed.get(r.id),
                            issue_key=issue_keys.get(r.issue_id or 0, ""),
                            project_key=project_keys.get(r.project_id or 0, ""))
@@ -1092,11 +1092,11 @@ def _percentile_ms(counts: list[int], q: float, max_ms: int | None) -> int | Non
     total = sum(counts)
     if total <= 0:
         return None
-    rang = max(1, math.ceil(q * total))          # the next rank, not interpolation
+    rank = max(1, math.ceil(q * total))          # the next rank, not interpolation
     seen = 0
     for i, n in enumerate(counts):
         seen += n
-        if seen >= rang:
+        if seen >= rank:
             if i >= len(DURATION_LADDER_MS):
                 return None
             edge = DURATION_LADDER_MS[i]
@@ -1107,13 +1107,13 @@ def _percentile_ms(counts: list[int], q: float, max_ms: int | None) -> int | Non
 def _display_buckets(counts: list[int]) -> list[dict]:
     """The five display buckets as sums of ladder buckets. `lt_ms: None` means "above"."""
     out: list[dict] = []
-    unten = 0
+    below = 0
     for edge in DURATION_DISPLAY_EDGES_MS:
-        bis = sum(n for i, n in enumerate(counts)
+        to = sum(n for i, n in enumerate(counts)
                   if i < len(DURATION_LADDER_MS) and DURATION_LADDER_MS[i] <= edge)
-        out.append({"lt_ms": edge, "n": bis - unten})
-        unten = bis
-    out.append({"lt_ms": None, "n": sum(counts) - unten})
+        out.append({"lt_ms": edge, "n": to - below})
+        below = to
+    out.append({"lt_ms": None, "n": sum(counts) - below})
     return out
 
 
@@ -1197,30 +1197,30 @@ async def _agents_payload(
     # reporting the time elapsed so far as a duration would be a number that changes on the
     # next fetch without anything having happened.
     duration = _duration_ms_expr(db)
-    eimer = _bucket_expr(duration)
+    bucket = _bucket_expr(duration)
     for name, idx, n, max_ms in (await db.execute(
-        _runs(select(Run.agent, eimer, func.count(), func.max(duration)))
+        _runs(select(Run.agent, bucket, func.count(), func.max(duration)))
         .where(Run.finished_at.is_not(None))
-        .group_by(Run.agent, eimer)
+        .group_by(Run.agent, bucket)
     )).all():
         row = _agent_slot(agents, name or "")
         row["_buckets"][int(idx)] += int(n or 0)
-        gemessen = int(round(float(max_ms or 0.0)))
+        measured = int(round(float(max_ms or 0.0)))
         d = row["duration"]
-        d["max_ms"] = gemessen if d["max_ms"] is None else max(d["max_ms"], gemessen)
+        d["max_ms"] = measured if d["max_ms"] is None else max(d["max_ms"], measured)
 
     # (3) Steps per run. `iterations` (rounds of the agent) and steps (rows in `run_steps`)
     # are two different things: the inspector already labels `iterations` as rounds, and one
     # shared field would have made both numbers unreadable. The denominator of the average is
     # the runs WITH steps: a run whose steps the retention has already deleted did not have
     # "0 steps".
-    je_lauf = _runs(
+    per_run = _runs(
         select(Run.agent.label("agent"), RunStep.run_id.label("rid"), func.count().label("n"))
         .select_from(RunStep).join(Run, Run.id == RunStep.run_id)
     ).group_by(Run.agent, RunStep.run_id).subquery()
     for name, s_sum, s_max, s_runs in (await db.execute(
-        select(je_lauf.c.agent, func.sum(je_lauf.c.n), func.max(je_lauf.c.n), func.count())
-        .group_by(je_lauf.c.agent)
+        select(per_run.c.agent, func.sum(per_run.c.n), func.max(per_run.c.n), func.count())
+        .group_by(per_run.c.agent)
     )).all():
         row = _agent_slot(agents, name or "")
         row["_step_sum"] += int(s_sum or 0)
@@ -1257,7 +1257,7 @@ async def _agents_payload(
     # calls and 0 proven verdicts). Computing a rate `ok/n` from that would paint half the
     # table red for no reason, because the difference is "unknown", not "failed".
     tools: dict[str, list[dict]] = {}
-    for name, tool, n, ok, schlecht in (await db.execute(
+    for name, tool, n, ok, bad in (await db.execute(
         _runs(select(Run.agent, RunStep.tool_name, func.count(),
                      func.sum(case((RunStep.ok.is_(True), 1), else_=0)),
                      func.sum(case((RunStep.ok.is_(False), 1), else_=0)))
@@ -1267,7 +1267,7 @@ async def _agents_payload(
     )).all():
         _agent_slot(agents, name or "")
         tools.setdefault(name or "", []).append(
-            {"tool": tool, "n": int(n or 0), "ok": int(ok or 0), "failed": int(schlecht or 0)})
+            {"tool": tool, "n": int(n or 0), "ok": int(ok or 0), "failed": int(bad or 0)})
 
     for name, row in agents.items():
         row["iterations_avg"] = round(row["_iter_sum"] / row["runs"], 1) if row["runs"] else 0.0
@@ -1347,21 +1347,21 @@ async def global_agents(
         return stmt.where(visible)
 
     if user.global_role == GlobalRole.admin:
-        kosten_cond = true()
+        cost_cond = true()
     else:
         # Cost entries carry no `owner_id`. Project bound ones cover the project set;
         # projectless ones (assistant, job) hang on the run, hence the outer join. A
         # projectless entry whose run is already deleted stays invisible to non admins:
         # better a gap than somebody else's bill.
         allowed = await compute_acl(db, user)
-        kosten_cond = or_(
+        cost_cond = or_(
             CostEntry.project_id.in_(allowed),
             and_(CostEntry.project_id.is_(None), Run.owner_id == user.id),
         )
 
     def scope_costs(stmt):
         return stmt.select_from(CostEntry).outerjoin(
-            Run, Run.id == CostEntry.run_id).where(kosten_cond)
+            Run, Run.id == CostEntry.run_id).where(cost_cond)
 
     return await _agents_payload(db, scope_runs=scope_runs, scope_costs=scope_costs,
                                  since_hours=since_hours, agent=agent, tool_limit=tool_limit)

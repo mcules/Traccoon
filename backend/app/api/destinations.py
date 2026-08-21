@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.error import Fehler
+from ..core.error import Error
 from ..core.security import encrypt_secret
 from ..db import get_session
 from ..models.destination import Destination
@@ -55,26 +55,26 @@ async def _require_write(db: AsyncSession, user: User, *, user_id: int | None,
     if project_id is not None:
         project = await db.get(Project, project_id)
         if project is None:
-            raise Fehler(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
+            raise Error(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
         access = await build_access(project, user, db)   # 404 on a foreign project
         if not access.has_role(ProjectRole.maintainer):
-            raise Fehler(status.HTTP_403_FORBIDDEN, "err.role_owner_maintainer_required",
+            raise Error(status.HTTP_403_FORBIDDEN, "err.role_owner_maintainer_required",
                          "Role owner|maintainer is required")
         return
     if user_id is not None:
         if user_id != user.id and user.global_role != GlobalRole.admin:
-            raise Fehler(status.HTTP_403_FORBIDDEN, "err.foreign_personal_destination",
+            raise Error(status.HTTP_403_FORBIDDEN, "err.foreign_personal_destination",
                          "Foreign personal destination")
         return
     if user.global_role != GlobalRole.admin:
-        raise Fehler(status.HTTP_403_FORBIDDEN, "err.only_admin_may_create_system_wide",
+        raise Error(status.HTTP_403_FORBIDDEN, "err.only_admin_may_create_system_wide",
                      "Only an admin may create system-wide destinations")
 
 
 async def _get(db: AsyncSession, did: int) -> Destination:
     d = await db.get(Destination, did)
     if d is None:
-        raise Fehler(status.HTTP_404_NOT_FOUND, "err.destination_not_found",
+        raise Error(status.HTTP_404_NOT_FOUND, "err.destination_not_found",
                      "Destination not found")
     return d
 
@@ -101,12 +101,12 @@ async def list_destinations(
     if usable:
         rows = await svc.visible(db, project_id=project_id, owner_id=user.id)
         return [_out(d) for d in rows]
-    bereiche = [Destination.user_id.is_(None) & Destination.project_id.is_(None),
+    areas = [Destination.user_id.is_(None) & Destination.project_id.is_(None),
                 (Destination.user_id == user.id) & Destination.project_id.is_(None)]
     if project_id is not None:
         await _require_write(db, user, user_id=None, project_id=project_id)
-        bereiche.append(Destination.project_id == project_id)
-    q = select(Destination).where(or_(*bereiche))
+        areas.append(Destination.project_id == project_id)
+    q = select(Destination).where(or_(*areas))
     if user.global_role == GlobalRole.admin and project_id is None:
         q = select(Destination)
     rows = (await db.execute(q.order_by(Destination.name))).scalars().all()
@@ -120,13 +120,13 @@ async def create_destination(
 ):
     await _require_write(db, user, user_id=data.user_id, project_id=data.project_id)
     if data.auth_type not in svc.AUTH_TYPES:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_method_named",
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.unknown_method_named",
                      "Unknown method '{name}'", name=data.auth_type)
-    doppelt = await svc.resolve(db, data.name, project_id=data.project_id,
+    duplicate = await svc.resolve(db, data.name, project_id=data.project_id,
                                 owner_id=data.user_id)
-    if doppelt is not None and (doppelt.user_id, doppelt.project_id) == (data.user_id,
+    if duplicate is not None and (duplicate.user_id, duplicate.project_id) == (data.user_id,
                                                                         data.project_id):
-        raise Fehler(status.HTTP_409_CONFLICT, "err.destination_already_exists_scope",
+        raise Error(status.HTTP_409_CONFLICT, "err.destination_already_exists_scope",
                      "The destination '{name}' already exists in this scope", name=data.name)
     values = data.model_dump(exclude={"user_id", "project_id", *SECRET_FIELDS})
     d = Destination(**values, user_id=data.user_id, project_id=data.project_id,
@@ -147,7 +147,7 @@ async def update_destination(
     await _require_write(db, user, user_id=d.user_id, project_id=d.project_id)
     values = data.model_dump(exclude_unset=True, exclude={*SECRET_FIELDS})
     if "auth_type" in values and values["auth_type"] not in svc.AUTH_TYPES:
-        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_method", "Unknown method")
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.unknown_method", "Unknown method")
     for field, value in values.items():
         setattr(d, field, value)
     if "auth_type" in values:
@@ -185,7 +185,7 @@ async def test_destination(
                               query=data.query or {}, headers=data.headers or {},
                               body=data.body, timeout=data.timeout_sec)
     except Exception as e:  # noqa: BLE001 - network and auth errors belong in the answer
-        raise Fehler(status.HTTP_502_BAD_GATEWAY, "err.call_failed",
+        raise Error(status.HTTP_502_BAD_GATEWAY, "err.call_failed",
                      "The call failed: {reason}", reason=e)
     finally:
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben

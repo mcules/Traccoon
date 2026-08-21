@@ -55,7 +55,7 @@ FREEMAIL_DOMAINS = frozenset({
 # <info@fremde-firma.example>", 2026-08-18). It stays short on purpose, and ambiguous
 # tokens stay out ("ing" would fire on every "Dipl.-Ing.", "ups" on every "Ups!", "wise" and
 # "booking" are ordinary English words).
-MARKEN = frozenset({
+BRANDS = frozenset({
     # Geld
     "n26", "paypal", "klarna", "sparkasse", "volksbank", "raiffeisen", "commerzbank",
     "postbank", "dkb", "comdirect", "targobank", "santander", "revolut", "mastercard",
@@ -138,7 +138,7 @@ _HARMLOS_WIRKEND = frozenset({
     "gif", "rtf", "csv", "odt", "zip",
 })
 _ARCHIVE = frozenset({"zip", "rar", "7z", "gz", "tar", "cab", "arj"})
-_PASSWORT_WORTE = re.compile(r"\b(passwor[dt]|kennwor[dt]|entsperrcode|pin\s*:)\b", re.IGNORECASE)
+_PASSWORD_WORDS = re.compile(r"\b(passwor[dt]|kennwor[dt]|entsperrcode|pin\s*:)\b", re.IGNORECASE)
 
 # Invisible characters: they break patterns for filters without a person seeing anything. In a
 # real mail they have no business being there (the exception is the emoji joiner, which is why
@@ -150,7 +150,7 @@ _ZWEITEILIGE_TLD_LABEL = ("co", "com", "org", "net", "gov", "ac")
 # Weights of the individual signals. The sum is capped; no single rule may decide on its own,
 # because the signals differ too much in reliability, and a false alarm costs more here than an
 # advertisement that slips through.
-_GEWICHT = {
+_WEIGHT = {
     # The verdict of our own mail server: measured against real post by far the most meaningful
     # value, and it stands in the header anyway.
     "server_spam_hoch": 0.70,
@@ -242,14 +242,14 @@ _GEWICHT = {
 _MAX_SCORE = 1.0
 
 
-def ist_meine(adresse: str, meine: frozenset[str]) -> bool:
+def is_my(address: str, my: frozenset[str]) -> bool:
     """Does the address belong to me? Entries may read `*@my-domain.de`: whoever receives a
     whole domain (catch all with throwaway aliases) cannot enumerate their addresses."""
-    adresse = (adresse or "").lower()
-    if adresse in meine:
+    address = (address or "").lower()
+    if address in my:
         return True
-    domain = _domain(adresse)
-    return bool(domain) and f"*@{domain}" in meine
+    domain = _domain(address)
+    return bool(domain) and f"*@{domain}" in my
 
 
 @dataclass
@@ -267,7 +267,7 @@ class RuleResult:
     recipients: list[str] = field(default_factory=list)
     # Requested bulk mail (a valid unsubscribe path, clean technique) is a category of its own.
     # A newsletter is NOT spam, and whoever equates the two loses order confirmations.
-    ist_newsletter: bool = False
+    is_newsletter: bool = False
 
     def hits(self, signal: str, text: str) -> None:
         """Record a signal (once) and add its weight."""
@@ -275,7 +275,7 @@ class RuleResult:
             return
         self.signals.append(signal)
         self.reasons.append(text)
-        self.score += _GEWICHT.get(signal, 0.0)
+        self.score += _WEIGHT.get(signal, 0.0)
 
 
 def _addr_list(value) -> list[tuple[str, str]]:
@@ -308,7 +308,7 @@ def _header(headers: dict, name: str) -> str:
     return str(v or "")
 
 
-def _wurzel(domain: str) -> str:
+def _root(domain: str) -> str:
     """`bounce.shop.de` becomes `shop.de`. A rough approximation without a public suffix list:
     that would need a maintained file, and for comparing two domains of the same mail the
     approximation is enough. In doubt it yields a point of suspicion, not a verdict."""
@@ -322,7 +322,7 @@ def _wurzel(domain: str) -> str:
 
 # --- Script and visibility ----------------------------------------------------------
 
-def _schriften(text: str) -> set[str]:
+def _fonts(text: str) -> set[str]:
     """Which writing systems appear in this text (letters only)."""
     out: set[str] = set()
     for chars in text or "":
@@ -332,31 +332,31 @@ def _schriften(text: str) -> set[str]:
             name = unicodedata.name(chars)
         except ValueError:
             continue
-        for schrift in ("LATIN", "CYRILLIC", "GREEK", "ARMENIAN", "HEBREW"):
-            if name.startswith(schrift):
-                out.add(schrift)
+        for font in ("LATIN", "CYRILLIC", "GREEK", "ARMENIAN", "HEBREW"):
+            if name.startswith(font):
+                out.add(font)
                 break
     return out
 
 
-def _mischt_schriften(text: str) -> bool:
+def _mixes_fonts(text: str) -> bool:
     """Does ONE word mix several writing systems? That is the homoglyph trick: a Cyrillic "о"
     in an otherwise Latin name looks identical but is a different character. Checked word by
     word, because a mail may of course contain Greek quotations next to German text, while a
     single word must not mix the two."""
     for word in re.split(r"[\s./@_-]+", text or ""):
-        if len(word) > 1 and len(_schriften(word)) > 1:
+        if len(word) > 1 and len(_fonts(word)) > 1:
             return True
     return False
 
 
-def _hat_unsichtbare(text: str) -> bool:
+def _has_invisible(text: str) -> bool:
     return bool(_UNSICHTBAR.search(text or ""))
 
 
 # --- Authenticity ---------------------------------------------------------------------
 
-def _auth_ergebnisse(headers: dict) -> dict[str, str]:
+def _auth_results(headers: dict) -> dict[str, str]:
     """SPF/DKIM/DMARC result from `Authentication-Results` (plus `Received-SPF`).
 
     The header is running text (`spf=pass smtp.mailfrom=…; dkim=fail …`), so it is searched,
@@ -364,14 +364,14 @@ def _auth_ergebnisse(headers: dict) -> dict[str, str]:
     but also harmless, because they could only lead to 'pass' here, which we never use as an
     acquittal.
     """
-    roh = " ".join([
+    raw = " ".join([
         _header(headers, "Authentication-Results"),
         _header(headers, "ARC-Authentication-Results"),
         _header(headers, "Received-SPF"),
     ]).lower()
     out: dict[str, str] = {}
     for mech in ("spf", "dkim", "dmarc"):
-        m = re.search(rf"\b{mech}\s*=\s*(\w+)", roh)
+        m = re.search(rf"\b{mech}\s*=\s*(\w+)", raw)
         if m:
             out[mech] = m.group(1)
     if "spf" not in out:
@@ -382,25 +382,25 @@ def _auth_ergebnisse(headers: dict) -> dict[str, str]:
     return out
 
 
-def _signaturdomains(headers: dict) -> list[str]:
+def _signaturedomains(headers: dict) -> list[str]:
     """Domains that signed this mail with DKIM (`d=`).
 
     The watcher pulls them from the `DKIM-Signature` headers; when nothing is there,
     `header.d=` from `Authentication-Results` is read instead (Google and Microsoft write it
     along).
     """
-    roh = (headers or {}).get("DKIM-Domains")
-    if isinstance(roh, list) and roh:
-        return [str(d).lower().strip(". ") for d in roh if d]
-    if isinstance(roh, str) and roh:
-        return [roh.lower().strip(". ")]
+    raw = (headers or {}).get("DKIM-Domains")
+    if isinstance(raw, list) and raw:
+        return [str(d).lower().strip(". ") for d in raw if d]
+    if isinstance(raw, str) and raw:
+        return [raw.lower().strip(". ")]
     return [m.group(1).lower().strip(". ") for m in re.finditer(
         r"header\.d\s*=\s*([^\s;]+)",
         " ".join([_header(headers, "Authentication-Results"),
                   _header(headers, "ARC-Authentication-Results")]))]
 
 
-def _check_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
+def _check_serververdict(res: RuleResult, headers: dict, payload: dict) -> None:
     """What our own mail server has already decided.
 
     Measured against real post this is by far the most meaningful value in the whole header,
@@ -409,7 +409,7 @@ def _check_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
 
     `X-Spam-Level` is a chain of stars: one star per point of the spamd score.
     """
-    sterne = len(re.match(r"^\**", _header(headers, "X-Spam-Level").strip()).group(0))
+    stars = len(re.match(r"^\**", _header(headers, "X-Spam-Level").strip()).group(0))
     points = None
     m = re.search(r"score=(-?[\d.]+)", _header(headers, "X-Spam-Status"))
     if m:
@@ -417,8 +417,8 @@ def _check_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
             points = float(m.group(1))
         except ValueError:
             points = None
-    if points is None and sterne:
-        points = float(sterne)
+    if points is None and stars:
+        points = float(stars)
     if points is not None:
         if points >= 10:
             res.hits("server_spam_hoch", f"Mailserver bewertet sie mit {points:g} Punkten")
@@ -429,10 +429,10 @@ def _check_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
     # more than the sum: the total can stay far below the threshold while the link target is
     # demonstrably listed (2026-08-19, N26 phishing: 1.6 of 7 points, URIBL_BLACK among them).
     m = re.search(r"tests=([\w,\s]+)", _header(headers, "X-Spam-Status"))
-    getroffen = sorted(set(re.split(r"[,\s]+", (m.group(1) if m else "").upper())) & SPERRLISTEN)
-    if getroffen:
+    hit = sorted(set(re.split(r"[,\s]+", (m.group(1) if m else "").upper())) & SPERRLISTEN)
+    if hit:
         res.hits("server_blockliste",
-                    f"Mailserver fand einen Eintrag in einer Sperrliste ({getroffen[0]})")
+                    f"Mailserver fand einen Eintrag in einer Sperrliste ({hit[0]})")
 
     flag = _header(headers, "X-Spam-Flag").strip().lower()
     status = _header(headers, "X-Spam-Status").strip().lower()
@@ -444,11 +444,11 @@ def _check_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
         res.hits("betreff_spam_markiert", "Betreff ist vom Mailserver als Spam markiert")
 
 
-def _check_echtheit(res: RuleResult, headers: dict, payload: dict, *,
-                     ist_listing: bool, meine_domains: frozenset[str],
-                     meine_adressen: frozenset[str]) -> None:
+def _check_authenticity(res: RuleResult, headers: dict, payload: dict, *,
+                     is_listing: bool, my_domains: frozenset[str],
+                     my_addresses: frozenset[str]) -> None:
     """SPF/DKIM/DMARC, alignment, return path, reply address."""
-    auth = _auth_ergebnisse(headers)
+    auth = _auth_results(headers)
     if auth.get("dmarc") in ("fail", "permerror"):
         res.hits("dmarc_fail", "DMARC fehlgeschlagen")
     if auth.get("spf") in ("fail", "softfail", "permerror"):
@@ -460,7 +460,7 @@ def _check_echtheit(res: RuleResult, headers: dict, payload: dict, *,
         # check and write the result down. When the note is missing entirely, the message got
         # past this check.
         res.hits("auth_fehlt", "keine Prüfergebnisse (SPF/DKIM/DMARC) im Kopf")
-    elif auth.get("dkim") == "none" and not ist_listing:
+    elif auth.get("dkim") == "none" and not is_listing:
         # Practically every serious sender signs today. No signature does not mean "forged",
         # but it separates surprisingly well.
         res.hits("dkim_fehlt", "gar nicht signiert (kein DKIM)")
@@ -471,17 +471,17 @@ def _check_echtheit(res: RuleResult, headers: dict, payload: dict, *,
     # quiet. Otherwise it fires on every mailing list post and every Google Workspace sender,
     # both of which regularly countersign with a foreign domain.
     # both of which regularly countersign with a foreign domain.
-    domains = _signaturdomains(headers)
+    domains = _signaturedomains(headers)
     if (domains and res.sender_domain and auth.get("dkim") == "pass"
-            and auth.get("dmarc") != "pass" and not ist_listing):
-        if all(_wurzel(d) != _wurzel(res.sender_domain) for d in domains):
+            and auth.get("dmarc") != "pass" and not is_listing):
+        if all(_root(d) != _root(res.sender_domain) for d in domains):
             res.hits("dkim_nicht_ausgerichtet",
                         f"DKIM unterschrieben von {domains[0]}, nicht von {res.sender_domain}")
 
     # The message names one of MY addresses as the sender without passing a check: the oldest
     # trick there is ("from you to you"). Own post that really comes from here passes the
     # check, which is why this only applies when the check is missing or failed.
-    if (res.sender_email and ist_meine(res.sender_email, meine_adressen)
+    if (res.sender_email and is_my(res.sender_email, my_addresses)
             and auth.get("spf") != "pass" and auth.get("dkim") != "pass"):
         res.hits("absender_bin_ich",
                     "gibt meine eigene Adresse als Absender an, ohne bestandene Prüfung")
@@ -489,13 +489,13 @@ def _check_echtheit(res: RuleResult, headers: dict, payload: dict, *,
     # Read raw instead of through the address regex: that one does not know `=` as an address
     # character and would cut `SRS0=…=sender.tld=name@my-domain.de` exactly where the origin
     # domain we are looking for stands.
-    rp_roh = _header(headers, "Return-Path").strip().strip("<>").strip()
-    rp_domain = _domain(rp_roh)
+    rp_raw = _header(headers, "Return-Path").strip().strip("<>").strip()
+    rp_domain = _domain(rp_raw)
     # When forwarding, our own server rewrites the return path onto itself (SRS:
     # `SRS0=…=sender.tld=name@my-domain.de`). Then our own domain ALWAYS stands there, and a
     # comparison with the sender yields a hit on every single mail. A signal that always fires
     # is no signal.
-    if rp_domain and _wurzel(rp_domain) in meine_domains:
+    if rp_domain and _root(rp_domain) in my_domains:
         # Forwarded post: our own server rewrote the return path onto itself (SRS). The
         # original domain is in the address, but it is useless as a signal: measured against
         # real post it is the bounce domain of the sending service
@@ -503,7 +503,7 @@ def _check_echtheit(res: RuleResult, headers: dict, payload: dict, *,
         # newsletter. There is simply nothing to gain here.
         rp_domain = ""
 
-    if rp_domain and res.sender_domain and _wurzel(rp_domain) != _wurzel(res.sender_domain):
+    if rp_domain and res.sender_domain and _root(rp_domain) != _root(res.sender_domain):
         # Separate bounce domains are common with large senders (`bounce.shop.de` for
         # `shop.de`), so only a difference beyond the shared root counts.
         res.hits("returnpath_mismatch",
@@ -512,9 +512,9 @@ def _check_echtheit(res: RuleResult, headers: dict, payload: dict, *,
     # Mailing lists and shops regularly direct replies elsewhere, so a
     # abweichende Antwortadresse nichts.
     reply_to = _addr_list(payload.get("reply_to")) or _addr_list(_header(headers, "Reply-To"))
-    if reply_to and res.sender_domain and not ist_listing:
+    if reply_to and res.sender_domain and not is_listing:
         rt_domain = _domain(reply_to[0][1])
-        if rt_domain and _wurzel(rt_domain) != _wurzel(res.sender_domain):
+        if rt_domain and _root(rt_domain) != _root(res.sender_domain):
             res.hits("replyto_fremd",
                         f"Antwort ginge an {rt_domain}, nicht an {res.sender_domain}")
 
@@ -526,7 +526,7 @@ _TEXT_DOMAIN_RE = re.compile(r"\b(?:https?://|www\.)?([a-z0-9][a-z0-9-]{1,62}(?:
                              re.IGNORECASE)
 
 
-def _genannte_domains(text: str) -> set[str]:
+def _named_domains(text: str) -> set[str]:
     """Every domain the mail writes out itself: in an address, a URL or as bare text."""
     out = set()
     for hits in _TEXT_DOMAIN_RE.finditer(text or ""):
@@ -536,8 +536,8 @@ def _genannte_domains(text: str) -> set[str]:
     return out
 
 
-def _identity_ohne_deckung(res: RuleResult, subject: str, body: str, targets: set[str],
-                             meine_domains: frozenset[str]) -> tuple[str, str]:
+def _identity_without_backing(res: RuleResult, subject: str, body: str, targets: set[str],
+                             my_domains: frozenset[str]) -> tuple[str, str]:
     """Which identity does the mail claim, and does anything about it belong to that identity?
 
     This needs no list of brands, and that is the point. A forged mail names its victim
@@ -557,43 +557,43 @@ def _identity_ohne_deckung(res: RuleResult, subject: str, body: str, targets: se
     least links there. Whoever mentions a partner in passing fails at 2. Only the forgery
     fulfils all three.
     """
-    anspruch = f"{res.sender_name} {subject}".lower()
-    worte = set(re.findall(r"[a-z0-9]+", anspruch))
-    kompakt = re.sub(r"[^a-z0-9]", "", anspruch)
+    claim = f"{res.sender_name} {subject}".lower()
+    words = set(re.findall(r"[a-z0-9]+", claim))
+    compact = re.sub(r"[^a-z0-9]", "", claim)
     source = f"{subject}\n{body[:4000]}"
-    eigene = set(meine_domains) | {_wurzel(a.rpartition("@")[2]) for a in res.recipients}
-    for genannt in sorted(_genannte_domains(source)):
-        wurzel = _wurzel(genannt)
-        marke = wurzel.split(".", 1)[0]
-        if len(marke) < 3 or wurzel in FREEMAIL_DOMAINS or marke in _KEINE_MARKE:
+    own = set(my_domains) | {_root(a.rpartition("@")[2]) for a in res.recipients}
+    for named in sorted(_named_domains(source)):
+        root = _root(named)
+        mark = root.split(".", 1)[0]
+        if len(mark) < 3 or root in FREEMAIL_DOMAINS or mark in _NO_MARK:
             continue
         # My own domain is not a claimed identity: it stands in the mail because I am the
         # recipient ("delivered to …"), and a forged mail quotes it as readily as an honest one.
-        if wurzel in eigene:
+        if root in own:
             continue
         # A name is written with a space, a domain with a hyphen or with nothing at all
         # ("Stadtwerke Hintertupfing" / stadtwerke-hintertupfing.de). So compare the letters,
         # not the spelling. As a whole word always, run together only from six letters on:
         # "verti" would otherwise be found inside "konvertieren".
-        eng = marke.replace("-", "")
-        if marke not in worte and not (len(eng) >= 6 and eng in kompakt):
+        eng = mark.replace("-", "")
+        if mark not in words and not (len(eng) >= 6 and eng in compact):
             continue
-        gedeckt = [res.sender_domain, *targets]
-        if any(marke in d or eng in d.replace("-", "") for d in gedeckt):
+        backed = [res.sender_domain, *targets]
+        if any(mark in d or eng in d.replace("-", "") for d in backed):
             continue
-        return marke, genannt
+        return mark, named
     return "", ""
 
 
 # Words that stand in every second domain and say nothing about who is writing.
-_KEINE_MARKE = frozenset({
+_NO_MARK = frozenset({
     "www", "mail", "email", "web", "news", "info", "shop", "service", "support", "kunde",
     "kunden", "portal", "online", "login", "account", "konto", "sicherheit", "security",
     "bank", "post", "cloud", "server", "host", "site", "page", "link", "click", "track",
 })
 
 
-def _marke_ohne_deckung(name: str, domain: str) -> str:
+def _mark_without_backing(name: str, domain: str) -> str:
     """The brand from the display name that the sender domain does not carry, or ''.
 
     Contained is enough, not equal: `amazonses.com` sends for Amazon and
@@ -602,20 +602,20 @@ def _marke_ohne_deckung(name: str, domain: str) -> str:
     if not name or not domain:
         return ""
     for word in re.findall(r"[a-z0-9]{2,}", name.lower()):
-        if word in MARKEN and word not in domain.lower():
+        if word in BRANDS and word not in domain.lower():
             return word
     return ""
 
 
-def _check_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) -> None:
+def _check_namespoofing(res: RuleResult, known_domains: frozenset[str]) -> None:
     """Punycode, mixed scripts, invisible characters, a brand as a foreign subdomain."""
     if any(label.startswith("xn--") for label in res.sender_domain.split(".")):
         res.hits("punycode_absender",
                     f"Absender-Domain ist umgeschrieben (Punycode): {res.sender_domain}")
-    if _mischt_schriften(res.sender_domain) or _mischt_schriften(res.sender_name):
+    if _mixes_fonts(res.sender_domain) or _mixes_fonts(res.sender_name):
         res.hits("schriftmischung",
                     "Absender mischt Schriftsysteme (nachgebaute Zeichen, z. B. kyrillisches „о“)")
-    if _hat_unsichtbare(res.sender_name) or _hat_unsichtbare(res.sender_email):
+    if _has_invisible(res.sender_name) or _has_invisible(res.sender_email):
         res.hits("unsichtbare_zeichen", "unsichtbare Zeichen im Absender")
 
     # The display name claims an address or brand the sender address does not keep: "DHL
@@ -625,7 +625,7 @@ def _check_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) -
     name_domains |= {d.lower() for d in re.findall(r"\b([\w-]+\.[a-z]{2,})\b", res.sender_name or "")}
     name_domains = {d for d in name_domains if d}
     if name_domains and res.sender_domain:
-        if all(_wurzel(d) != _wurzel(res.sender_domain) for d in name_domains):
+        if all(_root(d) != _root(res.sender_domain) for d in name_domains):
             res.hits("absender_name_taeuscht",
                         f"Anzeigename nennt {sorted(name_domains)[0]}, "
                         f"gesendet von {res.sender_domain}")
@@ -634,16 +634,16 @@ def _check_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) -
     # <support@fremde-firma.example>". Mail programs show the name and hide the address, which
     # is why this is the cheapest disguise there is, and why it needs no technical flaw: the
     # sender owns their throwaway domain and signs it properly.
-    marke = _marke_ohne_deckung(res.sender_name, res.sender_domain)
-    if marke:
+    mark = _mark_without_backing(res.sender_name, res.sender_domain)
+    if mark:
         res.hits("marke_im_anzeigenamen",
-                    f"Anzeigename nennt „{marke}“, gesendet von {res.sender_domain}")
+                    f"Anzeigename nennt „{mark}“, gesendet von {res.sender_domain}")
 
     # A domain known to me is IN the sender but is not the sender domain:
     # `sparkasse.de.sicherheit-pruefung.top` or `sparkasse-de.top`. That is the trick which
     # brings a known brand into the visible address without owning it.
-    if res.sender_domain and _wurzel(res.sender_domain) not in bekannte_domains:
-        for known in bekannte_domains:
+    if res.sender_domain and _root(res.sender_domain) not in known_domains:
+        for known in known_domains:
             if known in FREEMAIL_DOMAINS or len(known) < 6:
                 continue
             if known in res.sender_domain or known.replace(".", "-") in res.sender_domain:
@@ -652,7 +652,7 @@ def _check_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) -
                 break
 
 
-def _check_kopfhygiene(res: RuleResult, headers: dict, payload: dict) -> None:
+def _check_headerhygiene(res: RuleResult, headers: dict, payload: dict) -> None:
     """Message id, date, random addresses, subject tricks, faked replies."""
     msgid = str(payload.get("message_id") or "").strip()
     if not msgid:
@@ -662,38 +662,38 @@ def _check_kopfhygiene(res: RuleResult, headers: dict, payload: dict) -> None:
 
     # Date offset: sending tools like to set a date in the future so the mail stands at the top
     # of the mailbox.
-    gesendet, empfangen = _ts(payload.get("date")), _ts(payload.get("timestamp"))
-    if gesendet and empfangen:
-        versatz = (gesendet - empfangen).total_seconds()
+    sent, received = _ts(payload.get("date")), _ts(payload.get("timestamp"))
+    if sent and received:
+        offset = (sent - received).total_seconds()
         # Only the future counts: a post dated header is a trick to put the message at the top
         # of the mailbox. An old date on the other hand belongs to every mail delivered late,
         # forwarded or restored from an archive, and measured against real post that was pure
         # noise.
-        if versatz > 86400:
+        if offset > 86400:
             res.hits("datum_versatz", "Sendedatum liegt in der Zukunft")
 
-    lokal = res.sender_email.split("@", 1)[0] if "@" in res.sender_email else ""
-    if re.search(r"\d{11,}", lokal) or re.search(r"[0-9a-f]{16,}", lokal) or re.match(r"^\d{8,}$", lokal):
+    local = res.sender_email.split("@", 1)[0] if "@" in res.sender_email else ""
+    if re.search(r"\d{11,}", local) or re.search(r"[0-9a-f]{16,}", local) or re.match(r"^\d{8,}$", local):
         res.hits("absender_zufaellig", "Absenderadresse sieht maschinell erzeugt aus")
     # `yffebnj@…`, thrown together letters without a single vowel. No person hands out such an
     # address, but a script that needs a new one for every send does.
-    if re.fullmatch(r"[b-df-hj-np-tv-xz]{6,}", lokal, re.IGNORECASE):
+    if re.fullmatch(r"[b-df-hj-np-tv-xz]{6,}", local, re.IGNORECASE):
         res.hits("absender_vokallos", "Absenderadresse ohne jeden Vokal (gewürfelt)")
 
-    betreff = str(payload.get("subject") or "")
-    buchstaben = [z for z in betreff if z.isalpha()]
-    if len(buchstaben) >= 12 and sum(1 for z in buchstaben if z.isupper()) / len(buchstaben) > 0.7:
+    subject = str(payload.get("subject") or "")
+    letters = [z for z in subject if z.isalpha()]
+    if len(letters) >= 12 and sum(1 for z in letters if z.isupper()) / len(letters) > 0.7:
         res.hits("betreff_geschrien", "Betreff komplett in Großbuchstaben")
-    if re.search(r"!{3,}", betreff):
+    if re.search(r"!{3,}", subject):
         res.hits("betreff_geschrien", "Betreff mit mehrfachen Ausrufezeichen")
     # G.e.w.i.n.n / G-e-w-i-n-n: letters are stretched to get past word filters.
-    if re.search(r"\b\w(?:[.\-_*]\w){4,}\b", betreff):
+    if re.search(r"\b\w(?:[.\-_*]\w){4,}\b", subject):
         res.hits("betreff_gestreckt", "Betreff mit gestreckten Wörtern (Filter-Umgehung)")
-    if _hat_unsichtbare(betreff):
+    if _has_invisible(subject):
         res.hits("unsichtbare_zeichen", "unsichtbare Zeichen im Betreff")
 
     # "Re:" without any reference is a faked reply to a conversation that never happened.
-    if re.match(r"^\s*(re|aw|antw|fwd?|wg)\s*:", betreff, re.IGNORECASE):
+    if re.match(r"^\s*(re|aw|antw|fwd?|wg)\s*:", subject, re.IGNORECASE):
         if not _header(headers, "In-Reply-To").strip() and not _header(headers, "References").strip():
             res.hits("fake_antwort", "„Re:“ ohne Bezug auf eine frühere Nachricht")
 
@@ -706,11 +706,11 @@ def _check_kopfhygiene(res: RuleResult, headers: dict, payload: dict) -> None:
         res.hits("received_kette_kurz", "nur eine Zustellstation im Kopf")
 
 
-def _ts(roh) -> dt.datetime | None:
-    if not roh:
+def _ts(raw) -> dt.datetime | None:
+    if not raw:
         return None
     try:
-        value = dt.datetime.fromisoformat(str(roh))
+        value = dt.datetime.fromisoformat(str(raw))
     except ValueError:
         return None
     return value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)
@@ -725,8 +725,8 @@ def _host(href: str) -> str:
         return ""
 
 
-def _check_links(res: RuleResult, payload: dict, *, ist_listing: bool,
-                  bekannte_domains: frozenset[str]) -> None:
+def _check_links(res: RuleResult, payload: dict, *, is_listing: bool,
+                  known_domains: frozenset[str]) -> None:
     """Check link targets against their visible text and against themselves.
 
     The difference between text and target is the most reliable indicator of phishing there is:
@@ -750,10 +750,10 @@ def _check_links(res: RuleResult, payload: dict, *, ist_listing: bool,
         if host.startswith("xn--") or ".xn--" in host:
             res.hits("link_punycode", f"Linkziel ist umgeschrieben (Punycode): {host}")
         # `https://paypal.de@boese.tld/`: everything before the @ is decoration, the target is boese.tld.
-        vor_host = href.split("://", 1)[-1].split("/", 1)[0]
-        if "@" in vor_host:
+        before_host = href.split("://", 1)[-1].split("/", 1)[0]
+        if "@" in before_host:
             res.hits("link_at_trick",
-                        f"Link tarnt sein Ziel mit einem @ ({vor_host[:60]})")
+                        f"Link tarnt sein Ziel mit einem @ ({before_host[:60]})")
         if host in _KUERZER:
             res.hits("link_kuerzungsdienst", f"Ziel hinter einem Kürzungsdienst ({host})")
         tld = host.rsplit(".", 1)[-1] if "." in host else ""
@@ -761,42 +761,42 @@ def _check_links(res: RuleResult, payload: dict, *, ist_listing: bool,
             res.hits("link_billig_tld", f"Linkziel auf .{tld}")
 
         # The visible text names a domain itself: does the link lead somewhere else?
-        gezeigt = _gezeigte_domain(text)
-        if not gezeigt or _wurzel(gezeigt) == _wurzel(host) or _marke(gezeigt) == _marke(host):
+        shown = _shown_domain(text)
+        if not shown or _root(shown) == _root(host) or _mark(shown) == _mark(host):
             # The brand comparison catches the honest case: "obi.de" links to `email.obi.com`,
             # different domains, same company. Without it the rule fires on every mail order
             # house that runs a mail domain of its own.
             continue
-        if _wurzel(host) == _wurzel(res.sender_domain):
+        if _root(host) == _root(res.sender_domain):
             # `emails.kickstarter.com` with sender `kickstarter.com`: the same yard.
             continue
-        if _wurzel(host) in _TRACKING_DOMAINS or _wurzel(host) in bekannte_domains:
+        if _root(host) in _TRACKING_DOMAINS or _root(host) in known_domains:
             # Click counters (Klaviyo, Mailjet, Sendgrid …) redirect every link in EVERY
             # newsletter: that is the normal case, not the exception. And a target that
             # ich ohnehin zu tun habe, verbirgt nichts.
             continue
-        if ist_listing:
+        if is_listing:
             # Inside a list the redirect stays explicable even when the service is unknown:
             # enough for a point of suspicion, not for a verdict.
             res.hits("link_text_umgeleitet",
-                        f"Link zeigt „{gezeigt}“, führt über {host}")
+                        f"Link zeigt „{shown}“, führt über {host}")
         else:
             res.hits("link_text_taeuscht",
-                        f"Link zeigt „{gezeigt}“, führt aber nach {host}")
+                        f"Link zeigt „{shown}“, führt aber nach {host}")
 
 
-def _marke(domain: str) -> str:
+def _mark(domain: str) -> str:
     """The brand label of a domain: `email.obi.com` becomes `obi`, `obi.de` becomes `obi`.
 
     Meant only for defusing: two domains of the same company under different endings should
     not count as deception. As a reason for suspicion the equality is useless, because
     `obi-versand.top` would carry the same brand.
     """
-    wurzel = _wurzel(domain)
-    return wurzel.split(".", 1)[0] if wurzel else ""
+    root = _root(domain)
+    return root.split(".", 1)[0] if root else ""
 
 
-def _gezeigte_domain(text: str) -> str:
+def _shown_domain(text: str) -> str:
     """The domain the visible link text claims, or ''.
 
     Only when the text looks LIKE an address. "Click here" claims nothing, and running text
@@ -816,22 +816,22 @@ def _gezeigte_domain(text: str) -> str:
 
 # Public collective mailboxes. Deliberately WITHOUT `vorstand`, `buchhaltung`, `rechnung`,
 # `bestellung`: those really do receive contracts.
-_ROLLEN_LOCALPARTS = frozenset({
+_ROLES_LOCALPARTS = frozenset({
     "info", "fragen", "kontakt", "contact", "hallo", "hello", "moin", "mail", "email",
     "office", "team", "service", "support", "help", "hilfe", "webmaster", "postmaster",
     "abuse", "noc", "presse", "press", "media", "marketing", "verein", "vorstandschaft",
     "list", "liste", "lists", "newsletter", "no-reply", "noreply", "mailer",
 })
 # Words that claim a personal business matter.
-_GESCHAEFT_RE = re.compile(
+_BUSINESS_RE = re.compile(
     r"\b(rechnung|zahlung(sinformation)?|mahnung|vertrag|kündigung|kuendigung|abo|"
     r"abonnement|kundenkonto|kundennummer|lastschrift|gebühr|gebuehr|verlängerung|"
     r"verlaengerung|zahlungsziel|faktura|invoice|payment|billing|überweisung|ueberweisung|"
     r"forderung|inkasso|zahlungsaufforderung|handlungsbedarf)\b", re.IGNORECASE)
 
 
-def _check_rollenadresse(res: RuleResult, subject: str, body: str, *,
-                          meine_adressen: frozenset[str],
+def _check_roleaddress(res: RuleResult, subject: str, body: str, *,
+                          my_addresses: frozenset[str],
                           nonbusiness_domains: frozenset[str] = frozenset()) -> None:
     """A business matter to an address that has no contracts.
 
@@ -847,27 +847,27 @@ def _check_rollenadresse(res: RuleResult, subject: str, body: str, *,
       nor an accounting department, and orders run elsewhere. That is not a guess but a
       statement, and it weighs more.
     """
-    if not _GESCHAEFT_RE.search(f"{subject}\n{body[:2000]}"):
+    if not _BUSINESS_RE.search(f"{subject}\n{body[:2000]}"):
         return
     # Deliberately without checking whether it is MY address: collective mailboxes are often
     # forwarded (the `fragen@` of a community lands in a private box). Whoever has the mail in
     # their box is concerned by it, and the role stays the same.
-    for adresse in res.recipients:
-        local, _, domain = adresse.lower().partition("@")
+    for address in res.recipients:
+        local, _, domain = address.lower().partition("@")
         local = local.split("+", 1)[0]
-        if domain and _wurzel(domain) in nonbusiness_domains or domain in nonbusiness_domains:
+        if domain and _root(domain) in nonbusiness_domains or domain in nonbusiness_domains:
             res.hits("geschaeft_an_domain_ohne_geschaeft",
-                        f"Geschäftsvorgang an {adresse} — über {domain} läuft "
+                        f"Geschäftsvorgang an {address} — über {domain} läuft "
                         f"nachweislich kein Vertragswesen")
             return
-        if local in _ROLLEN_LOCALPARTS:
+        if local in _ROLES_LOCALPARTS:
             res.hits("geschaeft_an_rollenadresse",
-                        f"Geschäftsvorgang an die Sammeladresse {adresse} — "
+                        f"Geschäftsvorgang an die Sammeladresse {address} — "
                         f"solche Adressen haben keine Verträge")
             return
 
 
-def _check_fassade(res: RuleResult, payload: dict, *, hat_unsubscribe: bool) -> None:
+def _check_facade(res: RuleResult, payload: dict, *, has_unsubscribe: bool) -> None:
     """Advertising layout without a single real link.
 
     Bulk mail lives on links: the offer, the imprint, the unsubscribe. A mail with elaborate
@@ -887,12 +887,12 @@ def _check_fassade(res: RuleResult, payload: dict, *, hat_unsubscribe: bool) -> 
     links = payload.get("links")
     if not isinstance(links, list) or links:
         return                     # there are links, so nothing to say
-    roh = str(payload.get("body_html") or payload.get("html") or "")
-    hat_html = bool(roh) or "<table" in str(payload.get("body_text") or "").lower()
-    if hat_unsubscribe:
+    raw = str(payload.get("body_html") or payload.get("html") or "")
+    has_html = bool(raw) or "<table" in str(payload.get("body_text") or "").lower()
+    if has_unsubscribe:
         res.hits("abmeldung_nur_behauptet",
                     "Abmeldeweg nur im Kopf behauptet — im Text steht kein einziger Link")
-    elif hat_html:
+    elif has_html:
         res.hits("html_ohne_links", "Werbe-Layout ohne einen einzigen Link")
 
 
@@ -906,27 +906,27 @@ def _check_attachments(res: RuleResult, payload: dict, body: str) -> None:
             continue
         parts = [t.lower() for t in name.split(".") if t]
         extension = parts[-1] if len(parts) > 1 else ""
-        vorletzte = parts[-2] if len(parts) > 2 else ""
+        penultimate = parts[-2] if len(parts) > 2 else ""
 
         if extension in _WEBSEITEN_ENDUNGEN:
             res.hits("anhang_webseite", f"Anhang „{name[:60]}“ ist eine Webseite")
         elif extension in _GEFAEHRLICHE_ENDUNGEN:
             res.hits("anhang_ausfuehrbar", f"Anhang „{name[:60]}“ kann ausgeführt werden")
         # `rechnung.pdf.exe`: the harmless ending is camouflage, the last one counts.
-        if vorletzte in _HARMLOS_WIRKEND and extension in _GEFAEHRLICHE_ENDUNGEN:
+        if penultimate in _HARMLOS_WIRKEND and extension in _GEFAEHRLICHE_ENDUNGEN:
             res.hits("anhang_doppelendung",
                         f"Anhang „{name[:60]}“ trägt zwei Endungen")
         # An archive whose password stands in the text is blind to every scanner, and that is
         # exactly what it is used for.
-        if extension in _ARCHIVE and _PASSWORT_WORTE.search(body or ""):
+        if extension in _ARCHIVE and _PASSWORD_WORDS.search(body or ""):
             res.hits("anhang_archiv_mit_passwort",
                         "passwortgeschütztes Archiv (kein Scanner kann hineinsehen)")
 
 
 # --- Gesamturteil --------------------------------------------------------------------
 
-def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
-             bekannte_domains: frozenset[str] = frozenset(),
+def evaluate(payload: dict, *, my_addresses: frozenset[str] = frozenset(),
+             known_domains: frozenset[str] = frozenset(),
              nonbusiness_domains: frozenset[str] = frozenset(),
              body: str = "") -> RuleResult:
     """Mail-Payload → Regelurteil.
@@ -951,42 +951,42 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
     cc = _addr_list(payload.get("cc"))
     # With aliases the delivery address often stands ONLY in these headers: `To` then carries
     # the distribution list, not me.
-    zustell = [a for _, a in _addr_list(_header(headers, "Delivered-To"))]
-    zustell += [a for _, a in _addr_list(_header(headers, "X-Original-To"))]
-    zustell += [a for _, a in _addr_list(_header(headers, "Envelope-To"))]
-    res.recipients = list(dict.fromkeys([a for _, a in an + cc] + zustell))
+    delivery = [a for _, a in _addr_list(_header(headers, "Delivered-To"))]
+    delivery += [a for _, a in _addr_list(_header(headers, "X-Original-To"))]
+    delivery += [a for _, a in _addr_list(_header(headers, "Envelope-To"))]
+    res.recipients = list(dict.fromkeys([a for _, a in an + cc] + delivery))
 
     # Mailing list characteristics first: several checks have to stay quiet on lists, because
     # regular detours there (countersigning, redirected replies) would otherwise be the rule.
     unsubscribe = _header(headers, "List-Unsubscribe").strip()
     list_id = _header(headers, "List-Id").strip()
     bulk = _header(headers, "Precedence").strip().lower() in ("bulk", "list", "junk")
-    ist_listing = bool(list_id or unsubscribe)
-    meine_domains = frozenset(
-        _wurzel(a.split("@", 1)[-1]) for a in meine_adressen if "@" in a)
+    is_listing = bool(list_id or unsubscribe)
+    my_domains = frozenset(
+        _root(a.split("@", 1)[-1]) for a in my_addresses if "@" in a)
 
-    _check_serverurteil(res, headers, payload)
-    _check_echtheit(res, headers, payload, ist_listing=ist_listing,
-                     meine_domains=meine_domains, meine_adressen=meine_adressen)
-    _check_namenstaeuschung(res, bekannte_domains)
-    _check_kopfhygiene(res, headers, payload)
-    _check_links(res, payload, ist_listing=ist_listing, bekannte_domains=bekannte_domains)
+    _check_serververdict(res, headers, payload)
+    _check_authenticity(res, headers, payload, is_listing=is_listing,
+                     my_domains=my_domains, my_addresses=my_addresses)
+    _check_namespoofing(res, known_domains)
+    _check_headerhygiene(res, headers, payload)
+    _check_links(res, payload, is_listing=is_listing, known_domains=known_domains)
     targets = {_host(l.get("href")) for l in (payload.get("links") or [])
              if isinstance(l, dict) and l.get("href")}
-    marke, genannt = _identity_ohne_deckung(res, str(payload.get("subject") or ""), body,
-                                              {z for z in targets if z}, meine_domains)
-    if marke:
+    mark, named = _identity_without_backing(res, str(payload.get("subject") or ""), body,
+                                              {z for z in targets if z}, my_domains)
+    if mark:
         res.hits("identitaet_ohne_deckung",
-                    f"gibt sich als „{marke}“ aus und nennt {genannt}, aber weder der Absender "
+                    f"gibt sich als „{mark}“ aus und nennt {named}, aber weder der Absender "
                     f"({res.sender_domain}) noch ein Link führt dorthin")
     _check_attachments(res, payload, body)
-    _check_fassade(res, payload, hat_unsubscribe=bool(unsubscribe))
-    _check_rollenadresse(res, str(payload.get("subject") or ""), body,
-                          meine_adressen=meine_adressen,
+    _check_facade(res, payload, has_unsubscribe=bool(unsubscribe))
+    _check_roleaddress(res, str(payload.get("subject") or ""), body,
+                          my_addresses=my_addresses,
                           nonbusiness_domains=nonbusiness_domains)
 
-    if meine_adressen and res.recipients and not any(
-            ist_meine(a, meine_adressen) for a in res.recipients):
+    if my_addresses and res.recipients and not any(
+            is_my(a, my_addresses) for a in res.recipients):
         res.hits("bcc_blast", "meine Adresse steht in keiner Empfängerzeile (Blindkopie-Versand)")
 
     tld = res.sender_domain.rsplit(".", 1)[-1] if "." in res.sender_domain else ""
@@ -999,8 +999,8 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
 
     # Clean bulk mail one can unsubscribe from is a newsletter, and the note keeps the scoring
     # from confusing "a lot of advertising" with "spam" later.
-    technik_sauber = not (_FAELSCHUNG & set(res.signals))
-    res.ist_newsletter = bool(unsubscribe) and technik_sauber
+    technical_clean = not (_FAELSCHUNG & set(res.signals))
+    res.is_newsletter = bool(unsubscribe) and technical_clean
 
     res.score = max(0.0, min(_MAX_SCORE, round(res.score, 3)))
     return res
@@ -1042,7 +1042,7 @@ def mail_text(payload: dict) -> str:
     return ""
 
 
-def ist_forgery_suspicion(signals) -> bool:
+def is_forgery_suspicion(signals) -> bool:
     """Does this verdict carry a signal of forgery?"""
     return bool(_FAELSCHUNG & set(signals or ()))
 
@@ -1059,7 +1059,7 @@ _STOPWORTE = frozenset({
 })
 
 
-def features(res: RuleResult, subject: str, *, kontakt_hits: str = "") -> list[str]:
+def features(res: RuleResult, subject: str, *, contact_hits: str = "") -> list[str]:
     """Feature keys for learning (`spam_learn`).
 
     A feature is anything that can be recognised again in a future mail: sender, domain, the
@@ -1075,10 +1075,10 @@ def features(res: RuleResult, subject: str, *, kontakt_hits: str = "") -> list[s
     for empf in res.recipients:
         out.append(f"to:{empf}")
     out.extend(f"sig:{s}" for s in res.signals)
-    if res.ist_newsletter:
+    if res.is_newsletter:
         out.append("sig:newsletter")
-    if kontakt_hits:
-        out.append(f"sig:kontakt_{kontakt_hits}")
+    if contact_hits:
+        out.append(f"sig:kontakt_{contact_hits}")
     words = {
         w.lower() for w in _WORD_RE.findall(subject or "")
         if w.lower() not in _STOPWORTE

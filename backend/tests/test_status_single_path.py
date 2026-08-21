@@ -67,11 +67,11 @@ async def test_one_call_sets_state_board_and_artifact(db, register):
     await db.commit()
 
     a = await db.get(Artifact, issue.artifact_id)
-    spalte = await db.get(WorkflowStatus, issue.status_id)
+    column = await db.get(WorkflowStatus, issue.status_id)
     assert issue.agent_status == TicketAgentStatus.hold
     assert issue.hold_reason == HoldReason.merge
     assert a.status_key == "hold"           # Artefakt sofort deckungsgleich
-    assert spalte.name == "Warten"          # Board ebenso
+    assert column.name == "Warten"          # Board ebenso
 
 
 async def test_taking_the_state_back_leaves_the_board_standing(db, register):
@@ -80,13 +80,13 @@ async def test_taking_the_state_back_leaves_the_board_standing(db, register):
     issue = await _ticket(db, proj)
     await kind.set_ticket_status(db, issue, TicketAgentStatus.in_progress)
     await db.commit()
-    vorher = issue.status_id
+    before = issue.status_id
 
     await kind.set_ticket_status(db, issue, None, board=False)
     await db.commit()
     a = await db.get(Artifact, issue.artifact_id)
     assert issue.agent_status is None and issue.hold_reason is None
-    assert issue.status_id == vorher
+    assert issue.status_id == before
     assert a.status_key == ""
 
 
@@ -125,9 +125,9 @@ async def test_a_running_agent_never_stands_on_wait(db):
     from app.models.agents import Run
     from app.models.enums import HoldReason, TicketAgentStatus
     from app.services.artifacts import reconcile
-    from test_lifecycle_process import _projekt_mit_ticket
+    from test_lifecycle_process import _project_with_ticket
 
-    _, _, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.hold)
+    _, _, issue, _ = await _project_with_ticket(db, TicketAgentStatus.hold)
     issue.hold_reason = HoldReason.merge
     db.add(Run(issue_id=issue.id, agent="developer", phase="execution", status="running"))
     await db.commit()
@@ -146,9 +146,9 @@ async def test_a_planning_run_stands_on_planning(db):
     from app.models.agents import Run
     from app.models.enums import TicketAgentStatus
     from app.services.artifacts import reconcile
-    from test_lifecycle_process import _projekt_mit_ticket
+    from test_lifecycle_process import _project_with_ticket
 
-    _, _, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.failed)
+    _, _, issue, _ = await _project_with_ticket(db, TicketAgentStatus.failed)
     db.add(Run(issue_id=issue.id, agent="architect", phase="planning", status="running"))
     await db.commit()
 
@@ -165,9 +165,9 @@ async def test_a_finished_run_does_not_touch_the_state(db):
     from app.models.agents import Run
     from app.models.enums import TicketAgentStatus
     from app.services.artifacts import reconcile
-    from test_lifecycle_process import _projekt_mit_ticket
+    from test_lifecycle_process import _project_with_ticket
 
-    _, _, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.hold)
+    _, _, issue, _ = await _project_with_ticket(db, TicketAgentStatus.hold)
     db.add(Run(issue_id=issue.id, agent="developer", phase="execution", status="success",
                finished_at=dt.datetime.now(tz=dt.timezone.utc)))
     await db.commit()
@@ -187,9 +187,9 @@ async def test_a_stale_column_is_pulled_along(db):
     from app.models.agents import Run
     from app.models.enums import TicketAgentStatus
     from app.services.artifacts import reconcile
-    from test_lifecycle_process import _projekt_mit_ticket
+    from test_lifecycle_process import _project_with_ticket
 
-    _, _, issue, stats = await _projekt_mit_ticket(db, TicketAgentStatus.in_progress)
+    _, _, issue, stats = await _project_with_ticket(db, TicketAgentStatus.in_progress)
     issue.status_id = stats["Warten"].id           # Spalte hinkt hinterher
     db.add(Run(issue_id=issue.id, agent="developer", phase="execution", status="running"))
     await db.commit()
@@ -208,9 +208,9 @@ async def test_an_accepted_ticket_stays_done(db):
     from app.models.agents import Run
     from app.models.enums import TicketAgentStatus
     from app.services.artifacts import reconcile
-    from test_lifecycle_process import _projekt_mit_ticket
+    from test_lifecycle_process import _project_with_ticket
 
-    _, _, issue, stats = await _projekt_mit_ticket(db, TicketAgentStatus.done)
+    _, _, issue, stats = await _project_with_ticket(db, TicketAgentStatus.done)
     issue.status_id = stats["Fertig"].id
     db.add(Run(issue_id=issue.id, agent="developer", phase="execution", status="running"))
     await db.commit()

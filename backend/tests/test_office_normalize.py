@@ -80,7 +80,7 @@ class RunLine:
 
 # ── Key sets per kind ────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("kind,step", [
+@pytest.mark.parametrize("kind, step", [
     ("run_start", mk(10, kind="run_start", role="system")),
     ("user_message", mk(11, kind="user_message", role="user", target="ticket",
                         content="Auftrag")),
@@ -101,10 +101,10 @@ class RunLine:
 ])
 def test_the_key_set_per_kind(kind, step):
     events = step_events(step, ctx())
-    haupt = [e for e in events if e["kind"] == kind]
-    assert len(haupt) == 1, f"{kind}: exactly one main event expected, {events}"
-    assert set(haupt[0]) == keys_of(kind)
-    assert haupt[0]["v"] == EVENT_VERSION
+    primary = [e for e in events if e["kind"] == kind]
+    assert len(primary) == 1, f"{kind}: exactly one main event expected, {events}"
+    assert set(primary[0]) == keys_of(kind)
+    assert primary[0]["v"] == EVENT_VERSION
 
 
 def test_session_seen_key_set():
@@ -202,7 +202,7 @@ def test_tool_ok_never_guesses_success():
     assert tool_ok("✅ OK") is None
 
 
-@pytest.mark.parametrize("tool,args,erwartet", [
+@pytest.mark.parametrize("tool, args, expected", [
     ("fs_edit", {"path": "app/main.py", "old": "a"}, "app/main.py"),
     ("fs_read", {"path": "  a.py  "}, "a.py"),
     ("delegate", {"role": "reviewer", "task": "prüfen"}, "reviewer"),
@@ -212,18 +212,18 @@ def test_tool_ok_never_guesses_success():
     ("obsidian__obsidian_get_note", {"target": {"path": "x.md"}}, None),
     ("fs_read", {}, None),
 ])
-def test_the_tool_target_table(tool, args, erwartet):
-    assert tool_target(tool, args) == erwartet
+def test_the_tool_target_table(tool, args, expected):
+    assert tool_target(tool, args) == expected
 
 
 # ── Begleiter ────────────────────────────────────────────────────────────────
 
 def test_the_file_edit_companion_only_on_proven_success():
-    for ok, erwartet in ((True, 1), (False, 0), (None, 0)):
+    for ok, expected in ((True, 1), (False, 0), (None, 0)):
         step = mk(30, kind="tool_result", role="tool", tool_name="fs_write",
                   target="a.py", ok=ok, content="…")
-        begleiter = [e for e in step_events(step, ctx()) if e["kind"] == "file_edit"]
-        assert len(begleiter) == erwartet, f"ok={ok}"
+        companion = [e for e in step_events(step, ctx()) if e["kind"] == "file_edit"]
+        assert len(companion) == expected, f"ok={ok}"
 
 
 def test_the_file_edit_companion_only_for_writing_tools():
@@ -244,23 +244,23 @@ def test_the_agent_spawn_companion_only_on_delegate():
     assert spawn["child_role"] == "reviewer" and spawn["prompt"] == "Bitte prüfen"
     assert spawn["tool_use_id"] == "tu-5" and spawn["background"] is False
 
-    andere = mk(33, kind="tool_start", role="tool", tool_name="fs_read", tool_use_id="tu-6",
+    different = mk(33, kind="tool_start", role="tool", tool_name="fs_read", tool_use_id="tu-6",
                 content='{"path": "a.py"}')
-    assert [e["kind"] for e in step_events(andere, ctx())] == ["tool_start"]
+    assert [e["kind"] for e in step_events(different, ctx())] == ["tool_start"]
 
 
 def test_usage_comes_even_without_text_and_agent_text_does_not():
-    stumm = mk(34, kind="agent_text", role="assistant", content="(Tool-Call)",
+    mute = mk(34, kind="agent_text", role="assistant", content="(Tool-Call)",
                in_tokens=1200, out_tokens=80, cache_read_tokens=5000)
-    events = step_events(stumm, ctx())
+    events = step_events(mute, ctx())
     assert [e["kind"] for e in events] == ["usage"]
     assert events[0]["in_tokens"] == 1200 and events[0]["cache_write_tokens"] == 0
 
-    leer = mk(35, kind="agent_text", role="assistant", content="")
-    assert step_events(leer, ctx()) == []
+    empty = mk(35, kind="agent_text", role="assistant", content="")
+    assert step_events(empty, ctx()) == []
 
-    beides = mk(36, kind="agent_text", role="assistant", content="Fertig.", out_tokens=9)
-    assert [e["kind"] for e in step_events(beides, ctx())] == ["agent_text", "usage"]
+    both = mk(36, kind="agent_text", role="assistant", content="Fertig.", out_tokens=9)
+    assert [e["kind"] for e in step_events(both, ctx())] == ["agent_text", "usage"]
 
 
 def test_usage_without_tokens_produces_nothing():
@@ -274,29 +274,29 @@ def test_the_run_boundary_brackets_the_steps():
     steps = [mk(200, role="assistant", content="los"),
                 mk(240, role="tool", tool_name="fs_read", content="args={}\n→ ok")]
     step_seqs = [e["seq"] for s in steps for e in step_events(s, ctx())]
-    grenzen = run_boundary_events(RunLine(), ctx(), first_step_id=200, last_step_id=240)
-    start, ende = grenzen
-    assert start["kind"] == "run_start" and ende["kind"] == "run_end"
+    limits = run_boundary_events(RunLine(), ctx(), first_step_id=200, last_step_id=240)
+    start, end = limits
+    assert start["kind"] == "run_start" and end["kind"] == "run_end"
     assert start["seq"] < min(step_seqs)
-    assert ende["seq"] > max(step_seqs)
-    assert set(start) == keys_of("run_start") and set(ende) == keys_of("run_end")
+    assert end["seq"] > max(step_seqs)
+    assert set(start) == keys_of("run_start") and set(end) == keys_of("run_end")
 
 
-@pytest.mark.parametrize("status,ok", [
+@pytest.mark.parametrize("status, ok", [
     ("success", True), ("planned", True),
     ("failed", False), ("loop_exhausted", False),
     ("blocked", None),
 ])
 def test_the_run_end_verdict(status, ok):
-    ende = run_boundary_events(RunLine(status=status), ctx(),
+    end = run_boundary_events(RunLine(status=status), ctx(),
                                first_step_id=1, last_step_id=2)[-1]
-    assert ende["kind"] == "run_end" and ende["ok"] is ok
+    assert end["kind"] == "run_end" and end["ok"] is ok
 
 
 def test_a_running_run_does_not_leave_the_room():
-    grenzen = run_boundary_events(RunLine(status="running", finished_at=None), ctx(),
+    limits = run_boundary_events(RunLine(status="running", finished_at=None), ctx(),
                                   first_step_id=1, last_step_id=2)
-    assert [e["kind"] for e in grenzen] == ["run_start"]
+    assert [e["kind"] for e in limits] == ["run_start"]
 
 
 def test_a_run_without_steps_has_no_boundaries():

@@ -87,27 +87,27 @@ async def projects_from_api(client, user) -> set[int]:
 async def test_acl_equals_projects_for_a_member(client, db):
     """Direct member: exactly their projects, and none of the foreign ones."""
     user = await make_user(db, "mitglied")
-    mein = await make_project(db, "MEI", "Meins")
+    my = await make_project(db, "MEI", "Meins")
     await make_project(db, "FRE", "Fremdes")
-    await add_member(db, mein, user, ProjectRole.member)
+    await add_member(db, my, user, ProjectRole.member)
 
     acl = await compute_acl(db, user)
-    assert acl == await projects_from_api(client, user) == {mein.id}
+    assert acl == await projects_from_api(client, user) == {my.id}
 
 
 async def test_acl_equals_projects_for_an_inherited_subproject(client, db):
     """Member in the parent project: the sub-project comes along over the inheritance, and
     exactly there sits the branching a second ACL definition mapped wrongly."""
     user = await make_user(db, "erbe")
-    eltern = await make_project(db, "ELT", "Eltern")
-    kind = await make_project(db, "KIN", "Kind", parent_id=eltern.id, inherit_members=True)
-    dicht = await make_project(db, "DIC", "Abgeriegelt", parent_id=eltern.id,
+    parent = await make_project(db, "ELT", "Eltern")
+    kind = await make_project(db, "KIN", "Kind", parent_id=parent.id, inherit_members=True)
+    dense = await make_project(db, "DIC", "Abgeriegelt", parent_id=parent.id,
                                inherit_members=False)
-    await add_member(db, eltern, user, ProjectRole.member)
+    await add_member(db, parent, user, ProjectRole.member)
 
     acl = await compute_acl(db, user)
-    assert acl == await projects_from_api(client, user) == {eltern.id, kind.id}
-    assert dicht.id not in acl
+    assert acl == await projects_from_api(client, user) == {parent.id, kind.id}
+    assert dense.id not in acl
 
 
 async def test_acl_equals_projects_for_an_admin(client, db):
@@ -124,7 +124,7 @@ async def test_acl_equals_projects_for_an_admin(client, db):
 # ── visible(): the matrix ────────────────────────────────────────────────────
 
 @pytest.mark.parametrize(
-    ("wer", "was", "erwartet"),
+    ("who", "what", "expected"),
     [
         # Mitglied (user 7, Projekt 27)
         ("mitglied", "projekt", True),
@@ -140,18 +140,18 @@ async def test_acl_equals_projects_for_an_admin(client, db):
         ("admin", "fremdes_projektlos", True),
     ],
 )
-def test_the_visibility_matrix(wer, was, erwartet):
-    leute = {
+def test_the_visibility_matrix(who, what, expected):
+    people = {
         "mitglied": conn(7, allowed={27}),
         "fremd": conn(8, allowed=set()),
         "admin": conn(9, is_admin=True),
     }
-    ereignisse = {
+    events = {
         "projekt": ev(27, 3),
         "eigenes_projektlos": ev(None, 7),
         "fremdes_projektlos": ev(None, 99),
     }
-    assert visible(ereignisse[was], leute[wer]) is erwartet
+    assert visible(events[what], people[who]) is expected
 
 
 def test_without_project_and_owner_it_is_nobodys_event():
@@ -164,13 +164,13 @@ def test_a_scope_on_a_foreign_project_yields_silence():
     """`scope={99}` on a project the user is not in: no event arrives. The narrowing of the
     client cannot open the server set up."""
     c = conn(7, allowed={27}, scope={99})
-    fremd = ev(99, 3)
-    assert visible(fremd, c) is False
-    assert (visible(fremd, c) and in_scope(fremd, c)) is False
+    foreign = ev(99, 3)
+    assert visible(foreign, c) is False
+    assert (visible(foreign, c) and in_scope(foreign, c)) is False
     # And the own project now falls out of the scope: narrowed stays narrowed.
-    eigen = ev(27, 3)
-    assert visible(eigen, c) is True
-    assert in_scope(eigen, c) is False
+    own = ev(27, 3)
+    assert visible(own, c) is True
+    assert in_scope(own, c) is False
 
 
 def test_scope_none_is_everything_permitted():
@@ -201,30 +201,30 @@ def test_parsing_scopes_errs_on_the_narrow_side():
 
 async def test_the_fan_out_reaches_only_the_entitled():
     m = UserConnectionManager()
-    mitglied = conn(7, allowed={27})
-    fremd = conn(8, allowed={99})
+    member = conn(7, allowed={27})
+    foreign = conn(8, allowed={99})
     admin = conn(9, is_admin=True)
-    for c in (mitglied, fremd, admin):
+    for c in (member, foreign, admin):
         m.add(c)
 
-    ereignis = ev(27, 3)
-    await m.dispatch(ereignis)
+    event = ev(27, 3)
+    await m.dispatch(event)
 
-    assert mitglied.queue.get_nowait() == {"type": "office_ev", "ev": ereignis}
-    assert admin.queue.get_nowait()["ev"] is ereignis
-    assert fremd.queue.empty()
+    assert member.queue.get_nowait() == {"type": "office_ev", "ev": event}
+    assert admin.queue.get_nowait()["ev"] is event
+    assert foreign.queue.empty()
 
 
 async def test_a_project_less_fan_out_goes_only_to_the_owner():
     m = UserConnectionManager()
-    eigner = conn(7, allowed=set())
-    anderer = conn(8, allowed={27})
-    m.add(eigner)
-    m.add(anderer)
+    own = conn(7, allowed=set())
+    different = conn(8, allowed={27})
+    m.add(own)
+    m.add(different)
 
     await m.dispatch(ev(None, 7))
-    assert not eigner.queue.empty()
-    assert anderer.queue.empty()
+    assert not own.queue.empty()
+    assert different.queue.empty()
 
 
 async def test_a_slow_client_is_dropped_instead_of_slowing_the_bridge():
@@ -252,16 +252,16 @@ async def test_the_sweeper_refreshes_only_expired_acls(db, monkeypatch):
     await add_member(db, proj, user, ProjectRole.member)
 
     m = UserConnectionManager()
-    alt = _Conn(ws=FakeWS(), user_id=user.id, is_admin=False, allowed=set(),
+    old = _Conn(ws=FakeWS(), user_id=user.id, is_admin=False, allowed=set(),
                 acl_at=time.monotonic() - ACL_TTL_S - 1)
-    frisch = _Conn(ws=FakeWS(), user_id=user.id, is_admin=False, allowed=set(),
+    fresh = _Conn(ws=FakeWS(), user_id=user.id, is_admin=False, allowed=set(),
                    acl_at=time.monotonic())
-    m.add(alt)
-    m.add(frisch)
+    m.add(old)
+    m.add(fresh)
 
     assert await m.refresh_stale() == 1
-    assert alt.allowed == {proj.id}
-    assert frisch.allowed == set()
+    assert old.allowed == {proj.id}
+    assert fresh.allowed == set()
 
 
 async def test_the_sweeper_throws_out_disabled_users(db, monkeypatch):
@@ -366,9 +366,9 @@ async def test_hello_and_subscribe(db, monkeypatch):
 
     ws = FakeWS(['{"type":"subscribe","scopes":[{"kind":"project","id":%d}]}' % proj.id])
     seen: list[_Conn] = []
-    echtes_add = rtws.manager.add
+    real_add = rtws.manager.add
     monkeypatch.setattr(rtws.manager, "add",
-                        lambda c: (seen.append(c), echtes_add(c))[1])
+                        lambda c: (seen.append(c), real_add(c))[1])
 
     await office_ws(ws, token=token)   # ends with WebSocketDisconnect
 

@@ -37,16 +37,16 @@ def _intake(ctx: dict) -> dict:
 
 
 def _owner(inst: WorkflowInstance, ctx: dict) -> int | None:
-    roh = _intake(ctx).get("owner_id")
+    raw = _intake(ctx).get("owner_id")
     try:
-        return int(roh) if roh is not None else inst.started_by
+        return int(raw) if raw is not None else inst.started_by
     except (TypeError, ValueError):
         return inst.started_by
 
 
 
 
-async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def classify(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Classify the mail in house and look up the learned rule about the sender.
 
     Without a classifying agent it stays at passing through (as in the predecessor): the
@@ -54,11 +54,11 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     the model as hints; it should assess the text, not read headers it does not see anyway.
     """
     from . import spam_learn
-    from .assistant_policy import agent_running_lokal, match_policy, note_hit, parse_sender
+    from .assistant_policy import agent_running_local, match_policy, note_hit, parse_sender
     from .mail_classify import classify_email
     from .spam_rules import evaluate, mail_text
-    from .spam_review import nonbusiness_domains, meine_adressen
-    from .vault_contacts import bekannte_domains
+    from .spam_review import nonbusiness_domains, my_addresses
+    from .vault_contacts import known_domains
 
     payload = _mail(ctx)
     intake = _intake(ctx)
@@ -70,23 +70,23 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
 
     classify_agent = str(params.get("classify_agent") or intake.get("classify_agent") or "")
     if classify_agent:
-        rule = evaluate(payload, meine_adressen=await meine_adressen(db),
-                         bekannte_domains=await bekannte_domains(db, owner_id),
+        rule = evaluate(payload, my_addresses=await my_addresses(db),
+                         known_domains=await known_domains(db, owner_id),
                          nonbusiness_domains=await nonbusiness_domains(db),
                          body=body)
-        klasse = await classify_email(db, owner_id, account=account, sender=sender,
+        classification = await classify_email(db, owner_id, account=account, sender=sender,
                                       subject=subject, body=body,
                                       classify_agent=classify_agent,
                                       spam_hints=rule.reasons,
-                                      spam_beispiele=await spam_learn.beispiele(db, owner_id))
+                                      spam_examples=await spam_learn.examples(db, owner_id))
     else:
-        klasse = {"category": "", "priority": "normal", "sensitive": False,
+        classification = {"category": "", "priority": "normal", "sensitive": False,
                   "redacted_summary": "", "spam_score": 0.0, "spam_reason": "",
                   "betrug": False, "merkmale": []}
 
     sender_email, domain = parse_sender(sender)
     policy = await match_policy(db, owner_id, sender_email=sender_email, domain=domain,
-                                category=klasse["category"])
+                                category=classification["category"])
     redaction, action_hint, auto = "redacted", "", False
     if policy is not None:
         await note_hit(db, policy)
@@ -96,20 +96,20 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     # protection but only a loss of information (and a detour over the IMAP tools that
     # fetches the same text back anyway).
     agent = str(intake.get("agent") or "assistent")
-    if await agent_running_lokal(db, owner_id, agent):
+    if await agent_running_local(db, owner_id, agent):
         redaction = "unredacted"
     if intake.get("auto_run"):  # the trigger enforces a chatless immediate run.
         auto = True
 
-    inst.context = {**ctx, "classification": klasse,
+    inst.context = {**ctx, "classification": classification,
                     "policy": {"redaction": redaction, "action_hint": action_hint or "",
                                "auto": bool(auto), "id": policy.id if policy else None}}
-    return {"action": "mail_classify", "category": klasse["category"],
-            "priority": klasse["priority"], "auto": bool(auto),
+    return {"action": "mail_classify", "category": classification["category"],
+            "priority": classification["priority"], "auto": bool(auto),
             "classified": bool(classify_agent)}
 
 
-async def spam_beurteilen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def spam_judge(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Pull rules, local model and memory together into one verdict.
 
     The rules are evaluated again here instead of being passed through the context: they are
@@ -117,17 +117,17 @@ async def spam_beurteilen(db, inst: WorkflowInstance, params: dict, ctx: dict) -
     the way through a JSON column unharmed. What happens afterwards is decided by the branch
     in the graph; this verdict only says what was established.
     """
-    from .spam_review import beurteilen
+    from .spam_review import judge
 
-    urteil = await beurteilen(db, _owner(inst, ctx), _mail(ctx),
+    verdict_row = await judge(db, _owner(inst, ctx), _mail(ctx),
                               cls=(ctx.get("classification") or {}))
-    inst.context = {**ctx, "spam": {**((ctx.get("spam") or {})), **urteil}}
-    return {"action": "spam_evaluate", "score": urteil["score"],
-            "geklaert": urteil["geklaert_urteil"] or "nein",
-            "aktiv": urteil["aktiv"]}
+    inst.context = {**ctx, "spam": {**((ctx.get("spam") or {})), **verdict_row}}
+    return {"action": "spam_evaluate", "score": verdict_row["score"],
+            "geklaert": verdict_row["geklaert_urteil"] or "nein",
+            "aktiv": verdict_row["aktiv"]}
 
 
-async def spam_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def spam_card(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Create the question: a verdict row (work stock plus learning material) and the card.
 
     `vorentschieden` reports a case the memory has already settled; it goes out as a card
@@ -148,7 +148,7 @@ async def spam_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     from .spam_review import create, karte, report
 
     owner_id = _owner(inst, ctx)
-    urteil = dict(ctx.get("spam") or {})
+    verdict_row = dict(ctx.get("spam") or {})
     task = ctx.get("task") or {}
     predecided = bool(params.get("predecided"))
     recoverable = bool(params.get("recoverable"))
@@ -158,28 +158,28 @@ async def spam_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     # veröffentlichte Fassungen ohne solchen Knoten weiter melden.
     selbst_report = params.get("report")
     selbst_report = True if selbst_report is None else bool(selbst_report)
-    verdict = await create(db, owner_id, urteil,
+    verdict = await create(db, owner_id, verdict_row,
                             task_id=task.get("id") if isinstance(task, dict) else None,
                             instance_id=inst.id)
-    sofort = predecided or recoverable or float(urteil.get("score") or 0.0) >= float(
-        urteil.get("sofort_ab") or 0.9)
-    if sofort and selbst_report:
-        await report(db, owner_id, verdict, sofort=True, predecided=predecided,
+    immediate = predecided or recoverable or float(verdict_row.get("score") or 0.0) >= float(
+        verdict_row.get("sofort_ab") or 0.9)
+    if immediate and selbst_report:
+        await report(db, owner_id, verdict, immediate=True, predecided=predecided,
                      recoverable=recoverable)
-    kind = "rueckholbar" if recoverable else ("sofort" if sofort else "sammel")
+    kind = "rueckholbar" if recoverable else ("sofort" if immediate else "sammel")
     # Der Text gehört zum Spam-Wissen, nicht in den Graphen: welche Gründe genannt werden und
     # wie ein Rückholhinweis lautet, ändert sich mit der Erkennung. Der Melde-Knoten nimmt
     # ihn als `{{ spam.karte_titel }}` / `{{ spam.karte_text }}` und bleibt selbst allgemein.
     title, text = karte(verdict, predecided=predecided, recoverable=recoverable)
-    inst.context = {**ctx, "spam": {**urteil, "verdict_id": verdict.id, "karte": kind,
+    inst.context = {**ctx, "spam": {**verdict_row, "verdict_id": verdict.id, "karte": kind,
                                     "karte_titel": title, "karte_text": text,
-                                    "karte_faellig": bool(sofort),
+                                    "karte_faellig": bool(immediate),
                                     "karte_art": "spam_auto" if recoverable else "spam_review"}}
     return {"action": "spam_card", "verdict_id": verdict.id, "karte": kind,
-            "vorentschieden": predecided, "selbst_gemeldet": bool(sofort and selbst_report)}
+            "vorentschieden": predecided, "selbst_gemeldet": bool(immediate and selbst_report)}
 
 
-async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def spam_execute(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Commit the verdict, learn from it and move the mail.
 
     The order is deliberate: first learn, then move. If moving fails (mail already cleared
@@ -188,25 +188,25 @@ async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -
     on the verdict and in the context.
     """
     from ..models.assistant import SpamVerdict
-    from .spam_review import festschreiben, imap_action
+    from .spam_review import commit, imap_action
 
-    urteil = dict(ctx.get("spam") or {})
-    value = str(params.get("entscheidung") or urteil.get("entschieden") or "spam").strip().lower()
-    ist_spam = value not in ("ham", "kein_spam", "no", "false")
-    vid = urteil.get("verdict_id")
+    verdict_row = dict(ctx.get("spam") or {})
+    value = str(params.get("entscheidung") or verdict_row.get("entschieden") or "spam").strip().lower()
+    is_spam = value not in ("ham", "kein_spam", "no", "false")
+    vid = verdict_row.get("verdict_id")
     verdict = await db.get(SpamVerdict, int(vid)) if vid else None
     if verdict is None:
         return {"action": "spam_apply", "applied": False, "reason": "kein Urteil hinterlegt"}
 
-    await festschreiben(db, verdict, ist_spam,
+    await commit(db, verdict, is_spam,
                         decided_by=str(params.get("decided_by")
-                                       or urteil.get("entschieden_von") or "auto"))
-    result = await imap_action(verdict, ist_spam)
+                                       or verdict_row.get("entschieden_von") or "auto"))
+    result = await imap_action(verdict, is_spam)
     verdict.action_result = result[:2000]
-    inst.context = {**ctx, "spam": {**urteil, "entschieden": "spam" if ist_spam else "ham",
+    inst.context = {**ctx, "spam": {**verdict_row, "entschieden": "spam" if is_spam else "ham",
                                     "ergebnis": result}}
     return {"action": "spam_apply", "verdict_id": verdict.id,
-            "entscheidung": "spam" if ist_spam else "ham", "ergebnis": result}
+            "entscheidung": "spam" if is_spam else "ham", "ergebnis": result}
 
 
 # ── Assistent: nur noch die Übersetzung, nicht mehr die Arbeit ───────────────
@@ -237,7 +237,7 @@ TASK_PARAMS: dict = {
 }
 
 # Die Karte zum Freigeben: eine gewöhnliche Nachricht mit Art und Bezug.
-KARTE_PARAMS: dict = {
+MAP_PARAMS: dict = {
     "kind": "assistant_review",
     "ref": {"assistant_task_id": "{{ task.id }}"},
     "title": "📥 {{ mail.subject | default:\"(kein Betreff)\" }}",
@@ -248,24 +248,24 @@ KARTE_PARAMS: dict = {
 }
 
 
-async def assistent_item(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def assistant_item(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Altname `assistant_task`, umgeleitet auf den allgemeinen Knoten.
 
     Er steht in veröffentlichten Fassungen, und die sind unveränderlich — laufende Instanzen
     hängen daran. Deshalb umgeleitet statt zweimal gepflegt, wie bei `_ALT_AKTIONEN`.
     """
-    from .workflow_actions import _assistent_task
-    return await _assistent_task(db, inst, {**TASK_PARAMS, **params}, ctx, "item")
+    from .workflow_actions import _assistant_task
+    return await _assistant_task(db, inst, {**TASK_PARAMS, **params}, ctx, "item")
 
 
-async def assistent_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def assistant_card(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Altname `assistant_card`: die Freigabekarte ist eine Nachricht wie jede andere."""
     from .workflow_actions import run_action
     return await run_action(db, inst, {"id": "freigabe_karte", "data": {"config": {
-        "action": {"action": "notify", "params": {**KARTE_PARAMS, **params}}}}})
+        "action": {"action": "notify", "params": {**MAP_PARAMS, **params}}}}})
 
 
-async def assistent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def assistant_run(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Altname `assistant_run`: der Eingang startet heute schon beim Anlegen.
 
     Ein zweiter Anstoß wäre ein zweiter Lauf derselben Sache — deshalb wird hier nur
@@ -277,14 +277,14 @@ async def assistent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
 
 
 HANDLER = {
-    "mail_classify": klassifizieren,
-    "spam_evaluate": spam_beurteilen,
-    "spam_card": spam_karte,
-    "spam_apply": spam_ausfuehren,
+    "mail_classify": classify,
+    "spam_evaluate": spam_judge,
+    "spam_card": spam_card,
+    "spam_apply": spam_execute,
     # Die Altnamen des Mail-Wegs. `assistant_task` heißt heute der ALLGEMEINE Auftrag —
     # deshalb tragen die alten hier ein `mail_`-Vorzeichen, und die einmalige Umstellung
     # (`workflow_terms.EINMALIG`) schreibt sie in den gespeicherten Fassungen darauf um.
-    "mail_assistant_task": assistent_item,
-    "mail_assistant_card": assistent_karte,
-    "mail_assistant_run": assistent_lauf,
+    "mail_assistant_task": assistant_item,
+    "mail_assistant_card": assistant_card,
+    "mail_assistant_run": assistant_run,
 }

@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 log = logging.getLogger("workflow_tools")
 
 
-async def _server_des_besitzers(db: AsyncSession, owner_id: int | None) -> list[dict]:
+async def _server_of_owner(db: AsyncSession, owner_id: int | None) -> list[dict]:
     """The MCP servers belonging to this person, plus the global ones.
 
     Exactly the same source the agent uses: the registry under Settings, MCP servers. That
@@ -57,7 +57,7 @@ async def _session(db: AsyncSession, owner_id: int | None):
     from ..worker.runtime import _owner_gateway
 
     url, token = await _owner_gateway(db, owner_id)
-    server = await _server_des_besitzers(db, owner_id)
+    server = await _server_of_owner(db, owner_id)
     if not url and not server:
         return None
     return mcp_session(gateway_url=url, gateway_token=token, servers=server)
@@ -74,12 +74,12 @@ async def tools(db: AsyncSession, owner_id: int | None) -> list[dict]:
         return []
     try:
         async with session as mcp:
-            roh = await mcp.list_tools()
+            raw = await mcp.list_tools()
     except Exception:  # noqa: BLE001, the tool list is convenience, not infrastructure
         log.warning("MCP tool list for user %s not fetchable", owner_id, exc_info=True)
         return []
     out = []
-    for t in roh:
+    for t in raw:
         schema = t.schema if isinstance(t.schema, dict) else {}
         fields = list((schema.get("properties") or {}).keys())
         out.append({
@@ -113,7 +113,7 @@ async def call(db: AsyncSession, owner_id: int | None, name: str,
         from ..worker.runtime import _owner_gateway
         url, _ = await _owner_gateway(db, owner_id)
         if not url and server not in {
-                s["name"] for s in await _server_des_besitzers(db, owner_id)}:
+                s["name"] for s in await _server_of_owner(db, owner_id)}:
             return {"ok": False, "text": "",
                     "error": f"unknown MCP server {server!r}, register it in the settings "
                              f"or check the name"}
@@ -129,14 +129,14 @@ async def call(db: AsyncSession, owner_id: int | None, name: str,
     # Anyone computing with the result needs it parsed, and most tools answer in JSON
     # anyway.
     try:
-        daten = json.loads(text)
+        data = json.loads(text)
     except (ValueError, TypeError):
-        daten = None
-    if isinstance(daten, (dict, list)):
-        result["json"] = daten
+        data = None
+    if isinstance(data, (dict, list)):
+        result["json"] = data
     # Tools often report their own failure inside the text. That is not a transport
     # error, but the flow should be able to branch on it.
-    if isinstance(daten, dict) and daten.get("error"):
+    if isinstance(data, dict) and data.get("error"):
         result["ok"] = False
-        result["error"] = str(daten["error"])[:500]
+        result["error"] = str(data["error"])[:500]
     return result

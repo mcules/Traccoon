@@ -20,7 +20,7 @@ async def register(db):
     await svc.ensure_builtin_types(db)
 
 
-async def _ticket(db, proj, nummer=1) -> Issue:
+async def _ticket(db, proj, number=1) -> Issue:
     t = (await db.execute(select(IssueType).where(IssueType.project_id == proj.id))).scalars().first()
     s = (await db.execute(select(WorkflowStatus).where(
         WorkflowStatus.project_id == proj.id))).scalars().first()
@@ -29,8 +29,8 @@ async def _ticket(db, proj, nummer=1) -> Issue:
         s = WorkflowStatus(project_id=proj.id, name="To Do", category=StatusCategory.todo, order=0)
         db.add_all([t, s, IssueCounter(project_id=proj.id, last_number=0)])
         await db.commit()
-    i = Issue(project_id=proj.id, number=nummer, key=f"{proj.key}-{nummer}", type_id=t.id,
-              status_id=s.id, summary="Ein Ticket", reporter_id=1, rank=f"{nummer:04d}")
+    i = Issue(project_id=proj.id, number=number, key=f"{proj.key}-{number}", type_id=t.id,
+              status_id=s.id, summary="Ein Ticket", reporter_id=1, rank=f"{number:04d}")
     db.add(i)
     await db.commit()
     return i
@@ -68,10 +68,10 @@ async def test_ticket_carries_several_values_of_one_field(client, db, register):
     assert r.status_code == 200, r.text
     assert r.json()["values"]["komponente"] == ["Backend", "DB"]
 
-    gelesen = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
-    assert gelesen.json()["values"]["komponente"] == ["Backend", "DB"]
+    read = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
+    assert read.json()["values"]["komponente"] == ["Backend", "DB"]
     # The field definitions come along: the built-in ones of the ticket and the free one.
-    keys = [f["key"] for f in gelesen.json()["fields"]]
+    keys = [f["key"] for f in read.json()["fields"]]
     assert "komponente" in keys and "status" in keys and "prioritaet" in keys
 
 
@@ -90,8 +90,8 @@ async def test_single_value_field_rejects_two_values(client, db, register):
     assert r.status_code == 400
     assert "only one value" in r.json()["detail"]
     # After the rejected attempt nothing may be half written.
-    leer = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
-    assert "prio" not in leer.json()["values"]
+    empty = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
+    assert "prio" not in empty.json()["values"]
 
 
 async def test_value_outside_the_list_is_rejected(client, db, register):
@@ -116,18 +116,18 @@ async def test_field_may_be_added_at_any_time(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
-    alt = await _ticket(db, proj, 1)
-    a_alt = await svc.ensure_for_issue(db, alt)
+    old = await _ticket(db, proj, 1)
+    a_old = await svc.ensure_for_issue(db, old)
     await db.commit()
-    aid = a_alt.id
+    aid = a_old.id
 
     # Only now does the field come into being; the old ticket does not know it.
     await _field(db, "ticket", "kunde", kind="text")
 
-    gelesen = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
-    assert gelesen.status_code == 200
-    assert "kunde" not in gelesen.json()["values"]        # still without a value
-    assert "kunde" in [f["key"] for f in gelesen.json()["fields"]]
+    read = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
+    assert read.status_code == 200
+    assert "kunde" not in read.json()["values"]        # still without a value
+    assert "kunde" in [f["key"] for f in read.json()["fields"]]
 
     r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                          json={"values": {"kunde": ["Beispielkunde"]}})
@@ -155,10 +155,10 @@ async def test_number_and_date_are_checked(client, db, register):
     values = ok.json()["values"]
     assert values["aufwand"] == [3] and values["extern"] == [True]
 
-    for field, mist in (("aufwand", "viel"), ("termin", "irgendwann"), ("extern", "vielleicht")):
+    for field, junk in (("aufwand", "viel"), ("termin", "irgendwann"), ("extern", "vielleicht")):
         r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
-                             json={"values": {field: [mist]}})
-        assert r.status_code == 400, f"{field}={mist} should have been rejected"
+                             json={"values": {field: [junk]}})
+        assert r.status_code == 400, f"{field}={junk} should have been rejected"
 
 
 # ── Nichts verschwindet still ────────────────────────────────────────────────
@@ -227,7 +227,7 @@ async def test_switching_to_multi_only_when_it_fits(client, db, register):
 
 async def test_foreign_project_stays_closed(client, db, register):
     owner = await make_user(db, "eigner", admin=True)
-    fremder = await make_user(db, "fremd")
+    foreign = await make_user(db, "fremd")
     proj = await make_project(db, "GEH", "Geheim", inherit_members=False)
     await add_member(db, proj, owner, ProjectRole.owner)
     issue = await _ticket(db, proj)
@@ -237,15 +237,15 @@ async def test_foreign_project_stays_closed(client, db, register):
     await _field(db, "ticket", "kunde", kind="text")
 
     assert (await client.get(f"/artifacts/{aid}/values",
-                             headers=auth(fremder))).status_code in (403, 404)
-    assert (await client.put(f"/artifacts/{aid}/values", headers=auth(fremder),
+                             headers=auth(foreign))).status_code in (403, 404)
+    assert (await client.put(f"/artifacts/{aid}/values", headers=auth(foreign),
                              json={"values": {"kunde": ["X"]}})).status_code in (403, 404)
 
 
 async def test_only_an_admin_curates_the_registry(client, db, register):
-    niemand = await make_user(db, "gast")
+    nobody = await make_user(db, "gast")
     kind = await svc.type_by_key(db, "ticket")
-    r = await client.post(f"/artifact-types/{kind.id}/fields", headers=auth(niemand),
+    r = await client.post(f"/artifact-types/{kind.id}/fields", headers=auth(nobody),
                           json={"key": "x", "label": "X"})
     assert r.status_code == 403
 
@@ -290,7 +290,7 @@ async def test_bulk_query_delivers_per_artifact(db, register):
 
 # ── Felder im Prozess setzen ─────────────────────────────────────────────────
 
-async def _instanz(db, proj, issue):
+async def _instance(db, proj, issue):
     """Minimal instance with a ticket binding: the action needs no more."""
     from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
     from app.models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowVersion
@@ -324,7 +324,7 @@ async def test_flow_sets_adds_and_removes(db, register):
     await db.commit()
     await _field(db, "ticket", "komponente", kind="select", multi=True,
                 values=["Backend", "Frontend", "DB"])
-    inst = await _instanz(db, proj, issue)
+    inst = await _instance(db, proj, issue)
 
     r = await run_action(db, inst, _node(field="komponente", values="Backend"))
     assert r["values"] == ["Backend"]
@@ -344,7 +344,7 @@ async def test_flow_understands_commas_and_templates(db, register):
     await svc.ensure_for_issue(db, issue)
     await db.commit()
     await _field(db, "ticket", "komponente", kind="select", multi=True, values=["Backend", "DB"])
-    inst = await _instanz(db, proj, issue)
+    inst = await _instance(db, proj, issue)
     inst.context = {"agent": {"bereich": "DB"}}
 
     r = await run_action(db, inst, _node(field="komponente", values="Backend, {{agent.bereich}}"))
@@ -358,7 +358,7 @@ async def test_flow_reports_an_unknown_field(db, register):
     issue = await _ticket(db, proj)
     await svc.ensure_for_issue(db, issue)
     await db.commit()
-    inst = await _instanz(db, proj, issue)
+    inst = await _instance(db, proj, issue)
 
     with pytest.raises(ValueError, match="does not exist on this artifact"):
         await run_action(db, inst, _node(field="gibtsnicht", values="x"))
@@ -370,9 +370,9 @@ async def test_ticket_has_its_real_fields(db, register):
     """Priority, issue type, sprint and company are no second truth any more."""
     kind = await svc.type_by_key(db, "ticket")
     keys = {f.key: f for f in await fields.fields_of(db, kind.id)}
-    for erwartet in ("status", "vorgangsart", "board", "prioritaet", "zustaendig",
+    for expected in ("status", "vorgangsart", "board", "prioritaet", "zustaendig",
                      "sprint", "story_points", "faellig"):
-        assert erwartet in keys, erwartet
+        assert expected in keys, expected
     # They write into the real columns and are protected against renaming.
     assert keys["prioritaet"].source == "priority" and keys["prioritaet"].builtin
     assert keys["status"].source == "agent_status"
@@ -386,8 +386,8 @@ async def test_state_is_just_a_field(db, register):
     values = {o.value for o in await fields.options_of(db, field.id)}
     assert values == {s.value for s in TicketAgentStatus}
     # The category and "waiting" hang off the value, not off a special model.
-    wartend = {o.value for o in await fields.options_of(db, field.id) if o.waiting}
-    assert "plan_review" in wartend and "done" not in wartend
+    waiting = {o.value for o in await fields.options_of(db, field.id) if o.waiting}
+    assert "plan_review" in waiting and "done" not in waiting
 
 
 async def test_builtin_field_writes_to_the_real_column(client, db, register):
@@ -402,13 +402,13 @@ async def test_builtin_field_writes_to_the_real_column(client, db, register):
     r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                          json={"values": {"prioritaet": ["high"], "story_points": [5]}})
     assert r.status_code == 200, r.text
-    frisch = await db.get(Issue, iid)
-    await db.refresh(frisch)
-    assert frisch.priority.value == "high"
-    assert frisch.story_points == 5
+    fresh = await db.get(Issue, iid)
+    await db.refresh(fresh)
+    assert fresh.priority.value == "high"
+    assert fresh.story_points == 5
     # And the way back: reading happens from the column, not from the value table.
-    gelesen = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
-    assert gelesen.json()["values"]["prioritaet"] == ["high"]
+    read = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
+    assert read.json()["values"]["prioritaet"] == ["high"]
 
 
 async def test_state_via_the_field_pulls_the_board_column_along(client, db, register):
@@ -427,11 +427,11 @@ async def test_state_via_the_field_pulls_the_board_column_along(client, db, regi
     r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                          json={"values": {"status": ["hold"]}})
     assert r.status_code == 200, r.text
-    frisch = await db.get(Issue, iid)
-    await db.refresh(frisch)
-    assert frisch.agent_status.value == "hold"
-    spalte = await db.get(WorkflowStatus, frisch.status_id)
-    assert spalte.name == "Warten"        # the board came along
+    fresh = await db.get(Issue, iid)
+    await db.refresh(fresh)
+    assert fresh.agent_status.value == "hold"
+    column = await db.get(WorkflowStatus, fresh.status_id)
+    assert column.name == "Warten"        # the board came along
 
 
 async def test_project_specific_selection_is_checked(client, db, register):
@@ -449,9 +449,9 @@ async def test_project_specific_selection_is_checked(client, db, register):
     ok = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                           json={"values": {"vorgangsart": [str(kind_id)]}})
     assert ok.status_code == 200, ok.text
-    schlecht = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
+    bad = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                                 json={"values": {"vorgangsart": ["999999"]}})
-    assert schlecht.status_code == 400
+    assert bad.status_code == 400
 
 
 async def test_flow_also_sets_builtin_fields(db, register):
@@ -462,72 +462,72 @@ async def test_flow_also_sets_builtin_fields(db, register):
     await svc.ensure_for_issue(db, issue)
     await db.commit()
     iid = issue.id
-    inst = await _instanz(db, proj, issue)
+    inst = await _instance(db, proj, issue)
 
     r = await run_action(db, inst, _node(field="prioritaet", values="highest"))
     assert r["values"] == ["highest"]
-    frisch = await db.get(Issue, iid)
-    await db.refresh(frisch)
-    assert frisch.priority.value == "highest"
+    fresh = await db.get(Issue, iid)
+    await db.refresh(fresh)
+    assert fresh.priority.value == "highest"
 
 
 # ── A project extends its artifacts itself ───────────────────────────────────
 
 async def test_project_field_applies_only_there(client, db, register):
     """The core: the owner extends THEIR tickets, not those of everybody else."""
-    chef = await make_user(db, "chef", admin=True)
-    meins = await make_project(db, "MEI", "Meins", inherit_members=False)
-    fremd = await make_project(db, "FRE", "Fremd", inherit_members=False)
-    await add_member(db, meins, chef, ProjectRole.owner)
-    await add_member(db, fremd, chef, ProjectRole.owner)
+    boss = await make_user(db, "chef", admin=True)
+    mine = await make_project(db, "MEI", "Meins", inherit_members=False)
+    foreign = await make_project(db, "FRE", "Fremd", inherit_members=False)
+    await add_member(db, mine, boss, ProjectRole.owner)
+    await add_member(db, foreign, boss, ProjectRole.owner)
     await db.commit()
     kind = await svc.type_by_key(db, "ticket")
-    tid, mid, fid = kind.id, meins.id, fremd.id
+    tid, mid, fid = kind.id, mine.id, foreign.id
 
-    r = await client.post(f"/artifact-types/{tid}/fields?project_id={mid}", headers=auth(chef),
+    r = await client.post(f"/artifact-types/{tid}/fields?project_id={mid}", headers=auth(boss),
                           json={"key": "kunde", "label": "Kunde", "kind": "text"})
     assert r.status_code == 201, r.text
 
-    meine = [f.key for f in await fields.fields_of(db, tid, mid)]
-    fremde = [f.key for f in await fields.fields_of(db, tid, fid)]
-    allgemein = [f.key for f in await fields.fields_of(db, tid)]
-    assert "kunde" in meine
-    assert "kunde" not in fremde        # another project does not see it
-    assert "kunde" not in allgemein     # and it is not valid everywhere
+    my = [f.key for f in await fields.fields_of(db, tid, mid)]
+    foreign = [f.key for f in await fields.fields_of(db, tid, fid)]
+    general = [f.key for f in await fields.fields_of(db, tid)]
+    assert "kunde" in my
+    assert "kunde" not in foreign        # another project does not see it
+    assert "kunde" not in general     # and it is not valid everywhere
     # The shipped fields are all there regardless.
-    assert "status" in meine and "prioritaet" in meine
+    assert "status" in my and "prioritaet" in my
 
 
 async def test_project_field_appears_on_the_ticket(client, db, register):
     """Extended fields have to appear in the ticket view."""
-    chef = await make_user(db, "chef", admin=True)
+    boss = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "TKT", "Ticketansicht")
-    await add_member(db, proj, chef, ProjectRole.owner)
+    await add_member(db, proj, boss, ProjectRole.owner)
     issue = await _ticket(db, proj)
     a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid, tid, pid = a.id, (await svc.type_by_key(db, "ticket")).id, proj.id
 
-    await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(chef),
+    await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(boss),
                       json={"key": "kunde", "label": "Kunde", "kind": "text"})
 
-    sicht = await client.get(f"/artifacts/{aid}/values", headers=auth(chef))
-    assert "kunde" in [f["key"] for f in sicht.json()["fields"]]
-    r = await client.put(f"/artifacts/{aid}/values", headers=auth(chef),
+    view = await client.get(f"/artifacts/{aid}/values", headers=auth(boss))
+    assert "kunde" in [f["key"] for f in view.json()["fields"]]
+    r = await client.put(f"/artifacts/{aid}/values", headers=auth(boss),
                          json={"values": {"kunde": ["Beispielkunde"]}})
     assert r.status_code == 200, r.text
     assert r.json()["values"]["kunde"] == ["Beispielkunde"]
 
 
 async def test_a_stranger_may_not_create_a_field(client, db, register):
-    chef = await make_user(db, "chef", admin=True)
-    fremder = await make_user(db, "fremd")
+    boss = await make_user(db, "chef", admin=True)
+    foreign = await make_user(db, "fremd")
     proj = await make_project(db, "ZU", "Zu", inherit_members=False)
-    await add_member(db, proj, chef, ProjectRole.owner)
+    await add_member(db, proj, boss, ProjectRole.owner)
     await db.commit()
     tid, pid = (await svc.type_by_key(db, "ticket")).id, proj.id
 
-    r = await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(fremder),
+    r = await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(foreign),
                           json={"key": "x", "label": "X"})
     assert r.status_code in (403, 404)
 
@@ -547,26 +547,26 @@ async def test_without_a_project_it_stays_an_admin_matter(client, db, register):
 
 async def test_shipped_field_cannot_be_removed(client, db, register):
     """The fields needed so far cannot be removed."""
-    chef = await make_user(db, "chef", admin=True)
+    boss = await make_user(db, "chef", admin=True)
     kind = await svc.type_by_key(db, "ticket")
     status = await fields.status_field(db, kind.id)
 
-    r = await client.delete(f"/artifact-fields/{status.id}?force=true", headers=auth(chef))
+    r = await client.delete(f"/artifact-fields/{status.id}?force=true", headers=auth(boss))
     assert r.status_code == 409
     assert "cannot be deleted" in r.json()["detail"]
     # Switching off stays possible.
-    assert (await client.put(f"/artifact-fields/{status.id}", headers=auth(chef),
+    assert (await client.put(f"/artifact-fields/{status.id}", headers=auth(boss),
                              json={"enabled": False})).status_code == 200
 
 
 async def test_project_field_may_not_shadow_a_shipped_one(client, db, register):
     """Two fields with the same key: nobody would know which one is meant any more."""
-    chef = await make_user(db, "chef", admin=True)
+    boss = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "VD", "Verdecken")
-    await add_member(db, proj, chef, ProjectRole.owner)
+    await add_member(db, proj, boss, ProjectRole.owner)
     await db.commit()
     tid, pid = (await svc.type_by_key(db, "ticket")).id, proj.id
 
-    r = await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(chef),
+    r = await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(boss),
                           json={"key": "status", "label": "Mein Status"})
     assert r.status_code == 409

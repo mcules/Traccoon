@@ -10,15 +10,15 @@ The measure is the sign of life, not the clock: an agent may take hours.
 import datetime as dt
 
 from app.models.agents import Run
-from app.services.workflow_engine import tote_runs_schliessen
-from test_lifecycle_process import _projekt_mit_ticket
+from app.services.workflow_engine import dead_runs_close
+from test_lifecycle_process import _project_with_ticket
 
 
-async def _lauf(db, issue, task_id, *, alter_sek: int) -> Run:
+async def _run(db, issue, task_id, *, age_sec: int) -> Run:
     run = Run(issue_id=issue.id, project_id=issue.project_id, task_id=task_id,
               agent="developer", phase="execution", provider="claude_code",
               model="claude-sonnet-5", status="running",
-              started_at=dt.datetime.now(dt.UTC) - dt.timedelta(seconds=alter_sek))
+              started_at=dt.datetime.now(dt.UTC) - dt.timedelta(seconds=age_sec))
     db.add(run)
     await db.commit()
     await db.refresh(run)
@@ -26,11 +26,11 @@ async def _lauf(db, issue, task_id, *, alter_sek: int) -> Run:
 
 
 async def test_a_run_without_a_sign_of_life_is_closed(db, monkeypatch):
-    _, _, issue, _ = await _projekt_mit_ticket(db)
-    run = await _lauf(db, issue, "wf-1-1-exec-tot", alter_sek=3600)
+    _, _, issue, _ = await _project_with_ticket(db)
+    run = await _run(db, issue, "wf-1-1-exec-tot", age_sec=3600)
 
-    monkeypatch.setattr("app.core.redis.lauf_lebt", _nein)
-    assert await tote_runs_schliessen() == 1
+    monkeypatch.setattr("app.core.redis.run_alive", _no)
+    assert await dead_runs_close() == 1
 
     await db.refresh(run)
     assert run.status == "failed"
@@ -40,11 +40,11 @@ async def test_a_run_without_a_sign_of_life_is_closed(db, monkeypatch):
 
 async def test_a_living_run_stays_untouched(db, monkeypatch):
     """The more important half: an agent that has been working for hours is NOT cleared away."""
-    _, _, issue, _ = await _projekt_mit_ticket(db)
-    run = await _lauf(db, issue, "wf-1-1-exec-lebt", alter_sek=7200)
+    _, _, issue, _ = await _project_with_ticket(db)
+    run = await _run(db, issue, "wf-1-1-exec-lebt", age_sec=7200)
 
-    monkeypatch.setattr("app.core.redis.lauf_lebt", _ja)
-    assert await tote_runs_schliessen() == 0
+    monkeypatch.setattr("app.core.redis.run_alive", _yes)
+    assert await dead_runs_close() == 0
 
     await db.refresh(run)
     assert run.status == "running"
@@ -53,19 +53,19 @@ async def test_a_living_run_stays_untouched(db, monkeypatch):
 async def test_a_young_run_stays_in_the_grace_period(db, monkeypatch):
     """Within the grace period nothing is asked at all: the pulse can lag behind by seconds,
     and a run that has just started is no case for the undertaker."""
-    _, _, issue, _ = await _projekt_mit_ticket(db)
-    run = await _lauf(db, issue, "wf-1-1-exec-jung", alter_sek=5)
+    _, _, issue, _ = await _project_with_ticket(db)
+    run = await _run(db, issue, "wf-1-1-exec-jung", age_sec=5)
 
-    monkeypatch.setattr("app.core.redis.lauf_lebt", _nein)
-    assert await tote_runs_schliessen() == 0
+    monkeypatch.setattr("app.core.redis.run_alive", _no)
+    assert await dead_runs_close() == 0
 
     await db.refresh(run)
     assert run.status == "running"
 
 
-async def _ja(task_id: str) -> bool:
+async def _yes(task_id: str) -> bool:
     return True
 
 
-async def _nein(task_id: str) -> bool:
+async def _no(task_id: str) -> bool:
     return False
