@@ -174,7 +174,7 @@ export default function AssistantChat() {
                       {(["once", "always", "never"] as const).map((d) => (
                         <button key={d} onClick={() => decide.mutate({ id: m.id, decision: d })}
                           className={BUTTON_SMALL.secondary}>
-                          {d === "once" ? "Einmal" : d === "always" ? "Immer" : "Nie"}</button>
+                          {d === "once" ? tr("assistant_chat.once") : d === "always" ? "Immer" : "Nie"}</button>
                       ))}
                     </div>
                   </div>

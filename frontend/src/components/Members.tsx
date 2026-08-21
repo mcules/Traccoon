@@ -49,7 +49,7 @@ export default function Members({ project }: { project: Project }) {
       setTimeout(() => setInfo(""), 4000);
       inv(); invInv();
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const revoke = useMutation({
     mutationFn: (id: number) => api.del(`/projects/${project.id}/invitations/${id}`),
@@ -72,7 +72,7 @@ export default function Members({ project }: { project: Project }) {
     onSuccess: () => {
       setErr(""); setInfo(tr("members.user_added")); setTimeout(() => setInfo(""), 3000); setQ(""); inv();
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   const pending = invitations?.filter((i) => i.status === "pending") || [];

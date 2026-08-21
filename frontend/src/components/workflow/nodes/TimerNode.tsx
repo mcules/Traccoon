@@ -1,4 +1,5 @@
 import { BaseNode, type FlowNodeProps } from "./shared";
+import { tr } from "../../../i18n";
 
 /**
  * Lets time pass: the second way of waiting.
@@ -17,7 +18,7 @@ export default function TimerNode({ id, data, selected }: FlowNodeProps) {
   return (
     <BaseNode
       nodeId={id}
-      title={data.config.label || "Warten"}
+      title={data.config.label || tr("timer_node.wait")}
       icon="⏱"
       accent="border-t-amber-400"
       selected={selected}

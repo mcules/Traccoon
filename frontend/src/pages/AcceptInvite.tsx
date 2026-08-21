@@ -66,7 +66,7 @@ export default function AcceptInvite() {
       }
       // The useEffect above takes over the accept() as soon as `user` is set.
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Fehler");
+      setErr(e instanceof ApiError ? e.message : tr("common.error"));
     }
   }
 

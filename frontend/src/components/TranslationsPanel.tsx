@@ -58,7 +58,7 @@ export default function TranslationsPanel() {
       qc.invalidateQueries({ queryKey: ["i18n-locales"] });
       if (locale === language()) void setLanguage(locale);
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   const feed = useMutation({

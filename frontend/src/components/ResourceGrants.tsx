@@ -54,7 +54,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
       level, recursive,
     }),
     onSuccess: () => { setUid(""); setUq(""); setRid(""); setErr(""); inv(); },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const remove = useMutation({
     mutationFn: (id: number) => api.del(`/projects/${project.id}/resource-grants/${id}`),

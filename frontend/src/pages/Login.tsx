@@ -26,7 +26,7 @@ export default function Login() {
         setMode("login");
       }
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Fehler");
+      setErr(e instanceof ApiError ? e.message : tr("common.error"));
     }
   }
 

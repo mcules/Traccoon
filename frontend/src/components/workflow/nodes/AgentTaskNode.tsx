@@ -23,7 +23,7 @@ function outcomes(phase?: string): SourceHandleDef[] {
     first,
     { id: "loop_exhausted", label: "Zwischenstand", color: "!bg-amber-500" },
     { id: "blocked", label: tr("agent.question"), color: "!bg-yellow-500" },
-    { id: "failed", label: "Fehler", color: "!bg-red-500" },
+    { id: "failed", label: tr("common.error"), color: "!bg-red-500" },
     // Safety net: unknown results land on "err" by the default mapping.
     { id: "err", label: "sonstiges", color: "!bg-red-500" },
   ];

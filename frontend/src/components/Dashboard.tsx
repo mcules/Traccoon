@@ -4,7 +4,7 @@ import { api, Project, ProjectCosts } from "../api";
 import { Area } from "./ui";
 import DeploymentsPanel from "./DeploymentsPanel";
 
-const CAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
+const CAT_LABEL: Record<string, string> = { todo: tr("common.open_state"), in_progress: tr("common.in_progress"), done: tr("common.done_state") };
 const CAT_COLOR: Record<string, string> = { todo: "bg-slate-400", in_progress: "bg-sky-400", done: "bg-green-400" };
 
 export default function Dashboard({ project }: { project: Project }) {

@@ -84,8 +84,8 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
     try {
       await api.put(`/projects/${project.id}`, { inherit_members: v });
       qc.invalidateQueries({ queryKey: ["projects"] });
-      flash("Gespeichert.");
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen"); }
+      flash(tr("common.saved"));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.save_failed")); }
   };
 
   useEffect(() => { if (data) setS(data); }, [data]);
@@ -102,8 +102,8 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
       await refetch();
       // has_hardware/managed/pm_chat control the tabs in ProjectView (from ["projects"]).
       qc.invalidateQueries({ queryKey: ["projects"] });
-      flash("Gespeichert.");
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen"); }
+      flash(tr("common.saved"));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.save_failed")); }
   };
   const saveEnv = async () => {
     const env: Record<string, string> = {};
@@ -114,13 +114,13 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
     try {
       await api.put(`/projects/${project.id}/testenv-env`, { env });
       setEnvText(""); await refetch(); flash(tr("project_settings.environment_variables_saved_encrypted"));
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
+    } catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.error")); }
   };
   const saveToken = async () => {
     try {
       await api.put(`/projects/${project.id}/git-token`, { token });
       setToken(""); await refetch(); flash("Git-Token gespeichert.");
-    } catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
+    } catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.error")); }
   };
 
   const showSave = tab !== "board" && tab !== "agents" && tab !== "members"

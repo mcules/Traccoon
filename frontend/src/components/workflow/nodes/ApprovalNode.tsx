@@ -3,8 +3,8 @@ import { tr } from "../../../i18n";
 import { assigneeLabel } from "../assignee";
 
 const GATE_LABEL: Record<string, string> = {
-  ai_assign: "KI-Recht (ai_assign)",
-  role: "Rolle",
+  ai_assign: tr("approval_node.ai_right"),
+  role: tr("approval_node.role"),
   none: "approval.no_gate",
 };
 

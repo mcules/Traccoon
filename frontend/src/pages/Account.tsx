@@ -27,7 +27,7 @@ const TABS: [Tab, string, string][] = [
   ["person", "account.person", "\u{1F464}"],
   ["appearance", "account.appearance", "\u{1F3A8}"],
   ["notifications", "account.notifications", "\u{1F514}"],
-  ["mail", "Mail-Konten", "\u{2709}\uFE0F"],
+  ["mail", tr("account.mail_accounts"), "\u{2709}\uFE0F"],
   ["agents", "account.agents", "\u{1F916}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
@@ -194,9 +194,9 @@ function EmailPanel() {
       // An empty value removes the e-mail. The backend answers 409 on a collision.
       await api.put("/me/email", { value: email.trim() });
       await refresh();
-      setOk(email.trim() ? "E-Mail gespeichert." : "E-Mail entfernt.");
+      setOk(email.trim() ? tr("account.email_saved") : tr("account.email_removed"));
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen.");
+      setErr(e instanceof ApiError ? e.message : tr("common.save_failed"));
     }
   };
   return (
@@ -247,9 +247,9 @@ function NotificationsPanel() {
         notify_destination_id: targetId ? +targetId : 0,
       });
       await refresh();
-      setOk("Gespeichert.");
+      setOk(tr("common.saved"));
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen.");
+      setErr(e instanceof ApiError ? e.message : tr("common.save_failed"));
     }
   };
 

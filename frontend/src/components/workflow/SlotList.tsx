@@ -47,7 +47,7 @@ export default function SlotList({ project }: { project: Project }) {
     qc.invalidateQueries({ queryKey: ["workflow-slots", project.id] });
     qc.invalidateQueries({ queryKey: ["workflows", project.id] });
   };
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   // Issue types of the project: a ticket flow may be a separate one per type.
   const { data: meta } = useQuery({

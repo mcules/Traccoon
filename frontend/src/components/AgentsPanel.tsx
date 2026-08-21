@@ -60,7 +60,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
 
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
   const save = useMutation({
     mutationFn: (a: Partial<Agent>) => a.id ? api.put(`/agents/${a.id}`, a) : api.post("/agents", a),
     onSuccess: () => { setEdit(null); setErr(""); inv(); }, onError: fail,

@@ -81,7 +81,7 @@ export default function FilesPanel({ project }: { project: Project }) {
   const [commitOpen, setCommitOpen] = useState(false);
 
   const flash = (t: string) => { setErr(""); setMsg(t); setTimeout(() => setMsg(""), 2500); };
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const status = useQuery({
     queryKey: ["repo-status", pid], queryFn: () => api.get<RepoStatus>(`/projects/${pid}/repo/status`),
@@ -127,7 +127,7 @@ export default function FilesPanel({ project }: { project: Project }) {
 
   const save = useMutation({
     mutationFn: () => api.put(`/projects/${pid}/repo/file`, { path: sel, content: value }),
-    onSuccess: () => { setOrig(value); flash("Gespeichert."); qc.invalidateQueries({ queryKey: ["repo-status", pid] }); },
+    onSuccess: () => { setOrig(value); flash(tr("common.saved")); qc.invalidateQueries({ queryKey: ["repo-status", pid] }); },
     onError: fail,
   });
   const pull = useMutation({
@@ -198,11 +198,11 @@ export default function FilesPanel({ project }: { project: Project }) {
                 {isMarkdown(sel) && (
                   <button onClick={() => setPreview((v) => !v)}
                     className={BUTTON_SMALL.secondary}>
-                    {preview ? "✎ Editor" : "👁 Vorschau"}</button>
+                    {preview ? "✎ Editor" : tr("files_panel.preview")}</button>
                 )}
                 {!img && (
                   <button onClick={() => save.mutate()} disabled={!dirty || save.isPending}
-                    className={BUTTON_SMALL.primary}>{save.isPending ? "…" : "Speichern (⌘S)"}</button>
+                    className={BUTTON_SMALL.primary}>{save.isPending ? "…" : tr("files_panel.save_shortcut")}</button>
                 )}
               </div>
               <div className="min-h-0 flex-1">
@@ -242,7 +242,7 @@ function CommitModal({ pid, onClose, onDone }: { pid: number; onClose: () => voi
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [err, setErr] = useState("");
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const gen = useMutation({
     mutationFn: () => api.post<{ title: string; description: string }>(`/projects/${pid}/repo/commit-message`),

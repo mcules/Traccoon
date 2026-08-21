@@ -144,7 +144,7 @@ export default function Mail() {
         <form onSubmit={(e) => { e.preventDefault(); setSearch(question); setUid(null); }}
               className="flex min-w-0 flex-1 items-center gap-2">
           <input value={question} onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Suchen (Volltext)" className={`${INPUT_VALUE} min-w-0 max-w-md flex-1`} />
+            placeholder={tr("mail.search_fulltext")} className={`${INPUT_VALUE} min-w-0 max-w-md flex-1`} />
           {search && (
             <Rowbutton onClick={() => { setQuestion(""); setSearch(""); }}>
               zurücksetzen
@@ -227,7 +227,7 @@ function AccountSettings({ account, onClose, onError: onError }: {
       qc.invalidateQueries({ queryKey: ["mail-folders"] });
       onClose();
     },
-    onError: (e) => onError(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen"),
+    onError: (e) => onError(e instanceof ApiError ? e.message : tr("common.save_failed")),
   });
   return (
     <AccountDialog start={{ ...account, imap_password: "", smtp_password: "" } as any}
@@ -344,7 +344,7 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
       `/mailbox/accounts/${accountId}/folders/read-all`, { folder: folder }),
     onSuccess: (r) => {
       setQuestion(null);
-      setNotice(r.marked ? `${r.marked} Nachrichten als gelesen markiert` : "Nichts war ungelesen");
+      setNotice(r.marked ? `${r.marked} Nachrichten als gelesen markiert` : tr("mail.nothing_unread"));
       refresh();
     },
     onError: (e) => { setQuestion(null); gonewrong("Markieren")(e); },
@@ -365,7 +365,7 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
 
       {question === "gelesen" && (
         <ConfirmDialog
-          title="Alle als gelesen markieren?"
+          title={tr("mail.mark_all_read_q")}
           text={`Alles Ungelesene in „${folder}" wird auf gelesen gesetzt.`}
           hint={tr("mail.undo_message_by_message")}
           danger={false} confirmText="Markieren" runs={read.isPending}
@@ -417,7 +417,7 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
         </div>
       )}
       <iframe
-        title="Nachricht"
+        title={tr("mail.message")}
         sandbox="allow-popups allow-popups-to-escape-sandbox"
         srcDoc={document}
         className="h-[60vh] w-full rounded border border-line bg-surface"
@@ -448,7 +448,7 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
     refetchInterval: 60_000, refetchOnWindowFocus: true,
   });
   useEffect(() => {
-    if (error) onError(error instanceof ApiError ? error.message : "Postfach nicht erreichbar");
+    if (error) onError(error instanceof ApiError ? error.message : tr("mail.mailbox_unreachable"));
   }, [error]);
 
   return (
@@ -458,7 +458,7 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
         {search && <Tag color="brand">Suche: {search}</Tag>}
         <div className="flex-1" />
         <span className="text-xs text-muted">
-          {data?.total ?? 0} {search ? "Treffer" : "Nachrichten"}
+          {data?.total ?? 0} {search ? "Treffer" : tr("mail.messages")}
         </span>
       </>}
     >
@@ -472,10 +472,10 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
               m.uid === open ? "text-brand" : ""}`}>
               <span className={`min-w-0 flex-1 truncate ${
                 m.uid === open ? "font-medium" : m.seen ? "text-ink" : "font-semibold text-ink"}`}>
-                {m.subject || "(kein Betreff)"}
+                {m.subject || tr("mail.no_subject")}
               </span>
               {!m.seen && <Tag color="brand">neu</Tag>}
-              {m.has_attachment && <span title="hat einen Anhang">📎</span>}
+              {m.has_attachment && <span title={tr("mail.has_attachment")}>📎</span>}
               {m.flagged && <span title="markiert">⭐</span>}
               {m.answered && <span title="beantwortet">↩</span>}
               <span className="shrink-0 text-xs text-muted">{formatDateTime(m.date)}</span>
@@ -534,7 +534,7 @@ function AttachmentDialog({ path: path, attachment: attachment, onClose }: {
           setSource(address);
         }
       })
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Anhang nicht ladbar"));
+      .catch((e) => setError(e instanceof ApiError ? e.message : tr("mail.attachment_unloadable")));
     return () => { alive = false; if (address) URL.revokeObjectURL(address); };
   }, [path]);
 
@@ -657,7 +657,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     return hits?.id;
   };
   useEffect(() => {
-    if (error) onError(error instanceof ApiError ? error.message : "Nachricht nicht lesbar");
+    if (error) onError(error instanceof ApiError ? error.message : tr("mail.message_unreadable"));
   }, [error]);
 
   const start = useMutation({
@@ -682,7 +682,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   });
   const archive = useMutation({
     mutationFn: () => api.post<{ folder: string }>(`${basis}/archive`, { folder: folder }),
-    onSuccess: after, onError: gonewrong("Archivieren"),
+    onSuccess: after, onError: gonewrong(tr("mail.archive")),
   });
   const asSpam = useMutation({
     mutationFn: () => api.post(`${basis}/spam`, { folder: folder }),
@@ -799,12 +799,12 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               {view === "html"
                 ? <HtmlView html={m.html} remoteimages={m.remote_images} />
                 : <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded border border-line bg-surface p-3 text-sm text-ink">
-                    {m.text || "(kein Text)"}
+                    {m.text || tr("mail.no_text")}
                   </pre>}
             </div>
           ) : (
             <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded border border-line bg-surface p-3 text-sm text-ink">
-              {m.text || "(kein Text)"}
+              {m.text || tr("mail.no_text")}
             </pre>
           )}
 
@@ -896,24 +896,24 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
   const send = useMutation({
     mutationFn: () => api.post(`/mailbox/accounts/${accountId}/send`, base()),
     onSuccess: onClose,
-    onError: (e) => onError(e instanceof ApiError ? e.message : "Senden fehlgeschlagen"),
+    onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.send_failed")),
   });
   const draft = useMutation({
     mutationFn: () => api.post(`/mailbox/accounts/${accountId}/draft`, base()),
     onSuccess: onClose,
-    onError: (e) => onError(e instanceof ApiError ? e.message : "Entwurf fehlgeschlagen"),
+    onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.draft_failed")),
   });
 
   return (
     // Held in place: whoever is writing a mail otherwise loses half the text on a misplaced
     // click. It is closed through ✕, cancel, draft or send.
-    <Dialog wide hold title="Nachricht verfassen" onClose={onClose}
+    <Dialog wide hold title={tr("mail.compose")} onClose={onClose}
       foot={
         <div className="flex items-center gap-2">
           <Rowbutton onClick={() => draft.mutate()}>Als Entwurf sichern</Rowbutton>
           <div className="flex-1" />
           <DialogFoot onCancel={onClose} runs={send.isPending}
-            disabled={!identity || !f.to.trim()} saveText="Senden"
+            disabled={!identity || !f.to.trim()} saveText={tr("mail.send")}
             onSave={() => send.mutate()} />
         </div>
       }>
@@ -934,10 +934,10 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
         <Field label="An" hint="Mehrere Adressen mit Komma trennen.">
           <input value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} className={INPUT_VALUE} />
         </Field>
-        <Field label="Kopie">
+        <Field label={tr("mail.copy")}>
           <input value={f.cc} onChange={(e) => setF({ ...f, cc: e.target.value })} className={INPUT_VALUE} />
         </Field>
-        <Field label="Betreff">
+        <Field label={tr("mail.subject")}>
           <input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} className={INPUT_VALUE} />
         </Field>
         <Field label="Text">

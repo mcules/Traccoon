@@ -168,7 +168,7 @@ export default function StartConfig({
             disabled={!defId || addressCreate.isPending}
             className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
           >
-            {addressCreate.isPending ? "…" : "+ Adresse erzeugen"}
+            {addressCreate.isPending ? "…" : tr("start_config.create_address")}
           </button>
         )}
 

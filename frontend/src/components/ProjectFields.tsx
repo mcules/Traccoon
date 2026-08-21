@@ -21,8 +21,8 @@ interface Kind {
 }
 
 const FIELDTYPE: [string, string][] = [
-  ["text", "Text"], ["number", "Zahl"], ["date", "Datum"],
-  ["boolean", "Ja/Nein"], ["select", "Auswahl"],
+  ["text", "Text"], ["number", tr("project_fields.number")], ["date", tr("project_fields.date")],
+  ["boolean", tr("project_fields.yes_no")], ["select", tr("project_fields.choice")],
 ];
 
 const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
@@ -47,7 +47,7 @@ export default function ProjectFields({ project }: { project: Project }) {
   });
 
   const inv = () => qc.invalidateQueries({ queryKey: ["artifact-types", project.id] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
   const ok = () => { setErr(""); inv(); };
 
   // Only what concerns this project: hardware only in hardware projects.

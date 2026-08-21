@@ -109,13 +109,13 @@ const NIGHT_HOUR = 4;
  */
 function deadline(notice: string): number {
   if (notice.includes("Vertragsversion")) return 0;
-  if (notice.includes("Keine Berechtigung")) return WATCHDOG_AUTH_MS;
+  if (notice.includes(tr("office.no_permission"))) return WATCHDOG_AUTH_MS;
   return WATCHDOG_ERROR_MS;
 }
 
 function reasonFrom(notice: string): string {
   if (notice.includes("Vertragsversion")) return "vertragsbruch";
-  if (notice.includes("Keine Berechtigung")) return "socket-auth";
+  if (notice.includes(tr("office.no_permission"))) return "socket-auth";
   return "dauerfehler";
 }
 

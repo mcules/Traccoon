@@ -52,7 +52,7 @@ export default function DecisionConfig({
     if (config.default_handle === gone.handle) onChange({ ...config, default_handle: undefined });
   };
   const add = () =>
-    setBranches([...branches, { handle: `b${Date.now()}_${handleSeq++}`, label: "Neuer Zweig" }]);
+    setBranches([...branches, { handle: `b${Date.now()}_${handleSeq++}`, label: tr("decision_config.new_branch") }]);
 
   const inp = "rounded border border-line bg-card px-2 py-1 text-xs text-ink";
   return (

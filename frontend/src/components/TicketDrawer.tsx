@@ -184,7 +184,7 @@ export default function TicketDrawer({
         await api.put(`/issues/${issueKey}/move`, { status_id: draft.status_id, position: 0 });
     },
     onSuccess: () => { setErr(""); invalidate(); },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.save_failed")),
   });
 
   const addComment = useMutation({
@@ -193,7 +193,7 @@ export default function TicketDrawer({
   });
   const assign = useMutation({
     mutationFn: () => api.post(`/issues/${issueKey}/assign-agent`, { agent }),
-    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const [newPersonName, setNewPersonName] = useState("");
   const setAssignee = useMutation({
@@ -204,11 +204,11 @@ export default function TicketDrawer({
       invalidate();
       qc.invalidateQueries({ queryKey: ["meta", project.id] });
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const clearAssignee = useMutation({
     mutationFn: () => api.del(`/issues/${issueKey}/assignee`),
-    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const setAsset = useMutation({
     mutationFn: (asset_id: number | null) => api.put(`/issues/${issueKey}`, { asset_id }),
@@ -216,18 +216,18 @@ export default function TicketDrawer({
       invalidate();
       qc.invalidateQueries({ queryKey: ["asset-issues"] });
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const unassign = useMutation({
     mutationFn: () => api.del(`/issues/${issueKey}/assign-agent`),
-    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const life = useMutation({
     mutationFn: (path: string) => api.post(`/issues/${issueKey}/${path}`),
     onSuccess: invalidate,
     // Reload in the error case as well: on merge problems /complete resets the ticket server
     // side (testing/hold), and the view has to show that.
-    onError: (e) => { setErr(e instanceof ApiError ? e.message : "Fehler"); invalidate(); },
+    onError: (e) => { setErr(e instanceof ApiError ? e.message : tr("common.error")); invalidate(); },
   });
   const refreshAttachments = () => qc.invalidateQueries({ queryKey: ["attachments", issueKey] });
   const uploadAttachment = useMutation({
@@ -236,16 +236,16 @@ export default function TicketDrawer({
   });
   const delAttachment = useMutation({
     mutationFn: (aid: number) => api.del(`/attachments/${aid}`),
-    onSuccess: refreshAttachments, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onSuccess: refreshAttachments, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const answerBlocker = useMutation({
     mutationFn: (text: string) => api.post(`/issues/${issueKey}/blocker/answer`, { answer: text }),
-    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const del = useMutation({
     mutationFn: () => api.del(`/issues/${issueKey}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["issues", project.id] }); onClose(); },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const archive = useMutation({
     mutationFn: () => api.post(`/issues/${issueKey}/${issue?.archived ? "unarchive" : "archive"}`),
@@ -256,7 +256,7 @@ export default function TicketDrawer({
       if (wasArchiving) onClose();   // when archiving, close the modal right away
       else invalidate();
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const canManage = project.my_role === "maintainer" || project.my_role === "owner";
   const canWrite = canManage || project.my_role === "member";
@@ -329,7 +329,7 @@ export default function TicketDrawer({
           className={`rounded-md border px-2.5 py-1 text-xs ${
             editLayout ? "border-brand bg-brand text-white" : "border-line text-muted hover:bg-surface hover:text-ink"
           }`}>
-          {editLayout ? "✓ Layout fertig" : "⤢ Layout bearbeiten"}
+          {editLayout ? tr("ticket_drawer.layout_done") : tr("ticket_drawer.layout_edit")}
         </button>
       )}
       <button onClick={onClose} className={BUTTON_TEXT.secondary}>
@@ -393,7 +393,7 @@ export default function TicketDrawer({
       <button disabled={!dirty || !draft.summary.trim() || save.isPending}
         onClick={() => save.mutate()}
         className="rounded bg-brand px-4 py-1.5 text-white disabled:cursor-not-allowed disabled:opacity-40">
-        {save.isPending ? "Speichert…" : "Speichern"}
+        {save.isPending ? "Speichert…" : tr("ticket_drawer.save")}
       </button>
       {dirty && (
         <button onClick={() => setDraft(seed(issue))}
@@ -702,7 +702,7 @@ export default function TicketDrawer({
             || issue.agent_status === "failed") && (
             <button onClick={() => life.mutate("plan")}
               className={BUTTON_SMALL.primary}>
-              🧭 {issue.agent_status === "failed" ? "Erneut planen" : "Planung starten"}
+              🧭 {issue.agent_status === "failed" ? "Erneut planen" : tr("ticket_drawer.start_planning")}
             </button>
           )}
         </div>
@@ -729,7 +729,7 @@ export default function TicketDrawer({
           )}
           <button onClick={() => life.mutate("reject-plan")}
             className={BUTTON.secondary}>
-            {issue.hold_reason === "plan_split" ? "Verwerfen" : "Ablehnen"}
+            {issue.hold_reason === "plan_split" ? tr("ticket_drawer.discard") : "Ablehnen"}
           </button>
         </div>
       )}
@@ -1005,7 +1005,7 @@ function IssueWorkflows({ issueId, project, meta }: { issueId: number; project: 
                         <span className="rounded bg-surface px-1.5 py-0.5">
                           {tr(NODE_TYPE_LABELS[s.node_type])}
                         </span>
-                        <span className="text-ink">{node.data.config.label || "Offener Schritt"}</span>
+                        <span className="text-ink">{node.data.config.label || tr("ticket_drawer.open_step")}</span>
                       </div>
                       <WorkflowTaskForm
                         iid={inst.id}

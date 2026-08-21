@@ -23,12 +23,12 @@ export default function AgentsBadge() {
   });
   const inv = () => qc.invalidateQueries({ queryKey: ["admin-status"] });
   const guard = async (fn: () => Promise<any>) => {
-    try { setErr(""); await fn(); inv(); } catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
+    try { setErr(""); await fn(); inv(); } catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.error")); }
   };
   const update = useMutation({ mutationFn: () => api.post("/admin/update"), onSuccess: inv,
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler") });
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")) });
   const cancel = useMutation({ mutationFn: () => api.post("/admin/update/cancel"), onSuccess: inv,
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler") });
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")) });
 
   const n = data?.running_agents ?? 0;
   const busy = data?.update_pending || data?.update_in_progress;

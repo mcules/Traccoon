@@ -5,7 +5,7 @@ import type { MemberLite } from "../../api";
 const ROLE_LABEL: Record<string, string> = {
   owner: "Owner",
   maintainer: "Maintainer",
-  member: "Mitglied",
+  member: tr("assignee.member"),
   viewer: "Betrachter",
 };
 

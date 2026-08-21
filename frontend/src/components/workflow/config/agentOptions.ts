@@ -40,9 +40,9 @@ export function agentOptions(
   for (const [role, listing] of [...perRole.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const [winner] = [...listing].sort((a, b) => rank(a) - rank(b));
     const origin =
-      winner.project_id != null ? "Projekt"
+      winner.project_id != null ? tr("agent_options.project")
         : winner.user_id != null ? tr("agent_options.personal")
-          : "Ausgeliefert";
+          : tr("agent_options.shipped");
     const extra = [
       origin,
       winner.customized ? "angepasst" : "",

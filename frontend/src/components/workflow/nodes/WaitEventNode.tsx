@@ -3,7 +3,7 @@ import { tr } from "../../../i18n";
 
 const EVENT_LABEL: Record<string, string> = {
   comment: "Kommentar",
-  answer: "Antwort",
+  answer: tr("wait_event_node.answer"),
   manual: "manuell",
   any: "beliebig",
 };

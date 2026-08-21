@@ -69,17 +69,17 @@ function stepText(c: Cmd): { text: string; css?: string } | null {
     case "think": return { text: `💭 ${c.text}`, css: "italic text-muted" };
     case "tool": return { text: `🔧 ${c.tool}${c.target ? ` · ${c.target}` : ""}` };
     case "toolEnd":
-      return c.ok === true ? { text: "↩ Werkzeug erfolgreich", css: "text-green-400" }
-        : c.ok === false ? { text: "↩ Werkzeug fehlgeschlagen", css: "text-red-400" }
-          : { text: "↩ Werkzeug beendet, Ergebnis unbekannt", css: "text-muted" };
+      return c.ok === true ? { text: tr("inspector.tool_ok"), css: "text-green-400" }
+        : c.ok === false ? { text: tr("inspector.tool_failed"), css: "text-red-400" }
+          : { text: tr("inspector.tool_unknown"), css: "text-muted" };
     case "edit": return { text: `📝 ${c.path}` };
     case "spawn": return { text: `🌱 ${tr("inspector.started_subagent")}` };
     case "deliver": return { text: `📨 ${tr("inspector.handover")}${c.text ? `: ${c.text}` : ""}` };
     case "gate": return { text: `⏸ ${tr(GATE_TEXT[c.kind])}`, css: "text-orange-400" };
     case "resume": return { text: `▶ ${tr("inspector.answer_received_carrying")}` };
     case "status": return { text: `● ${statusText(c.status)}`, css: statusColor(c.status) };
-    case "done": return c.ok ? { text: "✅ fertig", css: "text-green-400" }
-      : { text: "❌ abgebrochen", css: "text-red-400" };
+    case "done": return c.ok ? { text: tr("inspector.done"), css: "text-green-400" }
+      : { text: tr("inspector.aborted"), css: "text-red-400" };
     // The server rack. `back` gets a line of its own instead of "failed": failed **and**
     // healed is the only good news in the error case, and the list is the place where one can
     // read it in plain text.
@@ -224,7 +224,7 @@ export default function Inspector({
             )}
           </Field>
           <Field label="Verschachtelung">{entry.spawn_depth}</Field>
-          <Field label="Letztes Werkzeug">
+          <Field label={tr("inspector.last_tool")}>
             {excerpt.tool ? (
               <span>
                 <span className="font-mono">{excerpt.tool.tool}</span>
@@ -234,7 +234,7 @@ export default function Inspector({
                   {excerpt.tool.ok === undefined ? tr("office_room.st_running")
                     : excerpt.tool.ok === true ? "erfolgreich"
                       : excerpt.tool.ok === false ? "fehlgeschlagen"
-                        : "Ergebnis unbekannt"}
+                        : tr("inspector.result_unknown")}
                   {excerpt.tool.ok !== undefined && ` · ${durationText(excerpt.tool.duration)}`}
                 </span>
               </span>

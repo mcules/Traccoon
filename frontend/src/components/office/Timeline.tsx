@@ -217,7 +217,7 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
       <div
         ref={setBox}
         role="group"
-        aria-label="Zeitleiste — ein Balken je Sekunde"
+        aria-label={tr("timeline.title")}
         // `overflow-hidden`: if the measurement miscounts by one column (rounding, scrollbar),
         // the bar should be clipped instead of tearing the layout behind it open.
         className="flex h-16 items-end overflow-hidden"

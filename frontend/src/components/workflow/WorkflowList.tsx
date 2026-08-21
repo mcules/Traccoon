@@ -28,7 +28,7 @@ export default function WorkflowList({ project }: { project: Project }) {
   const [f, setF] = useState(EMPTY);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["workflows", project.id] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const create = useMutation({
     mutationFn: () =>

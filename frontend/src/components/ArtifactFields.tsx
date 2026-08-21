@@ -45,7 +45,7 @@ export default function ArtifactFields({ artifactId, compact, all: all }: {
       qc.invalidateQueries({ queryKey: ["artifacts"] });
     },
     onError: (e) => {
-      setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen");
+      setErr(e instanceof ApiError ? e.message : tr("common.save_failed"));
       // Back to the state of the database; otherwise the interface would show something that
       // is not stored at all.
       qc.invalidateQueries({ queryKey: ["artifact-values", artifactId] });
