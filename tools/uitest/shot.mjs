@@ -1,7 +1,7 @@
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
-const SEITEN = (process.env.SEITEN || "projekte:/,projekt:/projects/UNI,board:/projects/UNI?tab=board,prozesse:/processes,einstellungen:/settings,profil:/profil")
+const SEITEN = (process.env.SEITEN || "projects:/,project:/projects/UNI,board:/projects/UNI/work/board,processes:/processes/own,settings:/settings/secrets,account:/account/person")
   .split(",").map((s) => { const i = s.indexOf(":"); return [s.slice(0, i), s.slice(i + 1)]; });
 const b = await chromium.launch({ executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome" });
 const BREIT = process.env.BREIT === "1";

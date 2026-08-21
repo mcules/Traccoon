@@ -20,21 +20,37 @@ const PROJEKT = process.env.PROJEKT || "UNI";
 // Every tab on its own: the first version checked only the default tab of each page and
 // therefore called the administration clean, although six of its eight tabs show tables that
 // get squeezed to nothing at 390 px.
+//
+// The addresses are the ones of today, and that has to stay that way: a section that no
+// longer exists does NOT fail here. It falls through the redirect onto the default tab of
+// its page, gets measured a second time and reports itself clean. Five of the old entries
+// (`eigene`, `betrieb`, `ausloeser`, `messreihen`, `prefs`) had been doing exactly that
+// since the addresses went English — the measurement looked complete and covered four
+// sections less than it said.
 const SEITEN = [
-  ["Projekte", "/"],
-  ["Eingang", "/inbox"],
-  ["Profil", "/profil"],
-  ...["board", "list", "dashboard", "monitor", "workflows", "settings"]
-    .map((t) => [`Projekt/${t}`, `/projects/${PROJEKT}?tab=${t}`]),
-  ...["eigene", "standard", "betrieb", "ausloeser", "messreihen"]
-    .map((t) => [`Prozesse/${t}`, `/processes/${t}`]),
-  ...["secrets", "prefs", "processes", "destinations", "agents", "mcp", "jobs", "webhooks", "skills"]
-    .map((t) => [`Einstellungen/${t}`, `/settings/${t}`]),
-  ...["users", "cost", "models", "maintenance", "mail", "destinations", "artifacts", "translations"]
+  ["Projects", "/"],
+  ["Inbox", "/inbox"],
+  ["Mail", "/mail"],
+  ...["person", "appearance", "notifications", "mail", "agents"]
+    .map((t) => [`Account/${t}`, `/account/${t}`]),
+  // Area and view stand in the path since the sub-menu was regrouped; `?tab=` only redirects.
+  ...["board", "list", "backlog", "archive"]
+    .map((v) => [`Project/work/${v}`, `/projects/${PROJEKT}/work/${v}`]),
+  // Without `office`: the room is a canvas of its own, the same reason the flow editor is
+  // measured apart from its drawing area.
+  ...["monitor", "testenvs", "hardware"]
+    .map((v) => [`Project/operations/${v}`, `/projects/${PROJEKT}/operations/${v}`]),
+  ...["pm", "code", "dashboard", "settings"]
+    .map((t) => [`Project/${t}`, `/projects/${PROJEKT}/${t}`]),
+  ...["own", "default", "operations", "triggers", "metrics", "documents", "locations"]
+    .map((t) => [`Processes/${t}`, `/processes/${t}`]),
+  ...["secrets", "destinations", "agents", "mcp", "jobs", "webhooks", "skills", "plugins"]
+    .map((t) => [`Settings/${t}`, `/settings/${t}`]),
+  ...["users", "cost", "models", "maintenance", "mail", "artifacts", "translations"]
     .map((t) => [`Admin/${t}`, `/admin/${t}`]),
   // The flow editor could not be operated on a phone at all and therefore never appeared in
   // the measurement, which is exactly the gap it slipped through.
-  ["Ablauf-Editor", `/workflows/${process.env.WF || "44"}`],
+  ["Flow editor", `/workflows/${process.env.WF || "44"}`],
 ];
 const BREITEN = [["Handy", 390, 844], ["Desktop", 1400, 900]];
 
