@@ -289,8 +289,6 @@ export interface Series {
   state: Record<string, any>;
   points: number;
   active: boolean;
-  expected_rows: number;
-  store_id: number | null;
   last_at: string | null;
   owner_user_id: number | null;
   /** Mine — or only shared with me? */

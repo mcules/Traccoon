@@ -47,11 +47,6 @@ class Series(TimestampMixin, Base):
     # in denselben Farben wiederfinden.
     color: Mapped[str] = mapped_column(String(7), default="")
 
-    # Where the points are written. NULL means: into this database.
-    store_id: Mapped[int | None] = mapped_column(
-        ForeignKey("data_stores.id", ondelete="SET NULL"), nullable=True, index=True)
-    # What the person reckons with — the basis for the storage suggestion.
-    expected_rows: Mapped[int] = mapped_column(Integer, default=0)
 
     # Art-abhaengig: unit (number) · min_distance_m, min_interval_s, max_accuracy_m
     # (location) · keep_entries (text). Deliberately one JSON instead of twelve columns of
