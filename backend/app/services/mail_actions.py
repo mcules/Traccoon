@@ -152,10 +152,10 @@ async def spam_card(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     task = ctx.get("task") or {}
     predecided = bool(params.get("predecided"))
     recoverable = bool(params.get("recoverable"))
-    # Ob gemeldet wird, entscheidet der Ablauf. `melden=false` heißt: Urteil anlegen, Text
-    # bereitstellen — verschickt wird es von einem Melde-Knoten dahinter, den man abschalten
-    # kann, ohne die Aussortierung mit abzuschalten. Vorgabe bleibt `true`, damit
-    # veröffentlichte Fassungen ohne solchen Knoten weiter melden.
+    # Whether it is reported the flow decides. `report=false` means: create the verdict,
+    # provide the text — sending it is done by a report node behind it, which one can switch
+    # off without switching off the filing as well. The default stays `true` so that published
+    # versions without such a node keep reporting.
     selbst_report = params.get("report")
     selbst_report = True if selbst_report is None else bool(selbst_report)
     verdict = await create(db, owner_id, verdict_row,
@@ -167,8 +167,8 @@ async def spam_card(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
         await report(db, owner_id, verdict, immediate=True, predecided=predecided,
                      recoverable=recoverable)
     kind = "rueckholbar" if recoverable else ("sofort" if immediate else "sammel")
-    # Der Text gehört zum Spam-Wissen, nicht in den Graphen: welche Gründe genannt werden und
-    # wie ein Rückholhinweis lautet, ändert sich mit der Erkennung. Der Melde-Knoten nimmt
+    # The text belongs to the spam knowledge, not into the graph: which reasons are named and
+    # how a recall hint reads changes with the detection. The report node takes
     # ihn als `{{ spam.karte_titel }}` / `{{ spam.karte_text }}` und bleibt selbst allgemein.
     title, text = karte(verdict, predecided=predecided, recoverable=recoverable)
     inst.context = {**ctx, "spam": {**verdict_row, "verdict_id": verdict.id, "karte": kind,
@@ -209,12 +209,12 @@ async def spam_execute(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
             "entscheidung": "spam" if is_spam else "ham", "ergebnis": result}
 
 
-# ── Assistent: nur noch die Übersetzung, nicht mehr die Arbeit ───────────────
-# Den Eingang anlegen, ihn starten, die Freigabekarte schicken — das konnte einmal nur der
-# Mail-Weg, mit drei eigenen Aktionen. Es sind aber keine Mail-Sachen: `assistent_auftrag`
-# legt den Eingang an (und startet ihn, wenn keine Freigabe nötig ist), `notify` schickt die
-# Karte. Was der Mail-Eingang beisteuert, sind seine Werte — und die stehen hier als
-# Parametersatz, damit Vorlage und Altnamen dieselben benutzen.
+# ── Assistant: only the translation any more, no longer the work ─────────────
+# Creating the intake, starting it, sending the approval card — that could once only be done
+# by the mail path, with three actions of its own. But they are not mail matters:
+# `assistent_auftrag` creates the intake (and starts it when no approval is needed), `notify`
+# sends the card. What the mail intake contributes are its values — and those stand here as a
+# parameter set so that the template and the legacy names use the same ones.
 TASK_PARAMS: dict = {
     "kind": "email",
     "source": "{{ intake.source }}",
@@ -227,22 +227,22 @@ TASK_PARAMS: dict = {
     "summary": "{{ classification.redacted_summary }}",
     "hint": "{{ policy.action_hint }}",
     "redaction": "{{ policy.redaction | default:\"redacted\" }}",
-    # Welches Feld den Text trägt, hängt am Absender der Mail, nicht am Ablauf.
+    # Which field carries the text depends on the sender of the mail, not on the flow.
     "full_text": "{{ mail.body_text | default:mail.body | default:mail.body_html_as_text }}",
     "meta": {"account": "{{ mail.account }}", "uid": "{{ mail.uid }}",
              "from": "{{ mail.from }}", "subject": "{{ mail.subject }}",
              "sensitive": "{{ classification.sensitive }}"},
-    # Eine gelernte Regel gibt frei, alles andere fragt.
+    # A learned rule releases it, everything else asks.
     "approval": {"!": {"var": "policy.auto"}},
 }
 
-# Die Karte zum Freigeben: eine gewöhnliche Nachricht mit Art und Bezug.
+# The card for approving: an ordinary message with a kind and a reference.
 MAP_PARAMS: dict = {
     "kind": "assistant_review",
     "ref": {"assistant_task_id": "{{ task.id }}"},
     "title": "📥 {{ mail.subject | default:\"(kein Betreff)\" }}",
-    # `from` kommt je nach Melder als Text oder als Liste von {name, addr}; die Filterkette
-    # holt in beiden Fällen die Adresse heraus, statt eine Python-Liste hinzuschreiben.
+    # `from` arrives as text or as a list of {name, addr} depending on the reporter; the filter
+    # chain pulls the address out in both cases instead of writing a Python list here.
     "text": "Von {{ mail.from | field:\"addr\" | join:\", \" | default:\"?\" }}\n"
             "{{ classification.redacted_summary }}",
 }
@@ -251,25 +251,25 @@ MAP_PARAMS: dict = {
 async def assistant_item(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Altname `assistant_task`, umgeleitet auf den allgemeinen Knoten.
 
-    Er steht in veröffentlichten Fassungen, und die sind unveränderlich — laufende Instanzen
-    hängen daran. Deshalb umgeleitet statt zweimal gepflegt, wie bei `_ALT_AKTIONEN`.
+    It stands in published versions, and those are immutable — running instances hang on them.
+    That is why it is redirected instead of maintained twice, as with `_OLD_ACTIONS`.
     """
     from .workflow_actions import _assistant_task
     return await _assistant_task(db, inst, {**TASK_PARAMS, **params}, ctx, "item")
 
 
 async def assistant_card(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Altname `assistant_card`: die Freigabekarte ist eine Nachricht wie jede andere."""
+    """Legacy name `assistant_card`: the approval card is a message like any other."""
     from .workflow_actions import run_action
     return await run_action(db, inst, {"id": "freigabe_karte", "data": {"config": {
         "action": {"action": "notify", "params": {**MAP_PARAMS, **params}}}}})
 
 
 async def assistant_run(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Altname `assistant_run`: der Eingang startet heute schon beim Anlegen.
+    """Legacy name `assistant_run`: the intake already starts on creation today.
 
-    Ein zweiter Anstoß wäre ein zweiter Lauf derselben Sache — deshalb wird hier nur
-    berichtet, was ohnehin geschehen ist.
+    A second push would be a second run of the same matter — which is why only what has
+    happened anyway is reported here.
     """
     task = dict(ctx.get("task") or {})
     return {"action": "assistant_run", "queued": False, "task_id": task.get("id"),
@@ -281,9 +281,9 @@ HANDLER = {
     "spam_evaluate": spam_judge,
     "spam_card": spam_card,
     "spam_apply": spam_execute,
-    # Die Altnamen des Mail-Wegs. `assistant_task` heißt heute der ALLGEMEINE Auftrag —
-    # deshalb tragen die alten hier ein `mail_`-Vorzeichen, und die einmalige Umstellung
-    # (`workflow_terms.EINMALIG`) schreibt sie in den gespeicherten Fassungen darauf um.
+    # The legacy names of the mail path. `assistant_task` today means the GENERAL assignment —
+    # which is why the old ones carry a `mail_` prefix here, and the one-off conversion
+    # (`workflow_terms.ONCE`) rewrites them onto that in the stored versions.
     "mail_assistant_task": assistant_item,
     "mail_assistant_card": assistant_card,
     "mail_assistant_run": assistant_run,

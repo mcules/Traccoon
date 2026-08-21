@@ -1,34 +1,34 @@
-"""Vier Sprachen, eine Bedeutung: was ein Geraet meldet, wenn es seinen Standort meldet.
+"""Four languages, one meaning: what a device reports when it reports its location.
 
-Jede App hat ihre eigene Fassung derselben Nachricht. Sie hier zu uebersetzen statt in vier
-Endpunkten hat einen einfachen Grund: Der Unterschied liegt allein in den Namen der Felder,
-nicht in dem, was sie bedeuten. Ein Endpunkt, der am Inhalt erkennt, womit er es zu tun hat,
-kommt ohne Einstellung aus — man traegt die Adresse ein, und es laeuft.
+Every app has its own version of the same message. Translating them here instead of in four
+endpoints has a simple reason: the difference lies solely in the names of the fields, not in
+what they mean. An endpoint that recognises from the content what it is dealing with needs no
+setting — one enters the address, and it runs.
 
 Die vier:
 
 * **OwnTracks** — `{"_type":"location","lat":…,"lon":…,"tst":…,"acc":…,"batt":…}`
-* **Overland** — `{"locations":[GeoJSON-Feature,…]}`, ein Stapel; die Koordinaten stehen dort
-  in der Reihenfolge **lon, lat** — die haeufigste Falle beim Umgang mit GeoJSON.
-* **Traccar / OsmAnd** — kein Rumpf, alles in der Adresse: `?id=…&lat=…&lon=…&timestamp=…`
-* **flach** — `{"lat":…,"lon":…}` oder `{"latitude":…,"longitude":…}`; das, was Home Assistant
-  aus einer Vorlage schickt, und was jeder selbst zusammenbaut.
+* **Overland** — `{"locations":[GeoJSON feature,…]}`, a batch; the coordinates stand there in
+  the order **lon, lat** — the most common trap when dealing with GeoJSON.
+* **Traccar / OsmAnd** — no body, everything in the address: `?id=…&lat=…&lon=…&timestamp=…`
+* **flat** — `{"lat":…,"lon":…}` or `{"latitude":…,"longitude":…}`; what Home Assistant sends
+  from a template, and what everybody builds themselves.
 """
 from __future__ import annotations
 
 import datetime as dt
 from typing import Any
 
-# Ein Zeitstempel, der weiter als das zurueckliegt, ist keine Sekundenangabe mehr, sondern
-# eine in Millisekunden: 10^11 Sekunden waeren das Jahr 5138.
+# A timestamp further back than this is no longer a figure in seconds but one in
+# milliseconds: 10^11 seconds would be the year 5138.
 _MS_LIMIT = 100_000_000_000
 
 
 def _number(value: Any) -> float | None:
-    """Eine Zahl aus dem, was ankommt — oder nichts.
+    """A number out of what arrives — or nothing.
 
-    Geraete schicken Zahlen als Text, mit Komma, mit Einheit dahinter, oder leer. Ein
-    `float()` mit try/except waere zu grob: `"12,5 km/h"` soll 12,5 ergeben und nicht nichts.
+    Devices send numbers as text, with a comma, with a unit behind them, or empty. A `float()`
+    with try/except would be too coarse: `"12,5 km/h"` should yield 12.5 and not nothing.
     """
     if value is None or isinstance(value, bool):
         return None
@@ -46,7 +46,7 @@ def _number(value: Any) -> float | None:
 
 
 def moment(value: Any) -> dt.datetime | None:
-    """Ein Zeitstempel aus Unix-Sekunden, Unix-Millisekunden oder ISO-Text."""
+    """A timestamp from unix seconds, unix milliseconds or ISO text."""
     if value is None:
         return None
     if isinstance(value, (int, float)) or (isinstance(value, str) and value.strip().isdigit()):
@@ -74,8 +74,8 @@ def _battery(value: Any) -> float | None:
     """Akkustand in Prozent.
 
     OwnTracks meldet 0–100, andere melden 0–1 als Bruchteil. Ein Wert unter 1 ist deshalb
-    zweideutig — hier gilt er als Bruchteil, weil ein Telefon mit 0,8 % Akku laengst aus
-    waere. Genau diese Verwechslung hat beim Weg nach dawarich schon einmal 8200 % ergeben.
+    ambiguous — here it counts as a fraction, because a phone with 0.8 % battery would long
+    since be off. Exactly this mix-up once produced 8200 % on the way to dawarich.
     """
     number = _number(value)
     if number is None:
@@ -87,7 +87,7 @@ def _battery(value: Any) -> float | None:
 
 def _fix(lat: Any, lon: Any, ts: Any, *, accuracy=None, altitude=None, speed=None,
          course=None, battery=None, source: str = "", raw: Any = None) -> dict | None:
-    """Ein Punkt in Traccoons Form — oder nichts, wenn keine Koordinate drinsteckt."""
+    """A point in Traccoon's shape — or nothing, if no coordinate is in it."""
     la, lo = _number(lat), _number(lon)
     if la is None or lo is None:
         return None
@@ -95,8 +95,8 @@ def _fix(lat: Any, lon: Any, ts: Any, *, accuracy=None, altitude=None, speed=Non
               "speed": _number(speed), "course": _number(course), "battery": _battery(battery)}
     return {
         "lat": la, "lon": lo, "ts": moment(ts),
-        # Leere Felder fliegen raus: Sonst stuende in jedem Punkt fuenfmal `null`, und bei
-        # einer Million Punkten ist das ein spuerbarer Teil der Tabelle.
+        # Empty fields are dropped: otherwise every point would hold `null` five times, and
+        # with a million points that is a noticeable part of the table.
         "extra": {n: w for n, w in extra.items() if w is not None},
         "source": source,
         "raw": raw,
@@ -104,7 +104,7 @@ def _fix(lat: Any, lon: Any, ts: Any, *, accuracy=None, altitude=None, speed=Non
 
 
 def normalise(payload: Any, query: dict | None = None) -> list[dict]:
-    """Alles, was ankommt, als Liste von Punkten. Unverstaendliches ergibt eine leere Liste."""
+    """Everything that arrives, as a list of points. What is unintelligible yields an empty list."""
     query = {k.lower(): v for k, v in (query or {}).items()}
     data = payload if isinstance(payload, dict) else {}
 
@@ -112,7 +112,7 @@ def normalise(payload: Any, query: dict | None = None) -> list[dict]:
     if isinstance(data.get("locations"), list):
         return _overland(data["locations"])
 
-    # OwnTracks: meldet auch Wegpunkte und Statusnachrichten — nur Standorte interessieren.
+    # OwnTracks: also reports waypoints and status messages — only locations are of interest.
     if data.get("_type"):
         if data["_type"] not in ("location", "transition"):
             return []
@@ -122,8 +122,8 @@ def normalise(payload: Any, query: dict | None = None) -> list[dict]:
                  battery=data.get("batt"), source="owntracks", raw=data)
         return [p] if p else []
 
-    # Traccar/OsmAnd: alles in der Adresse. Erkennbar daran, dass der Rumpf nichts hergibt,
-    # die Adresse aber Koordinaten traegt.
+    # Traccar/OsmAnd: everything in the address. Recognisable by the body yielding nothing
+    # while the address carries coordinates.
     if not data and ("lat" in query or "latitude" in query):
         p = _fix(query.get("lat") or query.get("latitude"),
                  query.get("lon") or query.get("longitude"),

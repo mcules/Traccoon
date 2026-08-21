@@ -1,19 +1,18 @@
-"""Webhooks der alten Modi einmalig auf Abläufe umstellen.
+"""Convert webhooks of the old modes to flows, once.
 
 Ein Webhook konnte einmal selbst ein Ticket anlegen (`task`), eine Nachricht schicken
-(`notify`) oder den Assistenten beauftragen (`assistant`). Jeder dieser Wege hatte eigene
-Spalten am Webhook — `agent`, `prompt_tmpl`, `auto_run`, `title_template`, `notify_chat` —
-und war nur dort zu haben: Wer dasselbe aus einem Job oder einem Ereignis heraus wollte,
-schaute in die Röhre.
+(`notify`) or assign the assistant (`assistant`). Each of these ways had columns of its own on
+the webhook — `agent`, `prompt_tmpl`, `auto_run`, `title_template`, `notify_chat` — and was
+available only there: whoever wanted the same thing out of a job or an event was out of luck.
 
-Dieselbe Arbeit machen heute Knoten, die in jedem Ablauf stehen können. Übrig bleibt für den
-Webhook, was ein Auslöser wirklich ist: entgegennehmen, prüfen, weitergeben — als Ablauf
+The same work is done today by nodes that can stand in any flow. What is left for the webhook
+is what a trigger really is: receive, check, pass on — as a flow
 (`workflow`) oder als Ereignis (`event`).
 
-Hier steht der Übergang. Er läuft beim Start, ist idempotent (umgestellte Webhooks tragen den
-neuen Modus und werden nicht wieder angefasst) und verliert nichts: Der Prompt wird zum
-Auftragstext, die Vorlagen werden zu Titel und Text, `auto_run` wird zum Freigabe-Schalter.
-Der öffentliche Pfad (`public_id`) bleibt, außen merkt niemand etwas.
+Here stands the transition. It runs at startup, is idempotent (converted webhooks carry the
+new mode and are not touched again) and loses nothing: the prompt becomes the assignment text,
+the templates become title and text, `auto_run` becomes the approval switch. The public path
+(`public_id`) stays, nobody outside notices a thing.
 """
 from __future__ import annotations
 
@@ -33,16 +32,16 @@ OLD_MODI = ("task", "notify", "assistant")
 
 
 def _tpl(text: str | None) -> str:
-    """`{feld}` der alten Vorlagen wird `{{ feld }}` der Ablauf-Sprache."""
+    """`{field}` of the old templates becomes `{{ field }}` of the flow language."""
     return re.sub(r"\{([A-Za-z0-9_.]+)\}", r"{{ \1 }}", text or "")
 
 
 def _own_title(sub: WebhookSub) -> str:
-    """Der Titel, sofern er einer ist.
+    """The title, provided it is one.
 
-    „{title}“ ist die unangetastete Voreinstellung: Der Assistenten-Weg hat sie nie benutzt
-    (er nahm den Betreff der Mail), und die Nutzlast eines Melders hat selten ein Feld
-    `title`. Übernähme man sie, stünde der Platzhalter am Ende als Text in der Überschrift.
+    "{title}" is the untouched default: the assistant path never used it (it took the subject
+    of the mail), and the payload of a reporter rarely has a field `title`. Adopting it would
+    leave the placeholder standing as text in the heading.
     """
     raw = (sub.title_template or "").strip()
     return "" if raw in ("", "{title}") else _tpl(raw)
@@ -61,18 +60,18 @@ def _set_params(graph: dict, node_id: str, params: dict) -> None:
 
 
 def _is_mail(sub: WebhookSub) -> bool:
-    """Ob dieser Assistenten-Webhook der Mail-Eingang ist.
+    """Whether this assistant webhook is the mail intake.
 
-    `classify_agent` gab es nur für ihn (lokale Vorklassifizierung vor dem Assistenten); der
-    Name der Route ist der zweite Anhaltspunkt für Postfächer, die ohne sie eingerichtet
-    wurden. Ein Treffer heißt: Der Webhook meldet künftig `mail.received`, und der
-    Mail-Eingangs-Ablauf hört darauf — wie bisher, nur ohne Sonderweg im Code.
+    `classify_agent` existed only for it (local pre-classification before the assistant); the
+    name of the route is the second clue for mailboxes that were set up without it. A match
+    means: the webhook reports `mail.received` from now on, and the mail intake flow listens
+    for it — as before, only without a special path in the code.
     """
     return bool(sub.classify_agent) or bool(re.search(r"mail|email", sub.route or "", re.I))
 
 
 async def _recipient(db: AsyncSession, sub: WebhookSub) -> int | None:
-    """Wer die Nachricht bekommt: der Mensch hinter dem Chat, sonst der Besitzer."""
+    """Who gets the message: the person behind the chat, otherwise the owner."""
     if sub.notify_chat:
         who = (await db.execute(select(User).where(
             User.telegram_chat_id == sub.notify_chat))).scalars().first()
@@ -84,11 +83,11 @@ async def _recipient(db: AsyncSession, sub: WebhookSub) -> int | None:
 
 
 def _itemname(route: str) -> str:
-    """Aus einer Route ein Name für die Sache: `ha-battery-low` → „Ha battery low“.
+    """A name for the matter out of a route: `ha-battery-low` → "Ha battery low".
 
-    Was der Ablauf tut, weiß nur der Mensch — aber wie er heißt, soll wenigstens nicht vom
-    Auslöser handeln. „Webhook: ha-battery-low“ beschreibt den Briefkasten, nicht den Brief;
-    umbenennen kann man ihn danach in der Prozessliste.
+    What the flow does only the person knows — but what it is called should at least not be
+    about the trigger. "Webhook: ha-battery-low" describes the letterbox, not the letter;
+    renaming it afterwards is possible in the flow list.
     """
     text = (route or "").replace("_", " ").replace("-", " ").strip()
     return text[:1].upper() + text[1:] if text else "Ablauf"
@@ -108,16 +107,16 @@ async def _as_flow(db: AsyncSession, sub: WebhookSub, key: str, graph: dict,
 
 
 async def convert(db: AsyncSession) -> int:
-    """Stellt alles um, was noch einen alten Modus trägt. Gibt die Anzahl zurück."""
+    """Converts everything that still carries an old mode. Returns the count."""
     subs = (await db.execute(select(WebhookSub).where(
         WebhookSub.mode.in_(OLD_MODI)))).scalars().all()
     if not subs:
         return 0
     for sub in subs:
         if sub.mode == "assistant" and _is_mail(sub):
-            # Der Mail-Eingang war nie Sache des Webhooks: Er meldet, dass eine Mail da ist,
-            # und wer darauf hört, entscheidet der Ablauf. Was die Schritte über den Eingang
-            # wissen müssen, stand vorher fest im Code und steht jetzt im Kontext.
+            # The mail intake was never the webhook's business: it reports that a mail is
+            # there, and who listens to that the flow decides. What the steps need to know
+            # about the intake used to sit in the code and now stands in the context.
             ref = sub.ref_field or "{account}:{uid}"
             sub.ref_field = ref
             sub.context_map = {"mail": ""}
@@ -144,7 +143,7 @@ async def convert(db: AsyncSession) -> int:
                 "agent": sub.agent or "assistent",
                 "titel": _own_title(sub),
                 "task": task,
-                # `auto_run` hieß „ohne Rückfrage laufen“ — der Schalter am Knoten fragt
+                # `auto_run` meant "run without asking" — the switch on the node asks
                 # andersherum, deshalb die Umkehrung.
                 "freigabe": not bool(sub.auto_run),
             })
@@ -170,9 +169,9 @@ async def convert(db: AsyncSession) -> int:
             params["assigned_agent"] = sub.agent
             params["start_agent_status"] = sub.status_new or "planning"
         _set_params(graph, "ticket", params)
-        # Der Ablauf gehört in das Projekt, in dem er anlegt. Sonst wäre das Zielprojekt für
-        # ihn ein fremdes, und `create_ticket` verlangte vom Besitzer eine Mitgliedschaft,
-        # die der Webhook nie gebraucht hat.
+        # The flow belongs in the project it creates in. Otherwise the target project would be
+        # a foreign one to it, and `create_ticket` would demand a membership from the owner
+        # that the webhook never needed.
         await _as_flow(db, sub, "webhook-ticket", graph, project_id=sub.project_id)
 
     await db.commit()

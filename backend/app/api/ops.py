@@ -27,8 +27,8 @@ router = APIRouter(tags=["ops"])
 class WebhookIn(BaseModel):
     route: str
     secret: str = ""
-    # workflow = einen Ablauf starten, event = ein Ereignis melden. Mehr braucht ein Auslöser
-    # nicht: Ticket, Meldung und Assistenten-Auftrag sind Knoten IM Ablauf.
+    # workflow = start a flow, event = report an event. A trigger needs no more than that:
+    # ticket, report and assistant assignment are nodes INSIDE the flow.
     mode: str = "workflow"
     project_id: int | None = None
     # Filter / Idempotenz / Coalescing / Alarme
@@ -37,14 +37,14 @@ class WebhookIn(BaseModel):
     event_key_header: str | None = None
     event_cooldowns: dict = {}
     alert_events: list = []
-    # Feld der Nutzlast ODER Vorlage aus mehreren ({account}:{uid}) — daraus wird der
+    # A field of the payload OR a template out of several ({account}:{uid}) — that becomes the
     # Schlüssel gegen Doppel-Zustellung.
     ref_field: str | None = None
     # mode=workflow: welche Definition startet.
     workflow_definition_id: int | None = None
-    # Kontext des Laufs: aus der Nutzlast ({ziel: punkt.pfad}; leerer Pfad = alles) und fest
-    # ({ziel: wert}, `{feld}` darin wird aus der Nutzlast gefüllt). Punkte im Ziel
-    # verschachteln. Ohne beides ist die Nutzlast der Kontext.
+    # Context of the run: from the payload ({target: dotted.path}; an empty path = everything)
+    # and fixed ({target: value}, `{field}` in it is filled from the payload). Dots in the
+    # target nest. Without either, the payload is the context.
     context_map: dict = {}
     context_fixed: dict = {}
     # mode=event: name of the reported event (empty = webhook.<route>).
@@ -226,10 +226,10 @@ async def _wait_on_answer(instance_id: int, sub: WebhookSub) -> dict:
 
 
 def _fill(tpl: str, payload) -> str:
-    """Füllt `{feld}` aus der Nutzlast, `{a.b.c}` auch tief.
+    """Fills `{field}` from the payload, `{a.b.c}` deeply as well.
 
-    Verschachtelte Nutzlasten sind der Normalfall, sobald der Absender nicht Traccoon ist:
-    `{position.address}` oder `{event.attributes.alarm}` waren früher nicht adressierbar.
+    Nested payloads are the normal case as soon as the sender is not Traccoon:
+    `{position.address}` or `{event.attributes.alarm}` were not addressable before.
     """
     out = tpl
     for hits in set(re.findall(r"\{([A-Za-z0-9_.]+)\}", tpl)):
@@ -255,12 +255,12 @@ def _set_deep(target: dict, path: str, value) -> None:
 
 
 def _context(sub: WebhookSub, payload) -> dict:
-    """Der Kontext des Laufs — an einer Stelle, für jede Art der Zustellung.
+    """The context of the run — in one place, for every kind of delivery.
 
-    `context_map` holt Werte aus der Nutzlast (Punktpfad; **leerer** Pfad = die ganze
-    Nutzlast, so landet sie unter einem eigenen Schlüssel statt flach im Kontext),
-    `context_fixed` setzt feste Werte, in deren Text `{feld}` aus der Nutzlast gefüllt wird.
-    Ohne beides ist die Nutzlast der Kontext, wie vorher.
+    `context_map` fetches values from the payload (a dotted path; an **empty** path = the
+    whole payload, so it lands under a key of its own instead of flat in the context),
+    `context_fixed` sets fixed values in whose text `{field}` is filled from the payload.
+    Without either, the payload is the context, as before.
     """
     nutz = payload if isinstance(payload, dict) else {"payload": payload}
     cmap = sub.context_map or {}
@@ -276,11 +276,11 @@ def _context(sub: WebhookSub, payload) -> dict:
 
 
 def _reference(sub: WebhookSub, payload) -> str | None:
-    """Der Schlüssel gegen Doppel-Zustellung: ein Feld der Nutzlast oder eine Vorlage.
+    """The key against double delivery: a field of the payload or a template.
 
-    Ein Schlüssel aus mehreren Feldern (`{account}:{uid}`) ist der Normalfall, sobald das
-    fremde System keine eigene Id mitschickt — früher stand genau diese Zusammensetzung fest
-    im Mail-Eingang und war für keinen anderen Auslöser zu haben.
+    A key out of several fields (`{account}:{uid}`) is the normal case as soon as the foreign
+    system sends no id of its own — this exact composition used to sit hard-wired in the mail
+    intake and was available to no other trigger.
     """
     field = (sub.ref_field or "").strip()
     nutz = payload if isinstance(payload, dict) else {}
@@ -324,9 +324,9 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         if event not in allowed:
             return {"accepted": True, "ignored": True, "event": event}
 
-    # Alarm-Ereignisse überspringen das Sammelfenster: Sie sollen durchlaufen, nicht auf die
-    # Zusammenfassung warten. WAS dabei gemeldet wird, sagt der Ablauf (notify-Knoten) — der
-    # Webhook selbst verschickt nichts mehr, sonst hinge die Nachricht wieder an ihm fest.
+    # Alarm events skip the collection window: they are meant to run through, not to wait for
+    # the summary. WHAT gets reported is up to the flow (a notify node) — the webhook itself
+    # sends nothing any more, otherwise the message would hang on it again.
     immediate = bool(event) and event in (sub.alert_events or [])
 
     # Coalescing: within the cooldown window only collect, the scheduler summarises.
@@ -348,18 +348,18 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
                                window_until=now + dt.timedelta(seconds=cooldown), payloads=[]))
 
     # ── Zustellung ───────────────────────────────────────────────────────────
-    # Ein Webhook nimmt entgegen und prüft; was daraus WIRD, steht im Ablauf. Darum gibt es
-    # nur noch zwei Wege: einen Ablauf starten oder ein Ereignis melden. Melden, ein Ticket
-    # anlegen und den Assistenten beauftragen waren eigene Modi mit eigenen Spalten am
-    # Webhook (`agent`, `prompt_tmpl`, `auto_run`, `notify_chat`, `title_template` …) — sie
-    # sind heute Knoten und damit für JEDEN Auslöser zu haben, nicht nur für Webhooks.
+    # A webhook receives and checks; what BECOMES of it is written in the flow. That is why
+    # there are only two ways left: start a flow or report an event. Reporting, creating a
+    # ticket and assigning the assistant were modes of their own with columns of their own on
+    # the webhook (`agent`, `prompt_tmpl`, `auto_run`, `notify_chat`, `title_template` …) —
+    # today they are nodes and thereby available to EVERY trigger, not only to webhooks.
     # Bestehende Webhooks stellt `services/webhook_modes.py` beim Start um.
     ctx = _context(sub, payload)
     src_ref = _reference(sub, payload)
 
     if sub.mode == "event":
-        # Meldet ein Ereignis; wer darauf hört, entscheiden die Abläufe selbst über den
-        # Auslöser an ihrem Start-Knoten. Name: `event_name` oder `event` aus der Nutzlast.
+        # Reports an event; who listens to it the flows decide themselves through the trigger
+        # on their start node. Name: `event_name` or `event` from the payload.
         from ..services.events import emit
         name = (sub.event_name or (payload.get("event") if isinstance(payload, dict) else "")
                 or f"webhook.{route}")
@@ -424,11 +424,11 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
 
 class JobIn(BaseModel):
     name: str
-    # Der Zeitplan: cron | interval | once. Anders als bei `kind` wird hier geprueft, und der
-    # Grund steht in `services/scheduler.ZEITPLAN_ARTEN`: Ein unbekannter Wert macht den Job
-    # nicht kaputt, sondern still — er ist einfach nie faellig, waehrend die Oberflaeche
-    # "eingeschaltet" anzeigt. Genau so lag ein Job 13 Tage lang tot, weil dort `prompt`
-    # stand, also die Art der Arbeit statt des Zeitplans.
+    # The schedule: cron | interval | once. Unlike `kind` this is checked, and the reason
+    # stands in `services/scheduler.SCHEDULE_KINDS`: an unknown value does not break the job
+    # but silences it — it is simply never due, while the UI shows "enabled". Exactly that way
+    # a job lay dead for 13 days, because `prompt` stood there, that is the kind of work
+    # instead of the schedule.
     type: str = "interval"
     schedule: str = "60"
     # prompt | script | workflow | http | film. Deliberately a free `str` without validation:
@@ -498,9 +498,9 @@ async def create_job(data: JobIn, user: User = Depends(get_current_user),
     job = Job(**data.model_dump(), user_id=user.id)
     db.add(job)
     await db.flush()
-    # Wer noch eine alte Art einträgt (Vorlage, Agenten-Werkzeug, altes Skript), bekommt
-    # gleich einen Ablauf. Sonst stünde hier ein Weg offen, den ein späterer Neustart erst
-    # wieder einsammeln müsste — und bis dahin liefe der Job anders als angezeigt.
+    # Whoever still enters an old kind (a template, the agent tool, an old script) gets a flow
+    # right away. Otherwise a path would stay open here that a later restart would have to
+    # collect — and until then the job would run differently from what is shown.
     from ..services.job_modes import OLD_KINDS, as_flow
     if job.kind in OLD_KINDS:
         await as_flow(db, job)
@@ -536,8 +536,8 @@ async def run_job_now(jid: int, user: User = Depends(get_current_user),
     db.add(jr)
     job.last_run_at = dt.datetime.now(tz=dt.timezone.utc)
     await db.flush()
-    # Ein Weg für alle Arten (wie im Zeitplan und im Agenten-Werkzeug). Die Arbeit selbst
-    # steht im Ablauf; wo sie länger dauert, wartet der Ablauf darauf, nicht dieser Aufruf.
+    # One way for all kinds (as in the schedule and in the agent tool). The work itself stands
+    # in the flow; where it takes longer, the flow waits for it, not this call.
     await run_job_kind(db, job, jr)
     await db.commit()
     await db.refresh(job)
