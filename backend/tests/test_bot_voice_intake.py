@@ -76,7 +76,7 @@ async def test_success_yields_a_transcript_and_reports_it_visibly(monkeypatch):
     text = await _voice_transcript(FakeBot(), m)
 
     assert text == "was liegt heute an"
-    assert any("verstanden" in a and "was liegt heute an" in a for a in m.replies)
+    assert any("understood" in a and "was liegt heute an" in a for a in m.replies)
 
 
 async def test_too_long_a_duration_is_refused_without_transcribing(monkeypatch):
@@ -90,7 +90,7 @@ async def test_too_long_a_duration_is_refused_without_transcribing(monkeypatch):
     text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("zu lang" in a for a in m.replies)
+    assert any("too long" in a for a in m.replies)
 
 
 async def test_too_large_a_file_is_refused_without_transcribing(monkeypatch):
@@ -104,7 +104,7 @@ async def test_too_large_a_file_is_refused_without_transcribing(monkeypatch):
     text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("zu groß" in a for a in m.replies)
+    assert any("too large" in a for a in m.replies)
 
 
 async def test_without_duration_and_size_it_refuses_instead_of_loading_unchecked():
@@ -113,7 +113,7 @@ async def test_without_duration_and_size_it_refuses_instead_of_loading_unchecked
     text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("nicht bestimmbar" in a for a in m.replies)
+    assert any("cannot be determined" in a for a in m.replies)
 
 
 async def test_an_unloadable_file_is_refused_honestly():
@@ -122,7 +122,7 @@ async def test_an_unloadable_file_is_refused_honestly():
     text = await _voice_transcript(FakeBot(load_error=RuntimeError("kaputt")), m)
 
     assert text == ""
-    assert any("nicht geladen" in a for a in m.replies)
+    assert any("could not be loaded" in a for a in m.replies)
 
 
 async def test_a_transcription_error_is_refused_honestly_with_a_reason(monkeypatch):
@@ -135,7 +135,7 @@ async def test_a_transcription_error_is_refused_honestly_with_a_reason(monkeypat
     text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("Transkription nicht möglich" in a for a in m.replies)
+    assert any("transcription did not work" in a for a in m.replies)
 
 
 async def test_an_empty_transcript_is_refused_honestly(monkeypatch):
@@ -148,7 +148,7 @@ async def test_an_empty_transcript_is_refused_honestly(monkeypatch):
     text = await _voice_transcript(FakeBot(), m)
 
     assert text == ""
-    assert any("keine Sprache erkennen" in a for a in m.replies)
+    assert any("could not hear any speech" in a for a in m.replies)
 
 
 async def test_a_video_note_is_recognised_and_its_media_kind_passed_on(monkeypatch):

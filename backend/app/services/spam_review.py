@@ -115,7 +115,7 @@ _FRAUD_SCORE = 0.95
 # From here on the wording of the reason counts as a statement of its own. The floor keeps a
 # negation ("no attempted fraud, just advertising") from turning into the opposite verdict, and
 # it keeps the technical findings out that the flow passes into the prompt (they contain the
-# word "Fälschungsverdacht" themselves).
+# word "forgery" themselves).
 _FRAUD_TEXT_FROM = 0.8
 # When model and memory are in dispute: above the asking threshold, below any sensible auto
 # threshold. So the mail is shown but not touched.
@@ -123,7 +123,10 @@ _DISPUTE_SCORE = 0.6
 # And once a person has contradicted for this sender: let it through. Below any asking
 # threshold, because the question has been answered.
 _DECIDED_SCORE = 0.2
-_FRAUD_WORDS = re.compile(r"phish|betrug|scam|f[äa]lsch|identit[äa]tsdiebstahl", re.I)
+# The words a local model writes into its reason. German and English, because the model
+# answers in the language of the mail, not in the language of the house.
+_FRAUD_WORDS = re.compile(
+    r"phish|betrug|fraud|scam|f[äa]lsch|forge|identit[äa]tsdiebstahl|identity theft", re.I)
 
 
 def _model_fraud(cls: dict, model: float) -> bool:
@@ -180,11 +183,11 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
         victim = await named_collision(db, owner_id, rule.sender_name, rule.sender_email)
         if victim:
             rule.hits("namens_kollision",
-                          f"gibt sich als „{victim}“ aus, schreibt aber von "
-                          f"{rule.sender_email or 'unbekannt'}")
+                          f"it passes itself off as \u201c{victim}\u201d but writes from "
+                          f"{rule.sender_email or 'an unknown address'}")
             rule.score = min(1.0, rule.score)
 
-    # --- Bekannter Absender ---------------------------------------------------
+    # --- A known sender -------------------------------------------------------
     # The address is always checked, the domain only when it says anything at all: a contact
     # at gmx.de does not exonerate all other gmx addresses.
     hits = await contact_hits(
@@ -204,8 +207,8 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
     if known_contact:
         log.debug("Mail from the known contact %s, no spam suspicion", rule.sender_email)
     if hits and forgery_suspicion:
-        rule.reasons.append("bekannter Absender, aber Echtheitsprüfung fehlgeschlagen "
-                             "(Fälschungsverdacht)")
+        rule.reasons.append("a known sender, but the authenticity check failed "
+                             "(a forgery is suspected)")
         rule.signals.append("kontakt_gefaelscht")
         rule.score = min(1.0, rule.score + 0.2)
     elif hits in ("body", "domain"):
@@ -259,7 +262,7 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # times over as wanted and never as spam, "brand abuse" is the less likely explanation —
     # but certain it is not either. So nobody decides alone: the mail goes into the question.
     #
-    # Fall vom 2026-08-20: Ein echter PayPal-Beleg (`service@paypal.de`, 282-mal erwünscht)
+    # The case of 2026-08-20: a real PayPal receipt (`service@paypal.de`, wanted 282 times)
     # was rated by the model as brand phishing and cleared away automatically — and because a
     # moved mail gets a new number when recalled, the game started over with every recall.
     dispute = bool(fraud and trusted and not forgery_suspicion)
@@ -269,18 +272,18 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
         # in `forgery_suspicion` — otherwise a sender released once would be a free pass for
         # anyone using their name.
         score = min(score, _DECIDED_SCORE)
-        reasons_dispute = (f"{rule.sender_email} wurde hier schon einmal ausdrücklich als "
-                          f"kein Spam entschieden")
+        reasons_dispute = (f"{rule.sender_email} was once explicitly decided here to be "
+                          f"no spam")
     elif dispute:
         score = min(score, _DISPUTE_SCORE)
-        reasons_dispute = (f"das Modell hält es für Betrug, dieses Postfach kennt "
-                          f"{rule.sender_email} aber als erwünscht — deshalb die Rückfrage")
+        reasons_dispute = (f"the model takes it for fraud, but this mailbox knows "
+                          f"{rule.sender_email} as wanted \u2014 hence the question")
 
     reasons = list(rule.reasons)
     if reasons_dispute:
         reasons.append(reasons_dispute)
     if fraud:
-        reasons.append("das lokale Modell erkennt einen Betrugsversuch")
+        reasons.append("the local model recognises an attempted fraud")
     if cls.get("spam_reason"):
         reasons.append(str(cls["spam_reason"])[:200])
     reasons.extend(learned_reasons)
@@ -401,26 +404,26 @@ def karte(verdict: SpamVerdict, *, predecided: bool = False,
     objects afterwards, which is why it says first what HAS happened.
     """
     if recoverable:
-        header = "🗑 Automatisch aussortiert"
+        header = "🗑 Sorted out automatically"
     else:
-        header = "🚩 Spam-Verdacht" if not predecided else "🚩 Spam (gelernt)"
+        header = "🚩 Suspected spam" if not predecided else "🚩 Spam (learned)"
     title = f"{header} ({verdict.score:.2f})"
     lines = [
-        f"Von:     {verdict.sender_email or '?'}",
-        f"An:      {verdict.recipient or '?'}",
-        f"Betreff: {verdict.subject or '(kein Betreff)'}",
+        f"From:    {verdict.sender_email or '?'}",
+        f"To:      {verdict.recipient or '?'}",
+        f"Subject: {verdict.subject or '(no subject)'}",
     ]
     if verdict.reasons:
         lines.append("")
-        lines.append("Grund:   " + "\n         · ".join(verdict.reasons[:5]))
+        lines.append("Reason:  " + "\n         · ".join(verdict.reasons[:5]))
     lines.append("")
     if recoverable:
-        lines.append("Verschoben, ohne zu fragen — Punktzahl über der Auto-Schwelle. "
-                      "Ein Druck holt sie zurück und merkt sich den Absender.")
+        lines.append("Moved without asking \u2014 the score is above the automatic threshold. "
+                      "One press brings it back and remembers the sender.")
     elif predecided:
-        lines.append("Verschoben — der Absender gilt als geklärt.")
+        lines.append("Moved \u2014 the sender counts as settled.")
     else:
-        lines.append("Vorschlag: → Ordner Spam verschieben")
+        lines.append("Suggestion: → move it to the spam folder")
     return title, "\n".join(lines)
 
 
@@ -481,9 +484,9 @@ async def digest_due(db: AsyncSession) -> int:
         batch = uuid.uuid4().hex[:12]
         lines = []
         for i, v in enumerate(cases, 1):
-            reason = v.reasons[0] if v.reasons else "auffällig"
+            reason = v.reasons[0] if v.reasons else "odd"
             lines.append(f"{i}. {v.sender_email or '?'} ({v.score:.2f})\n"
-                          f"   „{(v.subject or '(kein Betreff)')[:70]}“\n"
+                          f"   \u201c{(v.subject or '(no subject)')[:70]}\u201d\n"
                           f"   {reason}")
             v.digest_batch = batch
         db.add(Notification(
@@ -576,7 +579,7 @@ async def _an_flow_report(db: AsyncSession, verdict: SpamVerdict, is_spam: bool,
     # The flow has meanwhile written in a session of its own; for the reply to the human its
     # result counts, not the state from before.
     await db.refresh(verdict)
-    return verdict.action_result or "an den Ablauf übergeben"
+    return verdict.action_result or "handed over to the flow"
 
 
 async def imap_action(verdict: SpamVerdict, is_spam: bool) -> str:

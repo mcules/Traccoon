@@ -615,7 +615,7 @@ async def test_decisions_affect_the_next_mail(db):
     nachher, reasons, safe = await spam_learn.rate(db, user.id, feature_list)
     assert nachher > before
     assert safe, "a sender decided unanimously three times counts as resolved"
-    assert any("3× Spam" in g for g in reasons)
+    assert any("3× spam" in g for g in reasons)
 
 
 async def test_a_wanted_sender_is_learned(db):
@@ -687,7 +687,7 @@ async def test_a_forged_known_contact_stands_out(db):
     }), cls={"spam_score": 0.5, "category": "sonstiges"})
     assert verdict["bekannter_kontakt"] is False
     assert verdict["score"] >= verdict["frage_ab"]
-    assert any("Fälschungsverdacht" in g for g in verdict["reasons"])
+    assert any("a forgery is suspected" in g for g in verdict["reasons"])
 
 
 async def test_high_suspicion_passes_the_immediate_threshold(db):
@@ -1108,7 +1108,7 @@ async def test_a_model_fraud_verdict_prevails_over_weak_rules(db):
     assert verdict["score"] >= 0.95
     assert verdict["modellurteil"] is True
     assert verdict["art"] == "phishing"
-    assert any("Betrugsversuch" in g for g in verdict["reasons"])
+    assert any("attempted fraud" in g for g in verdict["reasons"])
     assert "llm:marke_fremde_domain" in verdict["features"]
     assert {"quelle": "modell", "kennung": "marke_fremde_domain",
             "text": "gibt sich als N26 aus"} in verdict["befunde"]
@@ -1247,7 +1247,7 @@ async def test_a_known_sender_against_a_fraud_suspicion_gets_asked(db):
     assert verdict["score"] < 1.0
     assert verdict["score"] >= verdict["frage_ab"], "gezeigt wird sie trotzdem"
     assert verdict["settled"] is False, "nichts ist geklärt, solange man sich streitet"
-    assert any("erwünscht" in g for g in verdict["reasons"])
+    assert any("wanted" in g for g in verdict["reasons"])
 
 
 async def test_an_unknown_sender_stays_fraud(db):
@@ -1283,7 +1283,7 @@ async def test_whoever_contradicts_once_is_not_asked_again(db):
              "spam_reason": "Phishing-Versuch mit fremder Marke"})
 
     assert verdict["score"] < verdict["frage_ab"], "die Frage ist beantwortet"
-    assert any("ausdrücklich" in g for g in verdict["reasons"])
+    assert any("explicitly decided" in g for g in verdict["reasons"])
 
 
 async def test_one_contradiction_is_no_free_pass(db):

@@ -214,12 +214,13 @@ async def _transcribe_qwen(audio: bytes, mediakind: str, mime_type: str | None) 
     import httpx
     wav = await _to_wav(audio)
     vocabulary = await _vocabulary()
-    hint = f"Eigennamen, die vorkommen können: {vocabulary}\n" if vocabulary else ""
+    hint = f"Proper names that may occur: {vocabulary}\n" if vocabulary else ""
     body = {
         "model": "qwen3-asr", "temperature": 0, "max_tokens": 2048,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": hint +
-             "Transkribiere die Sprachnachricht wörtlich auf Deutsch. Gib nur den Text aus."},
+             "Transcribe the voice message word for word, in the language it is spoken in. "
+             "Give the text and nothing else."},
             {"type": "input_audio",
              "input_audio": {"data": base64.b64encode(wav).decode(), "format": "wav"}}]}],
     }
@@ -285,7 +286,7 @@ async def _transcribe(audio: bytes, mediakind: str = "voice",
 
 
 # Decisions of the approval buttons in plain words, for the note on the message.
-_DEC_TEXT = {"once": "einmal", "always": "immer", "never": "nie"}
+_DEC_TEXT = {"once": "once", "always": "always", "never": "never"}
 
 
 async def _done(cq: CallbackQuery, note: str) -> None:
@@ -455,22 +456,22 @@ async def _voice_transcript(bot, m) -> str | None:
     # size check, otherwise exactly the memory and CPU risk this check prevents would occur.
 
     if duration and duration > VOICE_MAX_SECONDS:
-        await m.answer(f"🙉 Sprachnachricht zu lang ({duration // 60} Min., Grenze "
-                       f"{VOICE_MAX_SECONDS // 60} Min.) — bitte kürzer aufnehmen oder "
+        await m.answer(f"🙉 The voice message is too long ({duration // 60} min, the limit is "
+                       f"{VOICE_MAX_SECONDS // 60} min) — record a shorter one or "
                        f"als Text schicken.")
         return ""
     if size and size > VOICE_MAX_BYTES:
-        await m.answer(f"🙉 Datei zu groß ({size // (1024 * 1024)} MB, Grenze "
-                       f"{VOICE_MAX_BYTES // (1024 * 1024)} MB) — bitte kürzer "
-                       f"aufnehmen oder als Text schicken.")
+        await m.answer(f"🙉 The file is too large ({size // (1024 * 1024)} MB, the limit is "
+                       f"{VOICE_MAX_BYTES // (1024 * 1024)} MB) — record a shorter one "
+                       f"or send it as text.")
         return ""
     if not duration and not size:
         # Neither `duration` nor `file_size` usable. WITHOUT one of the two checks a file of
         # arbitrary size would be loaded completely into memory unchecked and passed on to
         # Whisper (a memory and CPU risk). Better an honest refusal than loading blindly.
 
-        await m.answer("🙉 Länge/Größe der Datei nicht bestimmbar — bitte als Text "
-                       "schicken oder als reguläre Sprachnachricht erneut aufnehmen.")
+        await m.answer("🙉 The length or size of the file cannot be determined — send it as "
+                       "text or record it again as an ordinary voice message.")
         return ""
     try:
         file = await bot.get_file(media.file_id)
@@ -478,7 +479,7 @@ async def _voice_transcript(bot, m) -> str | None:
         raw = buffer.read() if hasattr(buffer, "read") else bytes(buffer)
     except Exception as exc:  # noqa: BLE001
         log.warning("Voice message %s not loadable: %s", media.file_id, exc)
-        await m.answer("🙉 Sprachnachricht konnte nicht geladen werden — bitte als Text schicken.")
+        await m.answer("🙉 The voice message could not be loaded — send it as text.")
         return ""
     mediakind = "voice" if m.voice else ("video_note" if m.video_note else "audio")
     mime_type = getattr(media, "mime_type", None)
@@ -486,10 +487,10 @@ async def _voice_transcript(bot, m) -> str | None:
         text = await _transcribe(raw, mediakind=mediakind, mime_type=mime_type)
     except Exception as exc:  # noqa: BLE001
         log.warning("Transcription failed: %s", exc)
-        await m.answer(f"🙉 Transkription nicht möglich ({exc}) — bitte als Text schicken.")
+        await m.answer(f"🙉 The transcription did not work ({exc}) — send it as text.")
         return ""
     if not text:
-        await m.answer("🙉 Ich konnte darin keine Sprache erkennen — bitte als Text schicken.")
+        await m.answer("🙉 I could not hear any speech in it — send it as text.")
         return ""
     # Sent raw (without `safe()`/HTML escaping): `safe()` escapes and converts markdown like
     # sequences into <b>/<i>/<code> tags, but this bot runs WITHOUT `parse_mode="HTML"`
@@ -497,7 +498,7 @@ async def _voice_transcript(bot, m) -> str | None:
     # unparsed: `&`/`<`/`>` would appear as literal entities and converted tags as visible
     # `<b>…</b>` text instead of bold. No formatting is wanted here anyway, only the plain
     # transcript, cut to Telegram's length.
-    await m.answer(f"🎙 verstanden: {clip(text)}")
+    await m.answer(f"🎙 understood: {clip(text)}")
     return text
 
 
@@ -528,53 +529,53 @@ async def run_bot() -> None:
     def _kb_for(kind: str, issue_key: str, req_id: int | None) -> InlineKeyboardMarkup | None:
         if kind == "plan_review":
             return InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✅ Freigeben", callback_data=f"approve:{issue_key}"),
-                InlineKeyboardButton(text="✖ Ablehnen", callback_data=f"reject:{issue_key}")]])
+                InlineKeyboardButton(text="✅ Approve", callback_data=f"approve:{issue_key}"),
+                InlineKeyboardButton(text="✖ Reject", callback_data=f"reject:{issue_key}")]])
         if kind == "to_test":
             return InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✅ Abnehmen", callback_data=f"accept:{issue_key}")]])
+                InlineKeyboardButton(text="✅ Accept", callback_data=f"accept:{issue_key}")]])
         if kind == "blocked" and req_id:
             return InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="Einmal", callback_data=f"perm:once:{req_id}"),
-                InlineKeyboardButton(text="Immer", callback_data=f"perm:always:{req_id}"),
-                InlineKeyboardButton(text="Nie", callback_data=f"perm:never:{req_id}")]])
+                InlineKeyboardButton(text="Once", callback_data=f"perm:once:{req_id}"),
+                InlineKeyboardButton(text="Always", callback_data=f"perm:always:{req_id}"),
+                InlineKeyboardButton(text="Never", callback_data=f"perm:never:{req_id}")]])
         return None
 
     def _atask_kb(tid: int) -> InlineKeyboardMarkup:
         # Approval of an assistant item. The quick approval is redacted (safe); unredacted and
         # finer choices are handled by the web inbox.
         return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Freigeben", callback_data=f"atask:approve:{tid}"),
-             InlineKeyboardButton(text="❌ Verwerfen", callback_data=f"atask:reject:{tid}")],
-            [InlineKeyboardButton(text="♾️ Immer Absender", callback_data=f"atask:sender:{tid}"),
-             InlineKeyboardButton(text="♾️ Immer Kategorie", callback_data=f"atask:category:{tid}")]])
+            [InlineKeyboardButton(text="✅ Approve", callback_data=f"atask:approve:{tid}"),
+             InlineKeyboardButton(text="❌ Discard", callback_data=f"atask:reject:{tid}")],
+            [InlineKeyboardButton(text="♾️ Always this sender", callback_data=f"atask:sender:{tid}"),
+             InlineKeyboardButton(text="♾️ Always this category", callback_data=f"atask:category:{tid}")]])
 
     def _spam_kb(vid: int) -> InlineKeyboardMarkup:
         # Exactly two buttons. The question is a yes or no question, and every further option
         # ("later", "create a rule") would delay the answer that is needed for learning.
         return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Ist Spam", callback_data=f"spam:yes:{vid}"),
-            InlineKeyboardButton(text="🚫 Kein Spam", callback_data=f"spam:no:{vid}")]])
+            InlineKeyboardButton(text="✅ It is spam", callback_data=f"spam:yes:{vid}"),
+            InlineKeyboardButton(text="🚫 Not spam", callback_data=f"spam:no:{vid}")]])
 
     def _spam_undo_kb(vid: int) -> InlineKeyboardMarkup:
         # Exactly one button: the mail is gone already, only the objection remains. "Fine as it
         # is" needs none, because silence is the consent.
         return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="↩️ Zurückholen", callback_data=f"spamundo:{vid}")]])
+            InlineKeyboardButton(text="↩️ Bring it back", callback_data=f"spamundo:{vid}")]])
 
     def _spam_digest_kb(batch: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Alle sind Spam", callback_data=f"spamall:yes:{batch}"),
-             InlineKeyboardButton(text="🚫 Keiner ist Spam", callback_data=f"spamall:no:{batch}")],
-            [InlineKeyboardButton(text="👉 Einzeln durchgehen",
+            [InlineKeyboardButton(text="✅ All are spam", callback_data=f"spamall:yes:{batch}"),
+             InlineKeyboardButton(text="🚫 None is spam", callback_data=f"spamall:no:{batch}")],
+            [InlineKeyboardButton(text="👉 Go through them one by one",
                                   callback_data=f"spamall:einzeln:{batch}")]])
 
     def _aperm_kb(tid: int) -> InlineKeyboardMarkup:
         # Tool approval of the assistant (once, always, never).
         return InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Einmal", callback_data=f"aperm:once:{tid}"),
-            InlineKeyboardButton(text="Immer", callback_data=f"aperm:always:{tid}"),
-            InlineKeyboardButton(text="Nie", callback_data=f"aperm:never:{tid}")]])
+            InlineKeyboardButton(text="Once", callback_data=f"aperm:once:{tid}"),
+            InlineKeyboardButton(text="Always", callback_data=f"aperm:always:{tid}"),
+            InlineKeyboardButton(text="Never", callback_data=f"aperm:never:{tid}")]])
 
     async def notifier() -> None:
         while True:
@@ -652,7 +653,7 @@ async def run_bot() -> None:
             rows = (await db.execute(select(Issue).where(Issue.assigned_agent.isnot(None))
                     .order_by(Issue.updated_at.desc()).limit(15))).scalars().all()
         if not rows:
-            await m.answer("Keine zugewiesenen Tickets.")
+            await m.answer("No tickets are assigned.")
             return
         await m.answer("\n".join(f"[{i.key}] {i.agent_status} — {i.summary}" for i in rows))
 
@@ -662,17 +663,17 @@ async def run_bot() -> None:
             return
         parts = (m.text or "").split(maxsplit=2)
         if len(parts) < 3:
-            await m.answer("Nutzung: /comment KEY Text")
+            await m.answer("Use: /comment KEY text")
             return
         key, text = parts[1], parts[2]
         async with SessionLocal() as db:
             iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
             if iss is None:
-                await m.answer("Ticket nicht gefunden.")
+                await m.answer("The ticket was not found.")
                 return
             user = await _acting_user(db, m.chat.id)
             await apply_user_comment(db, iss, text, user.id if user else None, "Telegram")
-        await m.answer(f"Kommentar zu {key} gespeichert.")
+        await m.answer(f"The comment on {key} was saved.")
 
     @dp.message(Command("agent"))
     async def _agent_chat(m: Message):
@@ -697,12 +698,12 @@ async def run_bot() -> None:
             user = await _acting_user(db, m.chat.id)
             roles = await _agent_roles(db, user.id if user else None)
             if not name or name not in roles:
-                known = ", ".join(roles) or "keine"
-                await m.answer("Nutzung: /agent <name> <Frage oder Auftrag>\n"
-                               f"Verfuegbar: {known}")
+                known = ", ".join(roles) or "none"
+                await m.answer("Use: /agent <name> <a question or a task>\n"
+                               f"Available: {known}")
                 return
             if not text:
-                await m.answer(f"Nutzung: /agent {name} <Frage oder Auftrag>")
+                await m.answer(f"Use: /agent {name} <a question or a task>")
                 return
             await create_chat_task(db, user.id if user else None, text, str(m.chat.id),
                                    agent=name)
@@ -719,8 +720,8 @@ async def run_bot() -> None:
         if text is None:
             belongs = await _voice_transcript(bot, m)
             if belongs is None:
-                await m.answer("🙉 Damit kann ich noch nichts anfangen — schick es mir als "
-                               "Text oder Sprachnachricht.")
+                await m.answer("🙉 I cannot do anything with that yet — send it to me as text or "
+                               "as a voice message.")
                 return
             if not belongs:
                 return   # _voice_transkript has already sent the refusal
@@ -728,8 +729,11 @@ async def run_bot() -> None:
 
         # Banking two factor: an answer to the "banking sync needs a 2FA code for <source>"
         # card, passing the OTP on to submit_auth through the banking tool server.
-        bm = re.search(r"2FA-Code für (.+?) \(Auth-Request", rt)
-        if bm and "Banking-Sync" in rt:
+        #
+        # The card is written by the banking service, not here, and it writes German. Both
+        # spellings are matched so the card keeps working whichever side is updated first.
+        bm = re.search(r"(?:2FA[- ]?[Cc]ode (?:für|for)) (.+?) \((?:Auth-Request|auth request)", rt)
+        if bm and ("Banking-Sync" in rt or "banking sync" in rt.lower()):
             source, code = bm.group(1).strip(), text.strip()
             try:
                 from ..worker.mcp_client import mcp_session
@@ -737,9 +741,9 @@ async def run_bot() -> None:
                         "url": "http://banking-mcp:3010/mcp", "headers": {}}
                 async with mcp_session("bot", servers=[spec], gateway_url="", gateway_token="") as mcp:
                     await mcp.call("banking__submit_auth", {"source": source, "code": code})
-                await m.answer(f"✅ 2FA-Code an {source} weitergeleitet.")
+                await m.answer(f"✅ The 2FA code was passed on to {source}.")
             except Exception as exc:  # noqa: BLE001
-                await m.answer(f"⚠ Weiterleitung an {source} fehlgeschlagen: {exc}")
+                await m.answer(f"⚠ Passing it on to {source} failed: {exc}")
             return
 
         # Without a ticket reference the answer is an assignment to the assistant, and to
@@ -757,7 +761,7 @@ async def run_bot() -> None:
                 return
             user = await _acting_user(db, m.chat.id)
             await apply_user_comment(db, iss, text, user.id if user else None, "Telegram")
-        await m.answer(f"↳ Kommentar zu {key} gespeichert.")
+        await m.answer(f"↳ The comment on {key} was saved.")
 
     async def _chat_task(m: Message, reference: str = "", text: str | None = None) -> bool:
         """Hand plain text to the personal assistant. True means accepted.
@@ -804,13 +808,13 @@ async def run_bot() -> None:
         # unterscheiden. Lieber ehrlich absagen.
         if not m.from_user or not await _allowed(m.from_user.id):
             return
-        await m.answer("🙉 Damit kann ich noch nichts anfangen — schick es mir als Text oder "
+        await m.answer("🙉 I cannot do anything with that yet — send it to me as text or "
                        "Sprachnachricht.")
 
     @dp.callback_query()
     async def _cb(cq: CallbackQuery):
         if not await _allowed(cq.from_user.id):
-            await cq.answer("Nicht erlaubt")
+            await cq.answer("Not allowed")
             return
         data = cq.data or ""
         async with SessionLocal() as db:
@@ -832,8 +836,8 @@ async def run_bot() -> None:
                     await _done(cq, "✅ Plan freigegeben" if data.startswith("approve:")
                                     else "✖ Plan abgelehnt")
                 else:
-                    await cq.answer("nicht mehr offen")
-                    await _done(cq, "⏭ nicht mehr offen (anderswo entschieden)")
+                    await cq.answer("no longer open")
+                    await _done(cq, "⏭ no longer open (decided elsewhere)")
             elif data.startswith("accept:"):
                 key = data.split(":", 1)[1]
                 iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
@@ -845,11 +849,11 @@ async def run_bot() -> None:
                     from ..core.redis import enqueue_task
                     await enqueue_task({"kind": "accept", "task_id": f"accept-{iss.key}",
                                         "issue_id": iss.id, "project_id": iss.project_id})
-                    await cq.answer("Abgenommen")
-                    await _done(cq, "✅ Abgenommen")
+                    await cq.answer("Accepted")
+                    await _done(cq, "✅ Accepted")
                 else:
-                    await cq.answer("nicht mehr offen")
-                    await _done(cq, "⏭ nicht mehr offen (anderswo entschieden)")
+                    await cq.answer("no longer open")
+                    await _done(cq, "⏭ no longer open (decided elsewhere)")
             elif data.startswith("perm:"):
                 _, dec, rid = data.split(":", 2)
                 pr = await db.get(PermRequest, int(rid))
@@ -869,48 +873,48 @@ async def run_bot() -> None:
                         iss.hold_reason = None
                         iss.continuation_count += 1
                     await db.commit()
-                    await cq.answer(f"Berechtigung: {dec}")
-                    await _done(cq, f"🔑 Berechtigung: {_DEC_TEXT.get(dec, dec)}")
+                    await cq.answer(f"Permission: {dec}")
+                    await _done(cq, f"🔑 Permission: {_DEC_TEXT.get(dec, dec)}")
                 else:
-                    await cq.answer("schon entschieden")
-                    await _done(cq, "⏭ schon entschieden")
+                    await cq.answer("already decided")
+                    await _done(cq, "⏭ already decided")
             elif data.startswith("atask:"):
                 _, action, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))
                 if t is None:
                     await cq.answer("Not found")
-                    await _done(cq, "⏭ Aufgabe nicht mehr vorhanden")
+                    await _done(cq, "⏭ the task is gone")
                 elif t.status not in ("new", "error"):
-                    await cq.answer(f"schon erledigt ({t.status})")
-                    await _done(cq, f"⏭ schon erledigt ({t.status})")
+                    await cq.answer(f"already done ({t.status})")
+                    await _done(cq, f"⏭ already done ({t.status})")
                 elif action == "reject":
                     await reject_assistant_task(db, t)
-                    await cq.answer("Verworfen")
-                    await _done(cq, "❌ Verworfen")
+                    await cq.answer("Discarded")
+                    await _done(cq, "❌ Discarded")
                 else:
                     scope = {"sender": "sender", "category": "category"}.get(action, "once")
                     # Quick approval by chat is redacted (safe); unredacted is handled by the web inbox.
                     await approve_assistant_task(db, t, scope=scope, redaction="redacted")
-                    await cq.answer("Freigegeben" + ("" if scope == "once" else " + gemerkt"))
-                    await _done(cq, "✅ Freigegeben" + {
-                        "sender": " · Absender künftig automatisch",
-                        "category": " · Kategorie künftig automatisch"}.get(scope, ""))
+                    await cq.answer("Approved" + ("" if scope == "once" else " + remembered"))
+                    await _done(cq, "✅ Approved" + {
+                        "sender": " · this sender automatically from now on",
+                        "category": " · this category automatically from now on"}.get(scope, ""))
             elif data.startswith("spam:"):
                 _, answer, vid = data.split(":", 2)
                 v = await db.get(SpamVerdict, int(vid))
                 if v is None:
                     await cq.answer("Not found")
-                    await _done(cq, "⏭ Urteil nicht mehr vorhanden")
+                    await _done(cq, "⏭ the verdict is gone")
                 elif v.status not in ("pending", "spam", "ham"):
-                    await cq.answer(f"schon erledigt ({v.status})")
-                    await _done(cq, f"⏭ schon erledigt ({v.status})")
+                    await cq.answer(f"already done ({v.status})")
+                    await _done(cq, f"⏭ already done ({v.status})")
                 else:
                     # A row already decided may be decided again: the mistake often only shows
                     # when the mail is missing. `entscheiden` counts the old assessment back out
                     # of the memory.
                     is_spam = answer == "yes"
                     result = await decide(db, v, is_spam, decided_by="telegram")
-                    await cq.answer("Als Spam markiert" if is_spam else "Als erwünscht gemerkt")
+                    await cq.answer("Marked as spam" if is_spam else "Remembered as wanted")
                     header = "✅ Spam · verschoben" if is_spam else "🚫 Kein Spam · Absender gemerkt"
                     await _done(cq, f"{header}\n{result}")
             elif data.startswith("spamundo:"):
@@ -918,11 +922,11 @@ async def run_bot() -> None:
                 v = await db.get(SpamVerdict, int(vid))
                 if v is None:
                     await cq.answer("Not found")
-                    await _done(cq, "⏭ Urteil nicht mehr vorhanden")
+                    await _done(cq, "⏭ the verdict is gone")
                 else:
                     result = await reclaim(db, v)
-                    await cq.answer("Zurückgeholt")
-                    await _done(cq, f"↩️ Zurückgeholt · Absender gemerkt\n{result}")
+                    await cq.answer("Brought back")
+                    await _done(cq, f"↩️ Brought back · the sender was remembered\n{result}")
 
             elif data.startswith("spamall:"):
                 _, answer, batch = data.split(":", 2)
@@ -931,8 +935,8 @@ async def run_bot() -> None:
                         SpamVerdict.digest_batch == batch,
                         SpamVerdict.status == "pending").order_by(SpamVerdict.id))).scalars().all()
                     if not cases:
-                        await cq.answer("nichts mehr offen")
-                        await _done(cq, "⏭ nichts mehr offen")
+                        await cq.answer("nothing left open")
+                        await _done(cq, "⏭ nothing left open")
                     else:
                         # Every case gets a card of its own, so the collective card itself is
                         # handled.
@@ -942,27 +946,27 @@ async def run_bot() -> None:
                                 cq.message.chat.id,
                                 f"<b>{safe(title)}</b>\n{safe(text)}",
                                 parse_mode="HTML", reply_markup=_spam_kb(v.id))
-                        await cq.answer(f"{len(cases)} einzeln")
-                        await _done(cq, f"👉 {len(cases)} Fälle einzeln zugestellt")
+                        await cq.answer(f"{len(cases)} one by one")
+                        await _done(cq, f"👉 {len(cases)} cases delivered one by one")
                 else:
                     is_spam = answer == "yes"
                     count, error = await decide_batch(db, batch, is_spam,
                                                             decided_by="telegram")
-                    await cq.answer(f"{count} entschieden")
-                    header = ("✅ alle als Spam verschoben" if is_spam
-                            else "🚫 alle als erwünscht gemerkt")
+                    await cq.answer(f"{count} decided")
+                    header = ("✅ all moved to spam" if is_spam
+                            else "🚫 all remembered as wanted")
                     await _done(cq, f"{header} ({count})"
                                     + (f" · {error} nicht verschiebbar" if error else ""))
             elif data.startswith("aperm:"):
                 _, dec, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))
                 if t is None or t.status != "awaiting":
-                    await cq.answer("schon entschieden")
-                    await _done(cq, "⏭ schon entschieden")
+                    await cq.answer("already decided")
+                    await _done(cq, "⏭ already decided")
                 else:
                     await apply_perm_decision(db, t, dec)
-                    await cq.answer(f"Freigabe: {dec}")
-                    await _done(cq, f"🔑 Freigabe: {_DEC_TEXT.get(dec, dec)}")
+                    await cq.answer(f"Approval: {dec}")
+                    await _done(cq, f"🔑 Approval: {_DEC_TEXT.get(dec, dec)}")
         await cq.answer()
 
     log.info("Traccoon bot started (allowed=%s)", ALLOWED or "alle")

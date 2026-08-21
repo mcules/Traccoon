@@ -130,7 +130,7 @@ async def relearn(db: AsyncSession, owner_id: int | None, account: str, folder: 
     await db.commit()
     await set_setting(db, key, str(highest))
     log.info("Learned: %s/%s -> %d messages as %s (now at %d)",
-             account, folder, learned, "Spam" if is_spam else "erwünscht", highest)
+             account, folder, learned, "spam" if is_spam else "wanted", highest)
     return len(hits), learned
 
 
@@ -232,7 +232,8 @@ async def answer_contacts(db: AsyncSession, owner_id: int | None,
 
 
 # Folders that are no learning material for "wanted": one's own (I am the sender there),
-# drafts and notes. The spam folder runs separately as the counterpart.
+# drafts and notes. The spam folder runs separately as the counterpart. The German names stand
+# beside the English ones because the folder names come from the mail server, not from us.
 _NO_HAM = ("sent", "gesendet", "drafts", "entwürfe", "entwuerfe", "notes", "notizen",
              "templates", "vorlagen", "outbox", "postausgang")
 # How far back archives still say something about today's post. Older years carry addresses
