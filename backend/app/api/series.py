@@ -74,7 +74,6 @@ class SeriesIn(BaseModel):
     name: str = ""
     description: str = ""
     color: str = ""
-    expected_rows: int = 0
     settings: dict = {}
 
 
@@ -83,7 +82,6 @@ class SeriesPatch(BaseModel):
     name: str | None = None
     description: str | None = None
     color: str | None = None
-    expected_rows: int | None = None
     settings: dict | None = None
     active: bool | None = None
 
@@ -97,7 +95,6 @@ def _out(r: Series, *, owner: str = "", own: bool = True) -> dict:
         "id": r.id, "key": r.key, "kind": r.kind, "name": r.name or r.key,
         "description": r.description, "color": r.color, "settings": r.settings or {},
         "state": r.state or {}, "points": r.points or 0, "active": r.active,
-        "expected_rows": r.expected_rows or 0, "store_id": r.store_id,
         "last_at": r.last_at.isoformat() if r.last_at else None,
         "owner_user_id": r.owner_user_id, "own": own, "owner": owner,
         # The token itself never stands here — only whether one has been issued.
@@ -151,7 +148,7 @@ async def create_series(data: SeriesIn, user: User = Depends(get_current_user),
 
     series = Series(owner_user_id=user.id, key=key, kind=data.kind, name=data.name,
                    description=data.description, color=data.color,
-                   expected_rows=data.expected_rows, settings=data.settings or {})
+                   settings=data.settings or {})
     db.add(series)
     await db.commit()
     await db.refresh(series)
