@@ -282,10 +282,10 @@ async def test_bulk_query_delivers_per_artifact(db, register):
     await fields.set_values(db, art1.id, f, ["Beispielkunde"])
     await db.commit()
 
-    alle = await fields.values_for(db, [art1.id, art2.id])
-    assert alle[art1.id]["kunde"] == ["Beispielkunde"]
+    all_rows = await fields.values_for(db, [art1.id, art2.id])
+    assert all_rows[art1.id]["kunde"] == ["Beispielkunde"]
     # The second ticket has set no free field, only its built-in columns.
-    assert "kunde" not in alle.get(art2.id, {})
+    assert "kunde" not in all_rows.get(art2.id, {})
 
 
 # ── Felder im Prozess setzen ─────────────────────────────────────────────────

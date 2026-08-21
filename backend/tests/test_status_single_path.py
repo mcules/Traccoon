@@ -44,10 +44,10 @@ async def register(db):
 async def _ticket(db, proj) -> Issue:
     t = IssueType(project_id=proj.id, name="Aufgabe")
     db.add(t)
-    for i, (name, kat) in enumerate([("To Do", StatusCategory.todo),
+    for i, (name, category) in enumerate([("To Do", StatusCategory.todo),
                                      ("In Arbeit", StatusCategory.in_progress),
                                      ("Warten", StatusCategory.in_progress)]):
-        db.add(WorkflowStatus(project_id=proj.id, name=name, category=kat, order=i))
+        db.add(WorkflowStatus(project_id=proj.id, name=name, category=category, order=i))
     db.add(IssueCounter(project_id=proj.id, last_number=0))
     await db.commit()
     s = (await db.execute(select(WorkflowStatus).where(

@@ -456,19 +456,19 @@ async def digest_due(db: AsyncSession) -> int:
     if beat <= 0:
         return 0
     limit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=beat)
-    offen = (await db.execute(select(SpamVerdict).where(
+    open_ones = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.status == "pending", SpamVerdict.digest_batch.is_(None),
         SpamVerdict.created_at <= limit).order_by(SpamVerdict.id).limit(50))).scalars().all()
     # Cases reported immediately already hang off a card of their own; they must not be
     # asked about twice.
     already_reported = set((await db.execute(select(Notification.spam_verdict_id).where(
-        Notification.spam_verdict_id.in_([v.id for v in offen] or [0])))).scalars().all())
-    offen = [v for v in offen if v.id not in already_reported]
-    if not offen:
+        Notification.spam_verdict_id.in_([v.id for v in open_ones] or [0])))).scalars().all())
+    open_ones = [v for v in open_ones if v.id not in already_reported]
+    if not open_ones:
         return 0
 
     by_owner: dict[int | None, list[SpamVerdict]] = {}
-    for v in offen:
+    for v in open_ones:
         by_owner.setdefault(v.owner_user_id, []).append(v)
 
     sent = 0

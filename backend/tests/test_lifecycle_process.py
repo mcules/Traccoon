@@ -194,9 +194,9 @@ async def test_approval_stays_reserved_for_a_human(client, db, seeded, redis_stu
     await db.refresh(issue)
 
     assert issue.agent_status == TicketAgentStatus.plan_review   # unchanged, still waiting
-    offen = (await db.execute(select(WorkflowStepRun).where(
+    open_ones = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.status == WorkflowStepStatus.waiting))).scalars().all()
-    assert [s.node_id for s in offen] == ["approve_plan"]
+    assert [s.node_id for s in open_ones] == ["approve_plan"]
 
 
 async def test_planning_does_not_run_in_endless_circles(db, seeded, redis_stub):

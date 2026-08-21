@@ -42,8 +42,8 @@ def _notice(user, kind: str, *, sent: bool, **kw) -> Notification:
                         notified_at=NOW if sent else None, **kw)
 
 
-async def _title(client, user, alle: bool = False) -> list[str]:
-    r = await client.get("/notifications" + ("?all=1" if alle else ""), headers=auth(user))
+async def _title(client, user, all_rows: bool = False) -> list[str]:
+    r = await client.get("/notifications" + ("?all=1" if all_rows else ""), headers=auth(user))
     assert r.status_code == 200
     return [n["title"] for n in r.json()]
 
@@ -60,7 +60,7 @@ async def test_sent_and_finished_items_disappear(db, client):
 
     assert await _title(client, anna) == []
     # Gone from the bell, not from the world.
-    assert sorted(await _title(client, anna, alle=True)) == ["assistant", "plan_review"]
+    assert sorted(await _title(client, anna, all_rows=True)) == ["assistant", "plan_review"]
     r = await client.get("/notifications/unread-count", headers=auth(anna))
     assert r.json()["count"] == 0
 
@@ -108,20 +108,20 @@ async def test_an_open_permission_question_remains(db, client):
 
 async def test_assistant_and_spam_hang_on_their_own_state(db, client):
     anna = await make_user(db, "anna")
-    offen = AssistantTask(source="mail", title="offen", status="new")
+    open_ones = AssistantTask(source="mail", title="offen", status="new")
     done = AssistantTask(source="mail", title="erledigt", status="done")
     spam = SpamVerdict(status="pending")
-    db.add_all([offen, done, spam])
+    db.add_all([open_ones, done, spam])
     await db.commit()
     db.add_all([
-        _notice(anna, "assistant_review", sent=True, assistant_task_id=offen.id),
+        _notice(anna, "assistant_review", sent=True, assistant_task_id=open_ones.id),
         _notice(anna, "assistant_review", sent=True, assistant_task_id=done.id),
         _notice(anna, "spam_review", sent=True, spam_verdict_id=spam.id),
     ])
     await db.commit()
 
     assert sorted(await _title(client, anna)) == ["assistant_review", "spam_review"]
-    assert len(await _title(client, anna, alle=True)) == 3
+    assert len(await _title(client, anna, all_rows=True)) == 3
 
 
 async def test_mark_all_read_also_clears_the_hidden_ones(db, client):

@@ -266,7 +266,7 @@ export default function Office(): JSX.Element {
         <div className="p-4 text-sm text-muted">{tr("office.loading_office")}</div>
       ) : (
         <ErrorBoundary
-          label="buero"
+          label="office"
           reloadAfterMs={kiosk ? BOUNDARY_RELOAD_MS : undefined}
           reloadMinGapMs={RELOAD_DISTANCE_MS}
         >

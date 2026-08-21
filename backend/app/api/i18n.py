@@ -24,7 +24,7 @@ router = APIRouter(prefix="/i18n", tags=["i18n"])
 
 # The languages that ship with the frontend. Everything else exists because somebody
 # created it here.
-EINGEBAUT = ("de", "en")
+BUILTIN = ("de", "en")
 
 
 class TextIn(BaseModel):
@@ -72,13 +72,13 @@ async def list_locales(user: User = Depends(get_current_user),
         .group_by(UiTranslation.locale))).all()
     counted = {locale: count for locale, count in rows}
     own = {r.locale: r for r in (await db.execute(select(UiLocale))).scalars().all()}
-    alle = sorted(set(EINGEBAUT) | set(counted) | set(own))
+    all_rows = sorted(set(BUILTIN) | set(counted) | set(own))
     return [{"locale": l,
              "name": (own[l].name if l in own and own[l].name else NAMES.get(l, l)),
              "own_texts": counted.get(l, 0),
-             "builtin": l in EINGEBAUT,
+             "builtin": l in BUILTIN,
              "enabled": own[l].enabled if l in own else True}
-            for l in alle]
+            for l in all_rows]
 
 
 @router.post("/locales", status_code=201)

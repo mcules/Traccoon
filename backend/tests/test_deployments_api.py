@@ -357,9 +357,9 @@ async def test_the_limit_is_clamped_and_truncation_reported(db, client):
     assert [i["id"] for i in two["items"]] == ids[::-1][:2]
     assert two["count"] == 2 and two["truncated"] is True
 
-    alle = (await client.get(f"/projects/{project.id}/deployments?limit=5",
+    all_rows = (await client.get(f"/projects/{project.id}/deployments?limit=5",
                              headers=auth(user))).json()
-    assert alle["count"] == 5 and alle["truncated"] is False
+    assert all_rows["count"] == 5 and all_rows["truncated"] is False
 
     # Below 1 it is clamped to 1, not to "everything" or "nothing".
     null = (await client.get(f"/projects/{project.id}/deployments?limit=0",

@@ -439,12 +439,12 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
     # ticket used to carry only "hold: review", and whoever wanted to know why had to look
     # the run up in the database (ABC-32 on 2026-08-07). Somebody who has to decide needs
     # the reason in the same place as the decision.
-    offene = (getattr(rev, "text", "") or "").strip()
+    open_ones = (getattr(rev, "text", "") or "").strip()
     db.add(Comment(
         issue_id=issue.id, author_id=None, author_label="Prüfer", kind="internal",
         body=(f"🛑 Nach {REVIEW_ROUNDS} Korrektur-Runden sind noch Befunde offen — "
               "das Ticket wartet auf dich.\n\n" +
-              (offene[:4000] if offene else
+              (open_ones[:4000] if open_ones else
                "(das Korrektur-Budget war schon vor diesem Durchgang verbraucht — die "
                "Befunde stehen im vorigen Prüfer-Eintrag)") +
               "\n\nWeiterarbeiten lassen: Ticket erneut anstoßen (das Korrektur-Budget "
@@ -664,7 +664,7 @@ async def _chat_history(db, t) -> list[dict]:
     from ..models.assistant import AssistantTask, ChatSummary
     agent_name = (t.meta or {}).get("agent") or "assistent"
     since = _now_dt() - _dt.timedelta(days=CHAT_MEMORY_DAYS)
-    alle = (await db.execute(
+    all_rows = (await db.execute(
         select(AssistantTask).where(
             AssistantTask.owner_user_id == t.owner_user_id,
             AssistantTask.kind == "chat",
@@ -673,7 +673,7 @@ async def _chat_history(db, t) -> list[dict]:
             AssistantTask.created_at >= since,
         ).order_by(AssistantTask.id))).scalars().all()
     # Specialised agents hold conversations of their own: the GameProj operator has nothing to do with the assistant.
-    alle = [r for r in alle if ((r.meta or {}).get("agent") or "assistent") == agent_name]
+    all_rows = [r for r in all_rows if ((r.meta or {}).get("agent") or "assistent") == agent_name]
 
     def exchange(r) -> list[dict]:
         meta = r.meta or {}
@@ -691,11 +691,11 @@ async def _chat_history(db, t) -> list[dict]:
     # Not summarised yet means it stands verbatim in the history. Summarising happens in
     # blocks, not on every message moving up: otherwise an auxiliary run would happen on EVERY
     # message once the conversation passes eight exchanges.
-    offen = [r for r in alle if r.id > (summary.to_task_id if summary else 0)]
+    open_ones = [r for r in all_rows if r.id > (summary.to_task_id if summary else 0)]
     new_to_grasp: list = []
-    if len(offen) > CHAT_HISTORY_MAX + CHAT_SUMMARY_BLOCK:
-        new_to_grasp = offen[:-CHAT_HISTORY_MAX]
-    young = offen[-CHAT_HISTORY_MAX:] if new_to_grasp else offen
+    if len(open_ones) > CHAT_HISTORY_MAX + CHAT_SUMMARY_BLOCK:
+        new_to_grasp = open_ones[:-CHAT_HISTORY_MAX]
+    young = open_ones[-CHAT_HISTORY_MAX:] if new_to_grasp else open_ones
     if new_to_grasp:
         sofar = (summary.text if summary else "").strip()
         raw = "\n".join(f"{w['label']}: {w['body']}" for r in new_to_grasp for w in exchange(r))
@@ -1380,13 +1380,13 @@ async def _drain() -> None:
         return
     log.info("The worker shuts down: %d run(s) active, waiting up to %d s "
              "(new assignments are no longer accepted)", len(running), DRAIN_SEC)
-    _done, offen = await asyncio.wait(running, timeout=DRAIN_SEC)
-    if offen:
+    _done, open_ones = await asyncio.wait(running, timeout=DRAIN_SEC)
+    if open_ones:
         # No abort by hand: the tasks still stand in PROCESSING, the recovery of the next
         # worker fetches them back, and the successor builds its handover from the step rows.
         # Docker ends the process in a moment anyway.
         log.warning("Grace time over, %d run(s) unfinished: they are queued anew",
-                    len(offen))
+                    len(open_ones))
     else:
         log.info("All runs finished cleanly")
 

@@ -124,8 +124,8 @@ async def test_a_long_wait_counts_as_hanging(client, db):
     await _instance(db, proj, status=WorkflowInstanceStatus.waiting, age_hours=50)
     await _instance(db, proj, status=WorkflowInstanceStatus.waiting)
 
-    alle = (await client.get("/processes/running", headers=auth(user))).json()
-    assert sorted(x["hangs"] for x in alle) == [False, True]
+    all_rows = (await client.get("/processes/running", headers=auth(user))).json()
+    assert sorted(x["hangs"] for x in all_rows) == [False, True]
     only = (await client.get("/processes/running?only_stuck=true", headers=auth(user))).json()
     assert len(only) == 1 and only[0]["hangs"] is True
 

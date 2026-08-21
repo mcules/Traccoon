@@ -468,7 +468,7 @@ function McpAssign({ userId }: { userId: number }) {
 function Cost() {
   const { data } = useQuery({ queryKey: ["cost-global"], queryFn: () => api.get<any>("/costs/global") });
   return (
-    <Area hint={<>Summe aller Läufe: <span className="text-xl font-semibold text-ink">
+    <Area hint={<>{tr("admin.sum_of_all_runs")} <span className="text-xl font-semibold text-ink">
       ${data?.total_usd?.toFixed(4) ?? "0"}</span></>}>
       {/* Modellnamen sind lang und Zahlen kurz: als Tabelle quetschte das auf dem Handy den
           Namen auf ein Wort je Zeile. Eine Zeile je Modell, Zahlen rechts. */}

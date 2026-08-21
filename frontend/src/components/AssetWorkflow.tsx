@@ -130,7 +130,7 @@ function InstancePanel({
     return m;
   }, [instance.graph]);
 
-  // Offene, bearbeitbare Schritte: wartende human_task/approval-Steps.
+  // Open, editable steps: waiting human_task/approval steps.
   const openSteps = useMemo(
     () =>
       (instance.steps ?? []).filter(

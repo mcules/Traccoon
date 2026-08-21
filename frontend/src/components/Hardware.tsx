@@ -170,7 +170,7 @@ export default function Hardware({ project }: { project: Project }) {
                   </div>
                 </ListenLine>
               ))}
-              {models.data?.length === 0 && <ListingEmpty>Noch kein Modell im Katalog.</ListingEmpty>}
+              {models.data?.length === 0 && <ListingEmpty>{tr("hardware.no_model_in_catalog")}</ListingEmpty>}
             </Listing>
             <div className="flex gap-2">
               <input value={mName} onChange={(e) => setMName(e.target.value)} placeholder={tr("hardware.model_name")}
@@ -193,7 +193,7 @@ export default function Hardware({ project }: { project: Project }) {
                   </div>
                 </ListenLine>
               ))}
-              {locations.data?.length === 0 && <ListingEmpty>Noch kein Lagerort.</ListingEmpty>}
+              {locations.data?.length === 0 && <ListingEmpty>{tr("hardware.no_location_yet")}</ListingEmpty>}
             </Listing>
             <div className="flex flex-wrap gap-2">
               <input value={lName} onChange={(e) => setLName(e.target.value)} placeholder={tr("hardware.location_name")}

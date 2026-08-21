@@ -54,21 +54,21 @@ class PersonsChannel:
     """
 
     def __init__(self) -> None:
-        self.offen: dict[int, set[WebSocket]] = {}
+        self.open_ones: dict[int, set[WebSocket]] = {}
 
     async def join(self, user_id: int, ws: WebSocket) -> None:
         await ws.accept()
-        self.offen.setdefault(user_id, set()).add(ws)
+        self.open_ones.setdefault(user_id, set()).add(ws)
 
     def separate(self, user_id: int, ws: WebSocket) -> None:
-        self.offen.get(user_id, set()).discard(ws)
+        self.open_ones.get(user_id, set()).discard(ws)
 
     def somebody_there(self, user_id: int) -> bool:
-        return bool(self.offen.get(user_id))
+        return bool(self.open_ones.get(user_id))
 
     async def send(self, user_id: int, message: dict) -> None:
         dead = []
-        for ws in list(self.offen.get(user_id, set())):
+        for ws in list(self.open_ones.get(user_id, set())):
             try:
                 await ws.send_json(message)
             except Exception:  # noqa: BLE001

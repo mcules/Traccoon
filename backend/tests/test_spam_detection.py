@@ -822,9 +822,9 @@ async def test_the_digest_card_bundles_and_decides(db, imap_stub):
     count, error = await spam_review.decide_batch(db, first.digest_batch, True)
     assert (count, error) == (3, 0)
     assert len(imap_stub) == 3
-    offen = (await db.execute(select(SpamVerdict).where(
+    open_ones = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.status == "pending"))).scalars().all()
-    assert offen == []
+    assert open_ones == []
 
 
 async def test_the_digest_card_skips_those_already_reported(db):

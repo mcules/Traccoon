@@ -49,9 +49,9 @@ async def test_backfilling_is_idempotent(db):
 
     assert await svc.backfill_hardware_artifacts(db) == 2
     assert await svc.backfill_hardware_artifacts(db) == 0
-    offen = (await db.execute(select(HardwareAsset).where(
+    open_ones = (await db.execute(select(HardwareAsset).where(
         HardwareAsset.artifact_id.is_(None)))).scalars().all()
-    assert offen == []
+    assert open_ones == []
 
 
 async def test_a_new_item_via_the_api_is_an_artifact_at_once(client, db):

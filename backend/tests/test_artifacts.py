@@ -42,9 +42,9 @@ async def test_subject_finds_its_kind(db, register):
 async def test_setting_state_affects_the_ticket(db, register):
     proj = await make_project(db, "TST", "Test")
     t = IssueType(project_id=proj.id, name="Aufgabe")
-    for i, (name, kat) in enumerate([("To Do", StatusCategory.todo),
+    for i, (name, category) in enumerate([("To Do", StatusCategory.todo),
                                      ("Warten", StatusCategory.in_progress)]):
-        db.add(WorkflowStatus(project_id=proj.id, name=name, category=kat, order=i))
+        db.add(WorkflowStatus(project_id=proj.id, name=name, category=category, order=i))
     db.add_all([t, IssueCounter(project_id=proj.id, last_number=0)])
     await db.commit()
     columns = {s.name: s for s in (await db.execute(

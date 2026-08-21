@@ -133,13 +133,13 @@ def _deep(nodes: list[dict], edges: list[dict]) -> dict[str, int]:
     depth[start] = 0
     while edge and t < 200:
         t += 1
-        naechste = []
+        next_ones = []
         for nid in edge:
             for e in edges:
                 if e.get("source") == nid and e.get("target") not in depth:
                     depth[e["target"]] = t
-                    naechste.append(e["target"])
-        edge = naechste
+                    next_ones.append(e["target"])
+        edge = next_ones
     return depth
 
 
@@ -219,15 +219,15 @@ def _clean(raw: dict) -> dict:
 async def _toollist(db: AsyncSession, owner_id: int | None) -> str:
     from .workflow_tools import tools
     try:
-        alle = await tools(db, owner_id)
+        all_rows = await tools(db, owner_id)
     except Exception:  # noqa: BLE001, drawing works without the tool list too
         return ""
     lines = [f"- {w['name']}({', '.join(w['pflicht'][:6])}) — {w['beschreibung'][:90]}"
-              for w in alle[:MAX_TOOLS]]
+              for w in all_rows[:MAX_TOOLS]]
     if not lines:
         return ""
-    remainder = max(0, len(alle) - MAX_TOOLS)
-    header = f"Verfügbare Werkzeuge ({len(alle)}"
+    remainder = max(0, len(all_rows) - MAX_TOOLS)
+    header = f"Verfügbare Werkzeuge ({len(all_rows)}"
     header += f", davon {remainder} hier nicht aufgeführt" if remainder else ""
     return header + "):\n" + "\n".join(lines)
 
@@ -272,7 +272,7 @@ async def compose(db: AsyncSession, *, owner_id: int, description: str,
     explanation = ""
     error: list[str] = []
 
-    for runde in range(2):
+    for round_no in range(2):
         resp = await llm_router.chat(
             provider="claude_code", model=DEFAULT_MODEL,
             messages=[{"role": "system", "content": system}, *history],
@@ -284,7 +284,7 @@ async def compose(db: AsyncSession, *, owner_id: int, description: str,
         explanation = str(raw.get("erklaerung") or "")[:500]
         graph = arrange(_clean(raw))
         error = validate_graph(subject_kind, graph)
-        if not error or runde == 1:
+        if not error or round_no == 1:
             break
         # Fix-up round with the very sentences the editor would show.
         log.info("The draft has %d errors, so one correction", len(error))

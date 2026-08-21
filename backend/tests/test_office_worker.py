@@ -88,10 +88,10 @@ def make_run(db, monkeypatch):
 
         async def fake_chat(**call_kw):
             seen.append(call_kw)
-            naechste = remainder.pop(0) if remainder else answer("fertig")
-            if isinstance(naechste, Exception):
-                raise naechste
-            return naechste
+            next_ones = remainder.pop(0) if remainder else answer("fertig")
+            if isinstance(next_ones, Exception):
+                raise next_ones
+            return next_ones
 
         @asynccontextmanager
         async def fake_session(*a, **k):
@@ -222,8 +222,8 @@ async def test_a_refused_tool_produces_no_start(db, make_run):
                                 arguments={"path": "a.md"})]),
         answer("fertig"),
     ], gate_on=True, permissions=[{"tool": "*", "resource": "*", "action": "deny"}])
-    alle = await steps(db)
-    assert [s.kind for s in alle if s.kind in ("tool_start", "tool_result")] == []
+    all_rows = await steps(db)
+    assert [s.kind for s in all_rows if s.kind in ("tool_start", "tool_result")] == []
     assert result.status == "done"
 
 
@@ -247,11 +247,11 @@ async def test_delegation_links_parent_and_child(db, make_run):
     assert kind.parent_run_id == parent.id
     assert kind.parent_tool_use_id == "d1" and kind.spawn_depth == 1
 
-    alle = await steps(db)
-    start = next(s for s in alle if s.kind == "tool_start" and s.tool_name == "delegate")
-    kind_start = next(s for s in alle if s.run_id == kind.id and s.kind == "run_start")
-    kind_end = next(s for s in alle if s.run_id == kind.id and s.kind == "run_end")
-    result = next(s for s in alle if s.kind == "tool_result" and s.tool_name == "delegate")
+    all_rows = await steps(db)
+    start = next(s for s in all_rows if s.kind == "tool_start" and s.tool_name == "delegate")
+    kind_start = next(s for s in all_rows if s.run_id == kind.id and s.kind == "run_start")
+    kind_end = next(s for s in all_rows if s.run_id == kind.id and s.kind == "run_end")
+    result = next(s for s in all_rows if s.kind == "tool_result" and s.tool_name == "delegate")
     # The arrival order IS the id order (SERIAL), and exactly that is what the room draws.
     assert start.id < kind_start.id < kind_end.id < result.id
     assert start.target == "reviewer"
@@ -289,9 +289,9 @@ async def test_step_tokens_add_up_to_the_run(db, make_run):
         answer("fertig", in_tok=250, out_tok=40),
     ])
     run = await last_run(db)
-    alle = await steps(db)
-    assert sum(s.in_tokens for s in alle) == run.input_tokens == 350
-    assert sum(s.out_tokens for s in alle) == run.output_tokens == 50
+    all_rows = await steps(db)
+    assert sum(s.in_tokens for s in all_rows) == run.input_tokens == 350
+    assert sum(s.out_tokens for s in all_rows) == run.output_tokens == 50
 
 
 async def test_a_provider_error_does_not_lose_the_tokens(db, make_run):

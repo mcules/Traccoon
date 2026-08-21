@@ -178,7 +178,7 @@ async def announce(db: AsyncSession, dep: Deployment) -> list[RunStep]:
 async def tick(db: AsyncSession) -> int:
     """One pass. Returns the number of told rows (for test and log)."""
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=ANNOUNCE_WINDOW_HOURS)
-    offen = (await db.execute(
+    open_ones = (await db.execute(
         select(Deployment).where(
             Deployment.status != Deployment.announced_status,
             # Young rows, or those whose story has already begun. The second term closes the
@@ -188,7 +188,7 @@ async def tick(db: AsyncSession) -> int:
             or_(Deployment.created_at >= cutoff, Deployment.announced_status != ""),
         ).order_by(Deployment.id))).scalars().all()
     tells = 0
-    for dep in offen:
+    for dep in open_ones:
         tells += len(await announce(db, dep))
     return tells
 

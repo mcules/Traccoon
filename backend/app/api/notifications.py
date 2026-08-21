@@ -77,8 +77,8 @@ def _q_own(user: User):
     return or_(Notification.user_id == user.id, Notification.user_id.is_(None))
 
 
-def _q_visible(user: User, alle: bool = False):
-    if alle:
+def _q_visible(user: User, all_rows: bool = False):
+    if all_rows:
         return _q_own(user)
     return and_(_q_own(user), or_(Notification.notified_at.is_(None), _open()))
 

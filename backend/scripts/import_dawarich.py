@@ -39,7 +39,7 @@ SERIES = {
     "s26-ultra": ("tracker.s26-ultra", "S26 Ultra", "#3b82f6"),
     "google-verlauf": ("tracker.google-verlauf", "Google-Verlauf (Archiv)", "#6b7280"),
 }
-STAPEL = 500
+BATCH = 500
 
 
 def _ident(ts, lat, lon) -> tuple:
@@ -119,17 +119,17 @@ async def run_import(csv_path: str, owner: int, dry: bool) -> None:
             known[key].add(ident)
 
             extra = {}
-            for feld, column in (("accuracy", 4), ("altitude", 5), ("battery", 6),
+            for field, column in (("accuracy", 4), ("altitude", 5), ("battery", 6),
                                  ("speed", 7)):
                 value = _number(row[column]) if len(row) > column else None
                 if value is not None:
-                    extra[feld] = value
+                    extra[field] = value
 
             if not dry:
                 db.add(SeriesPoint(series_id=series[key].id, ts=ts, lat=lat, lon=lon,
                                    extra=extra, source="import", context={"aus": "dawarich"}))
             counted["neu"] += 1
-            if not dry and counted["neu"] % STAPEL == 0:
+            if not dry and counted["neu"] % BATCH == 0:
                 await db.flush()
                 print(f"  {counted['neu']} …")
 

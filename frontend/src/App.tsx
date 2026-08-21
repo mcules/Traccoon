@@ -125,8 +125,8 @@ export default function App() {
         {/* Vorlagen eines Prozess-Satzes gehören zu keinem Projekt. */}
         <Route path="/workflows/:id" element={<WorkflowEditor />} />
         <Route path="/projects/:key/tickets/:ticketKey" element={<TicketView />} />
-        {/* Bereich und Ansicht stehen im Pfad (`/projects/UNI/betrieb/buero`); das alte
-            `?tab=` leitet ProjectView selbst um. */}
+        {/* Area and view stand in the path (`/projects/UNI/operations/office`); the old
+            `?tab=` ProjectView redirects itself. */}
         <Route path="/projects/:key" element={<ProjectView />} />
         <Route path="/projects/:key/:tab" element={<ProjectView />} />
         <Route path="/projects/:key/:tab/:unter" element={<ProjectView />} />

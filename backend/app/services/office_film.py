@@ -267,9 +267,9 @@ async def daily_events(db: AsyncSession, *, von: dt.datetime,
     # entries have `priced IS NULL`, so their amount came about without a recorded price, and a
     # catalog entry of today does not prove what held back then. The sum is a lower bound, and
     # the "≥" belongs in front of it. No second price computation, one count.
-    offen = await db.scalar(select(func.count()).select_from(CostEntry).where(
+    open_ones = await db.scalar(select(func.count()).select_from(CostEntry).where(
         CostEntry.run_id.in_(run_ids), CostEntry.priced.is_(None)))
-    balance.cost_partial = any(not c["priced"] for c in billed.values()) or bool(offen)
+    balance.cost_partial = any(not c["priced"] for c in billed.values()) or bool(open_ones)
     balance.longest = _longest(runs, tickets)
     return events, roster, balance
 

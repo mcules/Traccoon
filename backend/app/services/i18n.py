@@ -24,7 +24,7 @@ from ..models.i18n import UiTranslation
 log = logging.getLogger("traccoon.i18n")
 
 _FOLDER = Path(__file__).resolve().parent.parent / "i18n"
-QUELLSPRACHE = "de"
+SOURCE_LANGUAGE = "de"
 
 # The bundled catalogs, read once at import. They are part of the code and change only with
 # a deployment, so there is nothing to invalidate here.
@@ -73,16 +73,16 @@ def _insert(text: str, values: dict[str, object]) -> str:
 
 async def tr(db: AsyncSession, key: str, locale: str | None = None, **values: object) -> str:
     """One text, in `locale`, with placeholders filled in."""
-    lc = (locale or QUELLSPRACHE).lower()
+    lc = (locale or SOURCE_LANGUAGE).lower()
     over = await _overrides(db)
     text = (over.get(lc, {}).get(key)
             or CATALOG.get(lc, {}).get(key)
-            or over.get(QUELLSPRACHE, {}).get(key)
-            or CATALOG.get(QUELLSPRACHE, {}).get(key)
+            or over.get(SOURCE_LANGUAGE, {}).get(key)
+            or CATALOG.get(SOURCE_LANGUAGE, {}).get(key)
             or key)
     return _insert(text, values) if values else text
 
 
 def source() -> dict[str, str]:
     """The German catalog, the list of texts the admin area offers for translation."""
-    return dict(CATALOG.get(QUELLSPRACHE, {}))
+    return dict(CATALOG.get(SOURCE_LANGUAGE, {}))

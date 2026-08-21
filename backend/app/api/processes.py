@@ -57,9 +57,9 @@ def _aware(value: dt.datetime | None) -> dt.datetime | None:
 
 async def _visible_projects(db: AsyncSession, user: User) -> dict[int, Project]:
     """Projects this user may see: determined once, only read afterwards."""
-    alle = (await db.execute(select(Project))).scalars().all()
+    all_rows = (await db.execute(select(Project))).scalars().all()
     out: dict[int, Project] = {}
-    for p in alle:
+    for p in all_rows:
         try:
             await build_access(p, user, db)
         except Exception:  # noqa: BLE001 - 403/404 simply means: not visible

@@ -252,7 +252,7 @@ def _header_line_addresses(raw) -> list[dict]:
 
 # Order of the special folders the way every mail program shows them: what one needs daily
 # stands at the top, the rest alphabetically below.
-_SONDER_SERIES = ["inbox", "drafts", "sent", "junk", "trash", "archive"]
+_SPECIAL_SERIES = ["inbox", "drafts", "sent", "junk", "trash", "archive"]
 
 
 def tree_sort(entries: list[dict]) -> list[dict]:
@@ -278,7 +278,7 @@ def tree_sort(entries: list[dict]) -> list[dict]:
             roots.append(e)
 
     def key(e: dict) -> tuple:
-        rank = _SONDER_SERIES.index(e["special"]) if e["special"] in _SONDER_SERIES else 99
+        rank = _SPECIAL_SERIES.index(e["special"]) if e["special"] in _SPECIAL_SERIES else 99
         return (rank, (e.get("display") or e["name"]).lower())
 
     out: list[dict] = []
@@ -592,10 +592,10 @@ def _all_read_sync(account: MailAccount, folder: str) -> int:
     """
     with _imap(account) as client:
         client.select_folder(folder)
-        offen = client.search(["UNSEEN"])
-        if offen:
-            client.add_flags(offen, [b"\\Seen"])
-        return len(offen)
+        open_ones = client.search(["UNSEEN"])
+        if open_ones:
+            client.add_flags(open_ones, [b"\\Seen"])
+        return len(open_ones)
 
 
 def _folder_delete_sync(account: MailAccount, folder: str) -> None:
@@ -646,8 +646,8 @@ def build_message(identity: MailIdentity, fields: dict) -> EmailMessage:
         body = f"{body}\n\n-- \n{identity.signature}"
     msg.set_content(body)
     for attachment in fields.get("attachments") or []:
-        primary, _, unter = (attachment.get("content_type") or "application/octet-stream").partition("/")
-        msg.add_attachment(attachment["data"], maintype=primary, subtype=unter or "octet-stream",
+        primary, _, sub = (attachment.get("content_type") or "application/octet-stream").partition("/")
+        msg.add_attachment(attachment["data"], maintype=primary, subtype=sub or "octet-stream",
                            filename=attachment.get("filename") or "anhang")
     return msg
 

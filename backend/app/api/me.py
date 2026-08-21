@@ -296,8 +296,8 @@ async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Dep
          "done": done[k], "required": k in required}
         for k in ("claude_token", "runner", "project", "git", "verify", "telegram")
     ]
-    offen = [s for s in steps if not s["done"] and s["required"]]
-    return {"steps": steps, "ready": not offen, "projects": len(projects),
+    open_ones = [s for s in steps if not s["done"] and s["required"]]
+    return {"steps": steps, "ready": not open_ones, "projects": len(projects),
             "dismissed": u.onboarded_at is not None}
 
 

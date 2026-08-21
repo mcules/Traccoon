@@ -1230,7 +1230,7 @@ async def _agents_payload(
     # (4) Cost and tokens from the cost entries. Tokens come from the same source as the
     # amount so that both tell the same story ("what was billed"): `runs.input_tokens` does
     # not know cached tokens at all.
-    for name, usd, ein, aus, cache, offen in (await db.execute(
+    for name, usd, ein, aus, cache, open_ones in (await db.execute(
         _costs(select(CostEntry.agent, func.sum(CostEntry.cost_usd),
                       func.sum(CostEntry.input_tokens), func.sum(CostEntry.output_tokens),
                       func.sum(CostEntry.cache_read_tokens),
@@ -1247,7 +1247,7 @@ async def _agents_payload(
         # `_entry_priced` resolves NULL for a SINGLE run against today's catalog; across
         # months and several providers the same back calculation would be a claim. The file
         # therefore simply says: lower bound.
-        if int(offen or 0) > 0:
+        if int(open_ones or 0) > 0:
             row["cost_partial"] = True
 
     # (5) Tool table: `run_steps ⋈ runs` over `runs.agent`, because the step itself does not
@@ -1280,8 +1280,8 @@ async def _agents_payload(
         row["cost_usd"] = round(row["cost_usd"], 6)
         row["tools"] = sorted(tools.get(name, []),
                               key=lambda t: (-t["n"], t["tool"]))[:tool_limit]
-        for hilf in ("_iter_sum", "_step_sum", "_step_runs", "_buckets"):
-            row.pop(hilf)
+        for helper in ("_iter_sum", "_step_sum", "_step_runs", "_buckets"):
+            row.pop(helper)
 
     return {
         # The window belongs in the answer: `run_retention_days` deletes older runs, so the

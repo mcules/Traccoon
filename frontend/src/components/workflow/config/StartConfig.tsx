@@ -202,7 +202,7 @@ export default function StartConfig({
             if (!raw) return setT({ sample: "" });
             try { setT({ sample: JSON.parse(raw) }); } catch { /* Tippen abwarten */ }
           }}
-          placeholder={'{"vorgang": {"id": 42, "titel": "Störung"}, "quelle": "Zabbix"}'}
+          placeholder={'{"case": {"id": 42, "title": "Fault"}, "source": "Zabbix"}'}
           className={`mt-1 ${inp} font-mono`}
         />
         <span className="mt-1 block text-[11px] text-muted">
