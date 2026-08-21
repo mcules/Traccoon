@@ -2101,7 +2101,7 @@
   "translations_panel.edit": "edit",
   "translations_panel.created_here": "created here",
   "translations_panel.count_own_texts": "{count} own texts",
-  "translations_panel.translations_keys_come_german": "Translations: the keys come from the German catalog shipped with the application. What you enter here applies at once for everyone, and an empty field takes your change back and restores the shipped text.",
+  "translations_panel.translations_keys_come_german": "Translations: the keys come from the English catalog shipped with the application. What you enter here applies at once for everyone, and an empty field takes your change back and restores the shipped text.",
   "translations_panel.editing": "editing",
   "translations_panel.file_not_valid_json": "The file is not valid JSON.",
   "translations_panel.no_match": "No match.",
@@ -2722,5 +2722,7 @@
   "start_config.button_on_a_mail": "A button on a mail",
   "start_config.what_the_button_hangs_on": "What the button hangs on",
   "start_config.on_the_message": "on the message",
-  "agent_task_node.planning": "Planning"
+  "agent_task_node.planning": "Planning",
+  "dry_run_panel.dry_run_n_steps": "Dry run — {count} step(s)",
+  "inspector.last_steps": "The last steps"
 }

@@ -38,14 +38,14 @@ const SEITEN = [
 ];
 const BREITEN = [["Handy", 390, 844], ["Desktop", 1400, 900]];
 
-const messen = ({ grenze, handy }) => {
+const measure = ({ grenze, handy }) => {
   // The canvas of a flow has its own coordinate system: React Flow scales it as a whole, so
   // 12 px type sits in the document as 8.4 px at 0.7 zoom. Measuring inside it would judge
   // the zoom factor, not the design.
   const gezeichnet = (el) => !!el.closest(".react-flow");
   const doc = document.scrollingElement;
   const breite = window.innerWidth;
-  const ueberstand = Math.max(0, doc.scrollWidth - breite);
+  const overflow = Math.max(0, doc.scrollWidth - breite);
 
   // Who stands past the edge? Only the outermost offender counts, otherwise every child
   // reports the fault of its parent as well.
@@ -65,12 +65,12 @@ const messen = ({ grenze, handy }) => {
   }
 
   // Touch targets: visible controls below the threshold (thumb 36 px, mouse 24 px).
-  const klein = [];
+  const small = [];
   for (const el of document.querySelectorAll(
     "button, a[href], select, input:not([type=hidden]), [role=button], summary")) {
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4) continue;
-    if (r.top > window.innerHeight * 3) continue;          // weit unten: zählt nicht mit
+    if (r.top > window.innerHeight * 3) continue;          // far down: does not count
     const stil = getComputedStyle(el);
     if (stil.visibility === "hidden") continue;
     // A link inside running text is text, not a button, and should not grow to 36 px.
@@ -83,7 +83,7 @@ const messen = ({ grenze, handy }) => {
       if (!lr || (lr.height >= grenze && lr.width >= 24)) continue;
     }
     if (r.height < grenze || r.width < 24) {
-      klein.push({ name: (el.textContent || el.getAttribute("aria-label") || el.tagName).trim().slice(0, 30),
+      small.push({ name: (el.textContent || el.getAttribute("aria-label") || el.tagName).trim().slice(0, 30),
         h: Math.round(r.height), w: Math.round(r.width) });
     }
   }
@@ -142,7 +142,7 @@ const messen = ({ grenze, handy }) => {
 
   // Nobody finds what has to be scrolled sideways on a phone. Tables are the usual suspects:
   // five columns do not fit into 390 px.
-  const seitwaerts = [...document.querySelectorAll("body *")].filter((el) => {
+  const sideways = [...document.querySelectorAll("body *")].filter((el) => {
     const s = getComputedStyle(el);
     if (s.overflowX !== "auto" && s.overflowX !== "scroll") return false;
     return el.scrollWidth > el.clientWidth + 8 && el.getBoundingClientRect().height > 40;
@@ -153,15 +153,15 @@ const messen = ({ grenze, handy }) => {
     // Only the innermost offender counts: a field that is too wide makes every ancestor too
     // wide as well, and the report "some div is too wide" helps nobody.
     abgeschnitten: abgeschnitten
-      .filter((v, _i, alle) => !alle.some((w) => w !== v && v.el.contains(w.el)))
+      .filter((v, _i, all) => !all.some((w) => w !== v && v.el.contains(w.el)))
       .slice(0, 5).map(({ name }) => name),
     tabellen,
     wasserfall: wasserfall.slice(0, 3),
-    seitwaerts: seitwaerts.slice(0, 5),
-    ueberstand,
-    ueberlaeufer: raus.slice(0, 6).map(({ name, ueber }) => ({ name, ueber })),
-    tippziele_klein: klein.length,
-    tippziele_beispiele: klein.slice(0, 5),
+    sideways: sideways.slice(0, 5),
+    overflow,
+    overflowing: raus.slice(0, 6).map(({ name, ueber }) => ({ name, ueber })),
+    tippziele_klein: small.length,
+    tippziele_beispiele: small.slice(0, 5),
     kleinschrift: kleinschrift.size,
     kleinschrift_beispiele: [...kleinschrift.entries()].slice(0, 4),
     // How many destinations are reachable without opening a menu first?
@@ -185,20 +185,20 @@ for (const [gname, breite, hoehe] of BREITEN) {
   for (const [sname, pfad] of SEITEN) {
     try {
       await page.goto(BASIS + pfad, { waitUntil: "networkidle", timeout: 30000 });
-    } catch { /* langsame Seite: trotzdem messen, was da ist */ }
+    } catch { /* a slow page: measure what is there anyway */ }
     await page.waitForTimeout(1200);
-    const m = await page.evaluate(messen, { grenze: breite < 500 ? 36 : 24, handy: breite < 500 });
+    const m = await page.evaluate(measure, { grenze: breite < 500 ? 36 : 24, handy: breite < 500 });
     // At a desk sideways scrolling is a device (the board is built that way), on a phone it is
     // a defect, so it is only recorded there.
-    if (breite >= 500) m.seitwaerts = [];
+    if (breite >= 500) m.sideways = [];
     bericht.seiten[`${sname} @ ${gname}`] = m;
     // Score: one point per measure when it comes out clean.
     maxPunkte += 3;
-    if (m.ueberstand <= 2) punkte++;
+    if (m.overflow <= 2) punkte++;
     maxPunkte++; if (m.abgeschnitten.length === 0) punkte++;
     if (breite < 500) {
       maxPunkte += 3;
-      if (m.seitwaerts.length === 0) punkte++;
+      if (m.sideways.length === 0) punkte++;
       if (m.tabellen.length === 0) punkte++;
       if (m.wasserfall.length === 0) punkte++;
     }
@@ -221,13 +221,13 @@ console.log(`\n${MARKE}: ${punkte}/${maxPunkte} sauber (${bericht.quote} %)`);
 if (alt) console.log(`vorher (${alt.marke}): ${alt.punkte}/${alt.maxPunkte} (${alt.quote} %)`);
 console.log("");
 for (const [name, m] of Object.entries(bericht.seiten)) {
-  const mangel = [];
-  if (m.ueberstand > 2) mangel.push(`${m.ueberstand}px über den Rand (${m.ueberlaeufer.map((u) => u.name).join(", ")})`);
-  if (m.tippziele_klein) mangel.push(`${m.tippziele_klein} zu kleine Tippziele`);
-  if (m.kleinschrift) mangel.push(`${m.kleinschrift}× Schrift < 11px`);
-  if (m.seitwaerts?.length) mangel.push(`seitwärts versteckt: ${m.seitwaerts.join(", ")}`);
-  if (m.abgeschnitten?.length) mangel.push(`abgeschnitten: ${m.abgeschnitten.join(" | ")}`);
-  if (m.tabellen?.length) mangel.push(`Tabelle am Handy: ${m.tabellen.join(", ")}`);
-  if (m.wasserfall?.length) mangel.push(`Textwasserfall: ${m.wasserfall.join(", ")}`);
-  console.log(mangel.length ? `FEHL ${name}: ${mangel.join(" · ")}` : `OK   ${name}`);
+  const flaws = [];
+  if (m.overflow > 2) flaws.push(`${m.overflow}px past the edge (${m.overflowing.map((u) => u.name).join(", ")})`);
+  if (m.tippziele_klein) flaws.push(`${m.tippziele_klein} zu kleine Tippziele`);
+  if (m.kleinschrift) flaws.push(`${m.kleinschrift}× Schrift < 11px`);
+  if (m.sideways?.length) flaws.push(`hidden sideways: ${m.sideways.join(", ")}`);
+  if (m.abgeschnitten?.length) flaws.push(`abgeschnitten: ${m.abgeschnitten.join(" | ")}`);
+  if (m.tabellen?.length) flaws.push(`Tabelle am Handy: ${m.tabellen.join(", ")}`);
+  if (m.wasserfall?.length) flaws.push(`Textwasserfall: ${m.wasserfall.join(", ")}`);
+  console.log(flaws.length ? `FEHL ${name}: ${flaws.join(" · ")}` : `OK   ${name}`);
 }

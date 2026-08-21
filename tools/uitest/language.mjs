@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 
 const BASIS = process.env.BASIS || "http://frontend";
 const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
-const ok = (was, gut, detail = "") =>
-  console.log(`${gut ? "OK  " : "FEHL"} ${was}${detail ? " — " + detail : ""}`);
+const ok = (what, good, detail = "") =>
+  console.log(`${good ? "OK  " : "FAIL"} ${what}${detail ? " — " + detail : ""}`);
 
 const browser = await chromium.launch({
   executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome",
@@ -13,54 +13,54 @@ const browser = await chromium.launch({
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 950 } });
 await ctx.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
 const page = await ctx.newPage();
-const fehler = [];
-page.on("pageerror", (e) => fehler.push(String(e).slice(0, 160)));
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
 
 try {
-  await page.goto(`${BASIS}/profil`, { waitUntil: "networkidle" });
+  await page.goto(`${BASIS}/account`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
-  ok("Sprachwahl steht im Profil",
-     await page.getByText("Sprache", { exact: true }).first().isVisible().catch(() => false));
+  ok("the language picker stands in the account",
+     await page.getByText("Language", { exact: true }).first().isVisible().catch(() => false));
 
-  // Switch to English
-  await page.locator("section", { hasText: "Sprache" }).first().locator("select")
-    .selectOption("en");
-  await page.getByRole("button", { name: "Speichern" }).first().click();
+  // Switch to German. English is the source language, so this is the way that has to work.
+  await page.locator("section", { hasText: "Language" }).first().locator("select")
+    .selectOption("de");
+  await page.getByRole("button", { name: "Save" }).first().click();
   await page.waitForTimeout(2000);
-  const englisch = await page.getByText("Language", { exact: true }).first()
+  const german = await page.getByText("Sprache", { exact: true }).first()
     .isVisible().catch(() => false);
-  ok("Die Oberfläche wechselt auf Englisch", englisch);
-  await page.screenshot({ path: "/w/26-englisch.png" });
+  ok("the interface switches to German", german);
+  await page.screenshot({ path: "/w/26-german.png" });
 
   // Check the navigation and a second page
-  await page.goto(`${BASIS}/processes/messreihen`, { waitUntil: "networkidle" });
+  await page.goto(`${BASIS}/processes/metrics`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
-  const reihen = await page.getByText("Series", { exact: false }).first()
+  const series = await page.getByText("Reihen", { exact: false }).first()
     .isVisible().catch(() => false);
-  ok("Auch andere Seiten sind übersetzt", reihen);
-  await page.screenshot({ path: "/w/27-englisch-messreihen.png" });
+  ok("other pages are translated as well", series);
+  await page.screenshot({ path: "/w/27-german-series.png" });
 
   // The admin translation view
   await page.goto(`${BASIS}/admin/translations`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
-  const zeilen = await page.locator('input[placeholder]').count();
-  ok("Die Verwaltung listet die Schlüssel", zeilen > 0, `${zeilen} Zeilen sichtbar`);
-  const zaehler = await page.getByText(/\d+ (of|von) \d+ (open|offen)/).first()
+  const rows = await page.locator('input[placeholder]').count();
+  ok("the admin view lists the keys", rows > 0, `${rows} rows visible`);
+  const counter = await page.getByText(/\d+ (of|von) \d+ (open|offen)/).first()
     .textContent().catch(() => "");
-  ok("Sie zeigt, wie viel noch fehlt", !!zaehler, (zaehler || "").trim());
-  await page.screenshot({ path: "/w/28-verwaltung.png" });
+  ok("it shows how much is still missing", !!counter, (counter || "").trim());
+  await page.screenshot({ path: "/w/28-admin.png" });
 
-  // Back to German so operation stays as it was
-  await page.goto(`${BASIS}/profil`, { waitUntil: "networkidle" });
+  // Back to English so the account is left as it was found
+  await page.goto(`${BASIS}/account`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1200);
-  await page.locator("section", { hasText: "Language" }).first().locator("select")
-    .selectOption("de");
-  await page.getByRole("button", { name: "Save" }).first().click();
+  await page.locator("section", { hasText: "Sprache" }).first().locator("select")
+    .selectOption("en");
+  await page.getByRole("button", { name: "Speichern" }).first().click();
   await page.waitForTimeout(1500);
-  ok("Zurück auf Deutsch",
-     await page.getByText("Sprache", { exact: true }).first().isVisible().catch(() => false));
+  ok("back to English",
+     await page.getByText("Language", { exact: true }).first().isVisible().catch(() => false));
 
-  ok("Keine JavaScript-Fehler", fehler.length === 0, fehler.slice(0, 1).join(""));
+  ok("no JavaScript errors", errors.length === 0, errors.slice(0, 1).join(""));
 } finally {
   await browser.close();
 }

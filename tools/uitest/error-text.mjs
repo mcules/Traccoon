@@ -5,21 +5,21 @@
 import { chromium } from "playwright-core";
 
 const BASIS = process.env.BASIS || "http://frontend";
-const ok = (was, gut, detail = "") =>
-  console.log(`${gut ? "OK  " : "FEHL"} ${was}${detail ? " — " + detail : ""}`);
+const ok = (what, good, detail = "") =>
+  console.log(`${good ? "OK  " : "FAIL"} ${what}${detail ? " — " + detail : ""}`);
 
 const browser = await chromium.launch({
   executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome",
 });
 
 /** Try to log in with nonsense and return what the interface says about it. */
-async function meldung(locale) {
+async function message(locale) {
   const ctx = await browser.newContext({ locale });
   const page = await ctx.newPage();
   await page.goto(`${BASIS}/login`, { waitUntil: "networkidle" });
-  await page.getByPlaceholder("E-Mail").first().fill("gibt.es.nicht@example.invalid");
-  await page.locator('input[type="password"]').first().fill("falsch");
-  await page.getByRole("button", { name: /Anmelden|Sign in/ }).first().click();
+  await page.getByPlaceholder(/E-Mail|Email/).first().fill("does.not.exist@example.invalid");
+  await page.locator('input[type="password"]').first().fill("wrong");
+  await page.getByRole("button", { name: /Sign in|Anmelden/ }).first().click();
   await page.waitForTimeout(1200);
   const text = await page.locator("body").innerText();
   await ctx.close();
@@ -27,13 +27,13 @@ async function meldung(locale) {
 }
 
 try {
-  const de = await meldung("de-DE");
-  ok("Deutsch sieht den deutschen Satz", de.includes("Ungültige Anmeldedaten"));
-  ok("und nicht den englischen daneben", !de.includes("Invalid credentials"));
+  const de = await message("de-DE");
+  ok("a German browser sees the German sentence", de.includes("Ungültige Anmeldedaten"));
+  ok("and not the English one beside it", !de.includes("Invalid credentials"));
 
-  const en = await meldung("en-US");
-  ok("Englisch sieht den englischen Satz", en.includes("Invalid credentials"));
-  ok("und nicht den deutschen daneben", !en.includes("Ungültige Anmeldedaten"));
+  const en = await message("en-US");
+  ok("an English browser sees the English sentence", en.includes("Invalid credentials"));
+  ok("and not the German one beside it", !en.includes("Ungültige Anmeldedaten"));
 } finally {
   await browser.close();
 }

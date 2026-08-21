@@ -5,8 +5,8 @@ import { readFileSync } from "node:fs";
 
 const BASIS = process.env.BASIS || "http://frontend";
 const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
-const ok = (was, gut, detail = "") =>
-  console.log(`${gut ? "OK  " : "FEHL"} ${was}${detail ? " — " + detail : ""}`);
+const ok = (what, good, detail = "") =>
+  console.log(`${good ? "OK  " : "FAIL"} ${what}${detail ? " — " + detail : ""}`);
 
 const browser = await chromium.launch({
   executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome",
@@ -14,59 +14,59 @@ const browser = await chromium.launch({
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 1100 } });
 await ctx.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
 const page = await ctx.newPage();
-const fehler = [];
-page.on("pageerror", (e) => fehler.push(String(e).slice(0, 160)));
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
 
 try {
-  await page.goto(`${BASIS}/processes/messreihen`, { waitUntil: "networkidle" });
+  await page.goto(`${BASIS}/processes/metrics`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
-  ok("Reihen stehen in der Übersicht",
+  ok("the series stand in the overview",
      await page.getByText("akku.shelter").first().isVisible().catch(() => false));
 
   // Do not pin this to one test series: the test data is cleaned up now and then, and the
   // first series that exists does the job just as well.
   await page.locator('button:has-text("▸")').first().click();
   await page.waitForTimeout(1500);
-  ok("Zeitraum lässt sich wählen",
-     await page.getByRole("button", { name: "30 Tage" }).isVisible().catch(() => false));
-  const zeilenGenug = (await page.locator("table tbody tr").count()) >= 3;
-  const gestrichelt = await page.locator("svg line[stroke-dasharray='6 5']").count();
-  if (zeilenGenug) ok("Prognose wird als gestrichelte Verlängerung gezeichnet", gestrichelt > 0);
-  else console.log("--   Prognose — übersprungen, die Reihe hat zu wenige Punkte");
-  const erklaerung = await page.getByText(/Fortschreibung dieser Punkte/i).first()
+  ok("a period can be chosen",
+     await page.getByRole("button", { name: "30 days" }).isVisible().catch(() => false));
+  const enoughRows = (await page.locator("table tbody tr").count()) >= 3;
+  const dashed = await page.locator("svg line[stroke-dasharray='6 5']").count();
+  if (enoughRows) ok("the forecast is drawn as a dashed continuation", dashed > 0);
+  else console.log("--   forecast — skipped, the series holds too few points");
+  const explanation = await page.getByText(/continuation of these points/i).first()
     .textContent().catch(() => "");
-  if (zeilenGenug) ok("Die Gerade wird in Worten erklärt", !!erklaerung,
-     (erklaerung || "").replace(/\s+/g, " ").trim().slice(0, 110));
-  const zeilen = await page.locator("table tbody tr").count();
-  ok("Wertetabelle steht darunter", zeilen >= 1, `${zeilen} Zeilen`);
+  if (enoughRows) ok("the line is explained in words", !!explanation,
+     (explanation || "").replace(/\s+/g, " ").trim().slice(0, 110));
+  const rows = await page.locator("table tbody tr").count();
+  ok("the table of values stands below it", rows >= 1, `${rows} rows`);
   await page.screenshot({ path: "/w/21-detail.png" });
 
   // Drop an outlier, the forecast has to change visibly. That only works with a series that
   // holds several values: test series get cleaned up now and then, and a real series with a
   // single value is not a failure.
-  if (zeilen >= 3) {
-    const vorher = await page.getByText(/Güte/).first().textContent().catch(() => "");
+  if (rows >= 3) {
+    const before = await page.getByText(/quality/).first().textContent().catch(() => "");
     page.once("dialog", (d) => d.accept());
     await page.locator("table tbody tr").first().locator("button").click();
     await page.waitForTimeout(2000);
-    const nachher = await page.getByText(/Güte/).first().textContent().catch(() => "");
-    ok("Einzelner Wert lässt sich entfernen", vorher !== nachher,
-       `${(vorher || "").trim()} → ${(nachher || "").trim()}`);
+    const after = await page.getByText(/quality/).first().textContent().catch(() => "");
+    ok("a single value can be removed", before !== after,
+       `${(before || "").trim()} → ${(after || "").trim()}`);
   } else {
-    console.log(`--   Einzelner Wert lässt sich entfernen — übersprungen, nur ${zeilen} Werte in der Reihe`);
+    console.log(`--   a single value can be removed — skipped, only ${rows} values in the series`);
   }
 
-  if (zeilenGenug) {
-    await page.getByRole("button", { name: "7 Tage" }).click();
+  if (enoughRows) {
+    await page.getByRole("button", { name: "7 days" }).click();
     await page.waitForTimeout(1500);
-    const wenig = await page.locator("table tbody tr").count();
-    ok("Kürzerer Zeitraum zeigt weniger Werte", wenig < zeilen, `${wenig} Zeilen`);
+    const few = await page.locator("table tbody tr").count();
+    ok("a shorter period shows fewer values", few < rows, `${few} rows`);
   } else {
-    console.log("--   Kürzerer Zeitraum — übersprungen, zu wenige Werte");
+    console.log("--   shorter period — skipped, too few values");
   }
-  await page.screenshot({ path: "/w/22-nach-loeschen.png" });
+  await page.screenshot({ path: "/w/22-after-deleting.png" });
 
-  ok("Keine JavaScript-Fehler", fehler.length === 0, fehler.slice(0, 1).join(""));
+  ok("no JavaScript errors", errors.length === 0, errors.slice(0, 1).join(""));
 } finally {
   await browser.close();
 }

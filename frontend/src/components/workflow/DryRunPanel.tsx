@@ -73,7 +73,7 @@ export default function DryrunPanel(
                         bg-card p-2 shadow-xl">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-xs font-medium text-ink">
-              Probelauf — {steps.length} Schritt{steps.length === 1 ? "" : "e"}
+              {tr("dry_run_panel.dry_run_n_steps", { count: steps.length })}
             </span>
             <button onClick={() => setSteps(null)}
               className={BUTTON_TEXT.secondary} title={tr("dry_run_panel.close")}>✕</button>

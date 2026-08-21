@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 
 const BASIS = process.env.BASIS || "http://frontend";
 const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
-const ok = (was, gut, detail = "") =>
-  console.log(`${gut ? "OK  " : "FEHL"} ${was}${detail ? " — " + detail : ""}`);
+const ok = (what, good, detail = "") =>
+  console.log(`${good ? "OK  " : "FAIL"} ${what}${detail ? " — " + detail : ""}`);
 
 const browser = await chromium.launch({
   executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome",
@@ -13,43 +13,43 @@ const browser = await chromium.launch({
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 } });
 await ctx.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
 const page = await ctx.newPage();
-const fehler = [];
-page.on("pageerror", (e) => fehler.push(String(e).slice(0, 160)));
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
 
 try {
   await page.goto(`${BASIS}/workflows/44`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
 
   // Click an action node
-  await page.getByText("Akkustand festhalten").first().click();
+  await page.getByText("Record the battery level").first().click();
   await page.waitForTimeout(800);
-  const schalter = page.getByText(/Diesen Schritt abschalten/i).first();
-  ok("Der Schalter steht in der Konfiguration",
-     await schalter.isVisible().catch(() => false));
+  const toggle = page.getByText(/Switch this step off/i).first();
+  ok("the switch stands in the configuration",
+     await toggle.isVisible().catch(() => false));
 
-  await schalter.click();
+  await toggle.click();
   await page.waitForTimeout(600);
-  const wahl = await page.getByText(/Was soll dann passieren\?/i).first()
+  const choice = await page.getByText(/What should happen then\?/i).first()
     .isVisible().catch(() => false);
-  ok("Man wählt zwischen Überspringen und Abbrechen", wahl);
-  const hinweis = await page.getByText(/geht über den normalen Ausgang weiter/i).first()
+  ok("one chooses between skipping and aborting", choice);
+  const hint = await page.getByText(/continues through the normal outlet/i).first()
     .isVisible().catch(() => false);
-  ok("Der gewählte Fall wird erklärt", hinweis);
+  ok("the chosen case is explained", hint);
 
-  const marke = await page.locator(".react-flow__node", { hasText: "Akkustand festhalten" })
-    .getByText("aus").count();
-  ok("Der Knoten zeigt im Graphen, dass er aus ist", marke > 0);
-  await page.screenshot({ path: "/w/25-abschalter.png" });
+  const mark = await page.locator(".react-flow__node", { hasText: "Record the battery level" })
+    .getByText("off").count();
+  ok("the node shows in the graph that it is off", mark > 0);
+  await page.screenshot({ path: "/w/25-killswitch.png" });
 
   // Switch to stop mode, the hint has to change
-  await page.locator("select").filter({ hasText: "überspringen und weitermachen" }).first()
-    .selectOption("abbrechen").catch(() => {});
+  await page.locator("select").filter({ hasText: "skip and continue" }).first()
+    .selectOption("abort").catch(() => {});
   await page.waitForTimeout(500);
-  const hinweis2 = await page.getByText(/enden hier als abgebrochen/i).first()
+  const hint2 = await page.getByText(/end here as cancelled/i).first()
     .isVisible().catch(() => false);
-  ok("Der Abbruch-Fall wird eigens erklärt", hinweis2);
+  ok("the abort case is explained separately", hint2);
 
-  ok("Keine JavaScript-Fehler", fehler.length === 0, fehler.slice(0, 1).join(""));
+  ok("no JavaScript errors", errors.length === 0, errors.slice(0, 1).join(""));
 } finally {
   await browser.close();
 }

@@ -10,8 +10,8 @@ import { readFileSync } from "node:fs";
 const BASIS = process.env.BASIS || "http://frontend";
 const WF = process.env.WF || "44";
 const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
-const ok = (was, gut, detail = "") =>
-  console.log(`${gut ? "OK  " : "FEHL"} ${was}${detail ? " — " + detail : ""}`);
+const ok = (what, good, detail = "") =>
+  console.log(`${good ? "OK  " : "FAIL"} ${what}${detail ? " — " + detail : ""}`);
 
 const browser = await chromium.launch({
   executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome",
@@ -21,51 +21,51 @@ const ctx = await browser.newContext({
 });
 await ctx.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
 const page = await ctx.newPage();
-const fehler = [];
-page.on("pageerror", (e) => fehler.push(String(e).slice(0, 160)));
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
 
-const knoten = () => page.locator(".react-flow__node").count();
+const nodes = () => page.locator(".react-flow__node").count();
 
 try {
   await page.goto(`${BASIS}/workflows/${WF}`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
 
-  ok("Die Fläche füllt den Bildschirm", (await knoten()) > 0, `${await knoten()} Bausteine`);
-  ok("Umschalter zwischen Fläche und Baustein steht da",
-     await page.getByRole("button", { name: "Baustein", exact: true }).isVisible());
+  ok("the canvas fills the screen", (await nodes()) > 0, `${await nodes()} blocks`);
+  ok("the toggle between canvas and block is there",
+     await page.getByRole("button", { name: "Block", exact: true }).isVisible());
 
   // Tap a block: its settings have to open on their own.
   await page.locator(".react-flow__node").first().tap();
   await page.waitForTimeout(1000);
-  const konfigOffen = await page.getByText("Bausteine", { exact: true }).isVisible().catch(() => false);
-  ok("Tippen auf einen Baustein öffnet seine Einstellungen", konfigOffen);
+  const configOpen = await page.getByText("Blocks", { exact: true }).isVisible().catch(() => false);
+  ok("tapping a block opens its settings", configOpen);
   await page.screenshot({ path: "/w/31-mobile-editor-block.png" });
 
   // Change the label, the header has to report unsaved work.
-  const feld = page.locator('input[type="text"], input:not([type])').first();
-  await feld.fill("Probe am Handy");
-  await feld.blur();
+  const field = page.locator('input[type="text"], input:not([type])').first();
+  await field.fill("A probe on the phone");
+  await field.blur();
   await page.waitForTimeout(800);
-  const schmutzig = await page.getByText(/ungespeichert/).isVisible().catch(() => false);
-  ok("Änderungen kommen an", schmutzig);
+  const dirty = await page.getByText(/unsaved/).isVisible().catch(() => false);
+  ok("changes arrive", dirty);
 
   // Attach a new block by tapping, since dragging does not exist here.
-  const vorher = await knoten();
-  await page.getByRole("button", { name: "⏱ Warten", exact: true }).first().tap();
+  const before = await nodes();
+  await page.getByRole("button", { name: "⏱ Wait", exact: true }).first().tap();
   await page.waitForTimeout(1200);
-  await page.getByRole("button", { name: "Fläche", exact: true }).tap();
+  await page.getByRole("button", { name: "Canvas", exact: true }).tap();
   await page.waitForTimeout(1200);
-  const nachher = await knoten();
-  ok("Baustein lässt sich antippen statt ziehen", nachher === vorher + 1,
-     `${vorher} → ${nachher} Bausteine`);
+  const after = await nodes();
+  ok("a block can be tapped instead of dragged", after === before + 1,
+     `${before} → ${after} blocks`);
   await page.screenshot({ path: "/w/32-mobile-editor-canvas.png" });
 
   // Nothing stands past the edge.
-  const ueber = await page.evaluate(
+  const over = await page.evaluate(
     () => document.scrollingElement.scrollWidth - window.innerWidth);
-  ok("Nichts steht seitlich über den Rand", ueber <= 2, `${ueber} px`);
+  ok("nothing stands past the edge sideways", over <= 2, `${over} px`);
 
-  ok("Keine JavaScript-Fehler", fehler.length === 0, fehler.slice(0, 1).join(""));
+  ok("no JavaScript errors", errors.length === 0, errors.slice(0, 1).join(""));
 } finally {
   await browser.close();
 }
