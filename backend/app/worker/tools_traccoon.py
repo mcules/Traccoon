@@ -267,9 +267,9 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         await db.commit()
         return (f"Job #{j.id} '{j.name}' ({j.kind}) ausgeführt: {jr.status}"
                 + (f" — {jr.output[:500]}" if jr.output else "")
-                + (f" — FEHLER: {jr.error[:500]}" if jr.error else ""))
+                + (f" — ERROR: {jr.error[:500]}" if jr.error else ""))
 
-    return f"FEHLER: unbekanntes Job-Tool '{name}'."
+    return f"ERROR: unbekanntes Job-Tool '{name}'."
 
 
 async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
@@ -349,19 +349,19 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
                 actor_id=user.id, source=f"agent:{user.id}",
             )
         except ValueError as e:
-            return f"FEHLER: {e}"
+            return f"ERROR: {e}"
         return (f"Prozess '{d.key}' gestartet — Instanz #{inst.id}, Status "
                 f"{inst.status.value if hasattr(inst.status, 'value') else inst.status}. "
                 "Wartende Schritte (Freigaben, Aufgaben) laufen ohne dich weiter.")
 
-    return f"FEHLER: unbekanntes Workflow-Tool '{name}'."
+    return f"ERROR: unbekanntes Workflow-Tool '{name}'."
 
 
 async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, args: dict,
                              assistant_task_id: int | None = None) -> str:
     user = await _user(db, owner_id)
     if user is None:
-        return "FEHLER: kein Nutzerkontext — Steuerung nicht möglich."
+        return "ERROR: kein Nutzerkontext — Steuerung nicht möglich."
 
     if name == "traccoon_list_projects":
         if user.global_role == "admin":
@@ -547,7 +547,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
                 query=args.get("query") or {}, headers=args.get("headers") or {},
                 body=args.get("body"))
         except Exception as e:  # noqa: BLE001
-            return f"FEHLER: {e}"
+            return f"ERROR: {e}"
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben
         header = f"{res['method']} {res['url']} → HTTP {res['status_code']}"
         # The limit was set by the destination (ABC-31): do NOT truncate again flatly here,
@@ -581,4 +581,4 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         ).where(CostEntry.issue_id == iss.id))).one()
         return f"{iss.key}: ${row[0]:.4f} (in {row[1]} / out {row[2]} Tokens)."
 
-    return f"FEHLER: unbekanntes Steuer-Tool '{name}'."
+    return f"ERROR: unbekanntes Steuer-Tool '{name}'."

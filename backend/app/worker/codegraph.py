@@ -100,11 +100,11 @@ async def ensure_indexed(root: str) -> None:
 async def query(root: str | None, command: str, arg: str) -> str:
     """Run one codegraph query in the worktree and deliver the (truncated) output."""
     if not root:
-        return "FEHLER: kein Workspace für dieses Projekt."
+        return "ERROR: kein Workspace für dieses Projekt."
     if not await available():
-        return "FEHLER: codegraph ist nicht verfügbar."
+        return "ERROR: codegraph ist nicht verfügbar."
     if command not in QUERY_COMMANDS:
-        return (f"FEHLER: unbekanntes command '{command}'. "
+        return (f"ERROR: unbekanntes command '{command}'. "
                 f"Erlaubt: {', '.join(sorted(QUERY_COMMANDS))}.")
     await ensure_indexed(root)
     args = [command] + ([arg] if arg else [])

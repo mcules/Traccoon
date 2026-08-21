@@ -36,8 +36,8 @@ def test_a_jump_over_both_thresholds_catches_up_on_both():
 def test_the_developer_is_sent_to_write():
     soft = reminder_text("execute", 0.35, sharp=False)
     hard = reminder_text("execute", 0.65, sharp=True)
-    assert "35 %" in soft and "noch keine Änderung geschrieben" in soft
-    assert "JETZT" in hard and "kleinsten sinnvollen Änderung" in hard
+    assert "35 %" in soft and "not written a change yet" in soft
+    assert "NOW" in hard and "smallest sensible change" in hard
     assert "continue_later" in hard and "ask_human" in hard
     assert "submit_plan" not in hard              # that is the business of the architect
 
@@ -45,8 +45,8 @@ def test_the_developer_is_sent_to_write():
 def test_the_architect_is_sent_to_plan():
     hard = reminder_text("plan", 0.65, sharp=True)
     assert "submit_plan" in hard
-    assert "Änderung" not in hard                 # er schreibt keinen Code
-    assert "offen" in hard                        # better a plan with uncertainties
+    assert "change" not in hard                   # it writes no code
+    assert "open" in hard                         # better a plan with uncertainties
 
 
 def test_the_result_differs_per_mode():

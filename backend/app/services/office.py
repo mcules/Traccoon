@@ -98,7 +98,10 @@ RESULT_PREVIEW_CHARS = 2000
 
 # What the runtime really returns as an error (worker/runtime.py, mcp_client.py,
 # tools_memory.py, codegraph.py). Everything else is unknown, not successful.
-ERROR_PREFIXES = ("FEHLER:", "FEHLER ", "TOOL-FEHLER:", "FS-FEHLER:", "CHECK-FEHLER:", "❌", "⛔")
+# The German prefixes stay in the list: they stand in the step log of every run from before the
+# switch to English, and the office reads that log to colour a step.
+ERROR_PREFIXES = ("ERROR:", "ERROR ", "TOOL-ERROR:", "FS-ERROR:", "CHECK-ERROR:",
+                  "FEHLER:", "FEHLER ", "TOOL-FEHLER:", "FS-FEHLER:", "CHECK-FEHLER:", "❌", "⛔")
 
 # Which argument gives a tool its label. An explicit table instead of a heuristic, in the
 # same key order as `worker/perms.resource_of`, so the room labels the same thing the

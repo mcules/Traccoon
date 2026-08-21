@@ -36,7 +36,14 @@ MAX_MEMORY_CHARS = 6000
 # A single insight is a sentence, not an essay.
 MAX_ENTRY_CHARS = 600
 
-AREAS = ("mensch", "agent", "projekt")
+AREAS = ("person", "agent", "project")
+
+# What the areas and the tools were called until the switch to English. They stand in the
+# `allowed_tools` of agents and in memory notes people wrote themselves, so both names are
+# accepted — a rename must not silently take a tool away from an agent.
+LEGACY_AREAS = {"mensch": "person", "projekt": "project", "agent": "agent"}
+LEGACY_TOOLS = {"erinnere_dich": "remember", "vergiss": "forget",
+                "gedaechtnis_suchen": "memory_search"}
 
 
 def _def(name: str, desc: str, props: dict, required: list[str]) -> dict:
@@ -45,36 +52,36 @@ def _def(name: str, desc: str, props: dict, required: list[str]) -> dict:
         "parameters": {"type": "object", "properties": props, "required": required}}}
 
 
-_AREA_DESC = ("Wohin die Erkenntnis gehört: 'mensch' = gilt immer und überall (Vorlieben, "
-                 "Arbeitsweise, feste Vorgaben) · 'agent' = nur für deine Rolle · "
-                 "'projekt' = nur für dieses Projekt.")
+_AREA_DESC = ("Where the insight belongs: 'person' = applies always and everywhere "
+              "(preferences, way of working, fixed rules) · 'agent' = for your role only · "
+              "'project' = for this project only.")
 
 MEMORY_TOOLS = [
-    _def("erinnere_dich",
-         "Merke dir etwas DAUERHAFT für künftige Läufe — eine Vorgabe, Korrektur oder Vorliebe "
-         "deines Menschen, die auch morgen noch gilt. Nicht für Tagesdetails, Ticket-Fakten oder "
-         "Dinge, die schon im Gedächtnis stehen. Ein Satz pro Aufruf.",
-         {"bereich": {"type": "string", "enum": list(AREAS), "description": _AREA_DESC},
-          "text": {"type": "string", "description": "Die Erkenntnis als ein klarer Satz, so "
-                                                    "formuliert, dass sie ohne den heutigen "
-                                                    "Zusammenhang verständlich bleibt."}},
-         ["bereich", "text"]),
-    _def("vergiss",
-         "Entferne eine Erinnerung, die überholt oder falsch ist. Nutze das auch, wenn dein "
-         "Mensch eine frühere Vorgabe ändert: erst `vergiss`, dann `erinnere_dich` mit der neuen.",
-         {"bereich": {"type": "string", "enum": list(AREAS), "description": _AREA_DESC},
-          "textfragment": {"type": "string", "description": "Ein Stück der zu löschenden Zeile; "
-                                                            "alle passenden Zeilen fallen weg."}},
-         ["bereich", "textfragment"]),
-    _def("gedaechtnis_suchen",
-         "Durchsuche dein gesamtes Gedächtnis nach einem Stichwort. Nötig nur, wenn du etwas "
-         "vermutest, das nicht im automatisch mitgelieferten Gedächtnis-Block steht.",
-         {"suche": {"type": "string", "description": "Stichwort oder Wortgruppe."}},
-         ["suche"]),
+    _def("remember",
+         "Remember something PERMANENTLY for future runs — a rule, a correction or a preference "
+         "of your person that still applies tomorrow. Not for details of the day, ticket facts or "
+         "things that already stand in the memory. One sentence per call.",
+         {"area": {"type": "string", "enum": list(AREAS), "description": _AREA_DESC},
+          "text": {"type": "string", "description": "The insight as one clear sentence, phrased so "
+                                                    "that it stays understandable without today's "
+                                                    "context."}},
+         ["area", "text"]),
+    _def("forget",
+         "Remove a memory that is outdated or wrong. Use this when your person changes an earlier "
+         "rule as well: first `forget`, then `remember` with the new one.",
+         {"area": {"type": "string", "enum": list(AREAS), "description": _AREA_DESC},
+          "fragment": {"type": "string", "description": "A piece of the line to delete; every "
+                                                        "matching line falls away."}},
+         ["area", "fragment"]),
+    _def("memory_search",
+         "Search your whole memory for a keyword. Needed only when you suspect something that does "
+         "not stand in the memory block delivered automatically.",
+         {"query": {"type": "string", "description": "A keyword or a phrase."}},
+         ["query"]),
 ]
-MEMORY_TOOL_NAMES = {t["function"]["name"] for t in MEMORY_TOOLS}
+MEMORY_TOOL_NAMES = {t["function"]["name"] for t in MEMORY_TOOLS} | set(LEGACY_TOOLS)
 
-NO_MEMORY = "(kein Gedächtnis konfiguriert — dein Mensch hat keinen Vault-Ordner gesetzt)"
+NO_MEMORY = "(no memory configured — your person has set no vault folder)"
 
 
 def _note_target(path: str) -> dict:
@@ -93,15 +100,20 @@ def _safe(part: str) -> str:
 
 
 def note_path(root: str, area: str, agent_role: str = "", project_key: str = "") -> str | None:
-    """Note path for an area, or None when the area makes no sense here."""
+    """Note path for an area, or None when the area makes no sense here.
+
+    The file names stay German: they are notes a person opens in their vault, and renaming
+    them would leave the learned insights behind in a file nothing reads any more.
+    """
     root = (root or "").strip().rstrip("/")
     if not root:
         return None
-    if area == "mensch":
+    area = LEGACY_AREAS.get(area, area)
+    if area == "person":
         return f"{root}/Mensch.md"
     if area == "agent":
         return f"{root}/Agent-{_safe(agent_role)}.md" if agent_role else None
-    if area == "projekt":
+    if area == "project":
         return f"{root}/Projekt-{_safe(project_key)}.md" if project_key else None
     return None
 
@@ -146,9 +158,9 @@ async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "
     if not root:
         return ""
     chunks: list[str] = []
-    for area, title in (("mensch", "Über deinen Menschen"),
-                           ("agent", "Für deine Rolle"),
-                           ("projekt", "Für dieses Projekt")):
+    for area, title in (("person", "About your person"),
+                        ("agent", "For your role"),
+                        ("project", "For this project")):
         path = note_path(root, area, agent_role, project_key)
         if not path:
             continue
@@ -187,68 +199,70 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
     if not root:
         return NO_MEMORY
 
-    if name == "gedaechtnis_suchen":
-        search = (args.get("suche") or "").strip()
+    name = LEGACY_TOOLS.get(name, name)
+    if name == "memory_search":
+        search = (args.get("query") or args.get("suche") or "").strip()
         if not search:
-            return "FEHLER: `suche` fehlt."
+            return "ERROR: `query` is missing."
         try:
             out = await mcp.call("obsidian__obsidian_search_notes",
                                  {"mode": "text", "query": search, "pathPrefix": root})
         except Exception as exc:  # noqa: BLE001
-            return f"FEHLER bei der Suche: {exc}"
-        return (out or "Nichts gefunden.")[:4000]
+            return f"ERROR while searching: {exc}"
+        return (out or "Nothing found.")[:4000]
 
-    area = (args.get("bereich") or "").strip().lower()
+    area = (args.get("area") or args.get("bereich") or "").strip().lower()
+    area = LEGACY_AREAS.get(area, area)
     if area not in AREAS:
-        return f"FEHLER: `bereich` muss {' | '.join(AREAS)} sein."
+        return f"ERROR: `area` has to be {' | '.join(AREAS)}."
     path = note_path(root, area, agent_role, project_key)
     if not path:
-        missing = "Projekt" if area == "projekt" else "Rolle"
-        return (f"FEHLER: Bereich '{area}' geht in diesem Lauf nicht — es gibt kein {missing}. "
-                "Nimm 'mensch'.")
+        missing = "project" if area == "project" else "role"
+        return (f"ERROR: the area '{area}' does not work in this run — there is no {missing}. "
+                "Take 'person'.")
 
-    if name == "erinnere_dich":
+    if name == "remember":
         text = " ".join((args.get("text") or "").split())[:MAX_ENTRY_CHARS]
         if not text:
-            return "FEHLER: `text` fehlt."
+            return "ERROR: `text` is missing."
         today = dt.datetime.now().strftime("%Y-%m-%d")
         error = await _append_line(mcp, path, f"- [{today}] {text}")
         if error:
-            return f"FEHLER beim Merken: {error}"
-        return f"Gemerkt in {path}."
+            return f"ERROR while remembering: {error}"
+        return f"Noted in {path}."
 
-    if name == "vergiss":
-        ask = (args.get("textfragment") or "").strip().lower()
+    if name == "forget":
+        ask = (args.get("fragment") or args.get("textfragment") or "").strip().lower()
         if not ask:
-            return "FEHLER: `textfragment` fehlt."
+            return "ERROR: `fragment` is missing."
         body = await _read_note(mcp, path)
         if not body:
-            return f"Nichts zu vergessen — {path} ist leer oder gibt es nicht."
+            return f"Nothing to forget — {path} is empty or does not exist."
         keep = [ln for ln in body.splitlines() if ask not in ln.lower()]
         removed = len(body.splitlines()) - len(keep)
         if not removed:
-            return f"Keine Zeile in {path} enthält '{ask}' — nichts geändert."
+            return f"No line in {path} contains '{ask}' — nothing changed."
         try:
             out = await mcp.call("obsidian__obsidian_write_note",
                                  {"target": _note_target(path), "overwrite": True,
                                   "content": "\n".join(keep).rstrip() + "\n"})
         except Exception as exc:  # noqa: BLE001
-            return f"FEHLER beim Vergessen: {exc}"
+            return f"ERROR while forgetting: {exc}"
         if _failed(out):
-            return f"FEHLER beim Vergessen: {out}"
-        return f"{removed} Zeile(n) aus {path} entfernt."
+            return f"ERROR while forgetting: {out}"
+        return f"{removed} line(s) removed from {path}."
 
-    return f"FEHLER: unbekanntes Gedächtnis-Tool '{name}'."
+    return f"ERROR: unknown memory tool '{name}'."
 
 
-REFLEXION_PROMPT = (
-    "Rückschau auf diesen Lauf. Gab es eine Korrektur, Vorgabe oder Vorliebe deines Menschen, "
-    "die AUCH FÜR KÜNFTIGE LÄUFE gilt? Merke sie mit `erinnere_dich` im passenden Bereich — "
-    "einen Satz pro Aufruf, ohne Bezug auf das heutige Ticket, damit sie später allein "
-    "verständlich ist.\n\n"
-    "Merke NICHT: Tagesdetails, Ticket-Fakten, Zwischenstände, technische Einzelheiten dieses "
-    "Auftrags, und nichts, was oben schon im Gedächtnis-Block steht. Ist eine dort stehende "
-    "Erinnerung durch heute überholt, korrigiere sie (`vergiss`, dann `erinnere_dich`).\n\n"
-    "Hast du nichts Dauerhaftes gelernt — der Normalfall — dann rufe KEIN Tool und antworte "
-    "nur mit „nichts\"."
+REFLECTION_PROMPT = (
+    "A look back at this run. Was there a correction, a rule or a preference of your person "
+    "that applies TO FUTURE RUNS AS WELL? Note it with `remember` in the matching area — one "
+    "sentence per call, without a reference to today's ticket, so that it stays understandable "
+    "on its own later.\n\n"
+    "Do NOT note: details of the day, ticket facts, intermediate states, technical particulars of "
+    "this assignment, and nothing that already stands in the memory block above. If a memory "
+    "standing there is outdated by today, correct it (`forget`, then `remember`).\n\n"
+    "If you learned nothing lasting — the normal case — call NO tool and answer with \"nothing\" "
+    "only."
 )
