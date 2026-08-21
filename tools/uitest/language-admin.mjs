@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 
 const BASIS = process.env.BASIS || "http://frontend";
 const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
-const ok = (was, gut, detail = "") =>
-  console.log(`${gut ? "OK  " : "FEHL"} ${was}${detail ? " — " + detail : ""}`);
+const ok = (what, good, detail = "") =>
+  console.log(`${good ? "OK  " : "FAIL"} ${what}${detail ? " — " + detail : ""}`);
 
 const browser = await chromium.launch({
   executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome",
@@ -13,54 +13,54 @@ const browser = await chromium.launch({
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 1000 } });
 await ctx.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
 const page = await ctx.newPage();
-const fehler = [];
-page.on("pageerror", (e) => fehler.push(String(e).slice(0, 160)));
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
 
 try {
   await page.goto(`${BASIS}/admin/translations`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
-  ok("Sprachen stehen als eigene Liste",
-     await page.getByText("Sprachen", { exact: true }).first().isVisible().catch(() => false));
+  ok("the languages stand as a list of their own",
+     await page.getByText("Languages", { exact: true }).first().isVisible().catch(() => false));
 
-  // Anlegen
-  const felder = page.locator('input[placeholder="z. B. fr"]');
-  await felder.fill("fr");
-  await page.locator('input[placeholder="Name, z. B. Français"]').fill("Französisch");
-  await page.getByRole("button", { name: "anlegen" }).click();
+  // Create one
+  const fields = page.locator('input[placeholder="e.g. fr"]');
+  await fields.fill("fr");
+  await page.locator('input[placeholder="Name, e.g. Français"]').fill("French");
+  await page.getByRole("button", { name: "create" }).click();
   await page.waitForTimeout(1800);
-  const zeileFr = page.locator("div", { has: page.locator('span:text-is("fr")') }).last();
-  const angelegt = await zeileFr.first().isVisible().catch(() => false);
-  ok("Neue Sprache erscheint sofort", angelegt);
+  const rowFr = page.locator("div", { has: page.locator('span:text-is("fr")') }).last();
+  const created = await rowFr.first().isVisible().catch(() => false);
+  ok("the new language appears at once", created);
 
   // Translate one text. Language management sits on top, the text list below, so the last
   // table is the one with the translations.
   await page.locator("select").first().selectOption("fr").catch(() => {});
   await page.waitForTimeout(1200);
-  const feld = page.locator('input[placeholder]').last();
-  await feld.fill("Réglages");
-  await feld.blur();
+  const field = page.locator('input[placeholder]').last();
+  await field.fill("Réglages");
+  await field.blur();
   await page.waitForTimeout(1500);
-  ok("Text lässt sich in der neuen Sprache eintragen", true);
+  ok("a text can be entered in the new language", true);
 
-  // Abschalten
+  // Switch it off
   // The checkbox follows the server, not the click: it flips only after the answer. So click
   // and wait instead of uncheck(), which checks right away and fails.
-  const schalter = zeileFr.locator('input[type="checkbox"]');
-  await schalter.click();
+  const toggle = rowFr.locator('input[type="checkbox"]');
+  await toggle.click();
   await page.waitForFunction(
     () => !!document.querySelector('input[type="checkbox"]:not(:checked)'), null, { timeout: 5000 },
   ).catch(() => {});
-  ok("Sprache lässt sich abschalten", !(await schalter.isChecked()));
-  await page.screenshot({ path: "/w/29-sprachverwaltung.png" });
+  ok("a language can be switched off", !(await toggle.isChecked()));
+  await page.screenshot({ path: "/w/29-language-admin.png" });
 
   // Delete
   page.once("dialog", (d) => d.accept());
-  await zeileFr.getByRole("button", { name: "✕" }).click();
+  await rowFr.getByRole("button", { name: "✕" }).click();
   await page.waitForTimeout(1800);
-  const weg = (await page.locator('span:text-is("fr")').count()) === 0;
-  ok("Sprache lässt sich wieder löschen", weg);
+  const gone = (await page.locator('span:text-is("fr")').count()) === 0;
+  ok("a language can be deleted again", gone);
 
-  ok("Keine JavaScript-Fehler", fehler.length === 0, fehler.slice(0, 1).join(""));
+  ok("no JavaScript errors", errors.length === 0, errors.slice(0, 1).join(""));
 } finally {
   await browser.close();
 }

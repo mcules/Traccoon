@@ -2101,7 +2101,7 @@
   "translations_panel.edit": "bearbeiten",
   "translations_panel.created_here": "selbst angelegt",
   "translations_panel.count_own_texts": "{count} eigene Texte",
-  "translations_panel.translations_keys_come_german": "Übersetzungen — die Schlüssel kommen aus dem deutschen Katalog, der mit der Anwendung ausgeliefert wird. Was du hier einträgst, gilt sofort für alle; ein leeres Feld nimmt deine Änderung zurück und stellt den ausgelieferten Text wieder her.",
+  "translations_panel.translations_keys_come_german": "Übersetzungen: die Schlüssel kommen aus dem mitgelieferten englischen Katalog. Was du hier einträgst, gilt sofort für alle; ein leeres Feld nimmt deine Änderung zurück und stellt den mitgelieferten Text wieder her.",
   "translations_panel.editing": "in Bearbeitung",
   "translations_panel.file_not_valid_json": "Die Datei ist kein gültiges JSON.",
   "translations_panel.no_match": "Kein Treffer.",
@@ -2722,5 +2722,7 @@
   "start_config.button_on_a_mail": "Knopf an einer Mail",
   "start_config.what_the_button_hangs_on": "Woran der Knopf haengt",
   "start_config.on_the_message": "an der Nachricht",
-  "agent_task_node.planning": "Planung"
+  "agent_task_node.planning": "Planung",
+  "dry_run_panel.dry_run_n_steps": "Probelauf — {count} Schritt(e)",
+  "inspector.last_steps": "Letzte Schritte"
 }

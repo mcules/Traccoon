@@ -1,3 +1,8 @@
+// A tool from the switch to English, kept for the next language that gets a source text of
+// its own. It pulls texts a person reads out of a file and replaces them with tr("key");
+// the pattern below still looks for GERMAN, because that is what it was written against.
+// Whoever uses it again adjusts that one regular expression.
+//
 // Pulls German interface texts out of a file and replaces them with tr("key").
 //
 // Deliberately not a do-it-all: it takes JSX text nodes and the attributes a person reads

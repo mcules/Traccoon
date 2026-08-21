@@ -243,7 +243,7 @@ export default function Inspector({
         </dl>
 
         <div>
-          <div className="mb-1 font-medium">Letzte Schritte</div>
+          <div className="mb-1 font-medium">{tr("inspector.last_steps")}</div>
           {excerpt.steps.length === 0 ? (
             <div className="text-muted">{tr("inspector.nothing_window")}</div>
           ) : (

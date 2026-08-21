@@ -1,4 +1,8 @@
 /**
+ * A tool from the switch to English: it renamed the German identifiers of the frontend over
+ * the syntax tree. Kept because the same job comes up again with every larger rename, not
+ * because anything still has to be moved.
+ *
  * Rename German identifiers to English in TypeScript/TSX — over the syntax tree.
  *
  * Text replacement is not an option here: the i18n keys are German by construction
