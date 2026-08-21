@@ -40,7 +40,7 @@ export default function Projects() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">{tr("projects.projects")}</h1>
         <button onClick={() => setShow(!show)} className={BUTTON.primary}>
-          + Projekt
+          {tr("projects.new_project")}
         </button>
       </div>
 
@@ -75,7 +75,7 @@ export default function Projects() {
               <div className="flex gap-1">
                 {p.is_new && <Tag color="green">{tr("projects.new")}</Tag>}
                 {!p.is_member && <Tag color="yellow">{tr("projects.foreign")}</Tag>}
-                {p.managed && <Tag color="brand">KI</Tag>}
+                {p.managed && <Tag color="brand">{tr("projects.ai_managed")}</Tag>}
                 <Tag>
                   {p.my_role}{p.my_role_inherited ? ` (${tr("projects.inherited")})` : ""}
                 </Tag>

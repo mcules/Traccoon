@@ -3,7 +3,7 @@
 //
 // Taste cannot be measured, this can, and it is exactly where a phone falls apart: a table
 // standing 200 px past the edge, a button 22 px high, a hint in 10 px type. The numbers of a
-// run land in befund-bedienbarkeit.json, and a second run shows whether a change actually
+// run land in findings-usability.json, and a second run shows whether a change actually
 // helped instead of merely looking different.
 //
 // Thresholds: 36 px is the smallest area a thumb hits reliably (Apple says 44, Material 48,
@@ -213,7 +213,7 @@ bericht.punkte = punkte;
 bericht.maxPunkte = maxPunkte;
 bericht.quote = Math.round((punkte / maxPunkte) * 100);
 
-const pfad = "/w/befund-bedienbarkeit.json";
+const pfad = "/w/findings-usability.json";
 const alt = existsSync(pfad) ? JSON.parse(readFileSync(pfad, "utf8")) : null;
 writeFileSync(pfad, JSON.stringify(bericht, null, 2) + "\n");
 

@@ -21,7 +21,7 @@ docker run --rm -v "$PWD/tools/uitest":/w -w /w \
   mcr.microsoft.com/playwright:v1.56.0-noble npm i playwright-core@1.56.0
 
 docker run --rm --network traccoon_default -v "$PWD/tools/uitest":/w -w /w \
-  -e BASIS=http://frontend mcr.microsoft.com/playwright:v1.56.0-noble node /w/ablauf-editor.mjs
+  -e BASIS=http://frontend mcr.microsoft.com/playwright:v1.56.0-noble node /w/flow-editor.mjs
 ```
 
 Screenshots land next to it (`01-…png` through `11-…png`), the log in `befund.txt`.
@@ -30,14 +30,14 @@ The other probes start the same way:
 
 | Probe | What it covers |
 |---|---|
-| `bedienbarkeit.mjs` | overflow, touch targets, font sizes and hidden content across 29 screens at 390 and 1400 px. Writes `befund-bedienbarkeit.json` and compares against the previous run |
-| `handy-editor.mjs` | the flow editor on a phone: tap a block, change it, attach a new one. Saves nothing |
-| `messreihen.mjs` | the measurement series view |
-| `editor-stand.mjs` | the unsaved and published markers in the editor |
-| `abschalter.mjs` | switching a step off, skip or stop |
-| `sprache.mjs`, `sprachverwaltung.mjs` | switching language, and creating, renaming, disabling and deleting one |
-| `fehlertext.mjs` | a server error in a German and in an English browser, no login needed |
-| `schuss.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
+| `usability.mjs` | overflow, touch targets, font sizes and hidden content across 29 screens at 390 and 1400 px. Writes `findings-usability.json` and compares against the previous run |
+| `mobile-editor.mjs` | the flow editor on a phone: tap a block, change it, attach a new one. Saves nothing |
+| `metric-series.mjs` | the measurement series view |
+| `editor-state.mjs` | the unsaved and published markers in the editor |
+| `killswitch.mjs` | switching a step off, skip or stop |
+| `language.mjs`, `language-admin.mjs` | switching language, and creating, renaming, disabling and deleting one |
+| `error-text.mjs` | a server error in a German and in an English browser, no login needed |
+| `shot.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
 
 **Clean up afterwards**, the probe creates real flows:
 

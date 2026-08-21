@@ -2507,5 +2507,7 @@
   "mail_accounts.identity": "Identität",
   "mail_accounts.create_identity": "Identität anlegen",
   "mail_accounts.reply_to_hint": "Leer lassen, wenn Antworten an die Absender-Adresse gehen sollen.",
-  "office.no_permission_live": "Keine Berechtigung für den Live-Strom des Büros."
+  "office.no_permission_live": "Keine Berechtigung für den Live-Strom des Büros.",
+  "projects.new_project": "+ Projekt",
+  "projects.ai_managed": "KI"
 }

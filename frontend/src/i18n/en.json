@@ -2507,5 +2507,7 @@
   "mail_accounts.identity": "Identity",
   "mail_accounts.create_identity": "Create an identity",
   "mail_accounts.reply_to_hint": "Leave empty when replies should go to the sender address.",
-  "office.no_permission_live": "No permission for the live stream of the office."
+  "office.no_permission_live": "No permission for the live stream of the office.",
+  "projects.new_project": "+ Project",
+  "projects.ai_managed": "AI"
 }

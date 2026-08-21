@@ -1,23 +1,61 @@
 # Traccoon
 
-**A ticket system where AI agents do the work, but only when a human calls them in.**
+**Your own place where work, systems and AI agents meet — and where nothing runs that
+nobody asked for.**
 
-Traccoon is a self-hosted project and ticket system (kanban, sprints, hardware inventory)
-with two additions that set it apart:
+Traccoon started as a ticket system and is no longer one. What it does today is hold the
+things a small operation actually runs on: the work (tickets, sprints, hardware), the
+machinery around it (flows, jobs, webhooks, destinations, tool servers), the mail that
+starts most of it, the numbers and locations your devices report — and agents that can be
+handed a piece of it, on demand, under supervision.
 
-1. **Agents work on the ticket.** An agent plans, writes code in its own git worktree,
-   checks the build and hands the result over for review. Nothing starts without an
-   explicit assignment by a person.
-2. **Everything that runs is a graph.** The AI lifecycle, procurement, mail intake: flows
-   are drawn, not programmed. Connecting a foreign system is a matter of clicking it
-   together.
+Everything self-hosted, on your own Docker host, in your own database.
 
-The code carries its reasons in the comments. If you change something, explain why, not
-what.
+## Why you would run it
+
+**One house instead of six services.** Tickets in one place, cron in another, a workflow
+tool next door, a notifier somewhere else, and a tracker on top of it — every one with its
+own login, its own idea of a user, its own outage. Traccoon holds all of it, and because
+they share one house they can reach each other: a mail becomes a ticket, a sensor value
+becomes a decision, a deadline becomes a message, an agent picks the ticket up.
+
+**AI you invite, not AI that happens to you.** An agent moves only after an explicit
+assignment, and only where the AI permission was granted. It plans first, a person approves
+the plan, it works in a git worktree of its own, the build has to be green, and the result
+goes to review. Cost, iteration and time limits are hard walls, not settings nobody looks
+at. Without the permission the entire AI surface stays hidden and you have a plain,
+perfectly usable project tool.
+
+**Drawn, not programmed.** Every process — the ticket lifecycle, mail intake, procurement,
+your own night-time check — is a graph in the browser. New behaviour costs a few nodes, not
+a deployment. Describe it in one sentence and a model drafts the graph for you; a dry run
+plays it through without touching anything.
+
+**It talks to what you already have.** Webhooks in, destinations out, MCP tool servers,
+mailboxes over IMAP/SMTP, plugins for views. A device reports its position to one address
+and Traccoon recognises the format by itself.
+
+**Your data stays yours.** Self-hosted, Postgres, no telemetry. The spam model runs
+locally, voice messages are transcribed locally, secrets are encrypted at rest, and a plugin
+runs in a sandbox that cannot reach the network at all.
+
+**It explains itself.** Every non-obvious decision carries its reason in a comment, the
+error texts say what to do, and the flow editor shows what a step actually did.
 
 > **Status:** in production here, but there are no releases, no upgrade guarantees and no
 > tenant isolation. You should be comfortable with Docker and PostgreSQL. See
 > [Status and limits](#status-and-limits).
+
+## In pictures
+
+The screenshots come from a demo instance with invented data (`docs/demo/`) — Ada Lovelace
+works at Acme, and the delivery van drives through Berlin.
+
+| | |
+|---|---|
+| ![Start page](docs/screenshots/home.png) **Start page** — what waits for you, across projects. | ![Board](docs/screenshots/board.png) **Board** — tickets, states and who is on them. |
+| ![Flow editor](docs/screenshots/editor.png) **Flow editor** — a process as a graph, with a dry run. | ![Flows](docs/screenshots/flows.png) **Flows** — your own, the shipped set, triggers, series. |
+| ![Metric series](docs/screenshots/series.png) **Series** — a number with a forecast: when is it empty? | ![Map](docs/screenshots/map.jpg) **Map plugin** — locations, drawn by a plugin, not by the core. |
 
 ## The core rule
 
@@ -185,15 +223,15 @@ database could accept the query.
 
 ### Language and devices
 
-- Every text comes from a catalog, German as the source and English shipped alongside. An
-  admin edits any of them at runtime, adds a language, and exports or imports a catalog as
-  JSON. A missing translation falls back to German, never to a raw key
+- Every text comes from a catalog, English as the source language and German shipped
+  alongside. An admin edits any of them at runtime, adds a language, and exports or imports
+  a catalog as JSON. A missing translation falls back to English, never to a raw key
 - The same catalog covers what the server writes: notifications and the setup checklist go
   out in the language of the person who reads them
 - Usable on a phone: one column instead of three in the flow editor, blocks are added by
   tapping instead of dragging, lists replace tables where columns would not fit.
-  `tools/uitest/bedienbarkeit.mjs` measures it (overflow, touch targets, font sizes) across
-  29 screens at three widths
+  `tools/uitest/` measures it (overflow, touch targets, font sizes) across 29 screens at
+  three widths
 
 ### Operations
 
