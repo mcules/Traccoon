@@ -97,7 +97,7 @@ function SeriesLine({ series: series, open: open, toggle, remove: remove }: {
 
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
         {t?.per_day != null && (
-          <span>{t.per_day > 0 ? "+" : ""}{t.per_day} {series.unit}/Tag</span>
+          <span>{tr("metric_series_panel.per_day_unit", { value: `${t.per_day > 0 ? "+" : ""}${t.per_day}`, unit: series.unit })}</span>
         )}
         {t?.days_left != null ? (
           <span className={knapp ? "text-amber-300" : ""}>
@@ -164,7 +164,7 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
         ))}
         <div className="flex-1" />
         <label className="flex items-center gap-1 text-muted">
-          Zielwert
+          {tr("metric_series_panel.target_value")}
           <input type="number" value={target} onChange={(e) => setTarget(Number(e.target.value) || 0)}
             className="w-16 rounded border border-line bg-surface px-1 py-0.5 text-ink" />
           <span>{series.unit}</span>
@@ -297,7 +297,7 @@ function Historyimage({ points: points, unit: unit, trend, target: target }: {
             <circle cx={forecast.x2} cy={forecast.y2} r="4" className="fill-amber-400" />
             <text x={forecast.x2} y={forecast.y2 - 8} textAnchor="end"
                   className="fill-current text-[11px] text-amber-300">
-              {target} {unit} am {trend?.empty_at}
+              {tr("metric_series_panel.target_on", { target: String(target), unit, date: String(trend?.empty_at ?? "") })}
             </text>
           </>
         )}

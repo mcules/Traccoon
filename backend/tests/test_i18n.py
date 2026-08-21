@@ -49,13 +49,13 @@ async def test_create_rename_disable_delete_a_language(client, db):
 
 
 async def test_the_source_language_stays(client, db):
-    """German is the fallback for every missing text. Off or gone it would leave keys on
+    """English is the fallback for every missing text. Off or gone it would leave keys on
     the screen, so both are refused."""
     admin = await make_user(db, "chef", admin=True)
     h = auth(admin)
-    assert (await client.put("/i18n/locales/de", json={"enabled": False},
+    assert (await client.put("/i18n/locales/en", json={"enabled": False},
                              headers=h)).status_code == 400
-    assert (await client.delete("/i18n/locales/de", headers=h)).status_code == 400
+    assert (await client.delete("/i18n/locales/en", headers=h)).status_code == 400
 
 
 async def test_renaming_a_shipped_language_creates_a_row_only_then(client, db):

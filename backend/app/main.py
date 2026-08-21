@@ -420,8 +420,11 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE metric_series ADD COLUMN IF NOT EXISTS still_at "
                 "TIMESTAMP WITH TIME ZONE",
                 # UI language per person, and the translation overrides an admin edits.
+                # English is the source language of the house; a person who never chose one
+                # gets it. Existing rows keep what they have — a language is a personal choice.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS locale VARCHAR(10) "
-                "DEFAULT 'de' NOT NULL",
+                "DEFAULT 'en' NOT NULL",
+                "ALTER TABLE users ALTER COLUMN locale SET DEFAULT 'en'",
                 # Languages an admin has created, renamed or switched off.
                 "ALTER TABLE ui_locales ADD COLUMN IF NOT EXISTS enabled BOOLEAN "
                 "DEFAULT TRUE NOT NULL",

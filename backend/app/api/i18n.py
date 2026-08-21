@@ -107,7 +107,7 @@ async def update_locale(locale: str, data: LocaleUpdate, _: User = Depends(requi
     if data.name is not None:
         line.name = data.name.strip() or NAMES.get(lc, lc.upper())
     if data.enabled is not None:
-        if lc == "de" and not data.enabled:
+        if lc == "en" and not data.enabled:
             raise Error(status.HTTP_400_BAD_REQUEST, "err.source_language_cannot_switched_off",
                          "The source language cannot be switched off")
         line.enabled = data.enabled
@@ -192,7 +192,7 @@ async def drop_locale(locale: str, _: User = Depends(require_admin),
     texts, and for a language that was never shipped, to the source language.
     """
     lc = _locale(locale)
-    if lc == "de":
+    if lc == "en":
         raise Error(status.HTTP_400_BAD_REQUEST, "err.source_language_stays",
                      "The source language stays")
     await db.execute(delete(UiTranslation).where(UiTranslation.locale == lc))

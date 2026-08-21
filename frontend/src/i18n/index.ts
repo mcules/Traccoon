@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { setDateLocale } from "../lib/formatTime";
 import de from "./de.json";
 import en from "./en.json";
 
@@ -6,7 +7,8 @@ import en from "./en.json";
  * Translations of the interface.
  *
  * Three sources, in this order: what an admin changed in the browser, the shipped catalog of
- * that language, and finally the German catalog. Only when all three stay silent does the key
+ * that language, and finally the English catalog — English is the source language of this
+ * house, every other one is a translation of it. Only when all three stay silent does the key
  * itself appear, visible enough to be noticed but never an empty area.
  *
  * The shipped catalogs live in the repository, because a text belongs to the source: it
@@ -17,7 +19,7 @@ import en from "./en.json";
 type Catalog = Record<string, string>;
 
 const SHIPPED: Record<string, Catalog> = { de: de as Catalog, en: en as Catalog };
-export const SOURCELANGUAGE = "de";
+export const SOURCELANGUAGE = "en";
 
 let current = SOURCELANGUAGE;
 let overrides: Catalog = {};
@@ -36,7 +38,7 @@ export function language(): string {
 /**
  * One text for its key. `vars` fills placeholders of the form `{name}`.
  *
- * When a translation is missing the German text appears, which keeps a half translated
+ * When a translation is missing the English text appears, which keeps a half translated
  * interface usable instead of ending in raw keys.
  */
 export function tr(key: string, vars?: Record<string, string | number>): string {
@@ -69,6 +71,9 @@ export function trKnown(key: string, vars?: Record<string, string | number>): st
 /** Set the language and pull in what the admin changed. */
 export async function setLanguage(locale: string): Promise<void> {
   current = locale && locale in SHIPPED ? locale : (locale || SOURCELANGUAGE);
+  // Dates travel with the language: an English interface that writes 21.08.2026 reads like a
+  // half-finished translation.
+  setDateLocale(current);
   overrides = {};
   try {
     const answer = await api.get<{ locale: string; texts: Catalog }>(
@@ -80,7 +85,7 @@ export async function setLanguage(locale: string): Promise<void> {
   listener.forEach((fn) => fn());
 }
 
-/** Every key with its German text, the basis of the admin translation view. */
+/** Every key with its English text, the basis of the admin translation view. */
 export function allKey(): Catalog {
   return SHIPPED[SOURCELANGUAGE];
 }

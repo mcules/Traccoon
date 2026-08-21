@@ -237,7 +237,7 @@ async def _flush_coalesced() -> None:
                         if sub and sub.owner_user_id else None)
             db.add(Notification(
                 kind="webhook",
-                title=await tr(db, "server.notify.webhook_weitere",
+                title=await tr(db, "server.notify.webhook_more",
                                getattr(owner, "locale", None),
                                route=row.route, count=n, event_key=row.event_key),
                 body=json.dumps(row.payloads[:10], ensure_ascii=False)[:4000],

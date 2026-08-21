@@ -816,7 +816,7 @@ async def test_the_digest_card_bundles_and_decides(db, imap_stub):
     assert await spam_review.digest_due(db) == 1
     karte = (await db.execute(select(Notification).where(
         Notification.kind == "spam_digest"))).scalar_one()
-    assert "3 Spam-Verdachtsfälle" in karte.title
+    assert "3 suspected spam cases" in karte.title
 
     first = await db.get(SpamVerdict, karte.spam_verdict_id)
     count, error = await spam_review.decide_batch(db, first.digest_batch, True)

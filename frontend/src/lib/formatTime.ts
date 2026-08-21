@@ -10,9 +10,15 @@
  * exactly right for the first page build.
  */
 let zone: string | undefined;
+let locale = "de-DE";
 
 export function setTimezone(name: string | undefined | null): void {
   zone = name || undefined;
+}
+
+/** The language the dates are written in — the same one the UI speaks. */
+export function setDateLocale(code: string | undefined | null): void {
+  locale = code === "en" ? "en-GB" : code ? `${code}-${code.toUpperCase()}` : "de-DE";
 }
 
 export function timezone(): string {
@@ -28,7 +34,7 @@ export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString("de-DE", withZone({
+  return d.toLocaleString(locale, withZone({
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   }));
 }
@@ -38,7 +44,7 @@ export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString("de-DE", withZone({
+  return d.toLocaleString(locale, withZone({
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   }));
@@ -49,7 +55,7 @@ export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("de-DE", withZone({
+  return d.toLocaleDateString(locale, withZone({
     day: "2-digit", month: "2-digit", year: "numeric",
   }));
 }

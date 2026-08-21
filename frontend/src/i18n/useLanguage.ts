@@ -14,10 +14,10 @@ export function useLanguage(): string {
   return language();
 }
 
-/** Take over the language of the signed in person (profile, else browser, else German). */
+/** Take over the language of the signed in person (profile, else browser, else English). */
 export function useLanguageFromUser(locale: string | undefined): void {
   useEffect(() => {
-    const wanted = locale || navigator.language?.slice(0, 2) || "de";
+    const wanted = locale || navigator.language?.slice(0, 2) || "en";
     if (wanted !== language()) void setLanguage(wanted);
   }, [locale]);
 }
