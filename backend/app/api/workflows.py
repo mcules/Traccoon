@@ -35,6 +35,7 @@ from ..schemas.workflow import DiffOut, GraphSaveOut
 from ..services import workflow_engine as engine
 from ..services import workflow_graph as wgraph
 from ..services import workflow_sets as sets
+from ..services import workflow_terms as terms
 from ..services.workflow_engine import node_config
 from .deps import build_access, get_current_user
 
@@ -502,7 +503,7 @@ async def create_workflow(
     # while clicking through: a fresh flow had not a single node, not even a start.)
     v1 = WorkflowVersion(
         definition_id=d.id, version=1, status=WorkflowVersionStatus.draft, created_by=user.id,
-        graph=workflow_templates.graph(data.template) if template else {
+        graph=workflow_templates.graph(data.template) if template else terms.stamp({
             "nodes": [
                 {"id": "start", "type": "start", "position": {"x": 0, "y": 0},
                  "data": {"config": {"label": "Trigger"}}},
@@ -510,7 +511,7 @@ async def create_workflow(
                  "data": {"config": {"label": "Done", "outcome": "completed"}}},
             ],
             "edges": [{"id": "e-start-out-ende", "source": "start", "target": "ende"}],
-        })
+        }))
     db.add(v1)
     await db.commit()
     await db.refresh(d)
@@ -652,7 +653,10 @@ async def save_graph(
     """
     d = await _get_def(db, def_id)
     await _require_write(db, user, d)
-    graph = data.graph or {"nodes": [], "edges": []}
+    # The editor sends `nodes`/`edges` and nothing else — the mark of the terms conversion is
+    # lost on every save. Without stamping it back on, the next boot would read the saved flow
+    # as one from before the rename and swap its assistant node for the mail one.
+    graph = terms.stamp(data.graph or {"nodes": [], "edges": []})
 
     draft = (await db.execute(
         select(WorkflowVersion).where(
@@ -978,7 +982,7 @@ async def dryrun(
     d = await _get_def(db, def_id)
     await _require_write(db, user, d)
 
-    graph = data.graph
+    graph = terms.stamp(data.graph) if data.graph is not None else None
     transient = None
     if graph is None:
         version = (await db.execute(
