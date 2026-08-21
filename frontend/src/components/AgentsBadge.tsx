@@ -35,7 +35,7 @@ export default function AgentsBadge() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen((v) => !v)} title={tr("agents_badge.laufende_agenten")}
+      <button onClick={() => setOpen((v) => !v)} title={tr("agents_badge.running_agents")}
         className={`flex h-10 items-center gap-1 rounded px-2 py-1 text-sm md:h-8 ${busy ? "text-brand" : "text-muted hover:text-ink"}`}>
         <span>{busy ? "🔄" : "🤖"}</span>
         <span className="tabular-nums">{n}</span>
@@ -46,35 +46,35 @@ export default function AgentsBadge() {
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-30 mt-2 w-72 rounded-lg border border-line bg-card p-3 text-sm shadow-2xl">
             <div className="mb-2 font-medium">
-              {n === 0 ? tr("agents_badge.keine_laufen") : tr("agents_badge.laufen", { count: n })}
+              {n === 0 ? tr("agents_badge.no_agents_running") : tr("agents_badge.count_agents_running", { count: n })}
             </div>
 
             {data?.update_in_progress ? (
-              <div className="rounded bg-brand/10 px-2 py-1.5 text-brand">{tr("agents_badge.update_laeuft_stack_wird_neu_deployt")}</div>
+              <div className="rounded bg-brand/10 px-2 py-1.5 text-brand">{tr("agents_badge.update_running_the_stack_is_being_redeployed")}</div>
             ) : data?.update_pending ? (
               <div className="space-y-2">
                 <div className="rounded bg-yellow-500/10 px-2 py-1.5 text-yellow-300">
-                  ⏳ {tr("agents_badge.update_eingereiht")}
-                  {n > 0 ? ` (${tr("agents_badge.noch_n", { count: n })}).` : "."}
+                  ⏳ {tr("agents_badge.update_queued_starts_once")}
+                  {n > 0 ? ` (${tr("agents_badge.count_left", { count: n })}).` : "."}
                 </div>
                 {isAdmin && (
                   <button onClick={() => guard(() => cancel.mutateAsync())}
-                    className={BUTTON_TEXT.danger}>{tr("agents_badge.update_abbrechen")}</button>
+                    className={BUTTON_TEXT.danger}>{tr("agents_badge.cancel_update")}</button>
                 )}
               </div>
             ) : isAdmin ? (
               data?.maintenance_project_id ? (
                 <button onClick={() => guard(() => update.mutateAsync())} disabled={update.isPending}
                   className={BUTTON.primary}>
-                  ⬆ {tr("agents_badge.update_einreihen", { project: data.maintenance_project_key || "" })}
+                  ⬆ {tr("agents_badge.queue_update_project", { project: data.maintenance_project_key || "" })}
                 </button>
               ) : (
                 <div className="text-xs text-muted">
-                  {tr("agents_badge.kein_wartungsprojekt")}
+                  {tr("agents_badge.no_maintenance_project_set")}
                 </div>
               )
             ) : (
-              <div className="text-xs text-muted">{tr("agents_badge.updates_loest_ein_admin_aus")}</div>
+              <div className="text-xs text-muted">{tr("agents_badge.updates_are_triggered_by_an_admin")}</div>
             )}
             {err && <div className="mt-2 text-xs text-red-400">{err}</div>}
           </div>

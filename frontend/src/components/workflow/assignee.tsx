@@ -47,10 +47,10 @@ export function AssigneeEditor({
         onChange={(e) => onChange({ mode: e.target.value as AssigneeSpec["mode"] })}
         className={inp}
       >
-        <option value="user">{tr("assignee.bestimmter_nutzer")}</option>
-        <option value="role">{tr("assignee.projektrolle")}</option>
-        <option value="context">{tr("assignee.aus_kontext")}</option>
-        <option value="reporter">{tr("assignee.melder")}</option>
+        <option value="user">{tr("assignee.specific_user")}</option>
+        <option value="role">{tr("assignee.project_role")}</option>
+        <option value="context">{tr("assignee.context")}</option>
+        <option value="reporter">{tr("assignee.reporter")}</option>
       </select>
       {spec.mode === "user" && (
         <select
@@ -58,7 +58,7 @@ export function AssigneeEditor({
           onChange={(e) => onChange({ mode: "user", user_id: Number(e.target.value) })}
           className={inp}
         >
-          <option value="">{tr("action_params.waehlen")}</option>
+          <option value="">{tr("action_params.choose")}</option>
           {members.map((m) => (
             <option key={m.user_id} value={m.user_id}>
               {m.display_name || m.username}
@@ -83,7 +83,7 @@ export function AssigneeEditor({
         <input
           value={spec.context_key || ""}
           onChange={(e) => onChange({ mode: "context", context_key: e.target.value })}
-          placeholder={tr("assignee.kontext_schluessel")}
+          placeholder={tr("assignee.context_key")}
           className={inp}
         />
       )}

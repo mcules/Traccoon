@@ -21,9 +21,9 @@ export default function StoresPanel() {
   const stores = data || [];
 
   return (
-    <Area hint={tr("ablagen.einleitung")}>
+    <Area hint={tr("stores.texts_flows_written_history")}>
       <Listing>
-        {stores.length === 0 && <ListingEmpty>{tr("ablagen.keine")}</ListingEmpty>}
+        {stores.length === 0 && <ListingEmpty>{tr("stores.no_storage_yet_comes")}</ListingEmpty>}
         {stores.map((a) => (
           <ListenLine key={a.id} columns="sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
             onClick={() => nav(`/documents/${encodeURIComponent(a.key)}`)}>
@@ -38,7 +38,7 @@ export default function StoresPanel() {
             <span className="text-xs text-muted">
               {a.last_at ? formatDateTime(a.last_at) : "—"}
             </span>
-            <Tag>{tr("ablagen.fassungen", { count: String(a.count ?? 0) })}</Tag>
+            <Tag>{tr("stores.count_versions", { count: String(a.count ?? 0) })}</Tag>
           </ListenLine>
         ))}
       </Listing>

@@ -75,7 +75,7 @@ export default function OwnWorkflowsPanel() {
   });
 
   return (
-    <Area hint={tr("own_workflows_panel.einleitung")}>
+    <Area hint={tr("own_workflows_panel.own_flows_no_project")}>
       <Errorrow text={err} />
 
       {own.length > 0 ? (
@@ -98,10 +98,10 @@ export default function OwnWorkflowsPanel() {
                 </div>
               </div>
               {!d.enabled
-                ? <State color="grey" text={tr("own_workflows_panel.aus")} />
+                ? <State color="grey" text={tr("own_workflows_panel.off")} />
                 : d.current_version_id
-                  ? <State color="green" text={tr("proc.veroeffentlicht")} />
-                  : <State color="yellow" text={tr("own_workflows.nur_entwurf")} />}
+                  ? <State color="green" text={tr("proc.published")} />
+                  : <State color="yellow" text={tr("own_workflows.draft_only")} />}
               {/* Klicks auf die Knöpfe gehören den Knöpfen — sonst öffnete sich hinter dem
                   Löschdialog auch noch der Editor. */}
               <div className="ml-auto shrink-0 sm:ml-0 sm:justify-self-end"
@@ -109,11 +109,11 @@ export default function OwnWorkflowsPanel() {
                 <Actions>
                   <IconButton icon={ICON.edit} title={tr("own_workflows_panel.editor")}
                     onClick={() => open_it(d)} />
-                  <IconButton icon="🏷" title={tr("own_workflows_panel.umbenennen")}
+                  <IconButton icon="🏷" title={tr("own_workflows_panel.rename")}
                     onClick={() => { setErr(""); setNameNew(d.name); setKeyNew(d.key); setRename(d); }} />
                   <IconButton icon={d.enabled ? "⏸" : "⏵"} onClick={() => toggle.mutate(d)}
-                    title={tr(d.enabled ? "own_workflows_panel.aus" : "own_workflows_panel.an")} />
-                  <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                    title={tr(d.enabled ? "own_workflows_panel.off" : "own_workflows_panel.an")} />
+                  <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                     onClick={() => setDeleteFlow(d)} />
                 </Actions>
               </div>
@@ -121,11 +121,11 @@ export default function OwnWorkflowsPanel() {
           ))}
         </Listing>
       ) : (
-        <Listing><ListingEmpty>{tr("own_workflows_panel.noch_keine_eigenen_prozesse")}</ListingEmpty></Listing>
+        <Listing><ListingEmpty>{tr("own_workflows_panel.no_own_flows_yet")}</ListingEmpty></Listing>
       )}
 
       {rename && (
-        <Dialog title={tr("own_workflows_panel.umbenennen")} onClose={() => setRename(null)}
+        <Dialog title={tr("own_workflows_panel.rename")} onClose={() => setRename(null)}
           foot={<DialogFoot onCancel={() => setRename(null)}
             disabled={!nameNew.trim() || !keyNew.trim()} runs={save.isPending}
             onSave={() => save.mutate()} />}>
@@ -136,11 +136,11 @@ export default function OwnWorkflowsPanel() {
                 className={`mt-1 w-full ${inp}`} />
             </label>
             <label className="block text-xs font-medium text-muted">
-              {tr("own_workflows_panel.schluessel")}
+              {tr("own_workflows_panel.key")}
               <input value={keyNew} onChange={(e) => setKeyNew(e.target.value)}
                 className={`mt-1 w-full font-mono ${inp}`} />
               <span className="mt-1 block text-[11px] text-muted">
-                {tr("own_workflows_panel.schluessel_hinweis")}
+                {tr("own_workflows_panel.lower_case_letters_digits")}
               </span>
             </label>
           </div>
@@ -149,23 +149,23 @@ export default function OwnWorkflowsPanel() {
 
       <button onClick={() => { setErr(""); setNewDialog(true); }}
         className={BUTTON.primary}>
-        {ICON.fresh} {tr("own_workflows_panel.ablauf_anlegen")}
+        {ICON.fresh} {tr("own_workflows_panel.new_flow")}
       </button>
 
       {newDialog && (
-        <Dialog wide title={tr("own_workflows_panel.ablauf_anlegen")} onClose={() => setNewDialog(false)}
+        <Dialog wide title={tr("own_workflows_panel.new_flow")} onClose={() => setNewDialog(false)}
           foot={<DialogFoot onCancel={() => setNewDialog(false)} runs={create.isPending}
-            disabled={!f.key.trim() || !f.name.trim()} saveText={tr("common.anlegen")}
+            disabled={!f.key.trim() || !f.name.trim()} saveText={tr("common.create")}
             onSave={() => create.mutate()} />}>
           <div className="space-y-3">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })}
-            placeholder={tr("own_workflows_panel.key_platzhalter")} className={inp} />
+            placeholder={tr("own_workflows_panel.key_e_g_price")} className={inp} />
           <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
             placeholder={tr("own_workflows_panel.name")} className={inp} />
           <select value={f.template} className={inp}
             onChange={(e) => setF({ ...f, template: e.target.value })}>
-            <option value="">{tr("own_workflows.leeres_geruest")}</option>
+            <option value="">{tr("own_workflows.empty_skeleton_start_end")}</option>
             {(templates || []).map((v) => (
               <option key={v.key} value={v.key}>Vorlage: {v.name}</option>
             ))}
@@ -179,7 +179,7 @@ export default function OwnWorkflowsPanel() {
             </select>
           )}
           <input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })}
-            placeholder={tr("own_workflows_panel.beschreibung_optional")} className={`${inp} min-w-48 flex-1`} />
+            placeholder={tr("own_workflows_panel.description_optional")} className={`${inp} min-w-48 flex-1`} />
         </div>
         {chosen && (
           <p className="text-xs text-muted">

@@ -14,18 +14,18 @@ const ACTION_LABEL: Record<string, string> = {
   set_board_status: "action.set_board_status",
   set_status: "action.set_status",
   set_field: "action.set_field",
-  refresh_facts: "action.refresh_facts",
+  refresh_facts: "action.read_project_facts",
   assign_agent: "action.assign_agent",
   set_cap_baseline: "action.set_cap_baseline",
   split_tickets: "action.split_tickets",
   stop_agent: "action.stop_agent",
-  start_testenv: "action.start_testenv",
-  stop_testenv: "action.stop_testenv",
+  start_testenv: "action.start_test_environment",
+  stop_testenv: "action.stop_test_environment",
   accept_merge: "action.accept_merge",
   deploy: "action.deploy",
   comment: "action.comment",
   mail_classify: "action.mail_classify",
-  spam_evaluate: "action.spam_evaluate",
+  spam_evaluate: "action.judge_spam",
   spam_card: "action.spam_card",
   spam_apply: "action.spam_apply",
   mail_assistant_task: "action.mail_assistant_task",
@@ -39,7 +39,7 @@ const ACTION_LABEL: Record<string, string> = {
   document_read: "action.document_read",
   answer: "action.answer",
   mail_attachment: "action.mail_attachment",
-  mail_flag: "action.mail_flag",
+  mail_flag: "action.mark_mail_read_flagged",
   mail_move: "action.mail_move",
 };
 
@@ -74,7 +74,7 @@ export default function AutoActionNode({ id, data, selected }: FlowNodeProps) {
       from={!!data.config.disabled}
       sources={sources}
     >
-      <div>{a ? tr(ACTION_LABEL[a.action] || a.action) : tr("node.keine_aktion")}</div>
+      <div>{a ? tr(ACTION_LABEL[a.action] || a.action) : tr("node.no_action")}</div>
     </BaseNode>
   );
 }

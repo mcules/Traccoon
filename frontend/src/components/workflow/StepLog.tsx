@@ -52,7 +52,7 @@ function time(iso?: string | null): string {
 
 export default function Steplog({
   steps: steps,
-  emptyText = tr("instanz.kein_schritt"),
+  emptyText = tr("instance.no_step_finished_yet"),
   maxHeight = "18rem",
 }: {
   steps: Step[];
@@ -91,7 +91,7 @@ export default function Steplog({
             )}
             {full && (
               <details className="mt-0.5">
-                <summary className="cursor-pointer text-[11px] opacity-60">{tr("schrittprotokoll.rohdaten")}</summary>
+                <summary className="cursor-pointer text-[11px] opacity-60">{tr("step_log.raw_data")}</summary>
                 <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all
                                 rounded bg-card p-1 text-[11px]">
                   {JSON.stringify(s.result, null, 1)}

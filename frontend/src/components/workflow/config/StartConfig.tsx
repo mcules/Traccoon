@@ -98,12 +98,12 @@ export default function StartConfig({
   return (
     <div className="space-y-3">
       <label className="block text-xs font-medium text-muted">
-        {tr("start_config.wodurch_startet")}
+        {tr("start_config.what_starts_flow")}
         <select value={art} onChange={(e) => setArt(e.target.value as typeof art)}
           className={`mt-1 ${inp}`}>
-          <option value="manuell">{tr("start_config.von_hand")}</option>
-          <option value="ereignis">{tr("start_config.ereignis_in_traccoon")}</option>
-          <option value="webhook">{tr("start_config.aufruf_von_aussen_webhook")}</option>
+          <option value="manuell">{tr("start_config.hand_through_job")}</option>
+          <option value="ereignis">{tr("start_config.event_inside_traccoon")}</option>
+          <option value="webhook">{tr("start_config.call_from_outside_webhook")}</option>
           <option value="mail_action">Knopf an einer Mail</option>
         </select>
       </label>
@@ -132,12 +132,12 @@ export default function StartConfig({
 
       {art === "ereignis" && (
       <label className="block text-xs font-medium text-muted">
-        {tr("start_config.ausloeser")}
+        {tr("start_config.trigger")}
         <input
           list="ereignisse"
           value={t.event || ""}
           onChange={(e) => setT({ event: e.target.value.trim() })}
-          placeholder={tr("start_config.kein_ausloeser_nur_manueller_start")}
+          placeholder={tr("start_config.no_trigger_manual_start_only")}
           className={`mt-1 ${inp}`}
         />
         <datalist id="ereignisse">
@@ -145,22 +145,22 @@ export default function StartConfig({
             <option key={e.event} value={e.event}>{e.label}</option>
           ))}
         </datalist>
-        <span className="mt-1 block text-[11px] text-muted">{tr("start_config.eigene_namen")}</span>
+        <span className="mt-1 block text-[11px] text-muted">{tr("start_config.own_names_allowed_webhook")}</span>
       </label>
       )}
 
       {/* ── Webhook als Quelle ─────────────────────────────────────────── */}
       {art !== "ereignis" && (
       <div className="rounded border border-line bg-surface p-2">
-        <div className="mb-1 text-xs font-medium text-muted">{tr("start_config.eingehende_adresse_webhook")}</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("start_config.incoming_address_webhook")}</div>
         {hook ? (
           <div className="space-y-1">
             <div className="break-all font-mono text-[11px] text-ink">{hook.url}</div>
             <div className="text-[11px] text-muted">
-              {tr("start_config.signatur")}{" "}
+              {tr("start_config.signature_x_webhook_signature")}{" "}
               <code className="break-all rounded bg-card px-1">{hook.secret}</code>
             </div>
-            <div className="text-[11px] text-muted">{tr("start_config.nutzlast")}</div>
+            <div className="text-[11px] text-muted">{tr("start_config.whole_payload_becomes_context")}</div>
           </div>
         ) : (
           <button
@@ -174,7 +174,7 @@ export default function StartConfig({
 
         {subjectKind && subjectKind !== "standalone" && (
           <label className="mt-2 block text-[11px] text-muted">
-            {tr("start_config.artefakt_feld")}
+            {tr("start_config.artifact_sits_field_payload")}
             <input
               value={t.subject_field || ""}
               onChange={(e) => setT({ subject_field: e.target.value.trim() })}
@@ -183,8 +183,8 @@ export default function StartConfig({
             />
             <span className="mt-1 block">
               {tr(subjectKind === "issue"
-                ? "start_config.ticket_kennung" : "start_config.exemplar_nummer")}{" "}
-              {tr("start_config.ohne_angabe")}
+                ? "start_config.ticket_key_tra_31" : "start_config.number_item")}{" "}
+              {tr("start_config.without_flow_does_not")}
             </span>
           </label>
         )}
@@ -206,7 +206,7 @@ export default function StartConfig({
           className={`mt-1 ${inp} font-mono`}
         />
         <span className="mt-1 block text-[11px] text-muted">
-          {tr("start_config.beispiel_nutzlast_hinweis")}
+          {tr("start_config.paste_once_what_other")}
         </span>
       </label>
       )}
@@ -214,24 +214,24 @@ export default function StartConfig({
       {t.event && (
         <>
           <label className="block text-xs font-medium text-muted">
-            {tr("start_config.nur_dieses_projekt")}
+            {tr("start_config.only_project")}
             <select
               value={t.project_id ?? ""}
               onChange={(e) => setT({ project_id: e.target.value ? Number(e.target.value) : "" })}
               className={`mt-1 ${inp}`}
             >
-              <option value="">{tr("start_config.jedes_projekt")}</option>
+              <option value="">{tr("start_config.any_project")}</option>
               {projects?.map((p) => (
                 <option key={p.id} value={p.id}>{p.key} · {p.name}</option>
               ))}
             </select>
             <span className="mt-1 block text-[11px] text-muted">
-              {tr("start_config.projekt_hinweis")}
+              {tr("start_config.flow_already_belongs_project")}
             </span>
           </label>
 
           <label className="block text-xs font-medium text-muted">
-            {tr("start_config.nur_wenn")}
+            {tr("start_config.only_when_condition_jsonlogic")}
             <textarea
               rows={3}
               value={t.filter ? JSON.stringify(t.filter, null, 1) : ""}
@@ -244,7 +244,7 @@ export default function StartConfig({
               className={`mt-1 ${inp} font-mono`}
             />
             <span className="mt-1 block text-[11px] text-muted">
-              {tr("start_config.bedingung_hinweis")}
+              {tr("start_config.empty_means_always_content")}
             </span>
           </label>
         </>

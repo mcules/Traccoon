@@ -54,17 +54,17 @@ const NODE_LABEL: Record<NodeId, string> = {
 
 /** hold_reason as plain text, shown on the blocked node. */
 const HOLD_REASON: Record<string, string> = {
-  plan_review: "lifecycle.grund_plan_review",
-  plan_split: "lifecycle.grund_plan_split",
-  question: "lifecycle.grund_question",
-  merge: "lifecycle.grund_merge",
-  verify: "lifecycle.grund_verify",
-  review: "lifecycle.grund_review",
-  incomplete: "lifecycle.grund_incomplete",
-  stuck: "lifecycle.grund_stuck",
-  cap: "lifecycle.grund_cap",
-  interrupted: "lifecycle.grund_interrupted",
-  permission: "lifecycle.grund_permission",
+  plan_review: "lifecycle.plan_approval",
+  plan_split: "lifecycle.split",
+  question: "lifecycle.question",
+  merge: "lifecycle.merge_conflict",
+  verify: "lifecycle.verification",
+  review: "lifecycle.review_findings",
+  incomplete: "lifecycle.incomplete",
+  stuck: "lifecycle.stuck",
+  cap: "lifecycle.limit_reached",
+  interrupted: "lifecycle.interrupted",
+  permission: "lifecycle.permission",
 };
 
 // Hauptfluss (links → rechts) — Reihenfolge bestimmt „erledigte Vorgänger".
@@ -172,10 +172,10 @@ const EDGES: EdgeDef[] = [
   { from: "in_progress", to: "to_test", sh: "s-right", th: "t-left" },
   { from: "to_test", to: "done", sh: "s-right", th: "t-left" },
   // Nebenkanten
-  { from: "plan_review", to: "planning", sh: "s-bottom", th: "t-bottom", label: "lifecycle.kante_abgelehnt", tone: "muted" },
-  { from: "in_progress", to: "hold", sh: "s-bottom", th: "t-top", label: "lifecycle.kante_blockiert", tone: "hold" },
-  { from: "in_progress", to: "failed", sh: "s-bottom", th: "t-top", label: "lifecycle.kante_fehlgeschlagen", tone: "fail" },
-  { from: "hold", to: "in_progress", sh: "s-top", th: "t-bottom", label: "lifecycle.kante_fortgesetzt", tone: "muted" },
+  { from: "plan_review", to: "planning", sh: "s-bottom", th: "t-bottom", label: "lifecycle.rejected", tone: "muted" },
+  { from: "in_progress", to: "hold", sh: "s-bottom", th: "t-top", label: "lifecycle.blocked_question", tone: "hold" },
+  { from: "in_progress", to: "failed", sh: "s-bottom", th: "t-top", label: "lifecycle.failed_2", tone: "fail" },
+  { from: "hold", to: "in_progress", sh: "s-top", th: "t-bottom", label: "lifecycle.resumed", tone: "muted" },
 ];
 
 const TONE_COLOR: Record<string, string> = {
@@ -199,7 +199,7 @@ export default function LifecycleView({
     const visuals = computeVisuals(agentStatus);
     const holdSub =
       agentStatus === "hold" && holdReason
-        ? tr("lifecycle.grund", { reason: HOLD_REASON[holdReason] ? tr(HOLD_REASON[holdReason]) : holdReason })
+        ? tr("lifecycle.reason_reason", { reason: HOLD_REASON[holdReason] ? tr(HOLD_REASON[holdReason]) : holdReason })
         : undefined;
 
     const nodes: Node<LifecycleNodeData>[] = (Object.keys(NODE_LABEL) as NodeId[]).map((id) => ({
@@ -241,7 +241,7 @@ export default function LifecycleView({
   }, [agentStatus, holdReason, agentWorking]);
 
   if (!agentStatus) {
-    return <div className="text-xs text-muted">{tr("lifecycle_view.kein_ki_lauf")}</div>;
+    return <div className="text-xs text-muted">{tr("lifecycle_view.no_ai_run")}</div>;
   }
 
   return (

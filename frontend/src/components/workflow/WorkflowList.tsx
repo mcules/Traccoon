@@ -9,7 +9,7 @@ import { Listing, ListingEmpty, ListenLine, BUTTON} from "../ui";
 const SUBJECT_LABEL: Record<WorkflowSubjectKind, string> = {
   issue: "Ticket",
   hardware_asset: "Hardware",
-  standalone: "workflow_list.eigenstaendig",
+  standalone: "workflow_list.standalone",
 };
 
 const EMPTY = { key: "", name: "", subject_kind: "issue" as WorkflowSubjectKind, description: "" };
@@ -63,7 +63,7 @@ export default function WorkflowList({ project }: { project: Project }) {
   return (
     <div>
       <p className="mb-3 text-sm text-muted">
-        {tr("workflow_list.einleitung")}
+        {tr("workflow_list.extra_processes_project_webhooks")}
       </p>
 
       <Listing className="mb-4">
@@ -76,11 +76,11 @@ export default function WorkflowList({ project }: { project: Project }) {
               {SUBJECT_LABEL[d.subject_kind]}
             </span>
             {d.current_version_id ? (
-              <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-xs text-green-400">{tr("proc.veroeffentlicht")}</span>
+              <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-xs text-green-400">{tr("proc.published")}</span>
             ) : (
-              <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-yellow-400">{tr("workflow_list.entwurf")}</span>
+              <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-yellow-400">{tr("workflow_list.draft")}</span>
             )}
-            {!d.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.aus")}</span>}
+            {!d.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.off")}</span>}
             <div className="flex-1" />
             <button
               title={d.enabled ? "Deaktivieren" : "Aktivieren"}
@@ -90,26 +90,26 @@ export default function WorkflowList({ project }: { project: Project }) {
               {d.enabled ? "⏸" : "⏵"}
             </button>
             <button
-              title={tr("workflow_list.bearbeiten")}
+              title={tr("workflow_list.edit")}
               onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projectPath(project.key, "settings", "processes") } })}
               className={ico + " hover:opacity-80"}
             >
               ✎
             </button>
-            <button title={tr("workflow_list.loeschen")} onClick={() => del.mutate(d.id)} className={"text-base leading-none text-red-400 hover:text-red-300"}>
+            <button title={tr("workflow_list.delete")} onClick={() => del.mutate(d.id)} className={"text-base leading-none text-red-400 hover:text-red-300"}>
               🗑
             </button>
             </div>
           </ListenLine>
         ))}
-        {defs?.length === 0 && <ListingEmpty>{tr("workflow_list.noch_keine_eigenen_prozesse")}</ListingEmpty>}
+        {defs?.length === 0 && <ListingEmpty>{tr("workflow_list.no_own_flows_yet")}</ListingEmpty>}
       </Listing>
 
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3">
         <input
           value={f.key}
           onChange={(e) => setF({ ...f, key: e.target.value })}
-          placeholder={tr("workflow_list.schluessel_z_b_onboarding")}
+          placeholder={tr("workflow_list.key_e_g_onboarding")}
           className={inp + " font-mono"}
         />
         <input
@@ -123,14 +123,14 @@ export default function WorkflowList({ project }: { project: Project }) {
           onChange={(e) => setF({ ...f, subject_kind: e.target.value as WorkflowSubjectKind })}
           className={inp}
         >
-          <option value="issue">{tr("workflow_list.ticket_prozess")}</option>
-          <option value="hardware_asset">{tr("workflow_list.hardware_prozess")}</option>
-          <option value="standalone">{tr("workflow_list.eigenstaendig")}</option>
+          <option value="issue">{tr("workflow_list.ticket_flow")}</option>
+          <option value="hardware_asset">{tr("workflow_list.hardware_flow")}</option>
+          <option value="standalone">{tr("workflow_list.standalone")}</option>
         </select>
         <input
           value={f.description}
           onChange={(e) => setF({ ...f, description: e.target.value })}
-          placeholder={tr("workflow_list.beschreibung_optional")}
+          placeholder={tr("workflow_list.description_optional")}
           className={inp}
         />
         <button

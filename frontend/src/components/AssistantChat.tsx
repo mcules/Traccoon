@@ -47,7 +47,7 @@ export default function AssistantChat() {
     refetchInterval: showArchive ? false : 3000,
   });
   const inv = () => qc.invalidateQueries({ queryKey: ["assistant-chat"] });
-  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const messages = [...aeltere, ...(data?.messages || [])];
   const more = aeltere.length ? stillMore : !!data?.more;
@@ -121,15 +121,15 @@ export default function AssistantChat() {
   return (
     <div className="flex h-[calc(100vh-16rem)] flex-col">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <p className="flex-1 text-sm text-muted">{tr("assistant_chat.einleitung")}</p>
+        <p className="flex-1 text-sm text-muted">{tr("assistant_chat.tell_assistant_what_do")}</p>
         <button onClick={() => setShowArchive((v) => !v)}
           className={BUTTON_SMALL.secondary}>
-          {showArchive ? tr("assistant_chat.zurueck_zum_verlauf") : tr("assistant_chat.archiv_zeigen")}
+          {showArchive ? tr("assistant_chat.back_conversation") : tr("assistant_chat.archive")}
         </button>
         {!showArchive && messages.length > 0 && (
           <button onClick={() => allArchive.mutate()} disabled={allArchive.isPending}
             className={BUTTON_SMALL.secondary}>
-            {tr("assistant_chat.verlauf_archivieren")}
+            {tr("assistant_chat.archive_conversation")}
           </button>
         )}
       </div>
@@ -140,13 +140,13 @@ export default function AssistantChat() {
           <div className="flex justify-center">
             <button onClick={loadOlder}
               className={BUTTON_SMALL.secondary}>
-              {tr("assistant_chat.aeltere_laden")}
+              {tr("assistant_chat.load_older")}
             </button>
           </div>
         )}
         {messages.length === 0 && (
           <div className="p-6 text-center text-sm text-muted">
-            {showArchive ? tr("assistant_chat.archiv_leer") : tr("assistant_chat.leer")}
+            {showArchive ? tr("assistant_chat.nothing_archive") : tr("assistant_chat.nothing_yet_try_which")}
           </div>
         )}
         {messages.map((m) => (
@@ -156,7 +156,7 @@ export default function AssistantChat() {
               {!RUNNING.includes(m.status) && (
                 <button
                   onClick={() => archive.mutate(m.id)}
-                  title={showArchive ? tr("assistant_chat.zurueckholen") : tr("assistant_chat.archivieren")}
+                  title={showArchive ? tr("assistant_chat.restore") : tr("assistant_chat.archive_2")}
                   className="mt-1 text-xs text-muted opacity-0 transition-opacity hover:text-ink group-hover:opacity-100">
                   {showArchive ? "↩" : "🗄"}
                 </button>
@@ -169,7 +169,7 @@ export default function AssistantChat() {
               <div className="max-w-[85%] rounded-lg rounded-bl-sm border border-line bg-card px-3 py-2 text-sm text-ink">
                 {m.status === "awaiting" ? (
                   <div className="space-y-2">
-                    <div className="text-amber-400">🔐 {tr("assistant_chat.freigabe_noetig")} <code>{m.pending_tool}</code></div>
+                    <div className="text-amber-400">🔐 {tr("assistant_chat.permission_needed")} <code>{m.pending_tool}</code></div>
                     <div className="flex gap-1">
                       {(["once", "always", "never"] as const).map((d) => (
                         <button key={d} onClick={() => decide.mutate({ id: m.id, decision: d })}
@@ -179,11 +179,11 @@ export default function AssistantChat() {
                     </div>
                   </div>
                 ) : ["new", "approved", "running"].includes(m.status) ? (
-                  <span className="text-muted">🔄 {tr("assistant_chat.denkt_nach")}</span>
+                  <span className="text-muted">🔄 {tr("assistant_chat.thinking")}</span>
                 ) : m.error ? (
                   <span className="text-red-400 whitespace-pre-wrap">{m.error}</span>
                 ) : (
-                  <Markdown text={m.result || tr("assistant_chat.keine_antwort")} />
+                  <Markdown text={m.result || tr("assistant_chat.no_answer")} />
                 )}
               </div>
             </div>
@@ -194,10 +194,10 @@ export default function AssistantChat() {
       <form className="mt-3 flex gap-2"
         onSubmit={(e) => { e.preventDefault(); setErr(""); if (input.trim()) send.mutate(input.trim()); }}>
         <input value={input} onChange={(e) => setInput(e.target.value)}
-          placeholder={tr("assistant_chat.nachricht_an_den_assistenten")}
+          placeholder={tr("assistant_chat.message_to_the_assistant")}
           className="flex-1 rounded border border-line bg-card px-3 py-2 text-ink outline-none" />
         <button type="submit" disabled={send.isPending || !input.trim()}
-          className={BUTTON.primary}>{tr("assistant_chat.senden")}</button>
+          className={BUTTON.primary}>{tr("assistant_chat.send")}</button>
       </form>
     </div>
   );

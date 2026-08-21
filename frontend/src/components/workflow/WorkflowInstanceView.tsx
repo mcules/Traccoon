@@ -6,15 +6,15 @@ import { workflowApi, getToken, type WorkflowInstance } from "../../api";
 import WorkflowCanvas from "./WorkflowCanvas";
 import { graphToFlow } from "./convert";
 import { runtimeStates } from "./runtimeState";
-import Steplog from "./Schrittprotokoll";
+import Steplog from "./StepLog";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "./layout";
 
 const STATUS_LABEL: Record<string, string> = {
-  running: "instanz.running",
-  waiting: "instanz.waiting",
-  completed: "instanz.completed",
-  failed: "instanz.failed",
-  cancelled: "instanz.cancelled",
+  running: "instance.running",
+  waiting: "instance.waiting",
+  completed: "instance.completed",
+  failed: "instance.failed",
+  cancelled: "instance.cancelled",
 };
 const STATUS_COLOR: Record<string, string> = {
   running: "text-sky-400",
@@ -64,7 +64,7 @@ export default function WorkflowInstanceView({
     return graphToFlow(graph, runtimeStates(instance as WorkflowInstance));
   }, [instance]);
 
-  if (!instance || !flow) return <div className="text-xs text-muted">{tr("workflow_instance_view.laedt")}</div>;
+  if (!instance || !flow) return <div className="text-xs text-muted">{tr("workflow_instance_view.loading")}</div>;
 
   return (
     <div>
@@ -83,9 +83,9 @@ export default function WorkflowInstanceView({
       {compact ? (
         <>
           <Steplog steps={instance.steps} maxHeight="16rem"
-            emptyText={tr("instanz.kein_schritt")} />
+            emptyText={tr("instance.no_step_finished_yet")} />
           <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-muted">{tr("workflow_instance_view.ablauf_als_graph")}</summary>
+            <summary className="cursor-pointer text-xs text-muted">{tr("workflow_instance_view.flow_graph")}</summary>
             <div className="mt-1 overflow-hidden rounded-lg border border-line" style={{ height }}>
               <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
             </div>
@@ -102,7 +102,7 @@ export default function WorkflowInstanceView({
             </summary>
             <div className="mt-1">
               <Steplog steps={instance.steps} maxHeight="20rem"
-                emptyText={tr("instanz.kein_schritt")} />
+                emptyText={tr("instance.no_step_finished_yet")} />
             </div>
           </details>
         </>

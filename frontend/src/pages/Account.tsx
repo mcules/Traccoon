@@ -5,11 +5,11 @@ import { tr, setLanguage } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
-import MailAccountsPanel from "../components/MailKontenPanel";
+import MailAccountsPanel from "../components/MailAccountsPanel";
 import {
   AgentsOperationPanel, AssistantNoticesPanel, MemoryPanel, MySwitchPanel, TimezonePanel,
   NightWindowPanel,
-} from "../components/KontoPanels";
+} from "../components/AccountPanels";
 import { BUTTON } from "../components/ui";
 
 /**
@@ -24,11 +24,11 @@ import { BUTTON } from "../components/ui";
  */
 type Tab = "person" | "appearance" | "notifications" | "mail" | "agents";
 const TABS: [Tab, string, string][] = [
-  ["person", "konto.tabs.person", "\u{1F464}"],
-  ["appearance", "konto.tabs.ansicht", "\u{1F3A8}"],
-  ["notifications", "konto.tabs.meldungen", "\u{1F514}"],
+  ["person", "account.person", "\u{1F464}"],
+  ["appearance", "account.appearance", "\u{1F3A8}"],
+  ["notifications", "account.notifications", "\u{1F514}"],
   ["mail", "Mail-Konten", "\u{2709}\uFE0F"],
-  ["agents", "konto.tabs.agenten", "\u{1F916}"],
+  ["agents", "account.agents", "\u{1F916}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -37,7 +37,7 @@ export default function Account() {
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "person") as Tab;
   // Beside the content, like the settings and the administration: the account is one of the
   // configuring pages, and those all carry their sections in a column on the left.
-  usePageChrome(tr("nav.konto"), TABS.map(([key, label, icon]) => ({
+  usePageChrome(tr("nav.account"), TABS.map(([key, label, icon]) => ({
     key, label: tr(label), to: `/account/${key}`, icon,
   })), tab, "seite");
 
@@ -68,7 +68,7 @@ function PmChatStylePanel() {
       await api.put("/me/pm-chat-style", { value });
       await refresh();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : tr("common.speichern_fehlgeschlagen"));
+      setErr(e instanceof ApiError ? e.message : tr("common.not_saved"));
     }
   };
   const btn = (value: "bubbles" | "cli", label: string) => (
@@ -83,7 +83,7 @@ function PmChatStylePanel() {
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
       <div className="text-sm font-medium text-ink">PM-Chat</div>
       <p className="text-xs text-muted">
-        {tr("profile.pm_chat_hinweis")}
+        {tr("profile.how_project_manager_chat")}
       </p>
       <div className="flex gap-2">
         {btn("bubbles", "Sprechblasen")}
@@ -105,7 +105,7 @@ function TicketOpenPanel() {
       await api.put("/me/ticket-open-mode", { value });
       await refresh();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : tr("common.speichern_fehlgeschlagen"));
+      setErr(e instanceof ApiError ? e.message : tr("common.not_saved"));
     }
   };
   const btn = (value: "popup" | "page", label: string) => (
@@ -118,9 +118,9 @@ function TicketOpenPanel() {
   );
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <div className="text-sm font-medium text-ink">{tr("profile.tickets_oeffnen")}</div>
+      <div className="text-sm font-medium text-ink">{tr("profile.opening_tickets")}</div>
       <p className="text-xs text-muted">
-        {tr("profile.ticket_open_hinweis")}
+        {tr("profile.what_left_click_ticket")}
       </p>
       <div className="flex gap-2">
         {btn("popup", tr("profile.als_popup"))}
@@ -155,16 +155,16 @@ function LanguagePanel() {
       await api.put("/me/locale", { value: locale });
       await setLanguage(locale);
       await refresh();
-      setOk(tr("profile.gespeichert"));
+      setOk(tr("profile.saved"));
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : tr("profile.speichern_fehlgeschlagen"));
+      setErr(e instanceof ApiError ? e.message : tr("profile.saving_failed"));
     }
   };
 
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <div className="text-sm font-medium text-ink">{tr("profile.sprache")}</div>
-      <p className="text-xs text-muted">{tr("profile.sprache_hinweis")}</p>
+      <div className="text-sm font-medium text-ink">{tr("profile.language")}</div>
+      <p className="text-xs text-muted">{tr("profile.german_source_when_text")}</p>
       <div className="flex flex-wrap items-center gap-2">
         <select value={locale} onChange={(e) => setLocale(e.target.value)}
           className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
@@ -174,7 +174,7 @@ function LanguagePanel() {
             .map((s) => <option key={s.locale} value={s.locale}>{s.name}</option>)}
         </select>
         <button onClick={save} className={BUTTON.primary}>
-          {tr("profile.speichern")}
+          {tr("profile.save")}
         </button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
@@ -203,12 +203,12 @@ function EmailPanel() {
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
       <div className="text-sm font-medium text-ink">E-Mail</div>
       <p className="text-xs text-muted">
-        {tr("profile.email_hinweis")}
+        {tr("profile.email_address_logging_clearing")}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className={BUTTON.primary}>{tr("profile.speichern")}</button>
+        <button onClick={save} className={BUTTON.primary}>{tr("profile.save")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
@@ -260,9 +260,9 @@ function NotificationsPanel() {
 
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <div className="text-sm font-medium text-ink">{tr("profile.benachrichtigungen")}</div>
+      <div className="text-sm font-medium text-ink">{tr("profile.notifications")}</div>
       <p className="text-xs text-muted">
-        {tr("profile.benachrichtigungen_hinweis")}
+        {tr("profile.see_everything_interface_anyway")}
       </p>
 
       <label className="block text-xs font-medium text-muted">
@@ -292,20 +292,20 @@ function NotificationsPanel() {
       </label>
 
       <label className="block text-xs font-medium text-muted">
-        {tr("profile.email_fuer_benachrichtigungen")}
+        {tr("profile.email_notifications")}
         <input value={mail} onChange={(e) => setMail(e.target.value)}
           placeholder={user?.email || "name@example.com"} className={`mt-1 ${field}`} />
         <span className="mt-1 block text-[11px] text-muted">
-          {tr("profile.leer_lassen_anmelde_adresse")}{user?.email ? ` (${user.email})` : ""}.
+          {tr("profile.leave_empty_and_your_sign_in_address_applies")}{user?.email ? ` (${user.email})` : ""}.
         </span>
       </label>
 
       {missing && (
         <div className="text-xs text-amber-300">
-          {tr("profile.kein_weg_hinterlegt")}
+          {tr("profile.nothing_file_chosen_default")}
         </div>
       )}
-      <button onClick={save} className={BUTTON.primary}>{tr("profile.speichern")}</button>
+      <button onClick={save} className={BUTTON.primary}>{tr("profile.save")}</button>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
     </section>
@@ -319,26 +319,26 @@ function PasswordPanel() {
   const [ok, setOk] = useState("");
   const save = async () => {
     setErr(""); setOk("");
-    if (newPassword.length < 8) { setErr(tr("profile.passwort_zu_kurz")); return; }
+    if (newPassword.length < 8) { setErr(tr("profile.new_password_needs_least")); return; }
     try {
       await api.post("/auth/me/password", { old_password: oldPassword, new_password: newPassword });
       setOldPassword(""); setNewPassword("");
-      setOk(tr("profile.passwort_geaendert"));
+      setOk(tr("profile.password_changed"));
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : tr("profile.aendern_fehlgeschlagen"));
+      setErr(e instanceof ApiError ? e.message : tr("profile.change_failed"));
     }
   };
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <div className="text-sm font-medium text-ink">{tr("profile.passwort_aendern")}</div>
+      <div className="text-sm font-medium text-ink">{tr("profile.change_password")}</div>
       <div className="flex flex-wrap items-center gap-2">
         <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)}
-          placeholder={tr("profile.aktuelles_passwort")}
+          placeholder={tr("profile.current_password")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-          placeholder={tr("profile.neues_passwort_8_zeichen")}
+          placeholder={tr("profile.new_password_at_least_8_characters")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className={BUTTON.primary}>{tr("profile.aendern")}</button>
+        <button onClick={save} className={BUTTON.primary}>{tr("profile.change")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
@@ -360,7 +360,7 @@ function ThemePanel() {
       await api.put("/me/theme", { value });
       await refresh();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : tr("common.speichern_fehlgeschlagen"));
+      setErr(e instanceof ApiError ? e.message : tr("common.not_saved"));
     }
   };
   const btn = (value: "light" | "dark", label: string) => (
@@ -374,7 +374,7 @@ function ThemePanel() {
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
       <div className="text-sm font-medium text-ink">{tr("profile.theme")}</div>
-      <p className="text-xs text-muted">{tr("profile.erscheinungsbild_der_oberflaeche")}</p>
+      <p className="text-xs text-muted">{tr("profile.look_interface")}</p>
       <div className="flex gap-2">
         {btn("dark", "Dunkel")}
         {btn("light", "Hell")}

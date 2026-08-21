@@ -38,7 +38,7 @@ export default function Projects() {
       <Onboarding />
       <MyWork />
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{tr("projects.projekte")}</h1>
+        <h1 className="text-lg font-semibold">{tr("projects.projects")}</h1>
         <button onClick={() => setShow(!show)} className={BUTTON.primary}>
           + Projekt
         </button>
@@ -48,7 +48,7 @@ export default function Projects() {
         <form onSubmit={submit} className="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-line bg-card p-4">
           <label className="flex flex-1 flex-col text-xs text-muted">Name
             <input className="mt-1 rounded border border-line bg-surface px-2 py-1.5 text-ink"
-              value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("projects.projektname")} />
+              value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("projects.project_name")} />
           </label>
           <label className="flex flex-col text-xs text-muted">Übergeordnetes Projekt
             <select value={parentId} onChange={(e) => setParentId(e.target.value)}
@@ -61,7 +61,7 @@ export default function Projects() {
             <input type="checkbox" checked={managed} onChange={(e) => setManaged(e.target.checked)} />
             KI-gemanagt
           </label>
-          <button className={BUTTON.primary}>{tr("projects.anlegen")}</button>
+          <button className={BUTTON.primary}>{tr("projects.create")}</button>
           {err && <span className="text-sm text-red-400">{err}</span>}
         </form>
       )}
@@ -73,24 +73,24 @@ export default function Projects() {
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-muted">{p.key}</span>
               <div className="flex gap-1">
-                {p.is_new && <Tag color="green">{tr("projects.neu")}</Tag>}
-                {!p.is_member && <Tag color="yellow">{tr("projects.fremd")}</Tag>}
+                {p.is_new && <Tag color="green">{tr("projects.new")}</Tag>}
+                {!p.is_member && <Tag color="yellow">{tr("projects.foreign")}</Tag>}
                 {p.managed && <Tag color="brand">KI</Tag>}
                 <Tag>
-                  {p.my_role}{p.my_role_inherited ? ` (${tr("projects.geerbt")})` : ""}
+                  {p.my_role}{p.my_role_inherited ? ` (${tr("projects.inherited")})` : ""}
                 </Tag>
               </div>
             </div>
             <div className="mt-1 font-medium">{p.name}</div>
             {parentName(p.parent_id) && (
-              <div className="text-xs text-muted">↳ {tr("projects.unterprojekt_von", { parent: parentName(p.parent_id) || "" })}</div>
+              <div className="text-xs text-muted">↳ {tr("projects.subproject_parent", { parent: parentName(p.parent_id) || "" })}</div>
             )}
             {!p.my_ai_assign && (
-              <div className="mt-2 text-xs text-muted">{tr("projects.ticketsystem_kein_ki_recht")}</div>
+              <div className="mt-2 text-xs text-muted">{tr("projects.ticket_system_no_ai_permission")}</div>
             )}
           </Link>
         ))}
-        {projects?.length === 0 && <div className="text-muted">{tr("projects.noch_keine_projekte")}</div>}
+        {projects?.length === 0 && <div className="text-muted">{tr("projects.no_projects_yet")}</div>}
       </div>
     </div>
   );

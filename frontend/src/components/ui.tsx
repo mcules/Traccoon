@@ -195,7 +195,7 @@ export function Dialog({ title: title, onClose, children, foot, wide = false, ho
           wide ? "max-w-3xl" : "max-w-lg"}`}>
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 className="text-base font-semibold text-ink">{title}</h2>
-          <button onClick={onClose} title={tr("common.schliessen")} aria-label={tr("common.schliessen")}
+          <button onClick={onClose} title={tr("common.close")} aria-label={tr("common.close")}
             className="text-muted hover:text-ink">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
@@ -216,9 +216,9 @@ export function DialogFoot({ onCancel: onCancel, onSave, saveText, runs: running
 }) {
   return (
     <>
-      <Button onClick={onCancel}>{tr("common.abbrechen")}</Button>
+      <Button onClick={onCancel}>{tr("common.cancel")}</Button>
       <Button variant="primary" onClick={onSave} disabled={disabled} runs={running}>
-        {saveText || tr("common.speichern")}
+        {saveText || tr("common.save")}
       </Button>
     </>
   );
@@ -255,7 +255,7 @@ export function ConfirmDialog({ title: title, text, hint: hint, confirmText: con
   return (
     <Dialog title={title} onClose={onClose} foot={
       <>
-        <Button onClick={onClose}>{tr("common.abbrechen")}</Button>
+        <Button onClick={onClose}>{tr("common.cancel")}</Button>
         <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} runs={running}>
           {confirmText}
         </Button>
@@ -272,8 +272,8 @@ export function DeleteDialog({ was, hint: hint, onClose, onDelete: onDelete, run
   was: string; hint?: string; onClose: () => void; onDelete: () => void; runs?: boolean;
 }) {
   return (
-    <ConfirmDialog title={tr("common.loeschen")} text={tr("common.wirklich_loeschen", { was })}
-      hint={hint} confirmText={tr("common.loeschen")} runs={running}
+    <ConfirmDialog title={tr("common.delete")} text={tr("common.really_delete_what", { was })}
+      hint={hint} confirmText={tr("common.delete")} runs={running}
       onClose={onClose} onConfirm={onDelete} />
   );
 }

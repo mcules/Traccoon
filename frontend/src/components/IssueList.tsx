@@ -56,11 +56,11 @@ export default function IssueList({
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("issue_list.suche_titel_oder_schluessel")}
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("issue_list.search_title_or_key")}
           className="w-64 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         <select value={statusId} onChange={(e) => setStatusId(e.target.value ? +e.target.value : "")}
           className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
-          <option value="">{tr("issue_list.alle_status")}</option>
+          <option value="">{tr("issue_list.all_states")}</option>
           {meta.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <label className="flex items-center gap-1.5 text-sm text-muted">
@@ -76,8 +76,8 @@ export default function IssueList({
       <table className="hidden w-full text-sm sm:table">
         <thead>
           <tr className="border-b border-line text-left text-xs text-muted">
-            <Th onClick={() => clickSort("key")} className="w-24">{tr("issue_list.schluessel")}<Arrow k="key" /></Th>
-            <Th onClick={() => clickSort("summary")}>{tr("issue_list.titel")}<Arrow k="summary" /></Th>
+            <Th onClick={() => clickSort("key")} className="w-24">{tr("issue_list.key")}<Arrow k="key" /></Th>
+            <Th onClick={() => clickSort("summary")}>{tr("issue_list.title")}<Arrow k="summary" /></Th>
             <Th onClick={() => clickSort("agent")} className="w-32">{tr("issue_list.agent")}<Arrow k="agent" /></Th>
             <Th onClick={() => clickSort("status")} className="w-32">{tr("issue_list.status")}<Arrow k="status" /></Th>
             <Th onClick={() => clickSort("priority")} className="w-20">{tr("issue_list.prio")}<Arrow k="priority" /></Th>
@@ -93,7 +93,7 @@ export default function IssueList({
                 <td className="py-1.5">
                   {t && <span className="mr-1.5" style={{ color: t.color }}>{t.icon === "bug" ? "🐞" : "•"}</span>}
                   {i.summary}
-                  {i.agent_working && <span className="ml-2 text-xs text-yellow-400">{tr("issue_list.laeuft")}</span>}
+                  {i.agent_working && <span className="ml-2 text-xs text-yellow-400">{tr("issue_list.running")}</span>}
                   {(() => { const w = waitInfo(i); return w && (
                     <span title={`${w.title}: ${w.label}`} className="ml-2 text-xs">{w.icon}</span>
                   ); })()}
@@ -109,7 +109,7 @@ export default function IssueList({
             );
           })}
           {!filtered.length && (
-            <tr><td colSpan={5} className="py-6 text-center text-sm text-muted">{tr("issue_list.keine_treffer")}</td></tr>
+            <tr><td colSpan={5} className="py-6 text-center text-sm text-muted">{tr("issue_list.no_matches")}</td></tr>
           )}
         </tbody>
       </table>
@@ -133,13 +133,13 @@ export default function IssueList({
                 {i.assigned_agent && (
                   <span className="rounded bg-brand/20 px-1.5 text-brand">🤖 {i.assigned_agent}</span>
                 )}
-                {i.agent_working && <span className="text-yellow-400">{tr("issue_list.laeuft")}</span>}
+                {i.agent_working && <span className="text-yellow-400">{tr("issue_list.running")}</span>}
               </div>
             </div>
           );
         })}
         {!filtered.length && (
-          <div className="py-6 text-center text-sm text-muted">{tr("issue_list.keine_treffer")}</div>
+          <div className="py-6 text-center text-sm text-muted">{tr("issue_list.no_matches")}</div>
         )}
       </div>
     </div>

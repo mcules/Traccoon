@@ -141,20 +141,20 @@ export default function ProjectView() {
     "seite",
   );
 
-  if (!project) return <div className="text-muted">{tr("project_view.projekt_nicht_gefunden")}</div>;
+  if (!project) return <div className="text-muted">{tr("project_view.project_not_found")}</div>;
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {project.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">{tr("project_view.ki_gemanagt")}</span>}
+        {project.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">{tr("project_view.ai_managed")}</span>}
         {!project.my_ai_assign && (
-          <span className="rounded bg-surface px-2 py-0.5 text-xs text-muted">{tr("project_view.ticketsystem_kein_ki_recht")}</span>
+          <span className="rounded bg-surface px-2 py-0.5 text-xs text-muted">{tr("project_view.ticket_system_no_ai_permission")}</span>
         )}
         {tab === "work" && issues && meta && (
           <div className="flex items-center gap-3 text-xs text-muted">
-            <span>◷ {tr("project_view.gesamt", { count: issues.length })}</span>
-            <span>⚡ {tr("project_view.aktiv", { count: issues.filter((i) => i.agent_working).length })}</span>
-            <span className="text-green-400">✓ {tr("project_view.fertig", { count: issues.filter((i) =>
+            <span>◷ {tr("project_view.count_total", { count: issues.length })}</span>
+            <span>⚡ {tr("project_view.count_active", { count: issues.filter((i) => i.agent_working).length })}</span>
+            <span className="text-green-400">✓ {tr("project_view.count_done", { count: issues.filter((i) =>
               meta.statuses.find((s) => s.id === i.status_id)?.category === "done").length })}</span>
           </div>
         )}
@@ -175,9 +175,9 @@ export default function ProjectView() {
         )}
         <div className="hidden flex-1 sm:block" />
         {mayWrite && tab === "work" && (
-          <button onClick={() => setNewOpen(true)} title={tr("project_view.neues_ticket")}
+          <button onClick={() => setNewOpen(true)} title={tr("project_view.new_ticket")}
             className={BUTTON.primary}>
-            + <span className="hidden sm:inline">{tr("project_view.neues_ticket")}</span>
+            + <span className="hidden sm:inline">{tr("project_view.new_ticket")}</span>
           </button>
         )}
       </div>
@@ -190,12 +190,12 @@ export default function ProjectView() {
           {view === "archive" && (
             (archivedIssues && archivedIssues.length > 0)
               ? <IssueList project={project} meta={meta} issues={archivedIssues} onOpen={openTicket} />
-              : <div className="text-sm text-muted">{tr("project_view.keine_archivierten_tickets")}</div>
+              : <div className="text-sm text-muted">{tr("project_view.no_archived_tickets")}</div>
           )}
         </>
       )}
       {tab === "code" && (
-        <Suspense fallback={<div className="text-sm text-muted">{tr("project_view.editor_laedt")}</div>}>
+        <Suspense fallback={<div className="text-sm text-muted">{tr("project_view.loading_editor")}</div>}>
           <FilesPanel project={project} />
         </Suspense>
       )}
@@ -205,7 +205,7 @@ export default function ProjectView() {
         <>
           {view === "monitor" && <AgentMonitor project={project} />}
           {view === "office" && (
-            <Suspense fallback={<div className="text-sm text-muted">{tr("project_view.buero_laedt")}</div>}>
+            <Suspense fallback={<div className="text-sm text-muted">{tr("project_view.loading_office")}</div>}>
               <OfficeTab project={project} />
             </Suspense>
           )}

@@ -37,16 +37,16 @@ export function FormFieldsEditor({
             <input
               value={f.key}
               onChange={(e) => patch(i, { key: e.target.value })}
-              placeholder={tr("form_fields.schluessel")}
+              placeholder={tr("form_fields.key")}
               className="w-28 rounded border border-line bg-card px-2 py-1 font-mono text-xs"
             />
             <input
               value={f.label}
               onChange={(e) => patch(i, { label: e.target.value })}
-              placeholder={tr("form_fields.beschriftung")}
+              placeholder={tr("form_fields.label")}
               className="flex-1 rounded border border-line bg-card px-2 py-1 text-sm"
             />
-            <button onClick={() => remove(i)} className={BUTTON_TEXT.danger} title={tr("form_fields.feld_entfernen")}>
+            <button onClick={() => remove(i)} className={BUTTON_TEXT.danger} title={tr("form_fields.remove_field")}>
               ✕
             </button>
           </div>
@@ -57,10 +57,10 @@ export function FormFieldsEditor({
               className="rounded border border-line bg-card px-2 py-1 text-xs text-ink"
             >
               <option value="text">{tr("form_fields.text")}</option>
-              <option value="number">{tr("form_fields.zahl")}</option>
-              <option value="select">{tr("form_fields.auswahl")}</option>
-              <option value="date">{tr("form_fields.datum")}</option>
-              <option value="boolean">{tr("form_fields.ja_nein")}</option>
+              <option value="number">{tr("form_fields.number")}</option>
+              <option value="select">{tr("form_fields.select")}</option>
+              <option value="date">{tr("form_fields.date")}</option>
+              <option value="boolean">{tr("form_fields.yes_no")}</option>
             </select>
             <label className="flex items-center gap-1 text-xs text-muted">
               <input
@@ -76,7 +76,7 @@ export function FormFieldsEditor({
                 onChange={(e) =>
                   patch(i, { options: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })
                 }
-                placeholder={tr("form_fields.optionen_kommagetrennt")}
+                placeholder={tr("form_fields.options_comma_separated")}
                 className="flex-1 rounded border border-line bg-card px-2 py-1 text-xs"
               />
             )}
@@ -84,7 +84,7 @@ export function FormFieldsEditor({
               <input
                 value={f.placeholder || ""}
                 onChange={(e) => patch(i, { placeholder: e.target.value })}
-                placeholder={tr("form_fields.platzhalter")}
+                placeholder={tr("form_fields.placeholder")}
                 className="flex-1 rounded border border-line bg-card px-2 py-1 text-xs"
               />
             )}
@@ -149,7 +149,7 @@ export function DynamicForm({
               onChange={(e) => set(f.key, e.target.value)}
               className={`mt-1 ${inp}`}
             >
-              <option value="">{tr("action_params.waehlen")}</option>
+              <option value="">{tr("action_params.choose")}</option>
               {(f.options || []).map((o) => (
                 <option key={o} value={o}>
                   {o}

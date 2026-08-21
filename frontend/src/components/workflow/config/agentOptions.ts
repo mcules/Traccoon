@@ -41,7 +41,7 @@ export function agentOptions(
     const [winner] = [...listing].sort((a, b) => rank(a) - rank(b));
     const origin =
       winner.project_id != null ? "Projekt"
-        : winner.user_id != null ? tr("agent_options.persoenlich")
+        : winner.user_id != null ? tr("agent_options.personal")
           : "Ausgeliefert";
     const extra = [
       origin,

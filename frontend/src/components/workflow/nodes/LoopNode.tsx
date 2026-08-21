@@ -26,7 +26,7 @@ export default function LoopNode({ id, data, selected }: FlowNodeProps) {
       from={!!data.config.disabled}
       sources={sources}
     >
-      <div className="font-mono text-[11px]">{listing || tr("loop.keine_liste")}</div>
+      <div className="font-mono text-[11px]">{listing || tr("loop.no_list_chosen")}</div>
     </BaseNode>
   );
 }

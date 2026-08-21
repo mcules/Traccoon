@@ -17,7 +17,7 @@ export default function HumanTaskConfig({
   return (
     <div className="space-y-3">
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">{tr("human_task_config.zustaendig")}</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("human_task_config.responsible")}</div>
         <AssigneeEditor
           value={config.assignee}
           members={members}
@@ -26,7 +26,7 @@ export default function HumanTaskConfig({
       </div>
 
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">{tr("human_task_config.formularfelder")}</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("human_task_config.form_fields")}</div>
         <FormFieldsEditor
           fields={config.form || []}
           onChange={(f) => onChange({ ...config, form: f })}
@@ -39,11 +39,11 @@ export default function HumanTaskConfig({
           checked={!!config.handover}
           onChange={(e) => onChange({ ...config, handover: e.target.checked })}
         />
-        {tr("human_task_config.uebergabe_erlauben")}
+        {tr("human_task_config.allow_handover_another_person")}
       </label>
 
       <label className="block text-xs font-medium text-muted">
-        {tr("human_task_config.faellig_in")}
+        {tr("human_task_config.due_hours")}
         <input
           type="number"
           value={config.due_in_hours ?? ""}

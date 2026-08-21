@@ -20,7 +20,7 @@ export default function SkillsPanel() {
   const [deleteSkill, setDeleteSkill] = useState<any | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["skills"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const save = useMutation({
     mutationFn: (f: { name: string; body: string; autostart: boolean }) =>
@@ -32,7 +32,7 @@ export default function SkillsPanel() {
     onSuccess: () => { setDeleteSkill(null); inv(); }, onError: fail });
 
   return (
-    <Area hint={tr("skills_panel.wiederverwendbare_prompt_bausteine_versi")}>
+    <Area hint={tr("skills_panel.reusable_prompt_building_blocks_versioned_age")}>
       <Errorrow text={err} />
       <Listing className="mb-4">
         {skills?.map((s) => (
@@ -45,18 +45,18 @@ export default function SkillsPanel() {
               {s.autostart && <span className="rounded bg-surface px-1 text-xs">auto</span>}
             </div>
             <Actions>
-              <IconButton icon={ICON.edit} title={tr("skills_panel.neue_version")}
+              <IconButton icon={ICON.edit} title={tr("skills_panel.new_version")}
                 onClick={() => { setErr(""); setDialog(s); }} />
-              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteSkill(s)} />
+              <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteSkill(s)} />
             </Actions>
             </div>
           </ListenLine>
         ))}
-        {skills?.length === 0 && <ListingEmpty>{tr("skills_panel.keine_skills")}</ListingEmpty>}
+        {skills?.length === 0 && <ListingEmpty>{tr("skills_panel.no_skills")}</ListingEmpty>}
       </Listing>
       <button onClick={() => { setErr(""); setDialog({}); }}
         className={BUTTON.primary}>
-        {ICON.fresh} {tr("skills_panel.skill_anlegen")}
+        {ICON.fresh} {tr("skills_panel.new_skill")}
       </button>
 
       {dialog && (
@@ -84,14 +84,14 @@ function SkillDialog({ skill, error: error, runs: running, onClose, onSave }: {
   const keyPreview = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
   return (
-    <Dialog wide title={skill ? tr("skills_panel.neue_version") : tr("skills_panel.skill_anlegen")} onClose={onClose}
+    <Dialog wide title={skill ? tr("skills_panel.new_version") : tr("skills_panel.new_skill")} onClose={onClose}
       foot={<DialogFoot onCancel={onClose} disabled={!name.trim() || !body.trim()} runs={running}
         onSave={() => onSave({ name: name.trim(), body, autostart })}
-        saveText={skill ? tr("skills_panel.version_speichern") : tr("common.anlegen")} />}>
+        saveText={skill ? tr("skills_panel.save_version") : tr("common.create")} />}>
       <Errorrow text={error} />
       <div className="space-y-3">
         <Field label={tr("skills_panel.name_z_b_test_driven_development")}
-          hint={keyPreview ? tr("skills_panel.key_automatisch", { key: keyPreview }) : undefined}>
+          hint={keyPreview ? tr("skills_panel.key_key_derived", { key: keyPreview }) : undefined}>
           <input value={name} autoFocus onChange={(e) => setName(e.target.value)} className={INPUT_VALUE} />
         </Field>
         <Field label={tr("skills_panel.skill_text_markdown")}>
@@ -102,7 +102,7 @@ function SkillDialog({ skill, error: error, runs: running, onClose, onSave }: {
           <input type="checkbox" checked={autostart} onChange={(e) => setAutostart(e.target.checked)} />
           {tr("skills_panel.auto")}
         </label>
-        {skill && <p className="text-xs text-muted">{tr("skills_panel.version_hinweis", { version: skill.version })}</p>}
+        {skill && <p className="text-xs text-muted">{tr("skills_panel.saving_creates_version_version", { version: skill.version })}</p>}
       </div>
     </Dialog>
   );

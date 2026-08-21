@@ -49,9 +49,9 @@ import { durationText, statusColor, statusText, tokenText, usdText, number } fro
  *  `run_retention_days`; beyond that there simply are no runs any more, and a window that
  *  promises more than the retention delivers would be an empty promise. */
 const WINDOW: readonly { h: number; kurz: string; long: string }[] = [
-  { h: 24, kurz: "akte.fenster_24h_kurz", long: "akte.fenster_24h" },
-  { h: 24 * 7, kurz: "akte.fenster_7t_kurz", long: "akte.fenster_7t" },
-  { h: 24 * 30, kurz: "akte.fenster_30t_kurz", long: "akte.fenster_30t" },
+  { h: 24, kurz: "personnel_file.24_h", long: "personnel_file.last_24_hours" },
+  { h: 24 * 7, kurz: "personnel_file.7_days", long: "personnel_file.last_7_days" },
+  { h: 24 * 30, kurz: "personnel_file.30_days", long: "personnel_file.last_30_days" },
 ];
 
 /** Default: the whole retention window. The file is a review, not an alarm clock. */
@@ -101,16 +101,16 @@ interface BarArt {
 
 const BAR: readonly BarArt[] = [
   {
-    key: "delivered", label: "akte.balken_abgeliefert", status: "success",
-    title: "akte.balken_abgeliefert_titel",
+    key: "delivered", label: "personnel_file.delivered", status: "success",
+    title: "personnel_file.finished_successfully_finished_plan",
   },
   {
-    key: "waiting", label: "akte.balken_wartet", status: "blocked",
-    title: "akte.balken_wartet_titel",
+    key: "waiting", label: "personnel_file.waiting_person", status: "blocked",
+    title: "personnel_file.run_hangs_question_permission",
   },
   {
-    key: "aborted", label: "akte.balken_abgebrochen", status: "failed",
-    title: "akte.balken_abgebrochen_titel",
+    key: "aborted", label: "personnel_file.aborted", status: "failed",
+    title: "personnel_file.failed_stuck_loop_failed",
   },
 ];
 
@@ -134,17 +134,17 @@ function agoText(iso: string | null | undefined, now: number): string {
   const d = Math.max(0, now - t);
   const min = Math.round(d / 60_000);
   if (min < 1) return "gerade eben";
-  if (min < 60) return tr("akte.vor_min", { count: min });
+  if (min < 60) return tr("personnel_file.count_min_ago", { count: min });
   const std = Math.round(min / 60);
-  if (std < 48) return tr("akte.vor_std", { count: std });
-  return tr("akte.vor_tagen", { count: Math.round(std / 24) });
+  if (std < 48) return tr("personnel_file.count_h_ago", { count: std });
+  return tr("personnel_file.count_days_ago", { count: Math.round(std / 24) });
 }
 
 /** Label of a histogram bucket. `lt_ms` is the **upper** bound; when it is missing this is the
  *  open bucket at the top. */
 function bucketText(lt: number | null | undefined, before: number | null): string {
   if (lt === null || lt === undefined || !Number.isFinite(lt)) {
-    return before !== null ? `> ${durationText(before)}` : tr("akte.darueber");
+    return before !== null ? `> ${durationText(before)}` : tr("personnel_file.above");
   }
   return before !== null ? `${durationText(before)} – ${durationText(lt)}` : `< ${durationText(lt)}`;
 }
@@ -194,7 +194,7 @@ export default function Personnelfile({
   const measured = file.data?.since_hours ?? hours;
   const hits = WINDOW.find((f) => f.h === measured);
   const windowText = hits ? tr(hits.long)
-    : tr("akte.fenster_tage", { count: Math.round(measured / 24) });
+    : tr("personnel_file.last_count_days", { count: Math.round(measured / 24) });
 
   // Order: the busiest role first, on a tie the most recently active one. That is the order in
   // which one looks, and it is stable because it does not depend on who is selected right
@@ -235,20 +235,20 @@ export default function Personnelfile({
       </div>
 
       <p className="text-[11px] text-muted">
-        {tr("akte.aufbewahrung_hinweis")}
+        {tr("personnel_file.older_runs_removed_retention")}
       </p>
 
-      {file.isLoading && <div className="py-4 text-center text-xs text-muted">{tr("akte.wird_geladen")}</div>}
+      {file.isLoading && <div className="py-4 text-center text-xs text-muted">{tr("personnel_file.loading_file")}</div>}
 
       {file.error && (
         <div className="rounded border border-red-400/40 bg-red-400/5 px-2 py-1 text-xs text-red-400">
-          {tr("akte.nicht_ladbar")}: {(file.error as Error).message}
+          {tr("personnel_file.file_not_loadable")}: {(file.error as Error).message}
         </div>
       )}
 
       {!file.isLoading && !file.error && roles.length === 0 && (
         <div className="py-4 text-center text-xs text-muted">
-          {tr("akte.kein_lauf", { window: windowText })}
+          {tr("personnel_file.no_run_window", { window: windowText })}
         </div>
       )}
 
@@ -289,14 +289,14 @@ function Rolecard({ r, now: now, open: open, onToggle }: {
         className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-xs">
         <span className="shrink-0 text-[11px] text-muted">{open ? "▾" : "▸"}</span>
         <span className="font-medium">{r.agent}</span>
-        <span className="text-muted">{number(runs)} {tr(runs === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}</span>
+        <span className="text-muted">{number(runs)} {tr(runs === 1 ? "agent_monitor.run" : "agent_monitor.runs")}</span>
         {(r.running ?? 0) > 0 && (
           <span className="text-yellow-400" title={`${r.running} laufen gerade`}>
             ● {number(r.running ?? 0)} aktiv
           </span>
         )}
         <div className="flex-1" />
-        <span className="text-muted" title={tr("akte.letzter_lauf")}>
+        <span className="text-muted" title={tr("personnel_file.last_run_role_chosen")}>
           {agoText(r.last_run_at, now)}
         </span>
       </button>
@@ -328,12 +328,12 @@ function Barband({ values: values, rest: remainder, basis }: {
           return (
             <div key={b.key} className={area(b.status)}
               style={{ width: `${percent(n, basis)}%` }}
-              title={`${tr(b.label)}: ${number(n)} ${tr("akte.von")} ${number(basis)}`} />
+              title={`${tr(b.label)}: ${number(n)} ${tr("personnel_file.text_3")} ${number(basis)}`} />
           );
         })}
         {remainder > 0 && (
           <div className="bg-line" style={{ width: `${percent(remainder, basis)}%` }}
-            title={`${tr("akte.ohne_urteil")}: ${number(remainder)} ${tr("akte.von")} ${number(basis)}`} />
+            title={`${tr("personnel_file.still_running_without_verdict")}: ${number(remainder)} ${tr("personnel_file.text_3")} ${number(basis)}`} />
         )}
       </div>
       <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0 text-[11px]">
@@ -345,8 +345,8 @@ function Barband({ values: values, rest: remainder, basis }: {
           </span>
         ))}
         {remainder > 0 && (
-          <span className="text-muted" title={tr("akte.ohne_urteil_titel")}>
-            {tr("dock.laeuft_noch")} {number(remainder)}
+          <span className="text-muted" title={tr("personnel_file.runs_without_final_verdict")}>
+            {tr("dock.still_running")} {number(remainder)}
           </span>
         )}
       </div>
@@ -379,7 +379,7 @@ function Details({ r, basis, values: values, rest: remainder }: {
       {/* Woher die drei Balken kommen — roh, unverdichtet, zum Nachrechnen. */}
       {statusLines.length > 0 && (
         <div className="flex flex-wrap gap-x-2 gap-y-0.5"
-          title={tr("akte.rohe_status")}>
+          title={tr("personnel_file.raw_run_states_server")}>
           {statusLines.map(([s, n]) => (
             <span key={s} className={statusColor(s)}>
               {statusText(s)} <b className="text-ink">{number(n)}</b>
@@ -390,30 +390,30 @@ function Details({ r, basis, values: values, rest: remainder }: {
 
       {/* Runden und Schritte — getrennt beschriftet, weil es zwei verschiedene Dinge sind. */}
       <dl className="grid grid-cols-[7.5rem_1fr] gap-x-2 gap-y-1">
-        <Field label={tr("akte.runden")} title={tr("akte.runden_titel")}>
+        <Field label={tr("personnel_file.rounds")} title={tr("personnel_file.passes_through_agent_loop")}>
           Ø {comma1(r.iterations_avg ?? 0)} · max {number(r.iterations_max ?? 0)}
         </Field>
-        <Field label={tr("akte.schritte")} title={tr("akte.schritte_titel")}>
+        <Field label={tr("personnel_file.steps")} title={tr("personnel_file.lines_event_stream_run")}>
           Ø {comma1(r.steps_avg ?? 0)} · max {number(r.steps_max ?? 0)}
         </Field>
-        <Field label={tr("buero.tokens")}
-          title={tr("akte.cache_gelesen", { count: number(r.cache_read_tokens ?? 0) })}>
+        <Field label={tr("office_room.tokens")}
+          title={tr("personnel_file.cache_read_count", { count: number(r.cache_read_tokens ?? 0) })}>
           {tokenText((r.in_tokens ?? 0) + (r.out_tokens ?? 0))}
           <span className="text-muted">
-            {" "}({number(r.in_tokens ?? 0)} {tr("akte.ein")} · {number(r.out_tokens ?? 0)} {tr("akte.aus")})
+            {" "}({number(r.in_tokens ?? 0)} {tr("personnel_file.text_2")} · {number(r.out_tokens ?? 0)} {tr("personnel_file.text")})
           </span>
         </Field>
-        <Field label={tr("akte.kosten")}
+        <Field label={tr("personnel_file.cost")}
           title={unpriced
-            ? tr("akte.kosten_teilweise")
-            : tr("akte.kosten_voll")}>
+            ? tr("personnel_file.least_one_item_no")
+            : tr("personnel_file.fully_priced_against_catalog")}>
           {usdText(r.cost_usd ?? 0, unpriced)}
         </Field>
-        <Field label={tr("agent_monitor.laeufe")} title={tr("akte.laeufe_titel")}>
+        <Field label={tr("agent_monitor.runs")} title={tr("personnel_file.population_behind_three_bars")}>
           {number(basis)}
           <span className="text-muted">
             {" "}({number(values.delivered)} + {number(values.waiting)} + {number(values.aborted)}
-            {remainder > 0 ? ` + ${number(remainder)} ${tr("akte.laufend")}` : ""})
+            {remainder > 0 ? ` + ${number(remainder)} ${tr("personnel_file.running")}` : ""})
           </span>
         </Field>
       </dl>
@@ -421,22 +421,22 @@ function Details({ r, basis, values: values, rest: remainder }: {
       {/* Dauer: Median, p90, Maximum — und die Verteilung darunter. */}
       <div>
         <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
-          <span className="font-medium">{tr("akte.dauer")}</span>
-          <span className="text-muted" title={tr("akte.median_titel")}>
-            {tr("akte.median")} <b className="text-ink">{durationText(duration.p50_ms)}</b>
+          <span className="font-medium">{tr("personnel_file.duration")}</span>
+          <span className="text-muted" title={tr("personnel_file.half_all_runs_faster")}>
+            {tr("personnel_file.median")} <b className="text-ink">{durationText(duration.p50_ms)}</b>
           </span>
-          <span className="text-muted" title={tr("akte.p90_titel")}>
+          <span className="text-muted" title={tr("personnel_file.nine_ten_runs_faster")}>
             p90 <b className="text-ink">{durationText(duration.p90_ms)}</b>
           </span>
-          <span className="text-muted" title={tr("akte.max_titel")}>
+          <span className="text-muted" title={tr("personnel_file.longest_run_window")}>
             max <b className="text-ink">{durationText(duration.max_ms)}</b>
           </span>
         </div>
         <p className="mb-1 text-[11px] text-muted">
-          {tr("akte.kein_mittelwert")}
+          {tr("personnel_file.no_average_single_36")}
         </p>
         {bucket.length === 0 ? (
-          <div className="text-muted">{tr("akte.keine_verteilung")}</div>
+          <div className="text-muted">{tr("personnel_file.no_distribution_window")}</div>
         ) : (
           <div className="space-y-0.5">
             {bucket.map((b, i) => {
@@ -459,9 +459,9 @@ function Details({ r, basis, values: values, rest: remainder }: {
 
       {/* Werkzeuge: Rangliste mit Anzahl und Fehlschlägen. */}
       <div>
-        <div className="mb-0.5 font-medium">{tr("dock.werkzeuge")}</div>
+        <div className="mb-0.5 font-medium">{tr("dock.tools")}</div>
         {tools.length === 0 ? (
-          <div className="text-muted">{tr("akte.kein_werkzeugaufruf")}</div>
+          <div className="text-muted">{tr("personnel_file.no_tool_call_window")}</div>
         ) : (
           <div className="space-y-0.5">
             {tools.map((t) => (
@@ -476,8 +476,8 @@ function Details({ r, basis, values: values, rest: remainder }: {
                 <span className="w-8 shrink-0 text-right text-muted">{number(t.n ?? 0)}</span>
                 <span className={"w-14 shrink-0 text-right " + ((t.failed ?? 0) > 0 ? "text-red-400" : "text-muted")}
                   title={(t.failed ?? 0) > 0
-                    ? tr("akte.aufrufe_fehl", { fail: t.failed ?? 0, ok: t.ok ?? 0 })
-                    : tr("akte.kein_fehlschlag")}>
+                    ? tr("personnel_file.fail_calls_failed_ok", { fail: t.failed ?? 0, ok: t.ok ?? 0 })
+                    : tr("personnel_file.no_reported_failure_old")}>
                   {(t.failed ?? 0) > 0 ? `✕ ${number(t.failed ?? 0)}` : "—"}
                 </span>
               </div>

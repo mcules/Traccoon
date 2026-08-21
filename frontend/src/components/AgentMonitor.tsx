@@ -54,7 +54,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
   return (
     <div className="space-y-6">
       <section>
-        <h3 className="mb-2 font-medium">{tr("agent_monitor.laeuft_gerade")}</h3>
+        <h3 className="mb-2 font-medium">{tr("agent_monitor.running_now")}</h3>
         {active && active.length > 0 ? (
           <div className="space-y-2">
             {active.map((a) => (
@@ -72,7 +72,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
             ))}
           </div>
         ) : (
-          <div className="text-xs text-muted">{tr("agent_monitor.kein_agent_arbeitet_gerade")}</div>
+          <div className="text-xs text-muted">{tr("agent_monitor.no_agent_is_working_right_now")}</div>
         )}
       </section>
 
@@ -83,12 +83,12 @@ export default function AgentMonitor({ project }: { project: Project }) {
             {perms.map((p) => (
               <div key={p.id} className="flex items-center gap-3 rounded border border-orange-400/40 bg-orange-400/5 p-2.5 text-sm">
                 <span className="font-mono">{p.issue_key}</span>
-                <span>{tr("agent_monitor.tool")} <b>{p.tool}</b> {tr("agent_monitor.auf")} <span className="font-mono">{p.resource || "—"}</span></span>
+                <span>{tr("agent_monitor.tool")} <b>{p.tool}</b> {tr("agent_monitor.text")} <span className="font-mono">{p.resource || "—"}</span></span>
                 <div className="flex-1" />
                 {["once", "always", "never"].map((d) => (
                   <button key={d} onClick={() => decide.mutate({ id: p.id, decision: d })}
                     className={BUTTON_SMALL.secondary}>
-                    {tr(d === "once" ? "agent_monitor.einmal" : d === "always" ? "agent_monitor.immer" : "agent_monitor.nie")}</button>
+                    {tr(d === "once" ? "agent_monitor.once" : d === "always" ? "agent_monitor.always" : "agent_monitor.never")}</button>
                 ))}
               </div>
             ))}
@@ -98,7 +98,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
 
       <section>
         <div className="mb-2 flex items-center gap-3">
-          <h3 className="font-medium">{tr("agent_monitor.agenten_laeufe")}</h3>
+          <h3 className="font-medium">{tr("agent_monitor.agent_runs")}</h3>
           <label className="flex items-center gap-1.5 text-xs text-muted">
             <input type="checkbox" checked={showArchive}
               onChange={(e) => setShowArchive(e.target.checked)} />
@@ -119,7 +119,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
                     {g.issue_summary}
                   </span>
                   <span className="text-xs text-muted">
-                    {g.runs.length} {tr(g.runs.length === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")} · {g.output_tokens}tok
+                    {g.runs.length} {tr(g.runs.length === 1 ? "agent_monitor.run" : "agent_monitor.runs")} · {g.output_tokens}tok
                     {g.cost_usd ? ` · $${g.cost_usd.toFixed(4)}` : ""}
                   </span>
                 </button>
@@ -143,11 +143,11 @@ export default function AgentMonitor({ project }: { project: Project }) {
           })}
           {grouped?.groups.length === 0 && (
             <div className="text-sm text-muted">
-              {tr(showArchive ? "agent_monitor.keine_archivierten" : "agent_monitor.noch_keine_laeufe")}
+              {tr(showArchive ? "agent_monitor.no_archived_runs" : "agent_monitor.no_runs_yet")}
             </div>
           )}
           {grouped?.truncated && (
-            <div className="text-xs text-muted">{tr("agent_monitor.aeltere_laeufe_sind_ausgeblendet_anzeige")}</div>
+            <div className="text-xs text-muted">{tr("agent_monitor.older_runs_are_hidden_display_limit_reached")}</div>
           )}
         </div>
       </section>

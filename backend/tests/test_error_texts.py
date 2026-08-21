@@ -2,7 +2,7 @@
 
 The browser shows a German sentence for a German interface, and it can only do that when the
 server names the text it is sending. What the catalog on the other side knows is checked in
-the frontend (`tools/fehlertexte-check.mjs`); here stands what is provable without it.
+the frontend (`tools/error-texts-check.mjs`); here stands what is provable without it.
 """
 from __future__ import annotations
 

@@ -41,7 +41,7 @@ export default function LocationsPanel() {
   });
 
   const inv = () => qc.invalidateQueries({ queryKey: ["series"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const save = useMutation({
     mutationFn: ({ key, body }: { key: string | null; body: Record<string, any> }) => {
@@ -61,9 +61,9 @@ export default function LocationsPanel() {
 
   return (
     <div className="space-y-4">
-      <Area title={tr("standorte.geraete")} hint={tr("standorte.einleitung")}
+      <Area title={tr("places.devices")} hint={tr("places.devices_whose_track_recorded")}
         tools={<Button variant="primary" onClick={() => setDialog({})}>
-          {tr("standorte.geraet_anlegen")}</Button>}>
+          {tr("places.add_device")}</Button>}>
         <Errorrow text={err} />
         <Listing>
           {series?.map((r) => (
@@ -73,7 +73,7 @@ export default function LocationsPanel() {
               onDelete={() => setDeleteTarget(r)}
               onError={fail} />
           ))}
-          {series?.length === 0 && <ListingEmpty>{tr("standorte.keine_geraete")}</ListingEmpty>}
+          {series?.length === 0 && <ListingEmpty>{tr("places.no_device_yet")}</ListingEmpty>}
         </Listing>
       </Area>
 
@@ -88,7 +88,7 @@ export default function LocationsPanel() {
       )}
       {deleteTarget && (
         <DeleteDialog was={deleteTarget.name || deleteTarget.key}
-          hint={tr("standorte.loeschen_hinweis", { count: String(deleteTarget.points) })}
+          hint={tr("places.count_points_deleted", { count: String(deleteTarget.points) })}
           runs={remove.isPending}
           onClose={() => setDeleteTarget(null)}
           onDelete={() => remove.mutate(deleteTarget.key)} />
@@ -120,20 +120,20 @@ function DeviceLine({ series: series, open: open, onOpen: onOpen_it, onEdit, onD
           {!series.own && <Tag color="neutral">{series.owner}</Tag>}
           <div className="flex-1" />
           <span className="shrink-0 text-xs text-muted">
-            {number(series.points)} {tr("standorte.punkte")}
+            {number(series.points)} {tr("places.points")}
           </span>
           {series.own && (
             <Actions>
-              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+              <IconButton icon={ICON.edit} title={tr("common.edit")}
                 onClick={onEdit} />
-              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+              <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                 onClick={onDelete} />
             </Actions>
           )}
         </div>
         <div className="flex flex-wrap gap-x-4 text-xs text-muted">
-          <span>{tr("standorte.zuletzt")}: {series.last_at ? formatDateTime(series.last_at)
-            : tr("standorte.nie")}</span>
+          <span>{tr("places.last")}: {series.last_at ? formatDateTime(series.last_at)
+            : tr("places.never")}</span>
           {state.battery != null && <span>{Math.round(state.battery)} %</span>}
           {state.accuracy != null && <span>±{Math.round(state.accuracy)} m</span>}
           {state.lat != null && (
@@ -183,28 +183,28 @@ function Connection({ series: series, onError: onError }: { series: Series; onEr
   return (
     <div className="space-y-3 rounded border border-line bg-card p-3">
       <div>
-        <div className="mb-1 text-xs font-medium text-ink">{tr("standorte.adresse")}</div>
-        <p className="mb-2 text-xs text-muted">{tr("standorte.adresse_hinweis")}</p>
+        <div className="mb-1 text-xs font-medium text-ink">{tr("places.reporting_address")}</div>
+        <p className="mb-2 text-xs text-muted">{tr("places.enter_address_device_automation")}</p>
         <div className="flex items-center gap-2">
           {address ? (
             <input readOnly value={address} onFocus={(e) => e.target.select()}
               className={`${INPUT_VALUE} font-mono text-xs`} />
           ) : (
             <Button small runs={show.isPending} onClick={() => show.mutate()}>
-              {series.has_token ? tr("standorte.adresse_zeigen") : tr("standorte.adresse_erzeugen")}
+              {series.has_token ? tr("places.show_address") : tr("places.create_address")}
             </Button>
           )}
           {series.has_token && (
             <Button small runs={renew.isPending} onClick={() => renew.mutate()}
-              title={tr("standorte.token_erneuern_hinweis")}>
-              {tr("standorte.token_erneuern")}
+              title={tr("places.old_address_stops_working")}>
+              {tr("places.regenerate")}
             </Button>
           )}
         </div>
       </div>
 
       <div>
-        <div className="mb-1 text-xs font-medium text-ink">{tr("standorte.freigaben")}</div>
+        <div className="mb-1 text-xs font-medium text-ink">{tr("places.shared")}</div>
         {grants?.length ? (
           <div className="mb-2 space-y-1">
             {grants.map((f: Grant) => (
@@ -212,19 +212,19 @@ function Connection({ series: series, onError: onError }: { series: Series; onEr
                 <span className="text-ink">{f.username}</span>
                 <Tag color="neutral">{f.level}</Tag>
                 <div className="flex-1" />
-                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                   onClick={() => revoke.mutate(f.id)} />
               </div>
             ))}
           </div>
-        ) : <p className="mb-2 text-xs text-muted">{tr("standorte.keine_freigaben")}</p>}
+        ) : <p className="mb-2 text-xs text-muted">{tr("places.not_shared_anyone")}</p>}
         <div className="flex items-center gap-2">
           <input value={newUser} onChange={(e) => setNewUser(e.target.value)}
-            placeholder={tr("standorte.nutzer_id")} inputMode="numeric"
+            placeholder={tr("places.user_id")} inputMode="numeric"
             className={`${INPUT_VALUE} max-w-[140px]`} />
           <Button small disabled={!newUser.trim()} runs={share.isPending}
             onClick={() => share.mutate(Number(newUser))}>
-            {tr("standorte.freigeben")}
+            {tr("places.share")}
           </Button>
         </div>
       </div>
@@ -245,22 +245,22 @@ function DeviceDialog({ series: series, runs: running, onClose, onSave }: {
   const set = (field: string, value: any) => setForm((f) => ({ ...f, [field]: value }));
 
   return (
-    <Dialog title={series ? tr("standorte.geraet_bearbeiten") : tr("standorte.geraet_anlegen")}
+    <Dialog title={series ? tr("places.edit_device") : tr("places.add_device")}
       onClose={onClose}
       foot={<DialogFoot onCancel={onClose} runs={running}
         disabled={!form.key.trim()}
         onSave={() => onSave(form)} />}>
       <div className="space-y-3">
-        <Field label={tr("standorte.schluessel")}
-          hint={series ? tr("standorte.schluessel_umbenennen") : tr("standorte.schluessel_hinweis")}>
+        <Field label={tr("places.key")}
+          hint={series ? tr("places.renaming_possible_flows_name") : tr("places.short_permanent_e_g")}>
           <input value={form.key} className={INPUT_VALUE}
             placeholder="tracker.pixel" onChange={(e) => set("key", e.target.value)} />
         </Field>
-        <Field label={tr("standorte.name")}>
+        <Field label={tr("places.name")}>
           <input value={form.name} className={INPUT_VALUE} placeholder="Pixel 9"
             onChange={(e) => set("name", e.target.value)} />
         </Field>
-        <Field label={tr("standorte.farbe")} hint={tr("standorte.farbe_hinweis")}>
+        <Field label={tr("places.colour")} hint={tr("places.map_draws_track_colour")}>
           <div className="flex gap-1.5">
             {COLORS.map((f) => (
               <button key={f} type="button" onClick={() => set("color", f)}
@@ -271,15 +271,15 @@ function DeviceDialog({ series: series, runs: running, onClose, onSave }: {
             ))}
           </div>
         </Field>
-        <Field label={tr("standorte.mindestabstand")} hint={tr("standorte.ruhefilter_hinweis")}>
+        <Field label={tr("places.minimum_distance_m")} hint={tr("places.point_only_stored_when")}>
           <input type="number" min={0} value={form.min_distance_m} className={INPUT_VALUE}
             onChange={(e) => set("min_distance_m", Number(e.target.value))} />
         </Field>
-        <Field label={tr("standorte.mindestabstand_zeit")}>
+        <Field label={tr("places.latest_after_s")}>
           <input type="number" min={0} value={form.min_interval_s} className={INPUT_VALUE}
             onChange={(e) => set("min_interval_s", Number(e.target.value))} />
         </Field>
-        <Field label={tr("standorte.genauigkeit")} hint={tr("standorte.genauigkeit_hinweis")}>
+        <Field label={tr("places.accuracy_most_m")} hint={tr("places.less_accurate_reports_discarded")}>
           <input type="number" min={0} value={form.max_accuracy_m} className={INPUT_VALUE}
             onChange={(e) => set("max_accuracy_m", Number(e.target.value))} />
         </Field>
@@ -312,9 +312,9 @@ function Places({ onError: onError }: { onError: (e: unknown) => void }) {
   });
 
   return (
-    <Area title={tr("standorte.orte")} hint={tr("standorte.orte_einleitung")}
+    <Area title={tr("places.places")} hint={tr("places.named_circles_entering_leaving")}
       tools={<Button variant="primary" onClick={() => setDialog({})}>
-        {tr("standorte.ort_anlegen")}</Button>}>
+        {tr("places.add_place")}</Button>}>
       <Listing>
         {places?.map((o) => (
           <ListenLine key={o.id}>
@@ -323,21 +323,21 @@ function Places({ onError: onError }: { onError: (e: unknown) => void }) {
                 style={{ background: o.color || "#f59e0b" }} />
               <span className="font-medium text-ink">{o.name || o.key}</span>
               <code className="font-mono text-xs text-muted">{o.key}</code>
-              {!o.notify && <Tag color="neutral">{tr("standorte.still")}</Tag>}
+              {!o.notify && <Tag color="neutral">{tr("places.still")}</Tag>}
               <div className="flex-1" />
               <span className="font-mono text-xs text-muted">
                 {o.lat.toFixed(5)}, {o.lon.toFixed(5)} · {o.radius_m} m
               </span>
               <Actions>
-                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+                <IconButton icon={ICON.edit} title={tr("common.edit")}
                   onClick={() => setDialog(o)} />
-                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                   onClick={() => setDeleteTarget(o)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
-        {places?.length === 0 && <ListingEmpty>{tr("standorte.keine_orte")}</ListingEmpty>}
+        {places?.length === 0 && <ListingEmpty>{tr("places.no_place_yet")}</ListingEmpty>}
       </Listing>
 
       {dialog && (
@@ -368,21 +368,21 @@ function PlaceDialog({ place, runs: running, onClose, onSave }: {
   const set = (field: string, value: any) => setForm((f) => ({ ...f, [field]: value }));
 
   return (
-    <Dialog title={place ? tr("standorte.ort_bearbeiten") : tr("standorte.ort_anlegen")}
+    <Dialog title={place ? tr("places.edit_place") : tr("places.add_place")}
       onClose={onClose}
       foot={<DialogFoot onCancel={onClose} runs={running}
         disabled={!form.key.trim() || (!form.lat && !form.lon)}
         onSave={() => onSave(form)} />}>
       <div className="space-y-3">
-        <Field label={tr("standorte.schluessel")} hint={tr("standorte.ort_schluessel_hinweis")}>
+        <Field label={tr("places.key")} hint={tr("places.name_flow_refers_e")}>
           <input value={form.key} className={INPUT_VALUE} placeholder="zuhause"
             onChange={(e) => set("key", e.target.value)} />
         </Field>
-        <Field label={tr("standorte.name")}>
+        <Field label={tr("places.name")}>
           <input value={form.name} className={INPUT_VALUE} placeholder="Zuhause"
             onChange={(e) => set("name", e.target.value)} />
         </Field>
-        <Field label={tr("standorte.koordinaten")} hint={tr("standorte.koordinaten_hinweis")}>
+        <Field label={tr("places.latitude_longitude")} hint={tr("places.read_map_take_device")}>
           <div className="flex gap-2">
             <input type="number" step="any" value={form.lat} className={INPUT_VALUE}
               placeholder="50.0825" onChange={(e) => set("lat", Number(e.target.value))} />
@@ -390,15 +390,15 @@ function PlaceDialog({ place, runs: running, onClose, onSave }: {
               placeholder="10.5663" onChange={(e) => set("lon", Number(e.target.value))} />
           </div>
         </Field>
-        <Field label={tr("standorte.radius")} hint={tr("standorte.radius_hinweis")}>
+        <Field label={tr("places.radius")} hint={tr("places.leaving_only_counts_50")}>
           <input type="number" min={10} value={form.radius_m} className={INPUT_VALUE}
             onChange={(e) => set("radius_m", Number(e.target.value))} />
         </Field>
-        <Field label={tr("standorte.meldet")} hint={tr("standorte.meldet_hinweis")}>
+        <Field label={tr("places.event")} hint={tr("places.off_place_only_drawn")}>
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={form.notify}
               onChange={(e) => set("notify", e.target.checked)} />
-            {tr("standorte.meldet_an")}
+            {tr("places.report_entering_leaving")}
           </label>
         </Field>
       </div>

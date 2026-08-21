@@ -44,7 +44,7 @@ export default function ProviderModelsPanel() {
   });
 
   const inv = () => qc.invalidateQueries({ queryKey: ["provider-models"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
   const flash = (t: string) => { setNote(t); setTimeout(() => setNote(""), 4000); };
 
   const save = useMutation({
@@ -66,12 +66,12 @@ export default function ProviderModelsPanel() {
     onSuccess: (r) => {
       const n = r.updated?.length ?? 0;
       const names = (r.updated || []).slice(0, 4).map((u: any) => u.model).join(", ");
-      const context = r.context_set ? ` · ${tr("provider_models_panel.kontext_gesetzt", { count: r.context_set })}` : "";
+      const context = r.context_set ? ` · ${tr("provider_models_panel.count_context_windows_set", { count: r.context_set })}` : "";
       flash((n
-        ? tr("provider_models_panel.preise_uebernommen", { count: n, names: names + (n > 4 ? " …" : "") })
-        : tr("provider_models_panel.preise_aktuell"))
+        ? tr("provider_models_panel.count_price_s_taken", { count: n, names: names + (n > 4 ? " …" : "") })
+        : tr("provider_models_panel.all_prices_up_date"))
         + context
-        + (r.unknown?.length ? ` · ${tr("provider_models_panel.ohne_eintrag", { count: r.unknown.length })}` : ""));
+        + (r.unknown?.length ? ` · ${tr("provider_models_panel.count_without_entry_unchanged", { count: r.unknown.length })}` : ""));
       setErr(""); inv();
     },
     onError: fail,
@@ -80,10 +80,10 @@ export default function ProviderModelsPanel() {
     mutationFn: () => api.post<Record<string, any>>("/providers/models/fetch"),
     onSuccess: (r) => {
       const parts = Object.entries(r).map(([label, v]: [string, any]) =>
-        v.error ? `${label}: ${tr("common.fehler")} (${v.error})`
-          : `${label}: ${v.total ?? 0}${v.added ? ` (+${v.added} ${tr("provider_models_panel.neu")})` : ""}`
-            + `${v.disabled ? ` (${v.disabled} ${tr("provider_models_panel.deaktiviert")})` : ""}`);
-      flash(parts.length ? parts.join(" · ") : tr("provider_models_panel.keine_tokens"));
+        v.error ? `${label}: ${tr("common.error")} (${v.error})`
+          : `${label}: ${v.total ?? 0}${v.added ? ` (+${v.added} ${tr("provider_models_panel.new")})` : ""}`
+            + `${v.disabled ? ` (${v.disabled} ${tr("provider_models_panel.switched_off")})` : ""}`);
+      flash(parts.length ? parts.join(" · ") : tr("provider_models_panel.no_provider_tokens_stored"));
       setErr(""); inv();
     },
     onError: fail,
@@ -94,16 +94,16 @@ export default function ProviderModelsPanel() {
 
   return (
     <div className="space-y-4">
-      <Area hint={tr("provider_models_panel.einleitung")} tools={<>
+      <Area hint={tr("provider_models_panel.which_provider_serves_which")} tools={<>
         <div className="flex shrink-0 flex-wrap gap-2">
           <button onClick={() => fetch.mutate()} disabled={fetch.isPending}
             className={BUTTON.secondary}>
-            {fetch.isPending ? tr("common.laedt") : `↻ ${tr("provider_models_panel.modelle_abrufen")}`}
+            {fetch.isPending ? tr("common.loading") : `↻ ${tr("provider_models_panel.fetch_models")}`}
           </button>
           <button onClick={() => prices.mutate()} disabled={prices.isPending}
-            title={tr("provider_models_panel.preise_aus_dem_offenen_katalog_models_de")}
+            title={tr("provider_models_panel.take_prices_from_the_open_catalog_models_dev")}
             className={BUTTON.secondary}>
-            {prices.isPending ? tr("common.laedt") : `💲 ${tr("provider_models_panel.preise")} (models.dev)`}
+            {prices.isPending ? tr("common.loading") : `💲 ${tr("provider_models_panel.prices")} (models.dev)`}
           </button>
         </div>
       </>}>
@@ -118,12 +118,12 @@ export default function ProviderModelsPanel() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs uppercase text-muted">
-                  <th className="py-2">{tr("provider_models_panel.modell_id")}</th>
-                  <th>{tr("provider_models_panel.anzeigename")}</th>
+                  <th className="py-2">{tr("provider_models_panel.model_id")}</th>
+                  <th>{tr("provider_models_panel.display_name")}</th>
                   <th className="text-right">{tr("provider_models_panel.input")}</th>
                   <th className="text-right">{tr("provider_models_panel.output")}</th>
                   <th className="text-right">{tr("provider_models_panel.cache_read")}</th>
-                  <th className="text-right">{tr("provider_models_panel.kontext")}</th>
+                  <th className="text-right">{tr("provider_models_panel.context")}</th>
                   <th className="text-right">≈ t/s</th>
                   <th />
                 </tr>
@@ -141,9 +141,9 @@ export default function ProviderModelsPanel() {
                     <td className="py-1 text-right">
                       <div className="flex justify-end">
                         <Actions>
-                          <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+                          <IconButton icon={ICON.edit} title={tr("common.edit")}
                             onClick={() => { setErr(""); setDialog(m); }} />
-                          <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                          <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                             onClick={() => setDeleteModel(m)} />
                         </Actions>
                       </div>
@@ -157,7 +157,7 @@ export default function ProviderModelsPanel() {
       ))}
 
       {models && models.length === 0 && (
-        <Area><ListingEmpty>{tr("provider_models_panel.katalog_leer")}</ListingEmpty></Area>
+        <Area><ListingEmpty>{tr("provider_models_panel.catalog_empty_fetch_models")}</ListingEmpty></Area>
       )}
 
       {dialog && (
@@ -189,30 +189,30 @@ function ModelDialog({ model, error: error, runs: running, onClose, onSave }: {
       <Errorrow text={error} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <Field label={tr("provider_models_panel.anzeigename")}>
+          <Field label={tr("provider_models_panel.display_name")}>
             <input value={m.display_name} autoFocus className={INPUT_VALUE}
               onChange={(e) => setM({ ...m, display_name: e.target.value })} />
           </Field>
         </div>
-        <Field label={tr("provider_models_panel.input")} hint={tr("provider_models_panel.usd_je_1m")}>
+        <Field label={tr("provider_models_panel.input")} hint={tr("provider_models_panel.usd_per_1m_tokens")}>
           {numberField(m.price_input, (v) => setM({ ...m, price_input: v ?? 0 }), "0.01")}
         </Field>
-        <Field label={tr("provider_models_panel.output")} hint={tr("provider_models_panel.usd_je_1m")}>
+        <Field label={tr("provider_models_panel.output")} hint={tr("provider_models_panel.usd_per_1m_tokens")}>
           {numberField(m.price_output, (v) => setM({ ...m, price_output: v ?? 0 }), "0.01")}
         </Field>
-        <Field label={tr("provider_models_panel.cache_read")} hint={tr("provider_models_panel.usd_je_1m")}>
+        <Field label={tr("provider_models_panel.cache_read")} hint={tr("provider_models_panel.usd_per_1m_tokens")}>
           {numberField(m.price_cache_read, (v) => setM({ ...m, price_cache_read: v ?? 0 }), "0.01")}
         </Field>
-        <Field label={tr("provider_models_panel.kontext")}
-          hint={tr("provider_models_panel.maximales_kontextfenster_in_tokens")}>
+        <Field label={tr("provider_models_panel.context")}
+          hint={tr("provider_models_panel.maximum_context_window_in_tokens")}>
           {numberField(m.context_tokens, (v) => setM({ ...m, context_tokens: v }), "1024")}
         </Field>
-        <Field label="≈ t/s" hint={tr("provider_models_panel.gemessene_ausgabegeschwindigkeit_tokens_")}>
+        <Field label="≈ t/s" hint={tr("provider_models_panel.measured_output_speed_tokens_s")}>
           {numberField(m.speed_tps, (v) => setM({ ...m, speed_tps: v }), "1")}
         </Field>
         <label className="flex items-end gap-2 pb-1.5 text-sm text-ink">
           <input type="checkbox" checked={m.enabled} onChange={(e) => setM({ ...m, enabled: e.target.checked })} />
-          {tr("provider_models_panel.aktiv")}
+          {tr("provider_models_panel.active")}
         </label>
       </div>
     </Dialog>

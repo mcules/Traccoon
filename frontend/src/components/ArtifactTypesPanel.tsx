@@ -26,31 +26,31 @@ interface Kind {
 // The lists hold keys, not texts: they come into being while the module loads, and a tr()
 // at this place would freeze the language of the first call.
 const CATEGORY: [string, string][] = [
-  ["todo", "artifact_types_panel.kat_todo"],
-  ["in_progress", "artifact_types_panel.kat_in_progress"],
-  ["done", "artifact_types_panel.kat_done"],
+  ["todo", "artifact_types_panel.open"],
+  ["in_progress", "artifact_types_panel.progress"],
+  ["done", "artifact_types_panel.done"],
 ];
 
 const FIELDTYPE: [string, string][] = [
-  ["text", "artifact_types_panel.typ_text"],
-  ["number", "artifact_types_panel.typ_number"],
-  ["date", "artifact_types_panel.typ_date"],
-  ["boolean", "artifact_types_panel.typ_boolean"],
-  ["select", "artifact_types_panel.typ_select"],
+  ["text", "artifact_types_panel.text"],
+  ["number", "artifact_types_panel.number"],
+  ["date", "artifact_types_panel.date"],
+  ["boolean", "artifact_types_panel.yes_no"],
+  ["select", "artifact_types_panel.choice"],
 ];
 
 const ORIGIN: Record<string, string> = {
-  issue_type: "artifact_types_panel.herkunft_issue_type",
-  board_status: "artifact_types_panel.herkunft_board_status",
-  sprint: "artifact_types_panel.herkunft_sprint",
-  member: "artifact_types_panel.herkunft_member",
-  location: "artifact_types_panel.herkunft_location",
+  issue_type: "artifact_types_panel.issue_types_project",
+  board_status: "artifact_types_panel.board_columns_project",
+  sprint: "artifact_types_panel.sprints_board",
+  member: "artifact_types_panel.members_project",
+  location: "artifact_types_panel.locations",
 };
 
 const BACKING_LABEL: Record<string, string> = {
-  issue: "artifact_types_panel.backing_issue",
-  hardware_asset: "artifact_types_panel.backing_hardware",
-  generic: "artifact_types_panel.backing_generic",
+  issue: "artifact_types_panel.tickets_board_sprints_ai",
+  hardware_asset: "artifact_types_panel.hardware_inventory_procurement_chain",
+  generic: "artifact_types_panel.own_storage",
 };
 
 const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
@@ -80,7 +80,7 @@ export default function ArtifactTypesPanel() {
   });
 
   const inv = () => { qc.invalidateQueries({ queryKey: ["artifact-types"] }); };
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
   const ok = () => { setErr(""); inv(); };
 
   const create = useMutation({
@@ -95,7 +95,7 @@ export default function ArtifactTypesPanel() {
   // Ein Satz, ein Schlüssel: die Hervorhebungen fallen weg, weil sich Markup mitten im Satz
   // nicht mitübersetzen lässt (die Wortstellung ist anderswo eine andere).
   return (
-    <Area hint={tr("artifact_types_panel.einleitung")}>
+    <Area hint={tr("artifact_types_panel.artifact_starts_undefined_meaning")}>
       <Errorrow text={err} />
 
       <Listing>
@@ -107,7 +107,7 @@ export default function ArtifactTypesPanel() {
 
       <button onClick={() => { setErr(""); setNewDialog(true); }}
         className={BUTTON.primary}>
-        {ICON.fresh} {tr("artifact_types_panel.eigenes_artefakt_anlegen")}
+        {ICON.fresh} {tr("artifact_types_panel.create_own_artifact")}
       </button>
 
       {newDialog && (
@@ -117,7 +117,7 @@ export default function ArtifactTypesPanel() {
       )}
       {deleteKind && (
         <DeleteDialog was={deleteKind.name} runs={remove.isPending}
-          hint={tr("artifact_types_panel.loeschen_hinweis")}
+          hint={tr("artifact_types_panel.units_artifact_disappear")}
           onClose={() => setDeleteKind(null)} onDelete={() => remove.mutate(deleteKind.id)} />
       )}
     </Area>
@@ -133,9 +133,9 @@ function ArtifactDialog({ error: error, runs: running, onClose, onSave }: {
   const [icon, setIcon] = useState("📦");
 
   return (
-    <Dialog title={tr("artifact_types_panel.eigenes_artefakt_anlegen")} onClose={onClose}
+    <Dialog title={tr("artifact_types_panel.create_own_artifact")} onClose={onClose}
       foot={<DialogFoot onCancel={onClose} disabled={!key.trim() || !name.trim()} runs={running}
-        saveText={tr("common.anlegen")}
+        saveText={tr("common.create")}
         onSave={() => onSave({ key: key.trim(), name: name.trim(), icon })} />}>
       <Errorrow text={error} />
       <div className="space-y-3">
@@ -147,16 +147,16 @@ function ArtifactDialog({ error: error, runs: running, onClose, onSave }: {
             </Formfield>
           </div>
           <div className="flex-1">
-            <Formfield label={tr("artifact_types_panel.schluessel_vertrag")}>
+            <Formfield label={tr("artifact_types_panel.key_contract")}>
               <input value={key} autoFocus onChange={(e) => setKey(e.target.value)}
                 className={`${INPUT_VALUE} font-mono`} />
             </Formfield>
           </div>
         </div>
-        <Formfield label={tr("artifact_types_panel.name_vertrag")}>
+        <Formfield label={tr("artifact_types_panel.name_contract")}>
           <input value={name} onChange={(e) => setName(e.target.value)} className={INPUT_VALUE} />
         </Formfield>
-        <p className="text-[11px] text-muted">{tr("artifact_types_panel.eigenes_artefakt_hinweis")}</p>
+        <p className="text-[11px] text-muted">{tr("artifact_types_panel.gets_store_own_any")}</p>
       </div>
     </Dialog>
   );
@@ -176,26 +176,26 @@ function ArtifactKarte({ t: kind, onFail, onOk, onDelete }: {
           <span className="font-medium">{kind.name}</span>
           <span className="font-mono text-xs text-muted">{kind.key}</span>
           {kind.builtin && (
-            <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{tr("artifact_types_panel.eingebaut")}</span>
+            <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{tr("artifact_types_panel.built")}</span>
           )}
           {kind.fields.length > 0 && (
             <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
-              {tr("artifact_types_panel.felder_anzahl", { count: kind.fields.length })}
+              {tr("artifact_types_panel.count_fields", { count: kind.fields.length })}
             </span>
           )}
         </div>
         <Actions>
           <button onClick={() => setShowFields(!showFields)}
             className={BUTTON_SMALL.secondary}>
-            {showFields ? tr("artifact_types_panel.felder_ausblenden") : tr("artifact_types_panel.felder")}
+            {showFields ? tr("artifact_types_panel.hide_fields") : tr("artifact_types_panel.fields")}
           </button>
           {!kind.builtin && (
-            <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={onDelete} />
+            <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={onDelete} />
           )}
         </Actions>
       </div>
       <div className="mb-3 text-xs text-muted">
-        {kind.description} · {tr("artifact_types_panel.daten")}: {BACKING_LABEL[kind.backing] ? tr(BACKING_LABEL[kind.backing]) : kind.backing}
+        {kind.description} · {tr("artifact_types_panel.data")}: {BACKING_LABEL[kind.backing] ? tr(BACKING_LABEL[kind.backing]) : kind.backing}
       </div>
 
       <Fields t={kind} onFail={onFail} onOk={onOk} open={showFields} />
@@ -229,13 +229,13 @@ function Fields({ t: kind, onFail, onOk, open: open }: {
   if (!open) {
     return (
       <div className="mt-2 text-xs text-muted">
-        {kind.fields.map((f) => f.label).join(" · ") || tr("artifact_types_panel.keine_felder")}
+        {kind.fields.map((f) => f.label).join(" · ") || tr("artifact_types_panel.no_fields_yet")}
       </div>
     );
   }
   return (
     <div className="mt-3 border-t border-line pt-3">
-      <div className="mb-2 text-xs font-medium text-muted">{tr("artifact_types_panel.felder")}</div>
+      <div className="mb-2 text-xs font-medium text-muted">{tr("artifact_types_panel.fields")}</div>
 
       <div className="space-y-1">
         {kind.fields.map((f) => (
@@ -247,12 +247,12 @@ function Fields({ t: kind, onFail, onOk, open: open }: {
               <span className="text-xs text-muted">
                 {tr(FIELDTYPE.find(([k]) => k === f.kind)?.[1] || "")}
               </span>
-              {f.multi && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.mehrfach")}</span>}
-              {f.required && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.pflicht")}</span>}
-              {f.builtin && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.eingebaut")}</span>}
+              {f.multi && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.multi")}</span>}
+              {f.required && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.required")}</span>}
+              {f.builtin && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.built")}</span>}
               {f.options_source && (
                 <span className="text-xs text-muted">
-                  {tr("artifact_types_panel.werte_aus_projekt")} ({ORIGIN[f.options_source] ? tr(ORIGIN[f.options_source]) : f.options_source})
+                  {tr("artifact_types_panel.values_come_project")} ({ORIGIN[f.options_source] ? tr(ORIGIN[f.options_source]) : f.options_source})
                 </span>
               )}
               {!f.options_source && f.kind === "select" && f.options.length > 0 && (
@@ -262,21 +262,21 @@ function Fields({ t: kind, onFail, onOk, open: open }: {
               )}
             </div>
             <Actions>
-              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setDialog(f)} />
+              <IconButton icon={ICON.edit} title={tr("common.edit")} onClick={() => setDialog(f)} />
               {!f.builtin && (
-                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteField(f)} />
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteField(f)} />
               )}
             </Actions>
           </div>
         ))}
         {kind.fields.length === 0 && (
-          <div className="text-xs text-muted">{tr("artifact_types_panel.noch_keine_felder")}</div>
+          <div className="text-xs text-muted">{tr("artifact_types_panel.no_fields_yet_2")}</div>
         )}
       </div>
 
       <button onClick={() => setDialog({})}
         className={BUTTON_SMALL.secondary}>
-        {ICON.fresh} {tr("artifact_types_panel.feld_anlegen")}
+        {ICON.fresh} {tr("artifact_types_panel.new_field")}
       </button>
 
       {dialog && (
@@ -323,21 +323,21 @@ function FieldDialog({ field: field, runs: running, onClose, onCreate: onCreate,
   };
 
   return (
-    <Dialog title={field ? tr("artifact_types_panel.feld_bearbeiten") : tr("artifact_types_panel.feld_anlegen")}
+    <Dialog title={field ? tr("artifact_types_panel.edit_field") : tr("artifact_types_panel.new_field")}
       onClose={onClose}
       foot={<DialogFoot onCancel={onClose} runs={running}
         disabled={!label.trim() || (!field && !key.trim())}
-        saveText={field ? undefined : tr("common.anlegen")} onSave={save} />}>
+        saveText={field ? undefined : tr("common.create")} onSave={save} />}>
       <div className="space-y-3">
-        <Formfield label={tr("artifact_types_panel.schluessel_komponente")}
-          hint={field?.builtin ? tr("artifact_types_panel.eingebaut_hinweis", { column: field.source }) : undefined}>
+        <Formfield label={tr("artifact_types_panel.key_component")}
+          hint={field?.builtin ? tr("artifact_types_panel.built_writes_column_column", { column: field.source }) : undefined}>
           <input value={key} disabled={!!field} autoFocus={!field}
             onChange={(e) => setKey(e.target.value)} className={`${INPUT_VALUE} font-mono disabled:opacity-60`} />
         </Formfield>
-        <Formfield label={tr("artifact_types_panel.bezeichnung_komponente")}>
+        <Formfield label={tr("artifact_types_panel.label_component")}>
           <input value={label} autoFocus={!!field} onChange={(e) => setLabel(e.target.value)} className={INPUT_VALUE} />
         </Formfield>
-        <Formfield label={tr("artifact_types_panel.typ")}>
+        <Formfield label={tr("artifact_types_panel.type")}>
           <select value={kind} disabled={!!field?.builtin} onChange={(e) => setKind(e.target.value)}
             className={`${INPUT_VALUE} disabled:opacity-60`}>
             {FIELDTYPE.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
@@ -345,33 +345,33 @@ function FieldDialog({ field: field, runs: running, onClose, onCreate: onCreate,
         </Formfield>
         <div className="space-y-1.5">
           <label className="flex items-center gap-2 text-sm text-ink"
-            title={tr("artifact_types_panel.darf_ein_exemplar_mehrere_werte_gleichze")}>
+            title={tr("artifact_types_panel.may_one_item_carry_several_values_at_once")}>
             <input type="checkbox" checked={multi} disabled={!!field?.builtin}
               onChange={(e) => setMulti(e.target.checked)} />
-            {tr("artifact_types_panel.mehrfachauswahl")}
+            {tr("artifact_types_panel.multiple_values")}
           </label>
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
-            {tr("artifact_types_panel.pflicht")}
+            {tr("artifact_types_panel.required")}
           </label>
           {field && (
             <label className="flex items-center gap-2 text-sm text-ink"
-              title={tr("artifact_types_panel.abgeschaltete_felder_werden_nicht_mehr_a")}>
+              title={tr("artifact_types_panel.disabled_fields_are_no_longer_offered")}>
               <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-              {tr("artifact_types_panel.aktiv")}
+              {tr("artifact_types_panel.active")}
             </label>
           )}
         </div>
 
         {field && field.options_source && (
           <p className="text-xs text-muted">
-            {tr("artifact_types_panel.werte_aus_projekt")} ({ORIGIN[field.options_source] ? tr(ORIGIN[field.options_source]) : field.options_source})
-            — {tr("artifact_types_panel.nichts_zu_pflegen")}
+            {tr("artifact_types_panel.values_come_project")} ({ORIGIN[field.options_source] ? tr(ORIGIN[field.options_source]) : field.options_source})
+            — {tr("artifact_types_panel.nothing_maintain_here")}
           </p>
         )}
         {field && !field.options_source && field.kind === "select" && (
           <div className="border-t border-line pt-3">
-            <div className="mb-1 text-xs font-medium text-muted">{tr("artifact_types_panel.werte")}</div>
+            <div className="mb-1 text-xs font-medium text-muted">{tr("artifact_types_panel.values")}</div>
             <Valuelist field={field} onFail={onFail} onOk={onOk} />
           </div>
         )}
@@ -410,19 +410,19 @@ function Valuelist({ field: field, onFail, onOk }: {
             <>
               <select value={o.category || "in_progress"}
                 onChange={(e) => update.mutate({ id: o.id, category: e.target.value })}
-                title={tr("artifact_types_panel.board_kategorie")} className={`text-xs ${inp}`}>
+                title={tr("artifact_types_panel.board_category")} className={`text-xs ${inp}`}>
                 {CATEGORY.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
               </select>
               <IconButton icon={o.waiting ? "⏸" : "▷"} active={o.waiting}
-                title={tr(o.waiting ? "artifact_types_panel.wartet_auf_mensch" : "artifact_types_panel.laeuft_allein")}
+                title={tr(o.waiting ? "artifact_types_panel.waits_person" : "artifact_types_panel.runs_own")}
                 onClick={() => update.mutate({ id: o.id, waiting: !o.waiting })} />
             </>
           )}
           <IconButton icon={o.enabled ? "○" : "●"}
-            title={tr(o.enabled ? "artifact_types_panel.nicht_mehr_anbieten" : "artifact_types_panel.wieder_anbieten")}
+            title={tr(o.enabled ? "artifact_types_panel.stop_offering_stays_existing" : "artifact_types_panel.offer")}
             onClick={() => update.mutate({ id: o.id, enabled: !o.enabled })} />
           {!isStatus && (
-            <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+            <IconButton icon={ICON.remove} title={tr("common.delete")} danger
               onClick={() => remove.mutate(o.id)} />
           )}
         </div>
@@ -430,8 +430,8 @@ function Valuelist({ field: field, onFail, onOk }: {
       <div className="flex items-center gap-2">
         <input value={value} onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && value.trim() && create.mutate()}
-          placeholder={tr("artifact_types_panel.wert_enter")} className={`flex-1 text-sm ${inp}`} />
-        <IconButton icon={ICON.fresh} title={tr("common.anlegen")} disabled={!value.trim()}
+          placeholder={tr("artifact_types_panel.value_enter")} className={`flex-1 text-sm ${inp}`} />
+        <IconButton icon={ICON.fresh} title={tr("common.create")} disabled={!value.trim()}
           onClick={() => value.trim() && create.mutate()} />
       </div>
     </div>

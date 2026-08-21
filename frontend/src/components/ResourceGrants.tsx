@@ -64,12 +64,12 @@ export default function ResourceGrants({ project }: { project: Project }) {
   return (
     <div className="max-w-3xl">
       <p className="mb-3 text-xs text-muted">
-        {tr("resource_grants.einleitung")}
+        {tr("resource_grants.fine_grained_access_single")}
       </p>
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase text-muted">
-            <th className="py-2">{tr("resource_grants.nutzer")}</th><th>{tr("resource_grants.objekt")}</th><th>{tr("resource_grants.stufe")}</th><th>{tr("resource_grants.rekursiv")}</th><th></th>
+            <th className="py-2">{tr("resource_grants.users")}</th><th>{tr("resource_grants.object")}</th><th>{tr("resource_grants.level")}</th><th>{tr("resource_grants.recursive")}</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -82,13 +82,13 @@ export default function ResourceGrants({ project }: { project: Project }) {
               <td>{g.level}</td>
               <td>{g.resource_type === "location" ? (g.recursive ? "ja" : "nein") : "—"}</td>
               <td className="text-right">
-                <IconButton icon={ICON.remove} title={tr("resource_grants.entziehen")} danger
+                <IconButton icon={ICON.remove} title={tr("resource_grants.revoke")} danger
                   onClick={() => remove.mutate(g.id)} />
               </td>
             </tr>
           ))}
           {grants?.length === 0 && (
-            <tr><td colSpan={5} className="py-2 text-xs text-muted">{tr("resource_grants.keine_freigaben")}</td></tr>
+            <tr><td colSpan={5} className="py-2 text-xs text-muted">{tr("resource_grants.no_grants")}</td></tr>
           )}
         </tbody>
       </table>
@@ -96,7 +96,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
       <div className="mt-4 flex flex-wrap items-end gap-2">
         <label className="relative block text-xs text-muted">Nutzer
           <input value={uq} onChange={(e) => { setUq(e.target.value); setUid(""); }}
-            placeholder={tr("resource_grants.name_suchen")}
+            placeholder={tr("resource_grants.search_name")}
             className="mt-1 block w-44 rounded border border-line bg-surface px-2 py-1" />
           {uq.trim() && !uid && (
             <div className="absolute z-10 mt-1 max-h-48 w-44 overflow-auto rounded border border-line bg-surface">
@@ -108,7 +108,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
                 </button>
               ))}
               {userSearch.data?.length === 0 && (
-                <div className="px-2 py-1 text-xs text-muted">{tr("resource_grants.kein_treffer")}</div>
+                <div className="px-2 py-1 text-xs text-muted">{tr("resource_grants.no_match")}</div>
               )}
             </div>
           )}
@@ -116,14 +116,14 @@ export default function ResourceGrants({ project }: { project: Project }) {
         <label className="text-xs text-muted">Objektart
           <select value={rtype} onChange={(e) => { setRtype(e.target.value as "location" | "asset"); setRid(""); }}
             className="mt-1 block rounded border border-line bg-surface px-2 py-1">
-            <option value="location">{tr("resource_grants.ort")}</option>
-            <option value="asset">{tr("resource_grants.exemplar")}</option>
+            <option value="location">{tr("resource_grants.location")}</option>
+            <option value="asset">{tr("resource_grants.item")}</option>
           </select>
         </label>
         <label className="text-xs text-muted">Objekt
           <select value={rid} onChange={(e) => setRid(e.target.value)}
             className="mt-1 block w-48 rounded border border-line bg-surface px-2 py-1">
-            <option value="">{tr("resource_grants.auswaehlen")}</option>
+            <option value="">{tr("resource_grants.choose")}</option>
             {rtype === "location"
               ? locations.data?.map((l) => <option key={l.id} value={l.id}>{l.full_path}</option>)
               : assets.data?.map((a) => <option key={a.id} value={a.id}>{assetLabel(a)}</option>)}
@@ -138,7 +138,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
         {rtype === "location" && (
           <label className="flex items-center gap-1 text-xs text-muted">
             <input type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} />
-            {tr("resource_grants.auch_kind_orte")}
+            {tr("resource_grants.applies_child_locations_too")}
           </label>
         )}
         <button onClick={() => uid && rid && add.mutate()} className={BUTTON.primary}>

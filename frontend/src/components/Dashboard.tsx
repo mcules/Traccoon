@@ -18,7 +18,7 @@ export default function Dashboard({ project }: { project: Project }) {
     queryFn: () => api.get<ProjectCosts>(`/projects/${project.id}/costs`),
     refetchInterval: 8000,
   });
-  if (!data) return <div className="text-muted">{tr("dashboard.laedt")}</div>;
+  if (!data) return <div className="text-muted">{tr("dashboard.loading")}</div>;
 
   const t = data.tickets, r = data.runs;
   const cats: [string, number][] = Object.entries(t.by_category);
@@ -27,15 +27,15 @@ export default function Dashboard({ project }: { project: Project }) {
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Tile label={tr("dashboard.tickets")} value={t.total} />
-        <Tile label={tr("dashboard.wartet_auf_dich")} value={t.waiting_for_human}
+        <Tile label={tr("dashboard.waiting")} value={t.waiting_for_human}
           color={t.waiting_for_human ? "text-yellow-400" : undefined} />
-        <Tile label={tr("dashboard.laeuft_gerade")} value={t.working}
+        <Tile label={tr("dashboard.running_now")} value={t.working}
           color={t.working ? "text-sky-400" : undefined} />
-        <Tile label={tr("dashboard.erledigt_im_fenster", { days: data.window_days })} value={data.throughput.done_in_window}
+        <Tile label={tr("dashboard.done_days_d", { days: data.window_days })} value={data.throughput.done_in_window}
           color="text-green-400" />
       </div>
 
-      <Karte title={tr("dashboard.tickets_nach_status")}>
+      <Karte title={tr("dashboard.tickets_state")}>
         {t.total > 0 ? (
           <>
             <div className="flex h-3 overflow-hidden rounded">
@@ -58,25 +58,25 @@ export default function Dashboard({ project }: { project: Project }) {
       </Karte>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Karte title={tr("dashboard.agentenlaeufe", { days: data.window_days })}>
+        <Karte title={tr("dashboard.agent_runs_days_days", { days: data.window_days })}>
           {r.total > 0 ? (
             <div className="space-y-2 text-sm">
-              <Line label={tr("dashboard.laeufe_gesamt")} value={r.total} />
-              <Line label={tr("dashboard.erfolgsquote")}
+              <Line label={tr("dashboard.runs_total")} value={r.total} />
+              <Line label={tr("dashboard.success_rate")}
                 value={r.success_rate === null ? "—" : `${r.success_rate}%`}
                 color={r.success_rate === null ? "" : r.success_rate >= 66 ? "text-green-400"
                   : r.success_rate >= 33 ? "text-yellow-400" : "text-red-400"} />
-              <Line label={tr("dashboard.kosten")} value={`$${r.cost_usd.toFixed(4)}`} />
+              <Line label={tr("dashboard.costs")} value={`$${r.cost_usd.toFixed(4)}`} />
               <div className="border-t border-line pt-2 text-xs text-muted">
                 {Object.entries(r.by_status).map(([s, v]: any) => (
                   <span key={s} className="mr-3">{s}: <b className="text-ink">{v.count}</b></span>
                 ))}
               </div>
             </div>
-          ) : <Empty text={tr("dashboard.keine_laeufe")} />}
+          ) : <Empty text={tr("dashboard.no_runs_period_yet")} />}
         </Karte>
 
-        <Karte title={tr("dashboard.agenten_auslastung")}>
+        <Karte title={tr("dashboard.agent_load")}>
           {data.agents.length ? (
             <div className="space-y-2">
               {data.agents.map((a: any) => (
@@ -90,24 +90,24 @@ export default function Dashboard({ project }: { project: Project }) {
                 </div>
               ))}
             </div>
-          ) : <Empty text={tr("dashboard.keine_offenen_tickets")} />}
+          ) : <Empty text={tr("dashboard.no_agent_open_tickets")} />}
         </Karte>
       </div>
 
       {/* Ungegatet: wer ein Ticket gemergt hat, will wissen, ob es draußen ist — und ist nicht
           zwangsläufig Maintainer. Die volle Liste steht unter Einstellungen → Deployment. */}
-      <Karte title={tr("dashboard.letzte_deployments")}>
+      <Karte title={tr("dashboard.recent_deployments")}>
         <DeploymentsPanel projectId={project.id} variant="kompakt" limit={5} />
       </Karte>
 
       {costs && costs.by_model.length > 0 && (
-        <Karte title={tr("dashboard.kosten_nach_modell", { sum: costs.total_usd.toFixed(2) })}>
+        <Karte title={tr("dashboard.cost_model_total_sum", { sum: costs.total_usd.toFixed(2) })}>
           <div className="overflow-x-auto">
             <table className="hidden w-full text-sm sm:table">
               <thead>
                 <tr className="text-left text-xs text-muted">
-                  <th className="py-1 pr-3 font-medium">{tr("dashboard.modell")}</th>
-                  <th className="py-1 pr-3 text-right font-medium">{tr("dashboard.kosten")}</th>
+                  <th className="py-1 pr-3 font-medium">{tr("dashboard.model")}</th>
+                  <th className="py-1 pr-3 text-right font-medium">{tr("dashboard.costs")}</th>
                   <th className="py-1 pr-3 text-right font-medium">{tr("dashboard.in")}</th>
                   <th className="py-1 text-right font-medium">{tr("dashboard.out")}</th>
                 </tr>
@@ -168,5 +168,5 @@ function Line({ label, value: value, color }: { label: string; value: string | n
 }
 
 function Empty({ text }: { text?: string }) {
-  return <div className="text-xs text-muted">{text || tr("dashboard.keine_daten")}</div>;
+  return <div className="text-xs text-muted">{text || tr("dashboard.no_data_yet")}</div>;
 }

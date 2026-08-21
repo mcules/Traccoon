@@ -41,7 +41,7 @@ export default function AssetProcurement({
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
 
-  if (!steps) return <div className="text-xs text-muted">{tr("asset_procurement.laedt")}</div>;
+  if (!steps) return <div className="text-xs text-muted">{tr("asset_procurement.loading")}</div>;
   const nextOpen = steps.find((s) => s.status !== "DONE");
 
   return (
@@ -74,13 +74,13 @@ export default function AssetProcurement({
 
       {nextOpen ? (
         <div className="rounded border border-line bg-surface p-2">
-          <div className="mb-1 text-xs text-muted">{tr("asset_procurement.naechster_schritt")}: <b className="text-ink">{nextOpen.name}</b></div>
+          <div className="mb-1 text-xs text-muted">{tr("asset_procurement.next_step")}: <b className="text-ink">{nextOpen.name}</b></div>
           <div className="flex flex-wrap items-center gap-2">
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr("asset_procurement.notiz_optional")}
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr("asset_procurement.note_optional")}
               className="flex-1 rounded border border-line bg-card px-2 py-1 text-xs" />
             <select value={nextAssignee} onChange={(e) => setNextAssignee(e.target.value)}
-              className="rounded border border-line bg-card px-2 py-1 text-xs text-ink" title={tr("asset_procurement.uebergabe_an")}>
-              <option value="">{tr("asset_procurement.uebergabe_an_optional")}</option>
+              className="rounded border border-line bg-card px-2 py-1 text-xs text-ink" title={tr("asset_procurement.hand")}>
+              <option value="">{tr("asset_procurement.hand_optional")}</option>
               {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name || m.username}</option>)}
             </select>
             <button onClick={() => complete.mutate(nextOpen.id)}
@@ -88,7 +88,7 @@ export default function AssetProcurement({
           </div>
         </div>
       ) : (
-        <div className="text-xs text-green-400">{tr("asset_procurement.beschaffung_abgeschlossen")}</div>
+        <div className="text-xs text-green-400">{tr("asset_procurement.procurement_finished")}</div>
       )}
       {err && <div className="text-xs text-red-400">{err}</div>}
     </div>

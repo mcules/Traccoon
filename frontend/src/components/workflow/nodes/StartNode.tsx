@@ -16,10 +16,10 @@ export default function StartNode({ id, data, selected }: FlowNodeProps) {
       {/* Der Auslöser gehört auf die Karte — sonst sieht man einem Ablauf nicht an,
           wodurch er überhaupt startet. */}
       <div>{t?.event ? t.event
-        : t?.kind === "webhook" ? tr("start_config.aufruf_von_aussen_webhook")
-        : tr("start.manueller_start")}</div>
-      {t?.project_id && <div>{tr("start_node.nur_projekt", { id: t.project_id })}</div>}
-      {t?.filter && <div>{tr("start_node.mit_bedingung")}</div>}
+        : t?.kind === "webhook" ? tr("start_config.call_from_outside_webhook")
+        : tr("start.manual_start")}</div>
+      {t?.project_id && <div>{tr("start_node.project_id_only", { id: t.project_id })}</div>}
+      {t?.filter && <div>{tr("start_node.condition")}</div>}
       {(data.config.context_schema?.length ?? 0) > 0 && (
         <div>Kontext: {data.config.context_schema!.map((c) => c.key).join(", ")}</div>
       )}

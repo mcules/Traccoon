@@ -73,13 +73,13 @@ function BubbleChat({ messages, text, setText, send, boxRef }: ViewProps) {
             <div className="whitespace-pre-wrap">{m.content}</div>
           </div>
         ))}
-        {messages.length === 0 && <div className="text-sm text-muted">{tr("pm_chat.sag_dem_pm_was_zu_tun_ist_er_legt_ticket")}</div>}
+        {messages.length === 0 && <div className="text-sm text-muted">{tr("pm_chat.tell_the_pm_what_to_do_it_creates_tickets_and")}</div>}
       </div>
       <div className="flex gap-2 border-t border-line p-3">
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder={tr("pm_chat.nachricht_an_den_pm")} className="flex-1 rounded border border-line bg-surface px-3 py-2" />
-        <button onClick={send} className={BUTTON.primary}>{tr("pm_chat.senden")}</button>
+          placeholder={tr("pm_chat.message_to_the_pm")} className="flex-1 rounded border border-line bg-surface px-3 py-2" />
+        <button onClick={send} className={BUTTON.primary}>{tr("pm_chat.send")}</button>
       </div>
     </div>
   );
@@ -105,8 +105,8 @@ function CliChat({ messages, text, setText, send, boxRef, project }: ViewProps &
       <div ref={boxRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {messages.length === 0 && (
           <div style={{ color: T.dim }}>
-            <div><span style={{ color: T.accent }}>✻</span> {tr("pm_chat.willkommen_beim_projektmanager")}</div>
-            <div className="mt-1">{tr("pm_chat.sag_was_zu_tun_ist_er_legt_tickets_an_un")}</div>
+            <div><span style={{ color: T.accent }}>✻</span> {tr("pm_chat.welcome_project_manager")}</div>
+            <div className="mt-1">{tr("pm_chat.say_what_to_do_it_creates_tickets_and_delegat")}</div>
           </div>
         )}
         {messages.map((m, i) => {
@@ -142,7 +142,7 @@ function CliChat({ messages, text, setText, send, boxRef, project }: ViewProps &
         <span style={{ color: T.accent }}>&gt;</span>
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder={tr("pm_chat.nachricht_an_den_pm")}
+          placeholder={tr("pm_chat.message_to_the_pm")}
           className="flex-1 bg-transparent font-mono text-[13px] outline-none placeholder:opacity-50"
           style={{ color: T.ink }} />
         <span className="text-[11px]" style={{ color: T.dim }}>⏎ senden</span>

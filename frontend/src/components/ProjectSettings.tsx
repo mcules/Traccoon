@@ -30,16 +30,16 @@ const PROVIDER_LABEL: Record<string, string> = {
 type Tab = "general" | "members" | "agents" | "processes" | "board" | "fields" | "git"
   | "testenv" | "deployment" | "destinations";
 const TABS: [Tab, string, string][] = [
-  ["general", "project_settings.tab_allgemein", "\u{2699}\u{FE0F}"],
-  ["members", "project_settings.tab_mitglieder", "\u{1F465}"],
-  ["agents", "project_settings.tab_agenten", "\u{1F916}"],
-  ["processes", "project_settings.tab_prozesse", "\u{1F500}"],
+  ["general", "project_settings.general_2", "\u{2699}\u{FE0F}"],
+  ["members", "project_settings.members", "\u{1F465}"],
+  ["agents", "project_settings.agents", "\u{1F916}"],
+  ["processes", "project_settings.flows", "\u{1F500}"],
   ["board", "project_settings.tab_board", "\u{1F5C2}\u{FE0F}"],
-  ["fields", "project_settings.tab_felder", "\u{1F4DD}"],
+  ["fields", "project_settings.fields", "\u{1F4DD}"],
   ["git", "project_settings.tab_git", "\u{1F4C1}"],
-  ["testenv", "project_settings.tab_testumgebung", "\u{1F9EA}"],
+  ["testenv", "project_settings.test_environment", "\u{1F9EA}"],
   ["deployment", "project_settings.tab_deployment", "\u{1F680}"],
-  ["destinations", "project_settings.tab_ziele", "\u{1F3AF}"],
+  ["destinations", "project_settings.destinations", "\u{1F3AF}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -77,7 +77,7 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
   const nav = useNavigate();
   const delProject = async () => {
     try { await api.del(`/projects/${project.id}`); nav("/"); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.loeschen_fehlgeschlagen")); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.deleting_failed")); }
   };
   const saveInherit = async (v: boolean) => {
     setInheritMembers(v);
@@ -90,7 +90,7 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
 
   useEffect(() => { if (data) setS(data); }, [data]);
   useEffect(() => { setInheritMembers(project.inherit_members ?? true); }, [project.id, project.inherit_members]);
-  if (!s) return <div className="text-muted">{tr("project_settings.laedt")}</div>;
+  if (!s) return <div className="text-muted">{tr("project_settings.loading")}</div>;
 
   const set = (patch: Partial<Settings>) => setS({ ...s, ...patch });
   const flash = (t: string) => { setMsg(t); setErr(""); setTimeout(() => setMsg(""), 2500); };
@@ -113,7 +113,7 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
     }
     try {
       await api.put(`/projects/${project.id}/testenv-env`, { env });
-      setEnvText(""); await refetch(); flash(tr("project_settings.env_gespeichert"));
+      setEnvText(""); await refetch(); flash(tr("project_settings.environment_variables_saved_encrypted"));
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
   };
   const saveToken = async () => {
@@ -145,74 +145,74 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
           <Members project={project} />
           {s.has_hardware && (
             <div>
-              <h2 className="mb-1 text-sm font-semibold">{tr("project_settings.granulare_freigaben")}</h2>
-              <p className="mb-2 text-xs text-muted">{tr("project_settings.einzelne_orte_exemplare_fuer_jemanden_fr")}</p>
+              <h2 className="mb-1 text-sm font-semibold">{tr("project_settings.fine_grained_grants")}</h2>
+              <p className="mb-2 text-xs text-muted">{tr("project_settings.grant_single_locations_or_items_to_somebody_w")}</p>
               <ResourceGrants project={project} />
             </div>
           )}
         </div>
       )}
       {tab === "general" && (
-      <Section title={tr("project_settings.allgemein")}>
-        <Check label={tr("project_settings.projekt_hat_hardware")} hint={tr("project_settings.blendet_den_hardware_tab_katalog_exemplare_b")}
+      <Section title={tr("project_settings.general")}>
+        <Check label={tr("project_settings.project_hardware")} hint={tr("project_settings.shows_the_hardware_tab_catalog_items_procurem")}
           on={s.has_hardware} onChange={(v) => set({ has_hardware: v })} />
-        <Check label={tr("project_settings.betreutes_projekt")} hint={tr("project_settings.ergebnisse_gehen_erst_zur_abnahme_nicht_dire")}
+        <Check label={tr("project_settings.managed_project")} hint={tr("project_settings.results_go_to_review_first_instead_of_straigh")}
           on={s.managed} onChange={(v) => set({ managed: v })} />
-        <Check label="PM-Chat" hint={tr("project_settings.chat_tab_zum_delegieren_an_den_projektmanage")}
+        <Check label="PM-Chat" hint={tr("project_settings.chat_tab_for_delegating_to_the_project_manage")}
           on={s.pm_chat_enabled} onChange={(v) => set({ pm_chat_enabled: v })} />
-        <Check label={tr("project_settings.review_gate")} hint={tr("project_settings.ein_pruef_agent_liest_den_diff_bevor_abgenom")}
+        <Check label={tr("project_settings.review_gate")} hint={tr("project_settings.a_reviewing_agent_reads_the_diff_before_the_w")}
           on={s.review_enabled} onChange={(v) => set({ review_enabled: v })} />
-        <Check label={tr("project_settings.automatisch_fortsetzen")} hint={tr("project_settings.erschoepfte_laeufe_laufen_weiter_bis_die_obe")}
+        <Check label={tr("project_settings.continue_automatically")} hint={tr("project_settings.exhausted_runs_continue_until_the_limit_kicks")}
           on={s.auto_continue} onChange={(v) => set({ auto_continue: v })} />
-        <Check label={tr("project_settings.screenshots_erlauben")} hint={tr("project_settings.agenten_duerfen_die_testumgebung_ansehen")}
+        <Check label={tr("project_settings.allow_screenshots")} hint={tr("project_settings.agents_may_look_at_the_test_environment")}
           on={s.screenshot_enabled} onChange={(v) => set({ screenshot_enabled: v })} />
-        <Field label={tr("project_settings.pruefbefehl_verify_command")}
+        <Field label={tr("project_settings.check_command_verify_command")}
           hint={tr("project_settings.hint_verify")}
           value={s.verify_command} onChange={(v) => set({ verify_command: v })} />
-        <Field label={tr("project_settings.arbeitsverzeichnis")} hint={tr("project_settings.stack_ordner_auf_dem_host_fuer_deploy")}
+        <Field label={tr("project_settings.working_directory")} hint={tr("project_settings.stack_directory_on_the_host_for_deploying")}
           value={s.workspace_dir} onChange={(v) => set({ workspace_dir: v })} />
-        <Field label={tr("project_settings.vault_moc_pfad")} hint={tr("project_settings.obsidian_notiz_die_agenten_als_projektkontex")}
+        <Field label={tr("project_settings.vault_moc_path")} hint={tr("project_settings.vault_note_agents_read_as_project_context")}
           value={s.vault_moc_path} onChange={(v) => set({ vault_moc_path: v })} />
-        <Field label={tr("project_settings.zusaetzlicher_system_prompt")} textarea
+        <Field label={tr("project_settings.additional_system_prompt")} textarea
           hint={tr("project_settings.hint_system_prompt")}
           value={s.system_prompt} onChange={(v) => set({ system_prompt: v })} />
       </Section>
       )}
 
       {tab === "general" && project.parent_id != null && (
-        <Section title={tr("project_settings.vererbung")}>
-          <Check label={tr("project_settings.rechte_vom_uebergeordneten_projekt_ueber")}
-            hint={tr("project_settings.aus_mitglieder_des_eltern_projekts_sehen_die")}
+        <Section title={tr("project_settings.inheritance")}>
+          <Check label={tr("project_settings.inherit_permissions_from_the_parent_project")}
+            hint={tr("project_settings.off_members_of_the_parent_project_do_not_see")}
             on={inheritMembers} onChange={saveInherit} />
         </Section>
       )}
 
       {tab === "general" && project.my_role === "owner" && (
         <div className="rounded-lg border border-red-500/40 bg-card p-4">
-          <div className="mb-2 text-sm font-medium text-red-400">{tr("project_settings.gefahrenzone")}</div>
+          <div className="mb-2 text-sm font-medium text-red-400">{tr("project_settings.danger_zone")}</div>
           <p className="mb-2 text-xs text-muted">
-            {tr("project_settings.loeschen_warnung", { project: project.name, key: project.key })}
+            {tr("project_settings.delete_project_project_all", { project: project.name, key: project.key })}
           </p>
           <div className="flex items-center gap-2">
             <input value={delConfirm} onChange={(e) => setDelConfirm(e.target.value)} placeholder={project.key}
               className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
             <button onClick={delProject} disabled={delConfirm !== project.key}
               className={BUTTON.danger}>
-              {tr("project_settings.projekt_loeschen")}</button>
+              {tr("project_settings.delete_project")}</button>
           </div>
         </div>
       )}
 
       {tab === "agents" && (
         <div className="space-y-4">
-          <Section title={tr("project_settings.rollen_zuordnung")}>
-            <p className="text-xs text-muted">{tr("project_settings.welche_rolle_plant_bzw_fuehrt_aus_danach")}</p>
+          <Section title={tr("project_settings.role_mapping")}>
+            <p className="text-xs text-muted">{tr("project_settings.which_role_plans_and_which_executes_save_afte")}</p>
             <div className="grid grid-cols-2 gap-2">
-              <Select label={tr("project_settings.planender_agent")} value={s.plan_agent} onChange={(v) => set({ plan_agent: v })} />
-              <Select label={tr("project_settings.ausfuehrender_agent")} value={s.exec_agent} onChange={(v) => set({ exec_agent: v })} />
+              <Select label={tr("project_settings.planning_agent")} value={s.plan_agent} onChange={(v) => set({ plan_agent: v })} />
+              <Select label={tr("project_settings.execution_agent")} value={s.exec_agent} onChange={(v) => set({ exec_agent: v })} />
             </div>
             <div>
-              <label className="text-xs text-muted">{tr("project_settings.standard_subscription_ueberschreibt_dein")}</label>
+              <label className="text-xs text-muted">{tr("project_settings.default_subscription_overrides_your_personal")}</label>
               <select
                 value={s.default_provider && s.default_token_name ? `${s.default_provider}|${s.default_token_name}` : ""}
                 onChange={(e) => {
@@ -222,18 +222,18 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
                   set({ default_provider: v.slice(0, i), default_token_name: v.slice(i + 1) });
                 }}
                 className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 text-ink">
-                <option value="">{tr("project_settings.persoenlicher_default")}</option>
+                <option value="">{tr("project_settings.personal_default")}</option>
                 {myTokens?.map((t) => (
                   <option key={t.id} value={`${t.provider}|${t.name}`}>
-                    {PROVIDER_LABEL[t.provider] || t.provider} · {t.name}{t.is_default ? ` (${tr("project_settings.dein_standard")})` : ""}
+                    {PROVIDER_LABEL[t.provider] || t.provider} · {t.name}{t.is_default ? ` (${tr("project_settings.default")})` : ""}
                   </option>
                 ))}
               </select>
               <div className="mt-0.5 text-xs text-muted">
-                {tr("project_settings.subscription_hinweis")}
+                {tr("project_settings.which_subscription_token_project")}
               </div>
             </div>
-            <button onClick={save} className={BUTTON.primary}>{tr("project_settings.zuordnung_speichern")}</button>
+            <button onClick={save} className={BUTTON.primary}>{tr("project_settings.save_mapping")}</button>
             {msg && <span className="ml-2 text-sm text-green-400">{msg}</span>}
           </Section>
           <div className="rounded-lg border border-line bg-card p-4">
@@ -251,7 +251,7 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
         <div className="space-y-8">
           <SlotList project={project} />
           <div>
-            <h3 className="mb-2 text-sm font-semibold">{tr("project_view.eigene_prozesse")}</h3>
+            <h3 className="mb-2 text-sm font-semibold">{tr("project_view.own_flows")}</h3>
             <WorkflowList project={project} />
           </div>
         </div>
@@ -259,12 +259,12 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
 
       {tab === "git" && (
       <Section title={tr("project_settings.git")}>
-        <Check label={tr("project_settings.git_aktiv")} hint={tr("project_settings.agenten_arbeiten_im_repo_statt_nur_im_ticket")}
+        <Check label={tr("project_settings.git_enabled")} hint={tr("project_settings.agents_work_in_the_repository_not_only_in_the")}
           on={s.git_enabled} onChange={(v) => set({ git_enabled: v })} />
-        <Field label={tr("project_settings.repository")} hint={tr("project_settings.z_b_https_github_com_nutzer_repo_git")}
+        <Field label={tr("project_settings.repository")} hint={tr("project_settings.e_g_https_github_com_user_repo_git")}
           value={s.github_repo} onChange={(v) => set({ github_repo: v })} />
         <div className="grid grid-cols-2 gap-2">
-          <Field label={tr("project_settings.standard_branch_basis_ziel")}
+          <Field label={tr("project_settings.default_branch_base_and_target")}
             hint={tr("project_settings.hint_branch")}
             value={s.merge_target} onChange={(v) => set({ merge_target: v })} />
           <div>
@@ -277,34 +277,34 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
             </div>
           </div>
         </div>
-        <Check label={tr("project_settings.in_branches_arbeiten")}
-          hint={tr("project_settings.jedes_ticket_bekommt_einen_eigenen_branch_wo")}
+        <Check label={tr("project_settings.work_branches")}
+          hint={tr("project_settings.every_ticket_gets_its_own_branch_and_worktree")}
           on={s.work_in_branches} onChange={(v) => set({ work_in_branches: v })} />
-        <Check label={tr("project_settings.nach_dem_merge_pushen")} hint={tr("project_settings.ergebnis_landet_direkt_im_remote")}
+        <Check label={tr("project_settings.push_after_the_merge")} hint={tr("project_settings.the_result_lands_in_the_remote_directly")}
           on={s.push_after_merge} onChange={(v) => set({ push_after_merge: v })} />
-        <Check label={tr("project_settings.pull_request_statt_merge")}
+        <Check label={tr("project_settings.pull_request_instead_of_merge")}
           hint={tr("project_settings.hint_pr")}
           on={s.use_pull_request} onChange={(v) => set({ use_pull_request: v })} />
       </Section>
       )}
 
       {tab === "testenv" && (
-      <Section title={tr("project_settings.testumgebung")}>
-        <Check label={tr("project_settings.testumgebungs_schritt")}
-          hint={tr("project_settings.hint_testschritt")}
+      <Section title={tr("project_settings.test_environment_2")}>
+        <Check label={tr("project_settings.test_environment_step")}
+          hint={tr("project_settings.finished_work_lands_testing")}
           on={s.testenv_enabled} onChange={(v) => set({ testenv_enabled: v })} />
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-xs text-muted">{tr("project_settings.startart")}</label>
+            <label className="text-xs text-muted">{tr("project_settings.start_type")}</label>
             <select value={s.testenv_mode} onChange={(e) => set({ testenv_mode: e.target.value })}
               className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 text-ink">
               <option value="compose">compose.preview.yml</option>
-              <option value="dockerfile">{tr("project_settings.dockerfile_bauen")}</option>
+              <option value="dockerfile">{tr("project_settings.build_dockerfile")}</option>
             </select>
           </div>
           {s.testenv_mode === "dockerfile" && (
             <div>
-              <label className="text-xs text-muted">{tr("project_settings.port_im_container")}</label>
+              <label className="text-xs text-muted">{tr("project_settings.port_inside_container")}</label>
               <input type="number" value={s.testenv_container_port}
                 onChange={(e) => set({ testenv_container_port: +e.target.value })}
                 className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
@@ -312,28 +312,28 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
           )}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Field label={tr("project_settings.compose_datei")} hint={tr("project_settings.hint_relativ_worktree")}
+          <Field label={tr("project_settings.compose_file")} hint={tr("project_settings.relative_worktree")}
             value={s.testenv_compose_file} onChange={(v) => set({ testenv_compose_file: v })} />
-          <Field label={tr("project_settings.dockerfile")} hint={tr("project_settings.hint_nur_dockerfile")}
+          <Field label={tr("project_settings.dockerfile")} hint={tr("project_settings.only_dockerfile_mode")}
             value={s.testenv_dockerfile} onChange={(v) => set({ testenv_dockerfile: v })} />
         </div>
-        <Field label={tr("project_settings.url_vorlage")} hint={tr("project_settings.hint_url_vorlage")}
+        <Field label={tr("project_settings.url_template")} hint={tr("project_settings.placeholders_host_global_setting")}
           value={s.testenv_url_template} onChange={(v) => set({ testenv_url_template: v })} />
-        <Field label={tr("project_settings.vorbereitungsbefehle")} textarea
-          hint={tr("project_settings.laufen_im_worktree_vor_dem_bauen_eine_zeile_")}
+        <Field label={tr("project_settings.preparation_commands")} textarea
+          hint={tr("project_settings.run_inside_the_worktree_before_the_build_one")}
           value={s.testenv_prestart} onChange={(v) => set({ testenv_prestart: v })} />
         <Field label={tr("project_settings.demo_login_json")} hint={tr("project_settings.hint_demo_login")}
           value={s.testenv_demo_login} onChange={(v) => set({ testenv_demo_login: v })} />
         <div>
-          <label className="text-xs text-muted">{tr("project_settings.umgebungsvariablen")}
-            {s.testenv_env_set && <span className="ml-1 text-green-400">· {tr("project_settings.hinterlegt")}</span>}</label>
+          <label className="text-xs text-muted">{tr("project_settings.environment_variables")}
+            {s.testenv_env_set && <span className="ml-1 text-green-400">· {tr("project_settings.stored")}</span>}</label>
           <textarea value={envText} onChange={(e) => setEnvText(e.target.value)} rows={3}
             placeholder={"KEY=wert\nANDERER=wert"}
             className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 font-mono text-xs" />
           <div className="mt-1 flex items-center gap-2">
             <button onClick={saveEnv} className={BUTTON_SMALL.secondary}>
-              {tr("project_settings.verschluesselt_speichern")}</button>
-            <span className="text-xs text-muted">{tr("project_settings.wird_nach_dem_speichern_nicht_mehr_angez")}</span>
+              {tr("project_settings.save_encrypted")}</button>
+            <span className="text-xs text-muted">{tr("project_settings.not_shown_again_after_saving")}</span>
           </div>
         </div>
       </Section>
@@ -342,11 +342,11 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
       {tab === "deployment" && (
       <>
       <Section title={tr("project_settings.deployment")}>
-        <Check label={tr("project_settings.automatisch_deployen")} hint={tr("project_settings.hint_auto_deploy")}
+        <Check label={tr("project_settings.deploy_automatically")} hint={tr("project_settings.hint_auto_deploy")}
           on={s.auto_deploy} onChange={(v) => set({ auto_deploy: v })} />
         {s.auto_deploy && s.use_pull_request && (
           <div className="text-xs text-yellow-400">
-            {tr("project_settings.hinweis_pull_request")}
+            {tr("project_settings.note_pull_request_instead")}
           </div>
         )}
       </Section>
@@ -355,7 +355,7 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
           den Auto-Deploy-Schalter und die bisherigen Läufe im selben Blick haben.
           `workspace_dir` kommt aus den geladenen Einstellungen (nicht aus `project`), die
           Rolle aus dem Projekt — der Server prüft beides noch einmal. */}
-      <Section title={tr("project_settings.bisherige_deployments")}>
+      <Section title={tr("project_settings.past_deployments")}>
         <DeploymentsPanel projectId={project.id} variant="voll"
           fire={{
             stackDir: s.workspace_dir,
@@ -368,7 +368,7 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
 
       {showSave && (
         <div className="mt-4 flex items-center gap-3">
-          <button onClick={save} className={BUTTON.primary}>{tr("project_settings.speichern")}</button>
+          <button onClick={save} className={BUTTON.primary}>{tr("project_settings.save")}</button>
           {msg && <span className="text-sm text-green-400">{msg}</span>}
           {err && <span className="text-sm text-red-400">{err}</span>}
         </div>

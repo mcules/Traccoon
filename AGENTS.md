@@ -59,7 +59,7 @@ tabs of the same page had grown five answers to the same question.
 ## Building and checking
 
 - `check` runs inside the worktree and has to be green before you report done.
-- `npm run check:fehlertexte` (in `frontend/`) says whether every error key exists in both
+- `npm run check:errortexts` (in `frontend/`) says whether every error key exists in both
   catalogs.
 - No manual deploy: this project has no stack directory of its own, the deployer rejects the
   request. Changes go live through review and merge.

@@ -32,16 +32,16 @@ export default function TimerConfig({
             onChange={(e) => set({ unit: e.target.value })}
             className={`mt-1 ${inp}`}
           >
-            <option value="s">{tr("timer_config.sekunden")}</option>
-            <option value="m">{tr("timer_config.minuten")}</option>
-            <option value="h">{tr("timer_config.stunden")}</option>
-            <option value="t">{tr("timer_config.tage")}</option>
+            <option value="s">{tr("timer_config.seconds")}</option>
+            <option value="m">{tr("timer_config.minutes")}</option>
+            <option value="h">{tr("timer_config.hours")}</option>
+            <option value="t">{tr("timer_config.days")}</option>
           </select>
         </label>
       </div>
 
       <label className="block text-xs font-medium text-muted">
-        {tr("timer.bis_zeitpunkt")}
+        {tr("timer.until_point_time")}
         <input
           value={(config.to as string) || ""}
           onChange={(e) => set({ to: e.target.value.trim() })}
@@ -49,7 +49,7 @@ export default function TimerConfig({
           className={`mt-1 font-mono ${inp}`}
         />
         <span className="mt-1 block text-[11px] text-muted">
-          {tr("timer.hinweis")}
+          {tr("timer.templates_allowed_time_passed")}
         </span>
       </label>
     </div>

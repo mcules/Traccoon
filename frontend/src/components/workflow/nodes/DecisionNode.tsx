@@ -21,7 +21,7 @@ export default function DecisionNode({ id, data, selected }: FlowNodeProps) {
       from={!!data.config.disabled}
       sources={sources}
     >
-      {branches.length === 0 && <div>{tr("decision_node.keine_zweige")}</div>}
+      {branches.length === 0 && <div>{tr("decision_node.no_branches_defined")}</div>}
     </BaseNode>
   );
 }

@@ -33,15 +33,15 @@ export type NavEntry = {
 
 export function primaryNavigation(isAdmin: boolean, plugins: NavEntry[] = []): NavEntry[] {
   return [
-    { key: "projekte", label: tr("layout.projekte"), icon: "🗂️", to: "/" },
+    { key: "projekte", label: tr("layout.projects"), icon: "🗂️", to: "/" },
     { key: "inbox", label: tr("layout.inbox"), icon: "📥", to: "/inbox", counter: "inbox" },
     { key: "mail", label: "Mail", icon: "✉️", to: "/mail", counter: "mail" },
-    { key: "buero", label: tr("layout.buero_2"), icon: "🏢", to: "/office" },
-    { key: "prozesse", label: tr("layout.prozesse"), icon: "🔀", to: "/processes" },
+    { key: "buero", label: tr("layout.office"), icon: "🏢", to: "/office" },
+    { key: "prozesse", label: tr("layout.flows"), icon: "🔀", to: "/processes" },
     // Plugins stehen vor den Einstellungen: Sie sind Bereiche wie die anderen, und die
     // Einstellungen sollen der letzte Punkt vor der Verwaltung bleiben.
     ...plugins,
-    { key: "einstellungen", label: tr("layout.einstellungen"), icon: "⚙️", to: "/settings" },
+    { key: "einstellungen", label: tr("layout.settings"), icon: "⚙️", to: "/settings" },
     ...(isAdmin ? [{ key: "admin", label: tr("layout.admin"), icon: "🛠️", to: "/admin" }] : []),
   ];
 }

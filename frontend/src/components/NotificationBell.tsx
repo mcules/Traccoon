@@ -57,7 +57,7 @@ export default function NotificationBell() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} title={tr("notification_bell.benachrichtigungen")}
+      <button onClick={() => setOpen(!open)} title={tr("notification_bell.notifications")}
         className="relative flex h-10 w-10 items-center justify-center text-muted hover:text-ink md:h-8 md:w-8">
         🔔
         {(count?.count || 0) > 0 && (
@@ -72,13 +72,13 @@ export default function NotificationBell() {
         <div className="absolute right-0 top-8 z-30 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-lg">
           <div className="mb-2 flex items-center justify-between gap-2 px-1">
             <span className="text-xs font-medium text-muted">
-              {all ? tr("notification_bell.verlauf") : tr("notification_bell.offen")}
+              {all ? tr("notification_bell.history") : tr("notification_bell.open")}
             </span>
             <div className="flex items-center gap-2">
               <button onClick={() => setAll((v) => !v)} className={BUTTON_TEXT.secondary}>
-                {all ? tr("notification_bell.nur_offene") : tr("notification_bell.alle_zeigen")}
+                {all ? tr("notification_bell.open_only") : tr("notification_bell.show_all")}
               </button>
-              <button onClick={readAll} className="text-xs text-brand">{tr("notification_bell.alle_gelesen")}</button>
+              <button onClick={readAll} className="text-xs text-brand">{tr("notification_bell.mark_all_read")}</button>
             </div>
           </div>
           {list?.map((n) => {
@@ -88,7 +88,7 @@ export default function NotificationBell() {
                 <div className="flex items-start gap-1.5">
                   <span className="flex-1 font-medium">{n.title}</span>
                   {/* Went out somewhere else and still standing here: this one is waiting. */}
-                  {n.sent && !all && <span className="shrink-0 text-[11px] text-amber-400">{tr("notification_bell.wartet")}</span>}
+                  {n.sent && !all && <span className="shrink-0 text-[11px] text-amber-400">{tr("notification_bell.waiting")}</span>}
                 </div>
                 {n.body && <div className="line-clamp-3 text-xs text-muted">{n.body}</div>}
               </>
@@ -103,7 +103,7 @@ export default function NotificationBell() {
           })}
           {list?.length === 0 && (
             <div className="px-1 text-xs text-muted">
-              {all ? tr("notification_bell.nichts_neues") : tr("notification_bell.nichts_offen")}
+              {all ? tr("notification_bell.nothing_new") : tr("notification_bell.nothing_open")}
             </div>
           )}
         </div>

@@ -18,9 +18,9 @@ import {
 /** Wofür ein Recht steht, in einem Satz. Unbekannte zeigt die Liste roh — besser der nackte
  *  Bezeichner als eine erfundene Beschreibung. */
 const RIGHT_TEXT: Record<string, string> = {
-  "series:number": "plugins.recht_series_number",
-  "series:location": "plugins.recht_series_location",
-  "series:text": "plugins.recht_series_text",
+  "series:number": "plugins.read_metric_series_values",
+  "series:location": "plugins.read_location_series_points",
+  "series:text": "plugins.read_storages_entries",
 };
 
 export default function PluginsPanel() {
@@ -35,7 +35,7 @@ export default function PluginsPanel() {
   // Beide Listen erneuern: Die Verwaltung sieht alles, die Bereichsschiene nur das
   // Freigegebene — nach einem Häkchen muss auch sie sich rühren.
   const inv = () => qc.invalidateQueries({ queryKey: ["plugins"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const upload = useMutation({
     mutationFn: (file: File) => pluginApi.upload(file),
@@ -51,7 +51,7 @@ export default function PluginsPanel() {
   });
 
   return (
-    <Area title={tr("plugins.titel")} hint={tr("plugins.einleitung")} tools={
+    <Area title={tr("plugins.plugins")} hint={tr("plugins.self_contained_views_installed")} tools={
       <>
         <input ref={fileField} type="file" accept=".zip" className="hidden"
           onChange={(e) => {
@@ -60,7 +60,7 @@ export default function PluginsPanel() {
             e.target.value = "";
           }} />
         <Button variant="primary" runs={upload.isPending}
-          onClick={() => fileField.current?.click()}>{tr("plugins.hochladen")}</Button>
+          onClick={() => fileField.current?.click()}>{tr("plugins.install_zip")}</Button>
       </>
     }>
       <Errorrow text={err} />
@@ -72,14 +72,14 @@ export default function PluginsPanel() {
                 <span className="text-lg leading-none">{p.icon || "\u{1F9E9}"}</span>
                 <span className="font-medium text-ink">{p.name}</span>
                 <code className="font-mono text-xs text-muted">{p.slug} · {p.version}</code>
-                {!p.enabled && <Tag color="neutral">{tr("plugins.aus")}</Tag>}
+                {!p.enabled && <Tag color="neutral">{tr("plugins.switched_off")}</Tag>}
                 <div className="flex-1" />
                 <Actions>
                   <Button small variant={p.enabled ? "secondary" : "confirm"}
                     onClick={() => rights.mutate({ slug: p.slug, body: { enabled: !p.enabled } })}>
-                    {p.enabled ? tr("plugins.abschalten") : tr("plugins.einschalten")}
+                    {p.enabled ? tr("plugins.switch_off") : tr("plugins.switch")}
                   </Button>
-                  <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                  <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                     onClick={() => setDeleteTarget(p)} />
                 </Actions>
               </div>
@@ -88,17 +88,17 @@ export default function PluginsPanel() {
                 rights.mutate({ slug: p.slug, body: { reads_granted: listing } })} />
               {(p.allowed_hosts || []).length > 0 && (
                 <div className="text-xs text-muted">
-                  {tr("plugins.fremde_quellen")}: {p.allowed_hosts.join(", ")}
+                  {tr("plugins.may_fetch")}: {p.allowed_hosts.join(", ")}
                 </div>
               )}
             </div>
           </ListenLine>
         ))}
-        {plugins?.length === 0 && <ListingEmpty>{tr("plugins.keine")}</ListingEmpty>}
+        {plugins?.length === 0 && <ListingEmpty>{tr("plugins.no_plugin_installed_yet")}</ListingEmpty>}
       </Listing>
 
       {deleteTarget && (
-        <DeleteDialog was={deleteTarget.name} hint={tr("plugins.loeschen_hinweis")}
+        <DeleteDialog was={deleteTarget.name} hint={tr("plugins.plugin_s_files_own")}
           runs={remove.isPending}
           onClose={() => setDeleteTarget(null)}
           onDelete={() => remove.mutate(deleteTarget.slug)} />
@@ -113,7 +113,7 @@ function Rights({ plugin, onSet: onSet }: {
 }) {
   const requested = plugin.reads || [];
   if (requested.length === 0) {
-    return <div className="text-xs text-muted">{tr("plugins.keine_rechte")}</div>;
+    return <div className="text-xs text-muted">{tr("plugins.asks_no_traccoon_data")}</div>;
   }
   const allowed = plugin.reads_granted || [];
   const toggle = (right: string) =>
@@ -121,7 +121,7 @@ function Rights({ plugin, onSet: onSet }: {
 
   return (
     <div className="space-y-1">
-      <div className="text-xs text-muted">{tr("plugins.rechte")}</div>
+      <div className="text-xs text-muted">{tr("plugins.requested_rights")}</div>
       {requested.map((right) => (
         <label key={right} className="flex cursor-pointer items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={allowed.includes(right)}

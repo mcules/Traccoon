@@ -50,7 +50,7 @@ export default function LoopConfig({
 
       <div className="flex gap-2">
         <label className="flex-1 text-xs font-medium text-muted">
-          {tr("loop_config.element_heisst")}
+          {tr("loop_config.item_called")}
           <input
             value={(config.element as string) || ""}
             onChange={(e) => set({ element: e.target.value.trim() })}
@@ -59,7 +59,7 @@ export default function LoopConfig({
           />
         </label>
         <label className="flex-1 text-xs font-medium text-muted">
-          {tr("loop_config.zaehler_heisst")}
+          {tr("loop_config.counter_called")}
           <input
             value={(config.index as string) || ""}
             onChange={(e) => set({ index: e.target.value.trim() })}
@@ -83,7 +83,7 @@ export default function LoopConfig({
       </label>
 
       <label className="block text-xs font-medium text-muted">
-        {tr("loop_config.hoechstens_durchlaeufe")}
+        {tr("loop_config.most_passes")}
         <input
           type="number"
           min={1}

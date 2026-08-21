@@ -9,11 +9,11 @@ type Status = { steps: Step[]; ready: boolean; projects: number; dismissed: bool
 
 /** Target place per step; otherwise nobody knows where to click. */
 const TARGET: Record<string, { to: string; label: string }> = {
-  claude_token: { to: "/settings", label: "onboarding.ziel_tresor" },
-  project: { to: "/", label: "onboarding.ziel_projekt_anlegen" },
-  git: { to: "/", label: "onboarding.ziel_projekt_oeffnen" },
-  verify: { to: "/", label: "onboarding.ziel_projekt_oeffnen" },
-  telegram: { to: "/settings", label: "onboarding.ziel_einstellungen" },
+  claude_token: { to: "/settings", label: "onboarding.secret_vault" },
+  project: { to: "/", label: "onboarding.create_project" },
+  git: { to: "/", label: "onboarding.open_project" },
+  verify: { to: "/", label: "onboarding.open_project" },
+  telegram: { to: "/settings", label: "onboarding.settings" },
 };
 
 export default function Onboarding() {
@@ -38,13 +38,13 @@ export default function Onboarding() {
       <div className="mb-1 flex items-start gap-3">
         <div className="flex-1">
           <div className="font-medium">
-            {tr(data.ready ? "onboarding.fast_fertig" : "onboarding.einrichtung")}
+            {tr(data.ready ? "onboarding.almost_set_up" : "onboarding.setup_what_agents_need")}
           </div>
           <p className="mt-0.5 text-xs text-muted">
-            {tr(data.ready ? "onboarding.rest_optional" : "onboarding.pflicht_offen")}
+            {tr(data.ready ? "onboarding.rest_optional" : "onboarding.while_required_steps_open")}
           </p>
         </div>
-        <button onClick={dismiss} className={BUTTON_TEXT.secondary}>{tr("onboarding.ausblenden")}</button>
+        <button onClick={dismiss} className={BUTTON_TEXT.secondary}>{tr("onboarding.hide")}</button>
       </div>
 
       <div className="mt-3 space-y-2">

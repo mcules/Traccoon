@@ -81,7 +81,7 @@ export default function WebhooksPanel() {
   const [deleteHook, setDeleteHook] = useState<any | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["webhooks"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const save = useMutation({
     mutationFn: ({ id, body }: { id: number | null; body: any }) =>
@@ -96,7 +96,7 @@ export default function WebhooksPanel() {
     onSuccess: () => { setDeleteHook(null); inv(); }, onError: fail });
 
   return (
-    <Area hint={tr("webhooks_panel.einleitung")}>
+    <Area hint={tr("webhooks_panel.webhooks_address_carries_guid")}>
       <Errorrow text={err} />
       <Listing className="mb-4">
         {hooks?.map((w) => (
@@ -104,7 +104,7 @@ export default function WebhooksPanel() {
             <div className="flex items-center gap-2">
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span className="font-medium">{w.route}</span><span className="text-muted">{w.mode}</span>
-                {!w.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("webhooks_panel.aus")}</span>}
+                {!w.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("webhooks_panel.off")}</span>}
                 {w.secret_set && <span className="text-xs" title={tr("webhooks_panel.secret")}>🔒</span>}
                 {w.agent && <span className="rounded bg-surface px-1 text-xs">→ {w.agent}</span>}
                 {w.classify_agent && <span className="rounded bg-surface px-1 text-xs">🔒 {w.classify_agent}</span>}
@@ -117,26 +117,26 @@ export default function WebhooksPanel() {
               </div>
               <Actions>
                 <IconButton icon={w.enabled ? "⏸" : "⏵"} onClick={() => toggle.mutate(w)}
-                  title={tr(w.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
-                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+                  title={tr(w.enabled ? "jobs_panel.switch_off" : "jobs_panel.switch")} />
+                <IconButton icon={ICON.edit} title={tr("common.edit")}
                   onClick={() => { setErr(""); setDialog(w); }} />
-                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteHook(w)} />
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteHook(w)} />
               </Actions>
             </div>
             <div className="mt-1 flex items-center gap-2">
               <code className="min-w-0 flex-1 truncate rounded bg-surface px-1.5 py-0.5 text-xs">
                 {location.origin}/api/hooks/{w.public_id}
               </code>
-              <IconButton icon={ICON.copy} title={tr("webhooks_panel.url_kopieren")}
+              <IconButton icon={ICON.copy} title={tr("webhooks_panel.copy_url")}
                 onClick={() => navigator.clipboard?.writeText(`${location.origin}/api/hooks/${w.public_id}`)} />
             </div>
           </ListenLine>
         ))}
-        {hooks?.length === 0 && <ListingEmpty>{tr("webhooks_panel.keine_webhooks")}</ListingEmpty>}
+        {hooks?.length === 0 && <ListingEmpty>{tr("webhooks_panel.no_webhooks")}</ListingEmpty>}
       </Listing>
       <button onClick={() => { setErr(""); setDialog({}); }}
         className={BUTTON.primary}>
-        {ICON.fresh} {tr("webhooks_panel.webhook_anlegen")}
+        {ICON.fresh} {tr("webhooks_panel.new_webhook")}
       </button>
 
       {dialog && (
@@ -145,7 +145,7 @@ export default function WebhooksPanel() {
           onSave={(body, id) => save.mutate({ id, body })} />
       )}
       {deleteHook && (
-        <DeleteDialog was={deleteHook.route} hint={tr("webhooks_panel.loeschen_hinweis")} runs={del.isPending}
+        <DeleteDialog was={deleteHook.route} hint={tr("webhooks_panel.calls_url_run_nothing")} runs={del.isPending}
           onClose={() => setDeleteHook(null)} onDelete={() => del.mutate(deleteHook.id)} />
       )}
     </Area>
@@ -196,27 +196,27 @@ function WebhookDialog({ hook, error: error, runs: running, onClose, onSave }: {
   });
 
   return (
-    <Dialog wide title={hook ? tr("webhooks_panel.webhook_bearbeiten") : tr("webhooks_panel.webhook_anlegen")}
+    <Dialog wide title={hook ? tr("webhooks_panel.edit_webhook") : tr("webhooks_panel.new_webhook")}
       onClose={onClose}
       foot={<DialogFoot onCancel={onClose} disabled={!f.route.trim()} runs={running}
         onSave={() => onSave(body(), hook ? hook.id : null)}
-        saveText={hook ? undefined : tr("common.anlegen")} />}>
+        saveText={hook ? undefined : tr("common.create")} />}>
       <Errorrow text={error} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label={tr("webhooks_panel.route")}>
           <input value={f.route} autoFocus onChange={(e) => setF({ ...f, route: e.target.value })} className={INPUT_VALUE} />
         </Field>
-        <Field label={tr("webhooks_panel.modus")}>
+        <Field label={tr("webhooks_panel.mode")}>
           <select value={f.mode} onChange={(e) => setF({ ...f, mode: e.target.value })} className={INPUT_VALUE}>
-            <option value="workflow">{tr("webhooks_panel.modus_ablauf")}</option>
-            <option value="event">{tr("webhooks_panel.modus_ereignis")}</option>
+            <option value="workflow">{tr("webhooks_panel.start_flow")}</option>
+            <option value="event">{tr("webhooks_panel.report_event")}</option>
           </select>
         </Field>
         <Field label={tr("webhooks_panel.secret")}
-          hint={hook ? tr("webhooks_panel.secret_unveraendert") : undefined}>
+          hint={hook ? tr("webhooks_panel.hmac_secret_empty_keeps") : undefined}>
           <input value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value })} className={INPUT_VALUE} />
         </Field>
-        <Field label={tr("webhooks_panel.projekt_optional")}>
+        <Field label={tr("webhooks_panel.project_optional")}>
           <select value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })} className={INPUT_VALUE}>
             <option value="">—</option>
             {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -224,7 +224,7 @@ function WebhookDialog({ hook, error: error, runs: running, onClose, onSave }: {
         </Field>
         {f.mode === "workflow" ? (
           <>
-            <Field label={tr("webhooks_panel.prozess_waehlen")}>
+            <Field label={tr("webhooks_panel.choose_process")}>
               <select value={f.workflow_definition_id}
                 onChange={(e) => setF({ ...f, workflow_definition_id: e.target.value })} className={INPUT_VALUE}>
                 <option value="">—</option>
@@ -233,19 +233,19 @@ function WebhookDialog({ hook, error: error, runs: running, onClose, onSave }: {
                 ))}
               </select>
             </Field>
-            <Field label={tr("webhooks_panel.antwort_abwarten")}>
+            <Field label={tr("webhooks_panel.wait_answer_seconds_0")}>
               <input type="number" min={0} max={120} value={f.response_timeout}
                 onChange={(e) => setF({ ...f, response_timeout: e.target.value })} className={INPUT_VALUE} />
             </Field>
             <div className="sm:col-span-2">
-              <Field label={tr("webhooks_panel.antwort_felder")} hint={tr("webhooks_panel.antwort_hinweis")}>
+              <Field label={tr("webhooks_panel.answer_fields")} hint={tr("webhooks_panel.call_waits_gets_back")}>
                 <input value={f.response_map} onChange={(e) => setF({ ...f, response_map: e.target.value })}
                   placeholder="status: antwort.status, text: assistent.output" className={INPUT_VALUE} />
               </Field>
             </div>
           </>
         ) : (
-          <Field label={tr("webhooks_panel.ereignisname")} hint={tr("webhooks_panel.ereignisname_hinweis")}>
+          <Field label={tr("webhooks_panel.event_name")} hint={tr("webhooks_panel.which_flows_listen_decided")}>
             <input value={f.event_name} onChange={(e) => setF({ ...f, event_name: e.target.value })}
               placeholder="mail.received" className={INPUT_VALUE} />
           </Field>
@@ -253,13 +253,13 @@ function WebhookDialog({ hook, error: error, runs: running, onClose, onSave }: {
         {/* Der Kontext gilt für beide Wege: Was der Auslöser weitergibt, hängt nicht daran,
             ob ein Ablauf startet oder ein Ereignis gemeldet wird. */}
         <div className="sm:col-span-2">
-          <Field label={tr("webhooks_panel.kontext_aus_nutzlast")} hint={tr("webhooks_panel.ohne_mapping")}>
+          <Field label={tr("webhooks_panel.context_payload")} hint={tr("webhooks_panel.without_mapping_whole_payload")}>
             <input value={f.context_map} onChange={(e) => setF({ ...f, context_map: e.target.value })}
-              placeholder={tr("webhooks_panel.kontext_mapping_asset_id_data_id_ort_dat")} className={INPUT_VALUE} />
+              placeholder={tr("webhooks_panel.context_mapping_asset_id_data_id_ort_data_loc")} className={INPUT_VALUE} />
           </Field>
         </div>
         <div className="sm:col-span-2">
-          <Field label={tr("webhooks_panel.kontext_fest")} hint={tr("webhooks_panel.kontext_fest_hinweis")}>
+          <Field label={tr("webhooks_panel.fixed_context_values")} hint={tr("webhooks_panel.one_assignment_per_line")}>
             <textarea value={f.context_fixed} onChange={(e) => setF({ ...f, context_fixed: e.target.value })}
               rows={3} placeholder={"quelle = Tracker {device.id}\nstumm = true"}
               className={`${INPUT_VALUE} font-mono text-xs`} />
@@ -268,27 +268,27 @@ function WebhookDialog({ hook, error: error, runs: running, onClose, onSave }: {
 
         <button type="button" onClick={() => setMore(!more)}
           className="text-left text-xs text-muted hover:text-ink sm:col-span-2">
-          {more ? "▾" : "▸"} {tr("webhooks_panel.filter_alarme")}
+          {more ? "▾" : "▸"} {tr("webhooks_panel.filters_alarms_summarising")}
         </button>
         {more && (
           <>
             <Field label={tr("webhooks_panel.event_header_z_b_x_github_event")}>
               <input value={f.event_header} onChange={(e) => setF({ ...f, event_header: e.target.value })} className={INPUT_VALUE} />
             </Field>
-            <Field label={tr("webhooks_panel.nur_diese_events_push_issues")}>
+            <Field label={tr("webhooks_panel.only_these_events_push_issues")}>
               <input value={f.event_filter} onChange={(e) => setF({ ...f, event_filter: e.target.value })} className={INPUT_VALUE} />
             </Field>
-            <Field label={tr("webhooks_panel.sofort_alarm_bei_outage_alert")}>
+            <Field label={tr("webhooks_panel.immediate_alert_on_outage_alert")}>
               <input value={f.alert_events} onChange={(e) => setF({ ...f, alert_events: e.target.value })} className={INPUT_VALUE} />
             </Field>
-            <Field label={tr("webhooks_panel.zusammenfassen_push_300_issues_60")}
-              hint={tr("webhooks_panel.cooldown_erste_zustellung_laeuft_durch_f")}>
+            <Field label={tr("webhooks_panel.summarize_push_300_issues_60")}
+              hint={tr("webhooks_panel.cooldown_the_first_delivery_goes_through_late")}>
               <input value={f.event_cooldowns} onChange={(e) => setF({ ...f, event_cooldowns: e.target.value })} className={INPUT_VALUE} />
             </Field>
-            <Field label={tr("webhooks_panel.gruppier_header_optional")}>
+            <Field label={tr("webhooks_panel.grouping_header_optional")}>
               <input value={f.event_key_header} onChange={(e) => setF({ ...f, event_key_header: e.target.value })} className={INPUT_VALUE} />
             </Field>
-            <Field label={tr("webhooks_panel.idempotenz_feld")} hint={tr("webhooks_panel.idempotenz_hinweis")}>
+            <Field label={tr("webhooks_panel.field_against_double_delivery")} hint={tr("webhooks_panel.field_payload_event_id")}>
               <input value={f.ref_field} onChange={(e) => setF({ ...f, ref_field: e.target.value })} className={INPUT_VALUE} />
             </Field>
           </>

@@ -45,7 +45,7 @@ export function KeyValueEditor({
             placeholder={valuePlaceholder}
             className={`flex-1 ${inp}`}
           />
-          <button onClick={() => remove(k)} className={BUTTON_TEXT.danger} title={tr("kv.entfernen")}>
+          <button onClick={() => remove(k)} className={BUTTON_TEXT.danger} title={tr("kv.remove")}>
             ✕
           </button>
         </div>

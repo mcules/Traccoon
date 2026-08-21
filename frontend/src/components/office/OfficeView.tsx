@@ -435,12 +435,12 @@ export default function OfficeView({
   // The window belongs in the heading, not in a footnote: the room shows an excerpt, and an
   // unnamed excerpt would look like "there was nothing more going on".
   const title = allMode
-    ? tr("office_view.alle_sitzungen_fenster", { hours: ALL_WINDOW_H })
+    ? tr("office_view.all_sessions_last_hours", { hours: ALL_WINDOW_H })
     : (chosen ? [chosen.issue_key, chosen.title].filter(Boolean).join(" · ") : undefined);
   // `error` is already taken by the destructuring above — this is the text shown, not the
   // error object itself.
   const errorText = error
-    ?? (sessions.error ? tr("office_view.sitzungen_nicht_ladbar", { error: (sessions.error as Error).message }) : undefined);
+    ?? (sessions.error ? tr("office_view.sessions_not_loadable_error", { error: (sessions.error as Error).message }) : undefined);
 
   // The watchdog of the kiosk page lives outside this component (it reloads the page, which is
   // not the business of a view). Through the mirror ref the effect stays tied to `fehler` and
@@ -478,12 +478,12 @@ export default function OfficeView({
           <select
             value={sidStr ?? ""}
             onChange={(e) => chooseSession(e.target.value)}
-            title={tr("office_view.welcher_raum")}
+            title={tr("office_view.which_room_shown_tabs")}
             className="max-w-[22rem] truncate rounded border border-line bg-surface px-2 py-1 text-ink"
           >
             {/* Erste Option und Vorgabe: der ganze Betrieb in einem Raum. */}
             {allPossible && (
-              <option value={ALL}>{tr("office_view.alle_sitzungen_option", { hours: ALL_WINDOW_H })}</option>
+              <option value={ALL}>{tr("office_view.all_sessions_last_hours_2", { hours: ALL_WINDOW_H })}</option>
             )}
             {listing.map((s) => (
               <option key={s.sid} value={s.sid}>
@@ -509,7 +509,7 @@ export default function OfficeView({
           type="button"
           onClick={() => setDockOpen((v) => !v)}
           aria-pressed={dockOpen}
-          title={tr("office_view.dock_umschalten")}
+          title={tr("office_view.show_hide_dock_inspector")}
           className={BUTTON_SMALL.secondary}
         >
           {dockOpen ? "▸ Dock ausblenden" : "◂ Dock einblenden"}
@@ -523,7 +523,7 @@ export default function OfficeView({
       <button
         type="button"
         onClick={() => setHelpOpen(true)}
-        title={tr("office_view.tastenkuerzel")}
+        title={tr("office_view.keyboard_shortcuts")}
         className={BUTTON_SMALL.secondary}
       >
         ? Tasten
@@ -573,7 +573,7 @@ export default function OfficeView({
         <button
           type="button"
           onClick={fullscreenToggle}
-          title={tr("office_view.vollbild")}
+          title={tr("office_view.turn_full_screen_off")}
           aria-label="Vollbild umschalten"
           className={"absolute right-3 top-3 z-10 rounded border border-line bg-card/80 px-2 py-1 "
             + "text-sm text-muted transition-opacity hover:border-brand hover:text-ink "
@@ -647,26 +647,26 @@ export default function OfficeView({
 /** The same table that stands in the header of this file, only where one looks for it. */
 function Help({ full, onClose }: { full: boolean; onClose: () => void }): JSX.Element {
   const lines: [string, string][] = [
-    ["?", tr("office_view.hilfe_umschalten")],
+    ["?", tr("office_view.show_hide_help")],
     ...(full ? ([
       ["1 2 3 4", "Dock: Chat, Agenten, Werkzeuge, Personalakte"],
-      ["B", tr("office_view.dock_taste")],
+      ["B", tr("office_view.show_hide_dock")],
     ] as [string, string][]) : []),
-    ["L", tr("buero.zurueck_zu_live")],
-    [tr("office_view.leertaste"), tr("office_view.wiedergabe_taste")],
-    ["← →", tr("office_view.pfeile")],
+    ["L", tr("office_room.back_live")],
+    [tr("office_view.space"), tr("office_view.pause_resume_replay")],
+    ["← →", tr("office_view.one_second_back_forward")],
     ["Esc", full
-      ? tr("office_view.esc_voll")
-      : tr("office_view.esc_reiter")],
-    ["Alt + ← ↑ → ↓", tr("office_view.schwenken")],
-    ["+ − 0", tr("office_view.zoomen")],
+      ? tr("office_view.help_dock_replay_selection")
+      : tr("office_view.close_help_replay_selection")],
+    ["Alt + ← ↑ → ↓", tr("office_view.pan_room_stage_needs")],
+    ["+ − 0", tr("office_view.zoom_reset_stage_needs")],
   ];
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label={tr("office_view.tastenkuerzel_titel")}
+      aria-label={tr("office_view.office_keyboard_shortcuts")}
       onClick={onClose}
     >
       <div
@@ -674,11 +674,11 @@ function Help({ full, onClose }: { full: boolean; onClose: () => void }): JSX.El
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-sm font-semibold">🏢 {tr("office_view.tastenkuerzel_titel")}</h2>
+          <h2 className="text-sm font-semibold">🏢 {tr("office_view.office_keyboard_shortcuts")}</h2>
           <div className="flex-1" />
           <button type="button" onClick={onClose} autoFocus
             className={BUTTON_SMALL.secondary}>
-            {tr("office_view.schliessen")}
+            {tr("office_view.close")}
           </button>
         </div>
         <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1.5 text-xs">
@@ -690,7 +690,7 @@ function Help({ full, onClose }: { full: boolean; onClose: () => void }): JSX.El
           ))}
         </dl>
         <p className="mt-3 text-[11px] text-muted">
-          {tr("office_view.textfelder")}
+          {tr("office_view.inside_text_fields_every")}
         </p>
       </div>
     </div>

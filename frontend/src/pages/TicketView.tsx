@@ -32,8 +32,8 @@ export default function TicketView() {
   // way back into the project is always one click away).
   usePageChrome(ticketKey ?? "Ticket", projectChromeTabs(project), undefined, "seite");
 
-  if (!project) return <div className="text-muted">{tr("ticket_view.projekt_nicht_gefunden")}</div>;
-  if (!meta) return <div className="text-muted">{tr("ticket_view.laedt")}</div>;
+  if (!project) return <div className="text-muted">{tr("ticket_view.project_not_found")}</div>;
+  if (!meta) return <div className="text-muted">{tr("ticket_view.loading")}</div>;
 
   return (
     <TicketDrawer

@@ -47,7 +47,7 @@ export default function NodeConfigPanel({
   defId?: number;
 }) {
   if (!node) {
-    return <div className="p-3 text-sm text-muted">{tr("node_config_panel.knoten_anklicken_um_ihn_zu_konfigurieren")}</div>;
+    return <div className="p-3 text-sm text-muted">{tr("node_config_panel.click_a_node_to_configure_it")}</div>;
   }
   const config = node.data.config;
   const set = (c: NodeConfig) => onChange(node.id, c);
@@ -62,7 +62,7 @@ export default function NodeConfigPanel({
           <button
             onClick={() => onDelete(node.id)}
             className={BUTTON_TEXT.danger}
-            title={tr("node_config_panel.knoten_loeschen")}
+            title={tr("node_config_panel.delete_node")}
           >
             🗑
           </button>
@@ -152,22 +152,22 @@ function Killswitch({ config, onChange }: {
             disabled: e.target.checked || undefined,
             disabled_mode: e.target.checked ? mode : undefined,
           })} />
-        {tr("abschalter.schalter")}
+        {tr("killswitch.switch_step_off")}
       </label>
       {from && (
         <>
           <label className="block text-[11px] font-medium text-muted">
-            {tr("abschalter.was_dann")}
+            {tr("killswitch.what_happen")}
             <select value={mode} className="mt-1 w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
               onChange={(e) => onChange({ ...config, disabled_mode: e.target.value as NodeConfig["disabled_mode"] })}>
-              <option value="skip">{tr("abschalter.ueberspringen")}</option>
-              <option value="abort">{tr("abschalter.abbrechen")}</option>
+              <option value="skip">{tr("killswitch.skip_continue")}</option>
+              <option value="abort">{tr("killswitch.end_flow_here")}</option>
             </select>
           </label>
           <p className="text-[11px] text-muted">
             {mode === "abort"
-              ? tr("abschalter.hinweis_abbrechen")
-              : tr("abschalter.hinweis_ueberspringen")}
+              ? tr("killswitch.runs_end_here_cancelled")
+              : tr("killswitch.step_does_nothing_flow")}
           </p>
         </>
       )}

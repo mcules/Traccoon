@@ -70,7 +70,7 @@ export function availableFields(
       if (depth > 4 || value === null || value === undefined) return;
       if (Array.isArray(value)) {
         take([{ path: path, type: "list",
-                description: tr("context_fields.eintraege_im_beispiel", { count: value.length }) }],
+                description: tr("context_fields.count_entries_sample", { count: value.length }) }],
              "Beispiel-Nutzlast");
         if (value.length) walk(value[0], `${path}.0`, depth + 1);
         return;
@@ -86,9 +86,9 @@ export function availableFields(
     };
     walk(probe, "", 0);
   }
-  if (ev && catalog.triggers[ev]) take(catalog.triggers[ev], tr("context_fields.ausloeser", { name: ev }));
+  if (ev && catalog.triggers[ev]) take(catalog.triggers[ev], tr("context_fields.trigger_name", { name: ev }));
   if (!ev && catalog.triggers["(Webhook/Job)"]) {
-    take(catalog.triggers["(Webhook/Job)"], tr("context_fields.ausloeser", { name: "Webhook/Job" }));
+    take(catalog.triggers["(Webhook/Job)"], tr("context_fields.trigger_name", { name: "Webhook/Job" }));
   }
 
   for (const n of nodes) {

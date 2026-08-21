@@ -9,7 +9,7 @@ export const PHASES: [string, string, string][] = [
   ["umsetzung", "Umsetzung", "34 197 94"],
   ["aufteilung", "Aufteilung", "236 72 153"],
   ["abnahme", "Abnahme", "234 179 8"],
-  ["stoerung", "phase.stoerungen", "239 68 68"],
+  ["stoerung", "phase.faults", "239 68 68"],
 ];
 
 /**

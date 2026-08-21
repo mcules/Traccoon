@@ -57,7 +57,7 @@ export default function ProjectFields({ project }: { project: Project }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        {tr("project_fields.einleitung")}
+        {tr("project_fields.artifact_gets_meaning_fields")}
       </p>
       <Errorrow text={err} />
 
@@ -111,8 +111,8 @@ function ArtifactFields({ t, projectId, onFail, onOk }: {
 
       {fixed.length > 0 && (
         <div className="mb-3 text-xs text-muted">
-          {tr("project_fields.gilt_ueberall")}: {fixed.map((f) => f.label).join(" · ")}
-          <span className="ml-1 text-[11px]">{tr("project_fields.hier_nicht_aenderbar")}</span>
+          {tr("project_fields.applies_everywhere")}: {fixed.map((f) => f.label).join(" · ")}
+          <span className="ml-1 text-[11px]">{tr("project_fields.not_editable_here")}</span>
         </div>
       )}
 
@@ -124,8 +124,8 @@ function ArtifactFields({ t, projectId, onFail, onOk }: {
               <span className="font-mono text-xs text-muted">{f.key}</span>
               <span className={f.enabled ? "" : "line-through"}>{f.label}</span>
               <span className="text-xs text-muted">{FIELDTYPE.find(([k]) => k === f.kind)?.[1]}</span>
-              {f.multi && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.mehrfach")}</span>}
-              {f.required && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.pflicht")}</span>}
+              {f.multi && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.multi")}</span>}
+              {f.required && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.required")}</span>}
               {f.kind === "select" && f.options.length > 0 && (
                 <span className="truncate text-xs text-muted">
                   {f.options.filter((o) => o.enabled).map((o) => o.label || o.value).join(" · ")}
@@ -133,19 +133,19 @@ function ArtifactFields({ t, projectId, onFail, onOk }: {
               )}
             </div>
             <Actions>
-              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setDialog(f)} />
-              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteField(f)} />
+              <IconButton icon={ICON.edit} title={tr("common.edit")} onClick={() => setDialog(f)} />
+              <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteField(f)} />
             </Actions>
           </div>
         ))}
         {own.length === 0 && (
-          <div className="text-xs text-muted">{tr("project_fields.noch_keine_eigenen_felder")}</div>
+          <div className="text-xs text-muted">{tr("project_fields.no_custom_fields_yet")}</div>
         )}
       </div>
 
       <button onClick={() => setDialog({})}
         className={BUTTON_SMALL.secondary}>
-        {ICON.fresh} {tr("artifact_types_panel.feld_anlegen")}
+        {ICON.fresh} {tr("artifact_types_panel.new_field")}
       </button>
 
       {dialog && (
@@ -178,48 +178,48 @@ function FieldDialog({ field: field, runs: running, onClose, onCreate: onCreate,
   const [enabled, setEnabled] = useState(field ? field.enabled : true);
 
   return (
-    <Dialog title={tr(field ? "artifact_types_panel.feld_bearbeiten" : "artifact_types_panel.feld_anlegen")}
+    <Dialog title={tr(field ? "artifact_types_panel.edit_field" : "artifact_types_panel.new_field")}
       onClose={onClose}
       foot={<DialogFoot onCancel={onClose} runs={running}
         disabled={!label.trim() || (!field && !key.trim())}
-        saveText={field ? undefined : tr("common.anlegen")}
+        saveText={field ? undefined : tr("common.create")}
         onSave={() => field
           ? onUpdate(field.id, { label, kind, multi, required, enabled })
           : onCreate({ key: key.trim(), label: label.trim(), kind, multi })} />}>
       <div className="space-y-3">
-        <Formfield label={tr("project_fields.schluessel_kunde")}>
+        <Formfield label={tr("project_fields.key_customer")}>
           <input value={key} disabled={!!field} autoFocus={!field} onChange={(e) => setKey(e.target.value)}
             className={`${INPUT_VALUE} font-mono disabled:opacity-60`} />
         </Formfield>
-        <Formfield label={tr("project_fields.bezeichnung_kunde")}>
+        <Formfield label={tr("project_fields.label_customer")}>
           <input value={label} autoFocus={!!field} onChange={(e) => setLabel(e.target.value)} className={INPUT_VALUE} />
         </Formfield>
-        <Formfield label={tr("artifact_types_panel.typ")}>
+        <Formfield label={tr("artifact_types_panel.type")}>
           <select value={kind} onChange={(e) => setKind(e.target.value)} className={INPUT_VALUE}>
             {FIELDTYPE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </Formfield>
         <div className="space-y-1.5">
           <label className="flex items-center gap-2 text-sm text-ink"
-            title={tr("project_fields.darf_ein_ticket_mehrere_werte_gleichzeit")}>
+            title={tr("project_fields.may_one_ticket_carry_several_values_at_once")}>
             <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} />
-            {tr("artifact_types_panel.mehrfachauswahl")}
+            {tr("artifact_types_panel.multiple_values")}
           </label>
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
-            {tr("artifact_types_panel.pflicht")}
+            {tr("artifact_types_panel.required")}
           </label>
           {field && (
             <label className="flex items-center gap-2 text-sm text-ink"
-              title={tr("project_fields.abgeschaltete_felder_werden_nicht_mehr_a")}>
+              title={tr("project_fields.disabled_fields_are_no_longer_offered")}>
               <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-              {tr("artifact_types_panel.aktiv")}
+              {tr("artifact_types_panel.active")}
             </label>
           )}
         </div>
         {field && field.kind === "select" && (
           <div className="border-t border-line pt-3">
-            <div className="mb-1 text-xs font-medium text-muted">{tr("project_fields.werte")}</div>
+            <div className="mb-1 text-xs font-medium text-muted">{tr("project_fields.values")}</div>
             <Valuelist field={field} onFail={onFail} onOk={onOk} />
           </div>
         )}
@@ -252,17 +252,17 @@ function Valuelist({ field: field, onFail, onOk }: {
         <div key={o.id} className="flex items-center gap-2 rounded border border-line px-2 py-1 text-sm">
           <span className={o.enabled ? "flex-1" : "flex-1 text-muted line-through"}>{o.label || o.value}</span>
           <IconButton icon={o.enabled ? "○" : "●"}
-            title={tr(o.enabled ? "project_fields.nicht_mehr_anbieten" : "artifact_types_panel.wieder_anbieten")}
+            title={tr(o.enabled ? "project_fields.stop_offering_stays_existing" : "artifact_types_panel.offer")}
             onClick={() => update.mutate({ id: o.id, enabled: !o.enabled })} />
-          <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+          <IconButton icon={ICON.remove} title={tr("common.delete")} danger
             onClick={() => remove.mutate(o.id)} />
         </div>
       ))}
       <div className="flex items-center gap-2">
         <input value={value} onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && value.trim() && create.mutate()}
-          placeholder={tr("project_fields.wert_enter")} className={`flex-1 text-sm ${inp}`} />
-        <IconButton icon={ICON.fresh} title={tr("common.anlegen")} disabled={!value.trim()}
+          placeholder={tr("project_fields.value_enter")} className={`flex-1 text-sm ${inp}`} />
+        <IconButton icon={ICON.fresh} title={tr("common.create")} disabled={!value.trim()}
           onClick={() => value.trim() && create.mutate()} />
       </div>
     </div>

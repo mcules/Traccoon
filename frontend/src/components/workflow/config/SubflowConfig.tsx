@@ -48,13 +48,13 @@ export default function SubflowConfig({
         Aufzurufender Ablauf
         <select value={value} onChange={(e) => set(e.target.value)} className={`mt-1 ${inp}`}>
           <option value="">— wählen —</option>
-          <optgroup label={tr("subflow_config.fest_benannte_ablaeufe_je_projekt_aufgel")}>
+          <optgroup label={tr("subflow_config.named_flows_resolved_per_project")}>
             {SLOTS.map((s) => (
               <option key={s} value={`slot:${s}`}>{tr(SLOT_LABELS[s])}</option>
             ))}
           </optgroup>
           {flows.length > 0 && (
-            <optgroup label={tr("subflow_config.eigene_ablaeufe_veroeffentlicht")}>
+            <optgroup label={tr("subflow_config.own_flows_published")}>
               {flows.map((d) => (
                 <option key={d.id} value={`def:${d.id}`}>{d.name}</option>
               ))}
@@ -69,11 +69,11 @@ export default function SubflowConfig({
           checked={config.inherit_context !== false}
           onChange={(e) => onChange({ ...config, inherit_context: e.target.checked })}
         />
-        {tr("subflow_config.kontext_weitergeben")}
+        {tr("subflow_config.pass_context")}
       </label>
 
       <p className="text-[11px] text-muted">
-        {tr("subflow_config.hinweis")}
+        {tr("subflow_config.named_flow_resolves_whatever")}
       </p>
     </div>
   );

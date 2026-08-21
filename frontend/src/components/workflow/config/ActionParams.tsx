@@ -107,7 +107,7 @@ export default function ActionParams({
   const selection = (f: FieldSpec): [string, string][] => {
     if (f.source === "agent_role") {
       // ONE entry per role, with the origin of the definition that actually applies.
-      return agentOptions(agents, { empty: tr(f.required ? "action_params.waehlen" : "action_params.keiner") });
+      return agentOptions(agents, { empty: tr(f.required ? "action_params.choose" : "action_params.none") });
     }
     if (f.source === "board_status") {
       return [["", "—"], ...(meta?.statuses || []).map((s) => [s.name, s.name] as [string, string])];
@@ -116,21 +116,21 @@ export default function ActionParams({
       const fields = (types?.[0]?.fields || []).filter((x) => x.enabled);
       return fields.length
         ? fields.map((x) => [x.key, `${x.label}${x.multi ? " (mehrere)" : ""}`] as [string, string])
-        : [["", tr("action_params.keine_felder")]];
+        : [["", tr("action_params.no_fields_defined")]];
     }
     if (f.source === "artifact_status") {
       const st = types?.[0]?.statuses || [];
       return st.length
         ? st.map((s) => [s.key, s.label] as [string, string])
-        : [["", tr("action_params.kein_artefakt")]];
+        : [["", tr("action_params.no_artifact_flow")]];
     }
     if (f.source === "mcp_tool") {
       const listing = tools || [];
       return listing.length
-        ? [["", tr("action_params.waehlen")] as [string, string],
+        ? [["", tr("action_params.choose")] as [string, string],
            ...listing.map((w) => [w.name,
              `${w.name}${w.required?.length ? ` (${w.required.join(", ")})` : ""}`] as [string, string])]
-        : [["", tr("action_params.keine_mcp_server")]];
+        : [["", tr("action_params.no_tool_servers_registered")]];
     }
     if (f.source === "member") {
       return [["", "— niemand —"],
@@ -142,7 +142,7 @@ export default function ActionParams({
       const listing = persons || [];
       return [["", "— Betreiber —"],
               ...listing.map((u) => [String(u.id),
-                `${u.display_name}${u.channels.length ? "" : ` (${tr("action_params.kein_weg")})`}`] as
+                `${u.display_name}${u.channels.length ? "" : ` (${tr("action_params.no_channel_set")})`}`] as
                 [string, string])];
     }
     return f.options || [];
@@ -193,7 +193,7 @@ export default function ActionParams({
                 {/* Ohne Vorbelegung zuerst einen leeren Eintrag, sonst zeigt das Feld einen
                     Wert an, der gar nicht gespeichert ist. */}
                 {(value ?? "") === "" && !selection(f).some(([k]) => k === "") && (
-                  <option value="">{tr("action_params.waehlen")}</option>
+                  <option value="">{tr("action_params.choose")}</option>
                 )}
                 {selection(f).map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
               </select>
@@ -203,7 +203,7 @@ export default function ActionParams({
                 <input value={value} onChange={(e) => update(e.target.value)}
                   className={`mt-1 ${inp} font-mono`} />
                 <span className="mt-1 block text-[11px] text-amber-400">
-                  {tr("action_params.wert_aus_kontext")}
+                  {tr("action_params.value_comes_context_clear")}
                 </span>
               </>
             )}
@@ -228,7 +228,7 @@ export default function ActionParams({
               <span className="mt-1 flex items-center gap-2 text-sm text-ink">
                 <input type="checkbox" checked={value ?? f.default ?? false}
                   onChange={(e) => onChange(set(params, f.key, e.target.checked))} />
-                {f.hint ? tr(f.hint) : tr("action_params.aktiv")}
+                {f.hint ? tr(f.hint) : tr("action_params.active")}
               </span>
             )}
             {f.type === "text" && (
@@ -245,7 +245,7 @@ export default function ActionParams({
       {spec.outcomes && <div className="text-[11px] text-amber-400">{tr(spec.outcomes)}</div>}
 
       {spec.fields.length === 0 && (
-        <div className="text-[11px] text-muted">{tr("action_params.diese_aktion_braucht_keine_einstellungen")}</div>
+        <div className="text-[11px] text-muted">{tr("action_params.this_action_needs_no_settings")}</div>
       )}
 
       {!onlyKv && Object.keys(remainder).length > 0 && (

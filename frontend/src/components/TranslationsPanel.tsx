@@ -65,7 +65,7 @@ export default function TranslationsPanel() {
     mutationFn: (texts: Record<string, string>) =>
       api.post(`/i18n/${locale}/import`, { texts, replace: false }),
     onSuccess: (r: any) => {
-      setErr(""); setOk(tr("translations_panel.texte_uebernommen", { count: r.imported }));
+      setErr(""); setOk(tr("translations_panel.count_texts_imported", { count: r.imported }));
       qc.invalidateQueries({ queryKey: ["i18n", locale] });
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Import fehlgeschlagen"),
@@ -110,29 +110,29 @@ export default function TranslationsPanel() {
       const data = JSON.parse(await file.text());
       if (data && typeof data === "object") feed.mutate(data);
     } catch {
-      setErr(tr("translations_panel.kein_json"));
+      setErr(tr("translations_panel.file_not_valid_json"));
     }
   };
 
   const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
   return (
-    <Area hint={tr("translations_panel.einleitung")} tools={<>
+    <Area hint={tr("translations_panel.translations_keys_come_german")} tools={<>
         <select value={locale} onChange={(e) => setLocale(e.target.value)} className={inp}>
           {(languages || []).filter((s) => s.locale !== SOURCELANGUAGE).map((s) => (
             <option key={s.locale} value={s.locale}>
-              {s.name} ({s.locale}){s.builtin ? ` · ${tr("translations_panel.ausgeliefert")}` : ""}
+              {s.name} ({s.locale}){s.builtin ? ` · ${tr("translations_panel.shipped")}` : ""}
             </option>
           ))}
         </select>
         <input value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder={tr("translations_panel.suchen_schluessel_oder_deutscher_text")} className={`${inp} min-w-56 flex-1`} />
+          placeholder={tr("translations_panel.search_key_or_german_text")} className={`${inp} min-w-56 flex-1`} />
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
-          {tr("translations_panel.nur_offene")}
+          {tr("translations_panel.open_only")}
         </label>
         <span className="text-xs text-muted">
-          {tr("translations_panel.offen_von", { open: open, total: Object.keys(source).length })}
+          {tr("translations_panel.open_total_open", { open: open, total: Object.keys(source).length })}
         </span>
         <div className="flex-1" />
         <button onClick={exportItem}
@@ -176,7 +176,7 @@ export default function TranslationsPanel() {
         ))}
         {!lines.length && (
           <ListingEmpty>
-            {tr(onlyOpen ? "translations_panel.nichts_offen" : "translations_panel.kein_treffer")}
+            {tr(onlyOpen ? "translations_panel.nothing_open_language" : "translations_panel.no_match")}
           </ListingEmpty>
         )}
       </Listing>
@@ -207,12 +207,12 @@ function Languageadmin({ languages, chosen, onChoose, onError: onError, onOk }: 
   const [deleteLanguage, setDeleteLanguage] = useState<LanguageInfo | null>(null);
   const inp = "rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
   const fresh = () => qc.invalidateQueries({ queryKey: ["i18n-locales"] });
-  const error = (e: unknown) => onError(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const error = (e: unknown) => onError(e instanceof ApiError ? e.message : tr("common.error"));
 
   const create = useMutation({
     mutationFn: () => api.post("/i18n/locales", { locale: ident.trim().toLowerCase(), name: name.trim() }),
     onSuccess: () => {
-      onOk(tr("translations_panel.sprache_angelegt", { language: ident.trim().toLowerCase() }));
+      onOk(tr("translations_panel.language_language_created", { language: ident.trim().toLowerCase() }));
       onChoose(ident.trim().toLowerCase());
       setIdent(""); setName(""); fresh();
     },
@@ -230,7 +230,7 @@ function Languageadmin({ languages, chosen, onChoose, onError: onError, onOk }: 
 
   return (
     <div className="space-y-2 border-t border-line pt-2">
-      <div className="text-xs font-medium text-muted">{tr("translations_panel.sprachen")}</div>
+      <div className="text-xs font-medium text-muted">{tr("translations_panel.languages")}</div>
       <div className="text-xs">
         {languages.map((s) => (
             <div key={s.locale} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line/60 py-1.5">
@@ -240,24 +240,24 @@ function Languageadmin({ languages, chosen, onChoose, onError: onError, onOk }: 
                   && update.mutate({ locale: s.locale, body: { name: e.target.value } })}
                 className={`${inp} w-36`} />
               <span className="text-muted">
-                {s.builtin ? tr("translations_panel.ausgeliefert") : tr("translations_panel.eigene")}
+                {s.builtin ? tr("translations_panel.shipped") : tr("translations_panel.created_here")}
                 {" · "}
-                {tr("translations_panel.own_texts", { count: s.own_texts })}
+                {tr("translations_panel.count_own_texts", { count: s.own_texts })}
               </span>
               {s.locale !== SOURCELANGUAGE && (
                 <label className="flex items-center gap-1 text-muted">
                   <input type="checkbox" checked={s.enabled}
                     onChange={(e) => update.mutate({ locale: s.locale, body: { enabled: e.target.checked } })} />
-                  {tr("translations_panel.waehlbar")}
+                  {tr("translations_panel.selectable")}
                 </label>
               )}
               <div className="ml-auto">
                 <Actions>
                   <IconButton icon={ICON.edit} active={s.locale === chosen}
-                    title={s.locale === chosen ? tr("translations_panel.in_bearbeitung") : tr("translations_panel.bearbeiten")}
+                    title={s.locale === chosen ? tr("translations_panel.editing") : tr("translations_panel.edit")}
                     disabled={s.locale === SOURCELANGUAGE} onClick={() => onChoose(s.locale)} />
                   {s.locale !== SOURCELANGUAGE && (
-                    <IconButton icon={ICON.remove} title={tr("translations_panel.loeschen_titel")} danger
+                    <IconButton icon={ICON.remove} title={tr("translations_panel.deletes_changes_made_here")} danger
                       onClick={() => setDeleteLanguage(s)} />
                   )}
                 </Actions>
@@ -267,18 +267,18 @@ function Languageadmin({ languages, chosen, onChoose, onError: onError, onOk }: 
         </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">{tr("translations_panel.neue_sprache")}</span>
+        <span className="text-muted">{tr("translations_panel.new_language")}</span>
         <input value={ident} onChange={(e) => setIdent(e.target.value)}
-          placeholder={tr("translations_panel.kennung_platzhalter")} className={`${inp} w-24`} />
+          placeholder={tr("translations_panel.e_g_fr")} className={`${inp} w-24`} />
         <input value={name} onChange={(e) => setName(e.target.value)}
-          placeholder={tr("translations_panel.name_platzhalter")} className={`${inp} w-40`} />
+          placeholder={tr("translations_panel.name_e_g_fran")} className={`${inp} w-40`} />
         <button onClick={() => ident.trim() && create.mutate()}
           className={BUTTON_SMALL.secondary}>
-          {tr("translations_panel.anlegen")}
+          {tr("translations_panel.create")}
         </button>
       </div>
       {deleteLanguage && (
-        <DeleteDialog was={deleteLanguage.name} hint={tr("translations_panel.loeschen_titel")}
+        <DeleteDialog was={deleteLanguage.name} hint={tr("translations_panel.deletes_changes_made_here")}
           runs={remove.isPending}
           onClose={() => setDeleteLanguage(null)}
           onDelete={() => { remove.mutate(deleteLanguage.locale); setDeleteLanguage(null); }} />

@@ -246,16 +246,16 @@ export default function Office(): JSX.Element {
               onClick={back}
               className={BUTTON.secondary}
             >
-              ← {tr("office.zurueck_projekt")}
+              ← {tr("office.back_project")}
             </button>
           )}
-          <h1 className="text-sm font-semibold">{tr("office.buero")}</h1>
+          <h1 className="text-sm font-semibold">{tr("office.office")}</h1>
           <span className="font-mono text-xs text-muted">
-            {projectKey ?? tr("office.alle_projekte")}
+            {projectKey ?? tr("office.all_projects")}
           </span>
           {!!projectKey && !isLoading && !project && (
             <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
-              title={tr("office.kein_projekt_mit_diesem_schluessel_die_a")}>
+              title={tr("office.no_project_with_this_key_so_the_view_shows_al")}>
               unbekanntes Projekt
             </span>
           )}
@@ -263,7 +263,7 @@ export default function Office(): JSX.Element {
       )}
 
       {waits ? (
-        <div className="p-4 text-sm text-muted">{tr("office.buero_laedt")}</div>
+        <div className="p-4 text-sm text-muted">{tr("office.loading_office")}</div>
       ) : (
         <ErrorBoundary
           label="buero"
