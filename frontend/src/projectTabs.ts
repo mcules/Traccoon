@@ -114,12 +114,12 @@ const OLD: Record<string, [ProjectTab, string?]> = {
   testenvs: ["operations", "testenvs"], hardware: ["operations", "hardware"],
   workflows: ["settings", "processes"], members: ["settings", "members"],
   settings: ["settings"],
-  // Die deutschen Abschnitte, so lange sie in Lesezeichen stehen. Adressen sind englisch,
-  // aber ein toter Link ist schlimmer als eine Weiterleitung, die niemand bemerkt.
+  // The German sections, as long as they stand in bookmarks. Addresses are English, but a dead
+  // link is worse than a redirect nobody notices.
   arbeit: ["work"], betrieb: ["operations"], einstellungen: ["settings"],
 };
 
-/** Abschnitte im PFAD (`/projects/X/arbeit`), nicht in der Query. */
+/** Sections in the PATH (`/projects/X/arbeit`), not in the query. */
 export const OLD_SECTION: Record<string, string> = {
   arbeit: "work", betrieb: "operations", einstellungen: "settings",
 };

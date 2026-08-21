@@ -1,4 +1,4 @@
-"""Mail-Client: Konten und Identitäten einer Person
+"""Mail client: accounts and identities of a person
 
 Revision ID: a9b4e73c1d20
 Revises: f7c3d21a95e4
@@ -15,8 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Der Unterschied zum imap-mcp: Diese Konten gehören einer Person, werden von ihr
-    # gepflegt und tragen beide Wege — IMAP zum Lesen, SMTP zum Senden.
+    # The difference to imap-mcp: these accounts belong to a person, are maintained by them and
+    # carry both ways — IMAP for reading, SMTP for sending.
     op.create_table(
         'mail_accounts',
         sa.Column('id', sa.Integer, primary_key=True),

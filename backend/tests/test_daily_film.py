@@ -410,8 +410,8 @@ async def test_an_unreachable_filmer_does_not_topple_the_tick(db, filmer, monkey
 
 
 async def test_the_film_stays_its_own_kind(db, filmer, monkeypatch, tmp_path):
-    """`run_job_kind` ist die einzige Stelle, an der `kind` verzweigt — und von den fünf
-    Arten sind nur der Film und der Ablauf übrig. Ohne den Zweig liefe der Job ins Leere."""
+    """`run_job_kind` is the only place where `kind` branches — and of the five kinds only the
+    film and the flow are left. Without the branch the job would run into the void."""
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
     job, jr = await film_job(db)
     await scheduler.run_job_kind(db, job, jr)

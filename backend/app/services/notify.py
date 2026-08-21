@@ -26,9 +26,9 @@ OWNER_CHAT = os.getenv("TELEGRAM_OWNER_CHAT", "")
 
 log = logging.getLogger("traccoon.notify")
 
-# Drei Wege hinaus. Der dritte ist der offene: Er ruft ein Ziel auf (Basis-URL und
-# Anmeldung stehen dort), und was dahinter steckt — ntfy, Matrix, Gotify, ein eigener Bot —
-# ist Traccoons Sache nicht mehr. Ein weiterer Melder ist damit ein Eintrag unter „Ziele“.
+# Three ways out. The third is the open one: it calls a destination (base URL and login stand
+# there), and what sits behind it — ntfy, Matrix, Gotify, a bot of one's own — is no longer
+# Traccoon's business. A further messenger is thereby an entry under "destinations".
 CHANNELS = ("telegram", "email", "ziel")
 
 
@@ -135,8 +135,8 @@ async def deliver(db: AsyncSession, *, user: User | None, kind: str, title: str 
     db.add(n)
 
     if chosen == "ziel":
-        # Was hinausgeht, ist die Nachricht selbst als JSON. Wer ein anderes Format braucht,
-        # hängt es am Ziel auf (Pfad, Kopfzeilen, Anmeldung) — genau dafür gibt es Ziele.
+        # What goes out is the message itself as JSON. Whoever needs a different format hangs
+        # it on the destination (path, headers, login) — that is exactly what destinations are for.
         from ..models.destination import Destination
         from . import destinations
         dest = await db.get(Destination, int(target)) if target else None
@@ -151,7 +151,7 @@ async def deliver(db: AsyncSession, *, user: User | None, kind: str, title: str 
             n.notified_at = dt.datetime.now(tz=dt.timezone.utc)
             return {"kanal": "ziel", "ziel": dest.name, "ok": True,
                     "status": answer.get("status_code")}
-        except Exception as e:  # noqa: BLE001 — die Glocke trägt die Nachricht ohnehin
+        except Exception as e:  # noqa: BLE001 — the bell carries the message anyway
             log.warning("destination %s failed (%s), stays in the bell", dest.name, e)
             return {"kanal": "ziel", "ziel": dest.name, "ok": False}
 

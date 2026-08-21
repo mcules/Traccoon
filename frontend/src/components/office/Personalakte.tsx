@@ -216,7 +216,7 @@ export default function Personnelfile({
 
   return (
     <div ref={boxRef} className={`space-y-2 ${className ?? ""}`}>
-      {/* Kopf: das Fenster ist Teil der Aussage, also steht es ganz oben und ist umstellbar. */}
+      {/* Head: the window is part of the statement, so it stands at the very top and is switchable. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line pb-1.5 text-[11px]">
         <span className="text-muted">
           📇 Kennzahlen je Rolle, <b className="text-ink">{windowText}</b>
@@ -376,7 +376,7 @@ function Details({ r, basis, values: values, rest: remainder }: {
 
   return (
     <div className="mt-2 space-y-2 border-t border-line pt-2 text-[11px]">
-      {/* Woher die drei Balken kommen — roh, unverdichtet, zum Nachrechnen. */}
+      {/* Where the three bars come from — raw, uncondensed, for checking. */}
       {statusLines.length > 0 && (
         <div className="flex flex-wrap gap-x-2 gap-y-0.5"
           title={tr("personnel_file.raw_run_states_server")}>
@@ -388,7 +388,7 @@ function Details({ r, basis, values: values, rest: remainder }: {
         </div>
       )}
 
-      {/* Runden und Schritte — getrennt beschriftet, weil es zwei verschiedene Dinge sind. */}
+      {/* Rounds and steps — labelled separately, because they are two different things. */}
       <dl className="grid grid-cols-[7.5rem_1fr] gap-x-2 gap-y-1">
         <Field label={tr("personnel_file.rounds")} title={tr("personnel_file.passes_through_agent_loop")}>
           Ø {comma1(r.iterations_avg ?? 0)} · max {number(r.iterations_max ?? 0)}
@@ -418,7 +418,7 @@ function Details({ r, basis, values: values, rest: remainder }: {
         </Field>
       </dl>
 
-      {/* Dauer: Median, p90, Maximum — und die Verteilung darunter. */}
+      {/* Duration: median, p90, maximum — and the distribution below it. */}
       <div>
         <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
           <span className="font-medium">{tr("personnel_file.duration")}</span>
@@ -457,7 +457,7 @@ function Details({ r, basis, values: values, rest: remainder }: {
         )}
       </div>
 
-      {/* Werkzeuge: Rangliste mit Anzahl und Fehlschlägen. */}
+      {/* Tools: a ranking with counts and failures. */}
       <div>
         <div className="mb-0.5 font-medium">{tr("dock.tools")}</div>
         {tools.length === 0 ? (

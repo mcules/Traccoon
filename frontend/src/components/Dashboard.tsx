@@ -95,7 +95,7 @@ export default function Dashboard({ project }: { project: Project }) {
       </div>
 
       {/* Ungegatet: wer ein Ticket gemergt hat, will wissen, ob es draußen ist — und ist nicht
-          zwangsläufig Maintainer. Die volle Liste steht unter Einstellungen → Deployment. */}
+          necessarily a maintainer. The full list stands under Settings → Deployment. */}
       <Karte title={tr("dashboard.recent_deployments")}>
         <DeploymentsPanel projectId={project.id} variant="kompakt" limit={5} />
       </Karte>

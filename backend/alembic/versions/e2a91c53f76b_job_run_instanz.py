@@ -1,9 +1,9 @@
-"""job_runs.workflow_instance_id — der Lauf, den ein Job angestoßen hat
+"""job_runs.workflow_instance_id — the run a job kicked off
 
-Damit trägt die Historie nach, was dabei herauskam: Ein Ablauf endet später als sein
-Anstoß, und „Instanz #N gestartet“ ist kein Ergebnis. Zugleich der Schritt, mit dem die
-Job-Arten `prompt`, `script` und `http` zu Knoten wurden (`services/job_modes.py` stellt
-Bestehendes beim Start um); es bleiben `workflow` und `film`.
+With it the history fills in what came of it: a flow ends later than its kick-off, and
+"instance #N started" is no result. At the same time the step with which the job kinds
+`prompt`, `script` and `http` became nodes (`services/job_modes.py` converts existing ones at
+startup); `workflow` and `film` remain.
 
 Revision ID: e2a91c53f76b
 Revises: d8b3c47f10a2

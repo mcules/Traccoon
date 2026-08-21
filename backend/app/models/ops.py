@@ -67,24 +67,24 @@ class WebhookSub(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     route: Mapped[str] = mapped_column(String(120), nullable=False)  # label (no longer globally unique)
     secret: Mapped[str] = mapped_column(String(200), default="")
-    # workflow = einen Ablauf starten, event = ein Ereignis melden. Die früheren Modi
-    # `task`, `notify` und `assistant` gibt es nicht mehr: Ticket anlegen, melden und den
-    # Assistenten beauftragen sind Knoten im Ablauf und damit für jeden Auslöser zu haben.
+    # workflow = start a flow, event = report an event. The former modes `task`, `notify` and
+    # `assistant` no longer exist: creating a ticket, reporting and assigning the assistant are
+    # nodes in the flow and thereby available to every trigger.
     # `services/webhook_modes.py` stellt bestehende Webhooks einmalig um.
     mode: Mapped[str] = mapped_column(String(20), default="workflow")  # workflow | event
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     # Mode 'workflow': starts an instance of this definition; context_map maps payload to context.
     workflow_definition_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_definitions.id", ondelete="SET NULL"), nullable=True)
-    # Kontext des Laufs, für beide Arten der Zustellung: `context_map` holt aus der Nutzlast
-    # ({ziel: punkt.pfad}, leerer Pfad = die ganze Nutzlast), `context_fixed` setzt feste
-    # Werte, in deren Text `{feld}` aus der Nutzlast gefüllt wird. Punkte im ZIEL
-    # verschachteln ("eingang.agent"). Ohne beides ist die Nutzlast der Kontext.
+    # Context of the run, for both kinds of delivery: `context_map` fetches from the payload
+    # ({target: dotted.path}, an empty path = the whole payload), `context_fixed` sets fixed
+    # values in whose text `{field}` is filled from the payload. Dots in the TARGET nest
+    # ("intake.agent"). Without either, the payload is the context.
     context_map: Mapped[dict] = mapped_column(JSON, default=dict)   # {ziel: payload_pfad}
     context_fixed: Mapped[dict] = mapped_column(JSON, default=dict)  # {ziel: fester Wert}
     # ── Altlast der alten Modi ───────────────────────────────────────────────
-    # Diese Spalten trugen die Fachlogik, die heute im Ablauf steht. Sie bleiben, bis
-    # `webhook_modes.umstellen()` überall gelaufen ist — danach liest sie niemand mehr.
+    # These columns carried the domain logic that stands in the flow today. They stay until
+    # `webhook_modes.convert()` has run everywhere — after that nobody reads them any more.
     agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Modus 'assistant' (E-Mail): projektlose AssistantTask + lokale Vorklassifizierung durch
     # this agent (its provider, model and token). Empty = no classification (passthrough).
@@ -176,8 +176,8 @@ class JobRun(Base):
     output: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str] = mapped_column(Text, default="")
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Der Lauf, den dieser Job angestoßen hat. Damit trägt die Historie nach, was dabei
-    # herauskam: Ein Ablauf endet später als der Anstoß, und „gestartet“ ist kein Ergebnis.
+    # The run this job kicked off. With it the history fills in what came of it: a flow ends
+    # later than the kick-off, and "started" is no result.
     workflow_instance_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_instances.id", ondelete="SET NULL"), nullable=True)
     started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

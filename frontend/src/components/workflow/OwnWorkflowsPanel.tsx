@@ -11,7 +11,7 @@ import {
 const EMPTY = { key: "", name: "", subject_kind: "standalone" as WorkflowSubjectKind,
                 description: "", template: "" };
 const inp = "rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
-/** Drei Spalten: der Ablauf selbst, sein Zustand, die Handgriffe. */
+/** Three columns: the flow itself, its state, the handgrips. */
 const COLUMNS = "sm:grid-cols-[minmax(0,1fr)_9rem_auto]";
 
 /**
@@ -33,8 +33,8 @@ export default function OwnWorkflowsPanel() {
   const [err, setErr] = useState("");
   const [newDialog, setNewDialog] = useState(false);
   const [deleteFlow, setDeleteFlow] = useState<WorkflowDefinition | null>(null);
-  // Umbenennen: Name und Schlüssel entstehen oft nebenbei (aus einer Route, aus einem
-  // Job-Namen) und beschreiben dann den Auslöser statt der Sache.
+  // Renaming: name and key often come into being in passing (out of a route, out of a job
+  // name) and then describe the trigger instead of the matter.
   const [rename, setRename] = useState<WorkflowDefinition | null>(null);
   const [nameNew, setNameNew] = useState("");
   const [keyNew, setKeyNew] = useState("");
@@ -79,8 +79,8 @@ export default function OwnWorkflowsPanel() {
       <Errorrow text={err} />
 
       {own.length > 0 ? (
-        /* Ohne Spaltenköpfe: bei einer Handvoll Einträgen erklären sich Name, Schlüssel und
-           Zustand von selbst, und eine Überschriftenzeile wäre eine Zeile Rauschen über
+        /* Without column headers: with a handful of entries name, key and state explain
+           themselves, and a heading row would be a row of noise above
            fünf Zeilen Inhalt. */
         <Listing>
           {own.map((d) => (
@@ -88,7 +88,7 @@ export default function OwnWorkflowsPanel() {
               onClick={() => open_it(d)}>
               {/* Zwei Zeilen statt fünf Spalten: der Name trägt den Eintrag, alles
                   Technische steht eine Etage tiefer und leiser. Das hält die Liste auch
-                  dann ausgerichtet, wenn ein Name lang und der nächste kurz ist. */}
+                  aligned when one name is long and the next one short. */}
               <div className="min-w-0 basis-full sm:basis-auto">
                 <div className="truncate font-medium text-ink">{d.name}</div>
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
@@ -103,7 +103,7 @@ export default function OwnWorkflowsPanel() {
                   ? <State color="green" text={tr("proc.published")} />
                   : <State color="yellow" text={tr("own_workflows.draft_only")} />}
               {/* Klicks auf die Knöpfe gehören den Knöpfen — sonst öffnete sich hinter dem
-                  Löschdialog auch noch der Editor. */}
+                  delete dialog the editor as well. */}
               <div className="ml-auto shrink-0 sm:ml-0 sm:justify-self-end"
                 onClick={(e) => e.stopPropagation()}>
                 <Actions>

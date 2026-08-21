@@ -27,7 +27,7 @@ async def _verdict(db, owner_id, kind, status, *, model_score=0.95, days=0) -> S
 
 
 async def test_kinds_are_counted_unknown_ones_too(db):
-    """`erpressung` steht in keiner Liste im Code. Genau darum geht es."""
+    """`erpressung` stands in no list in the code. That is exactly the point."""
     anna = await make_user(db, "anna")
     await _verdict(db, anna.id, "phishing", "spam")
     await _verdict(db, anna.id, "phishing", "spam")
@@ -44,10 +44,10 @@ async def test_kinds_are_counted_unknown_ones_too(db):
                                           "durchgelassen": 0, "offen": 1}
     assert data["arten"]["werbung"]["durchgelassen"] == 1
     assert data["arten"]["erpressung"]["gesamt"] == 1
-    # Die durchgelassene Post kommt aus dem zweiten Topf, sonst zählte man ein halbes Postfach.
+    # The mail let through comes out of the second pot, otherwise one would count half a mailbox.
     assert data["arten"]["rechnung"] == {"gesamt": 1, "aussortiert": 0,
                                           "durchgelassen": 1, "offen": 0}
-    # Nach Größe sortiert, damit die Ansicht nichts sortieren muss.
+    # Sorted by size, so that the view has to sort nothing.
     assert list(data["arten"])[0] == "phishing"
 
 
@@ -66,7 +66,7 @@ async def test_old_lines_fall_out_of_the_window(db):
 
 
 async def test_the_hit_rate_measures_only_what_was_decided(db):
-    """Eine offene Rückfrage sagt nichts darüber, wer recht hatte."""
+    """An open question says nothing about who was right."""
     anna = await make_user(db, "anna")
     await _verdict(db, anna.id, "phishing", "spam", model_score=0.95)   # Treffer
     await _verdict(db, anna.id, "werbung", "ham", model_score=0.2)      # Treffer

@@ -142,10 +142,10 @@ async def _target(db, owner, name="ntfy"):
 
 
 async def test_destination_as_a_way_out(db, monkeypatch):
-    """Telegram und E-Mail waren die einzigen Wege — jeder weitere hätte Code gekostet.
+    """Telegram and e-mail were the only ways — every further one would have cost code.
 
-    Ein Ziel trägt Basis-URL und Anmeldung schon; was dahinter steckt (ntfy, Matrix, Gotify,
-    ein eigener Bot), muss Traccoon nicht wissen.
+    A destination carries a base URL and a login already; what sits behind it (ntfy, Matrix,
+    Gotify, a bot of one's own) Traccoon need not know.
     """
     called = []
 
@@ -165,7 +165,7 @@ async def test_destination_as_a_way_out(db, monkeypatch):
     assert path["kanal"] == "ziel" and path["ok"] is True
     (name, kw) = called[0]
     assert name == "ntfy" and kw["body"] == {"art": "test", "titel": "Hallo", "text": "Text"}
-    # Die Glocke trägt sie trotzdem, und der Zeitstempel sagt, dass draußen nichts aussteht.
+    # The bell carries it all the same, and the timestamp says that nothing is pending outside.
     n = (await db.execute(select(Notification))).scalars().one()
     assert n.notified_at is not None
 
@@ -177,7 +177,7 @@ async def test_channel_without_a_destination_stays_in_the_bell(db):
 
 
 async def test_a_foreign_destination_cannot_be_picked(client, db):
-    """Sonst wäre der Kanal ein Weg an fremde Anmeldedaten."""
+    """Otherwise the channel would be a way to foreign credentials."""
     anna = await _person(db, "anna")
     bert = await _person(db, "bert")
     foreign = await _target(db, bert, name="bertfunk")

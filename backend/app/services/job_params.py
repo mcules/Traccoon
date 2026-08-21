@@ -17,8 +17,8 @@ import json
 import re
 from zoneinfo import ZoneInfo
 
-# Rückfall, wenn niemand eine Zone nennt. Die Zone der Person steht in ihrem Profil und
-# wird durchgereicht — „seit gestern 8 Uhr“ heißt in Tokio etwas anderes als hier.
+# The fallback when nobody names a zone. The zone of the person stands in their profile and is
+# passed through — "since 8 o'clock yesterday" means something else in Tokyo than here.
 STD_TZ = ZoneInfo("Europe/Berlin")
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")

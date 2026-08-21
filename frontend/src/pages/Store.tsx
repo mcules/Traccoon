@@ -14,11 +14,11 @@ type Entry = { id: number; title: string; format: string; ts: string | null; bod
 type Store = { id: number; key: string; name: string; last_at: string | null };
 
 /**
- * Eine Ablage: was ein Ablauf hier nach und nach hineingeschrieben hat.
+ * A store: what a flow has written into it bit by bit.
  *
- * Der tägliche Rückblick lag vorher im Ausgabefeld eines Job-Laufs — abgeschnitten, ohne
- * Überschrift, und die Meldung dazu verwies auf eine Seite, die es nicht gab. Hier steht er
- * mit seinem Verlauf: links die Fassungen, rechts die gewählte.
+ * The daily review used to lie in the output field of a job run — truncated, without a heading,
+ * and the report about it pointed at a page that did not exist. Here it stands with its
+ * history: the versions on the left, the selected one on the right.
  */
 export default function StorePage() {
   const { key = "", id } = useParams();
@@ -31,8 +31,8 @@ export default function StorePage() {
     queryFn: () => api.get<{ storage: Store; entries: Entry[] }>(
       `/documents/${encodeURIComponent(key)}/entries`),
   });
-  // Ohne Fassung in der Adresse die neueste: Ein Link aus einer Meldung soll auf den Stand
-  // zeigen, nicht auf eine Nummer, die morgen eine andere ist.
+  // Without a version in the address, the newest one: a link out of a report should point at
+  // the state, not at a number that will be a different one tomorrow.
   const chosen = id ? Number(id) : listing?.entries?.[0]?.id;
   const { data: entry } = useQuery({
     queryKey: ["ablage-eintrag", key, chosen],

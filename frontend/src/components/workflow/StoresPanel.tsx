@@ -9,10 +9,10 @@ type Store = { id: number; key: string; name: string; description: string;
                 keep: number; last_title: string; last_at: string | null; count: number | null };
 
 /**
- * Ablagen: die Texte, die Abläufe geschrieben haben.
+ * Stores: the texts flows have written.
  *
- * Das Gegenstück zu den Messreihen — dort Zahlen mit Verlauf, hier Texte mit Verlauf. Beide
- * beantworten dieselbe Frage: Was ein Ablauf erarbeitet hat, soll ihn überdauern.
+ * The counterpart to the metric series — numbers with a history there, texts with a history
+ * here. Both answer the same question: what a flow worked out should outlast it.
  */
 export default function StoresPanel() {
   const nav = useNavigate();

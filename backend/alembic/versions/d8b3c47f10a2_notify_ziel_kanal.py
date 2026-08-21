@@ -1,8 +1,8 @@
-"""users.notify_destination_id — Benachrichtigung über ein Ziel
+"""users.notify_destination_id — notification through a destination
 
-Telegram und E-Mail waren fest verdrahtet; jeder weitere Melder hätte Code gekostet. Ein
-Ziel trägt Basis-URL und Anmeldung schon, also geht der dritte Kanal einfach dorthin — was
-dahinter steckt (ntfy, Matrix, Gotify, ein eigener Bot), muss Traccoon nicht wissen.
+Telegram and e-mail were hard-wired; every further messenger would have cost code. A destination
+carries a base URL and a login already, so the third channel simply goes there — what sits
+behind it (ntfy, Matrix, Gotify, a bot of one's own) Traccoon need not know.
 
 Revision ID: d8b3c47f10a2
 Revises: c4f7a92b13de

@@ -25,19 +25,19 @@ from ..models.user import User
 
 log = logging.getLogger("agent_gate")
 
-TZ = ZoneInfo("Europe/Berlin")   # Rückfall, wenn niemand eine Zone gesetzt hat
+TZ = ZoneInfo("Europe/Berlin")   # the fallback when nobody has set a zone
 
 
 def zone_of(user) -> ZoneInfo:
-    """Die Zeitzone einer Person — die Antwort auf „was heißt hier 8 Uhr?".
+    """The timezone of a person — the answer to "what does 8 o'clock mean here?".
 
-    Ein Nachtfenster von 22 bis 6 ist keine Angabe in UTC und auch keine in Berlin, sondern
-    eine im Alltag dessen, der schläft. Eine unbekannte Zone (Tippfehler, alter Datenstand)
-    darf den Torwächter nicht sprengen, deshalb der Rückfall.
+    A night window from 22 to 6 is no entry in UTC and none in Berlin either, but one in the
+    everyday life of whoever sleeps. An unknown zone (a typo, an old state of the data) must not
+    blow the gatekeeper up, hence the fallback.
     """
     try:
         return ZoneInfo(getattr(user, "timezone", "") or TZ.key)
-    except Exception:  # noqa: BLE001 — unbekannte Zone ist kein Grund, nichts laufen zu lassen
+    except Exception:  # noqa: BLE001 — an unknown zone is no reason to let nothing run
         return TZ
 
 MAX_CONCURRENT = 3            # global gleichzeitig laufende Agenten

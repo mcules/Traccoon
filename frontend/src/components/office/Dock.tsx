@@ -232,7 +232,7 @@ export default function Dock({
         ))}
         <div className="flex-1" />
         {/* Der Einfrierhinweis gilt für die drei Log-Reiter. Die Akte friert nicht ein — sie
-            nennt ihr eigenes Fenster in der eigenen Überschrift. */}
+            names its own window in its own heading. */}
         {seekTs !== null && tab !== "akte" && (
           <span className="self-center pb-1 text-[11px] text-orange-400"
             title={tr("dock.dock_shows_same_moment")}>

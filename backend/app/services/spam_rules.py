@@ -73,7 +73,7 @@ BRANDS = frozenset({
     "zalando", "mediamarkt", "lidl", "aldi", "rewe", "edeka", "ikea", "hornbach", "shein",
     "temu", "alibaba", "aliexpress", "etsy", "airbnb", "expedia", "ryanair", "lufthansa",
     "payback",
-    # Sicherheitssoftware und Behörden
+    # Security software and public authorities
     "mcafee", "norton", "kaspersky", "avast", "elster",
 })
 

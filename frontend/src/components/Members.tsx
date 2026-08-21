@@ -117,7 +117,7 @@ export default function Members({ project }: { project: Project }) {
         </tbody>
       </table>
 
-      {/* Bestehenden Nutzer per Benutzername/Anzeigename suchen und direkt hinzufügen */}
+      {/* Find an existing user by username/display name and add them directly */}
       <div className="mt-5">
         <label className="text-xs text-muted">{tr("members.add_existing_user_user")}
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("members.enter_name")}

@@ -54,7 +54,7 @@ export function feedbackEdges(graph: WorkflowGraph): Set<string> {
       }
       const k = edges[above.i++];
       const z = state.get(k.target);
-      if (z === OPEN) back.add(k.id);          // zurück auf einen Knoten im aktuellen Pfad
+      if (z === OPEN) back.add(k.id);          // back onto a node in the current path
       else if (z === undefined) {
         state.set(k.target, OPEN);
         batch.push({ id: k.target, i: 0 });

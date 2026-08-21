@@ -1,4 +1,4 @@
-"""users.mail_last_account_id (das zuletzt geöffnete Postfach)
+"""users.mail_last_account_id (the mailbox opened last)
 
 Revision ID: b1d84f26e9a7
 Revises: a9b4e73c1d20
@@ -15,8 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Am Menschen und nicht im Browser: wer sich am anderen Rechner anmeldet, will dort
-    # weitermachen, wo er aufgehört hat.
+    # On the person and not in the browser: whoever logs in at the other machine wants to carry
+    # on where they left off.
     op.add_column('users', sa.Column('mail_last_account_id', sa.Integer, nullable=True))
     op.create_foreign_key('fk_users_mail_last_account', 'users', 'mail_accounts',
                           ['mail_last_account_id'], ['id'], ondelete='SET NULL')
@@ -32,7 +32,7 @@ def downgrade() -> None:
     op.drop_column('users', 'mail_last_account_id')
 
 
-# Nachtrag derselben Runde: Traccoon bietet die Postfächer als MCP an. Alles aus, bis es
+# An addendum of the same round: Traccoon offers the mailboxes as MCP. Everything off until it
 # jemand einschaltet — je Konto, je Werkzeug.
 def upgrade_mcp() -> None:
     op.add_column('mail_accounts', sa.Column('mcp_enabled', sa.Boolean, nullable=False,

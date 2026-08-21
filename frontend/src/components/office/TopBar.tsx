@@ -126,7 +126,7 @@ export function uhrText(ms: number | null | undefined): string {
 
 /** Without a ticket respectively without a project: a tab of its own instead of "disappears
  *  from the list". Job and assistant runs are real inhabitants of the room. */
-export const WITHOUT_TICKET = "(ohne Ticket)";   // Gruppierungsschlüssel, kein Anzeigetext
+export const WITHOUT_TICKET = "(ohne Ticket)";   // a grouping key, not display text
 export const WITHOUT_PROJECT = "(ohne Projekt)";
 
 /** Which tab a run belongs to: its ticket in the project scope, its project globally. */
@@ -292,7 +292,7 @@ export default function TopBar({
 
       {/* Sitzungsreiter — ein Filter auf den Roster, kein zweites Log.
           Im Kiosk weg: ein Filter, den niemand umstellen kann, ist eine Behauptung über
-          den Raum, keine Bedienung. */}
+          the room, no controls. */}
       {!kiosk && tab.length > 1 && (
         <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" role="group"
           aria-label={tr(scope.kind === "project" ? "office_room.tickets_view" : "office_room.projects_view")}>

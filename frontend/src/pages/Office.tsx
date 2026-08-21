@@ -231,16 +231,16 @@ export default function Office(): JSX.Element {
   const waits = !!projectKey && isLoading;
 
   return (
-    // Die Bereichsschiene bleibt frei: das Büro deckt die Seite zu, nicht den Weg hinaus.
-    // Im Kiosk gibt es keinen Weg hinaus (Wandschirm), dort deckt es wirklich alles.
+    // The area rail stays free: the office covers the page, not the way out.
+    // In kiosk mode there is no way out (a wall screen), and there it really covers everything.
     <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${kiosk ? "" : RAIL_LEAVEBLANK}`}>
       {/* Die Kopfzeile dieser Seite (Zurück-Knopf) ist Bedienung — im Kiosk fällt sie weg.
-          Was der Wandschirm an Beschriftung braucht, steht in der Kopfzeile der Ansicht. */}
+          What the wall screen needs in labels stands in the header of the view. */}
       {!kiosk && (
         <div className="flex shrink-0 items-center gap-3 border-b border-line bg-card px-4 py-2">
           {/* Zurück nur mit Projekt-Bezug: dorthin führt die Bereichsschiene nicht. Aus dem
               globalen Büro geht es über die Schiene hinaus, ein zweiter Ausgang wäre nur ein
-              zweiter Ort, an dem man ihn sucht. */}
+              second place one looks for it. */}
           {projectKey && (
             <button
               onClick={back}

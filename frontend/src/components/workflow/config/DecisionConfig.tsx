@@ -78,7 +78,7 @@ export default function DecisionConfig({
               <div className="flex flex-wrap items-center gap-1.5">
                 {/* Auswahl statt Ratefläche: die Pfade stehen im Kontext dieses Ablaufs.
                     Freie Eingabe bleibt möglich — der Katalog beschreibt, er schreibt nicht
-                    vor (eigene Felder aus einem Ziel-Aufruf etwa kennt er nicht). */}
+                    beforehand (fields of its own out of a destination call, say, it does not know). */}
                 <input
                   value={s.field}
                   onChange={(e) => upd({ field: e.target.value })}
@@ -146,7 +146,7 @@ export default function DecisionConfig({
         <details className="rounded border border-line bg-surface p-2 text-xs text-muted">
           <summary className="cursor-pointer">Verfügbare Kontext-Felder ({fields.length})</summary>
           {/* Untereinander statt vier Spalten: im schmalen Panel lief die Herkunft
-              rechts aus dem Bild — sie ist aber genau das, was man wissen will. */}
+              off the picture on the right — but it is exactly what one wants to know. */}
           <ul className="mt-2 space-y-1.5">
             {fields.map((f) => (
               <li key={f.path}>
@@ -177,7 +177,7 @@ export default function DecisionConfig({
             </option>
           ))}
           {/* Zeigt einen Standard, der (noch) kein Zweig ist — sonst stünde hier stumm
-              „keiner", und beim nächsten Speichern wäre die zugehörige Kante verwaist. */}
+              "none", and on the next save the matching edge would be orphaned. */}
           {config.default_handle && !branches.some((b) => b.handle === config.default_handle) && (
             <option value={config.default_handle}>
               {config.default_handle} — kein Zweig, bitte anlegen

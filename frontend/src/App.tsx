@@ -36,16 +36,16 @@ function OldAddress({ to }: { to: string }) {
 }
 
 /**
- * Adressen sind englisch — auch die Abschnitte darin.
+ * Addresses are English — the sections in them too.
  *
  * Gewachsen war beides gemischt: `/account/meldungen` neben `/settings/webhooks`, im
- * Projekt `arbeit` neben `board`. Wer eine Adresse liest oder tippt, soll nicht raten
- * müssen, in welcher Sprache dieser eine Abschnitt gemeint ist. Die alten leiten weiter,
- * denn sie stehen in Lesezeichen, in Tickets und im Vault.
+ * a project `arbeit` next to `board`. Whoever reads or types an address should not have to
+ * guess which language this particular section is meant in. The old ones redirect, because they
+ * stand in bookmarks, in tickets and in the vault.
  */
 function AlterSection({ karte, target: target }: { karte: Record<string, string>; target: string }) {
   const params = useParams();
-  // Ein Abschnitt, der schon englisch hieß (person, mail), geht unverändert mit — sonst
+  // A section that was English already (person, mail) goes along unchanged — otherwise
   // landete `/account/person` im Nichts statt auf `/account/person`.
   const section = karte[params.tab || ""] || params.tab || "";
   return <Navigate to={section ? `${target}/${section}` : target} replace />;
@@ -111,7 +111,7 @@ export default function App() {
         <Route path="/account/:tab" element={<AlterSection karte={ACCOUNT_OLD} target="/account" />} />
         <Route path="/profil" element={<OldAddress to="/account" />} />
         {/* Plugins liegen unter einem eigenen kurzen Praefix — sie sind Bereiche,
-            aber keine eingebauten. */}
+            but no built-in ones. */}
         <Route path="/p/:slug" element={<PluginHost />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/:tab" element={<SettingsTab />} />

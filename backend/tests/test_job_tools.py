@@ -92,7 +92,7 @@ async def test_disabling_through_an_update(db, anna):
 
 
 async def test_the_agent_receives_the_result_of_the_run(db, anna, redis_stub):
-    """Ein Job wird hier ausgeführt, nicht eingereiht: Seit die Arten Abläufe sind, gibt es
+    """A job is executed here, not queued: ever since the kinds became flows there is
     keinen zweiten Weg mehr, auf dem ein Lauf am Zeitplan vorbei startet."""
     db.add(Job(user_id=anna.id, name="Digest", kind="prompt", prompt="x"))
     await db.commit()

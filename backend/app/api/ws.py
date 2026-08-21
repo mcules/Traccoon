@@ -48,9 +48,9 @@ manager = ConnectionManager()
 class PersonsChannel:
     """Ein Kanal je Person statt je Projekt.
 
-    Die Projekträume tragen, was ein Projekt angeht. Post gehört keinem Projekt, sondern
-    einem Menschen — und sie soll ankommen, egal auf welcher Seite er gerade steht (der
-    Zähler in der Leiste ist überall).
+    The project rooms carry what concerns a project. Mail belongs to no project but to a
+    person — and it should arrive no matter which page they are on (the counter in the bar is
+    everywhere).
     """
 
     def __init__(self) -> None:
@@ -82,7 +82,7 @@ persons = PersonsChannel()
 
 @router.websocket("/ws/me")
 async def persons_ws(websocket: WebSocket, token: str = ""):
-    """Der persönliche Kanal: hier kommt an, was den Menschen angeht (neue Post)."""
+    """The personal channel: what concerns the person arrives here (new mail)."""
     try:
         payload = decode_access_token(token)
     except jwt.PyJWTError:
@@ -104,7 +104,7 @@ async def persons_ws(websocket: WebSocket, token: str = ""):
     await persons.join(user_id, websocket)
     try:
         while True:
-            # Der Kanal ist eine Einbahnstraße; empfangen wird nur, um das Trennen zu merken.
+            # The channel is a one-way street; receiving happens only to notice the disconnect.
             await websocket.receive_text()
     except WebSocketDisconnect:
         persons.separate(user_id, websocket)

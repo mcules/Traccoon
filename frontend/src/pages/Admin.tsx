@@ -298,7 +298,7 @@ function Users() {
     <Errorrow text={err} />
     {/* Keine Tabelle: vier Spalten auf 390 px hießen ein Wort je Zeile, und die drei
         Knöpfe stapelten sich rechts übereinander. Eine Zeile je Nutzer bricht sauber um
-        und liest sich auf jeder Breite gleich. */}
+        and reads the same at every width. */}
     <Area>
     <Listing>
       {users?.map((u) => (

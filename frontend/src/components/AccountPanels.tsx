@@ -92,9 +92,9 @@ export function AssistantNoticesPanel() {
 /**
  * Zeitzone dieser Person.
  *
- * Sie beantwortet die Frage, was „8 Uhr" heißt — und zwar an drei Stellen zugleich: in den
- * Uhrzeiten dieser Oberfläche, im Nachtfenster der Agenten und im Zeitplan der eigenen Jobs.
- * Vorher rechnete die Oberfläche mit der Zone des Browsers und der Server in UTC; ein
+ * It answers the question what "8 o'clock" means — in three places at once: in the times of
+ * this UI, in the night window of the agents and in the schedule of one's own jobs. Before, the
+ * UI computed with the zone of the browser and the server in UTC; a
  * Cron-Job „0 8 * * *" lief damit im Sommer um zehn.
  */
 export function TimezonePanel() {

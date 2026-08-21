@@ -15,9 +15,9 @@ from __future__ import annotations
 def _f(path: str, kind: str, description: str) -> dict:
     """Ein Katalogeintrag.
 
-    Die Schluessel sind englisch, weil der Editor sie liest und die Doku sie zeigt — der
-    Katalog ist eine Schnittstelle, keine interne Notiz. `description` ist dagegen ein
-    **i18n-Schluessel**, kein Text: Der Editor zeigt ihn dem Menschen in dessen Sprache, und
+    The keys are English because the editor reads them and the docs show them — the catalog is
+    an interface, not an internal note. `description` on the other hand is an **i18n key**, not
+    a text: the editor shows it to the person in their language, and
     beide Kataloge (de/en) tragen ihn vollstaendig.
     """
     return {"path": path, "type": kind, "description": description}

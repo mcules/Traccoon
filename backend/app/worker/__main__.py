@@ -586,12 +586,12 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
 
 
 async def _handle_agent_free(job: dict, redis: Redis) -> None:
-    """Ein Agentenlauf ohne alles: ohne Ticket, ohne Projekt, ohne Eingang.
+    """An agent run without anything: without a ticket, without a project, without an intake.
 
-    Genau das konnte bisher nur ein Prompt-Job — die Fähigkeit steckte in der Job-Art fest
-    und war aus einem Ablauf heraus nicht zu haben. Jetzt ist es eine Aufgabe wie jede
-    andere: Wer sie stellt (Job, Ablauf-Knoten), ist von hier aus einerlei, und das Ergebnis
-    geht denselben Weg zurück wie bei allen wartenden Schritten.
+    Exactly that could until now only be done by a prompt job — the ability was stuck in the job
+    kind and was not available out of a flow. Now it is a task like any other: who sets it (a
+    job, a flow node) makes no difference from here, and the result goes back the same way as
+    with all waiting steps.
     """
     from .runtime import run_agent
     task_id = job["task_id"]
@@ -625,9 +625,9 @@ async def _handle_agent_free(job: dict, redis: Redis) -> None:
             await report("failed", str(exc)[:2000])
 
 
-# Den Prompt-Job gibt es nicht mehr: Ein Job ist Zeitplan plus Ablauf, und der Agentenlauf
-# darin ist `agent_frei` (oben). Damit fällt auch der Weg über diese Warteschlange weg — er
-# war der einzige Grund, warum ein Job nur genau eine Sache tun konnte.
+# The prompt job no longer exists: a job is schedule plus flow, and the agent run in it is
+# `agent_free` (above). With that the way through this queue falls away too — it was the only
+# reason why a job could do exactly one thing.
 
 
 # Conversation history in chat (ABC-30): a chat used to be a series of independent runs, so a

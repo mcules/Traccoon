@@ -7,8 +7,8 @@ import { ACTION_SPECS } from "./actionFields";
 
 /** Actions grouped by topic; otherwise the list becomes confusing.
  *
- * Nur Schlüssel, keine Klartexte: Gemischt war beides, und was als Klartext dastand, blieb
- * in der englischen Oberfläche deutsch — während zwei Eintraege, die schon Schlüssel waren,
+ * Keys only, no plain texts: both were mixed, and what stood there as plain text stayed German
+ * in the English UI — while two entries that were keys already
  * roh als `action.spam_card` in der Liste standen. */
 const GROUPS: [string, [AutoActionName, string][]][] = [
   ["Artefakt", [

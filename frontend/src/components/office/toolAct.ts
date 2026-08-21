@@ -160,7 +160,7 @@ export function toolAct(name: string): ToolAct {
   if (tableHas(TOOL_ACT, tool)) return TOOL_ACT[tool];
 
   const cut = tool.lastIndexOf(MCP_SEP);
-  if (cut < 0) return "other";           // kein MCP → keine Heuristik
+  if (cut < 0) return "other";           // no MCP → no heuristic
   const bare = tool.slice(cut + MCP_SEP.length);
   if (tableHas(TOOL_ACT, bare)) return TOOL_ACT[bare];
 

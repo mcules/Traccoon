@@ -1,9 +1,9 @@
 """doc_series / doc_entries — Ablagen: Texte, die ein Ablauf schreibt
 
-Ein Ablauf konnte seinen Text nirgends lassen: Der Rückblick, den ein Agent jeden Morgen
-schreibt, landete im Ausgabefeld eines Job-Laufs (abgeschnitten bei 20.000 Zeichen), und die
-Meldung dazu verwies auf `/digest/<Lauf>` — eine Seite, die es nie gab. Aufgebaut wie die
-Messreihen: ein Name und eine Folge von Fassungen.
+A flow had nowhere to leave its text: the review an agent writes every morning ended up in the
+output field of a job run (truncated at 20,000 characters), and the report about it pointed at
+`/digest/<run>` — a page that never existed. Built like the metric series: a name and a sequence
+of versions.
 
 Revision ID: f3c8d21a94e5
 Revises: e2a91c53f76b

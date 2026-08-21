@@ -253,7 +253,7 @@ export default function TicketDrawer({
       const wasArchiving = !issue?.archived;
       qc.invalidateQueries({ queryKey: ["issues", project.id] });
       qc.invalidateQueries({ queryKey: ["issues-archived", project.id] });
-      if (wasArchiving) onClose();   // beim Archivieren das Modal direkt schließen
+      if (wasArchiving) onClose();   // when archiving, close the modal right away
       else invalidate();
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
@@ -291,7 +291,7 @@ export default function TicketDrawer({
     ? "mx-auto max-w-6xl rounded-xl border border-line bg-card p-6"
     : "max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-line bg-card p-5 shadow-2xl";
   // Archiving and deleting right at the top beside the ticket id (clear icon buttons).
-  // Icon-Knopf in der Seitenleiste: blau wie jeder Knopf, nur ohne Beschriftung.
+  // An icon button in the sidebar: blue like every button, only without a label.
   const iconBtn = "rounded-md border border-brand bg-brand p-1.5 text-lg leading-none text-white";
   const headerActions = issue && (canWrite || canManage) && (
     <div className="flex items-center gap-1.5">
@@ -521,7 +521,7 @@ export default function TicketDrawer({
         </div>
       )}
 
-      {/* Testumgebung: sichtbar sobald es Code-Änderungen gibt */}
+      {/* Test environment: visible as soon as there are code changes */}
       {project.my_ai_assign && fileChanges && fileChanges.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 border-t border-line pt-2 text-xs">
           <span className="font-medium">{tr("ticket_drawer.test_environment")}</span>
@@ -697,7 +697,7 @@ export default function TicketDrawer({
               </button>
             )}
           </div>
-          {/* Noch nicht geplant oder fehlgeschlagen → Planung (neu) anstoßen. */}
+          {/* Not planned yet or failed → kick off planning (anew). */}
           {!issue.agent_working && (issue.agent_status === null || issue.agent_status === "open"
             || issue.agent_status === "failed") && (
             <button onClick={() => life.mutate("plan")}
@@ -890,7 +890,7 @@ export default function TicketDrawer({
     >
       {keys.map((k) => {
         const node = blockMap[k];
-        if (!node) return null; // Block existiert (aktuell) nicht → nicht rendern, Key bleibt im Layout
+        if (!node) return null; // the block does (currently) not exist → do not render, the key stays in the layout
         // Normal mode: the block completely normally, without handle, DnD or frame.
         if (!editLayout) return <div key={k}>{node}</div>;
         const showLine = overCol === col && overKey === k && dragKey !== k;

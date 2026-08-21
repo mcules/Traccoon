@@ -246,11 +246,11 @@ async def make_asset(db, model_name: str, project: Project | None = None,
 
 
 async def make_webhook(db, owner: User, route: str, **fields) -> "WebhookSub":
-    """Webhook anlegen und gleich umstellen, falls er noch einen alten Modus trägt.
+    """Create a webhook and convert it right away if it still carries an old mode.
 
-    Tests, die einen Auslöser von außen brauchen, gehen damit denselben Weg wie der Betrieb:
-    Was früher ein eigener Modus war (Ticket, Meldung, Assistent), ist heute ein Ablauf, und
-    `webhook_modes.umstellen` ist die Stelle, die das herstellt.
+    Tests that need a trigger from outside thereby take the same path production takes: what
+    used to be a mode of its own (ticket, report, assistant) is a flow today, and
+    `webhook_modes.convert` is the place that produces that.
     """
     import uuid as _uuid
 
@@ -267,7 +267,7 @@ async def make_webhook(db, owner: User, route: str, **fields) -> "WebhookSub":
 
 
 async def report(db, sub, payload: dict) -> list[int]:
-    """Zustellung eines Webhooks ohne HTTP — Kontext und Referenz wie in `api/ops`."""
+    """Delivery of a webhook without HTTP — context and reference as in `api/ops`."""
     from app.api.ops import _context, _reference
     from app.models.workflow import WorkflowDefinition
     from app.services.events import emit
@@ -289,10 +289,10 @@ async def report(db, sub, payload: dict) -> list[int]:
 
 @pytest.fixture
 def redis_stub_real(monkeypatch):
-    """Ein Redis, das wirklich etwas behält — im Speicher, nur für den Test.
+    """A Redis that really keeps something — in memory, for the test only.
 
-    Der große `redis_stub` ersetzt die Warteschlange; hier geht es um den Cache, und der
-    braucht ein Gegenüber, das sich merkt, was es bekommen hat.
+    The big `redis_stub` replaces the queue; here it is about the cache, and that needs a
+    counterpart which remembers what it was given.
     """
     store: dict[str, str] = {}
 

@@ -1,13 +1,13 @@
 """webhook_subs.context_fixed — feste Kontextwerte am Auslöser
 
-Zugleich Zusammenführung der beiden offenen Stränge (Mail-Client und Spam-Befunde), damit
+At the same time a merge of the two open strands (mail client and spam findings), so that
 `alembic upgrade head` wieder ein Ziel hat.
 
-Der Kontext eines Laufs entsteht ab hier an einer Stelle: `context_map` holt aus der
-Nutzlast, `context_fixed` setzt feste Werte (mit `{feld}` aus der Nutzlast). Die alten
-Webhook-Modi `task`, `notify` und `assistant` sind damit entbehrlich — was sie taten, machen
-Knoten im Ablauf. Bestehende Webhooks stellt `services/webhook_modes.umstellen()` beim
-Start um; das braucht Graphen und steht deshalb nicht hier.
+From here on the context of a run comes into being in one place: `context_map` fetches from the
+payload, `context_fixed` sets fixed values (with `{field}` from the payload). The old webhook
+modes `task`, `notify` and `assistant` are thereby dispensable — what they did is done by nodes
+in the flow. Existing webhooks are converted at startup by `services/webhook_modes.convert()`;
+that needs graphs and therefore does not stand here.
 
 Revision ID: c4f7a92b13de
 Revises: b1d84f26e9a7, c7f2a41d95b3

@@ -38,8 +38,8 @@ export function primaryNavigation(isAdmin: boolean, plugins: NavEntry[] = []): N
     { key: "mail", label: "Mail", icon: "✉️", to: "/mail", counter: "mail" },
     { key: "buero", label: tr("layout.office"), icon: "🏢", to: "/office" },
     { key: "prozesse", label: tr("layout.flows"), icon: "🔀", to: "/processes" },
-    // Plugins stehen vor den Einstellungen: Sie sind Bereiche wie die anderen, und die
-    // Einstellungen sollen der letzte Punkt vor der Verwaltung bleiben.
+    // Plugins stand before the settings: they are areas like the others, and the settings
+    // should stay the last item before the administration.
     ...plugins,
     { key: "einstellungen", label: tr("layout.settings"), icon: "⚙️", to: "/settings" },
     ...(isAdmin ? [{ key: "admin", label: tr("layout.admin"), icon: "🛠️", to: "/admin" }] : []),
