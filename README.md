@@ -324,7 +324,7 @@ versions a store keeps stands on the store.
   out in the language of the person who reads them
 - Usable on a phone: one column instead of three in the flow editor, blocks are added by
   tapping instead of dragging, lists replace tables where columns would not fit.
-  `tools/uitest/` measures it (overflow, touch targets, font sizes) across 32 screens at
+  `tools/uitest/` measures it (overflow, touch targets, font sizes) across 42 screens at
   two widths (390 and 1400 px)
 
 ### Operations

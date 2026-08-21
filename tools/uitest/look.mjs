@@ -5,7 +5,7 @@ const browser = await chromium.launch({ executablePath: "/ms-playwright/chromium
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 await ctx.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
 const page = await ctx.newPage();
-await page.goto("http://frontend/processes/messreihen", { waitUntil: "networkidle" });
+await page.goto("http://frontend/processes/metrics", { waitUntil: "networkidle" });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: "/w/20-messreihen-leer.png" });
 console.log((await page.locator("body").innerText()).slice(0, 400));
