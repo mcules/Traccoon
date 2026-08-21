@@ -104,13 +104,13 @@ execution agents. Two points always stay with a human: plan approval and final r
   assistant did about it
 - **Tools instead of talk:** whatever you run as an MCP server it can use — a mailbox, a
   document archive, a vault of notes, a calendar and contacts, photos, time tracking. In
-  this instance thirteen of them, each released per tool, not per server
+  this instance fifteen of them, each released per tool, not per server
 - **A memory that outlasts the run.** What your person taught it lands as a line in a note
   in your vault — visible, correctable by hand, and hung into the next prompt. It writes
   there itself with `remember`, corrects itself with `forget`
 - **Two ways in:** the inbox in the browser, and the messenger. A voice message works as
   well as a typed one
-- **Free assignments too:** a flow can hand it a job (`assistent_auftrag`), with or without
+- **Free assignments too:** a flow can hand it a job (`assistant_task`), with or without
   waiting for the result
 
 ### Mail
@@ -196,17 +196,22 @@ Every flow is a directed graph, drawn in the browser:
 
 On top of that:
 
-- **Templates:** four ready-made flows as a starting point (incoming report, scheduled check
-  with approval, work through a list, call with retry)
+- **Templates:** nine ready-made flows as a starting point — report from outside, scheduled
+  check with approval, work through a list, call with retry, mail intake, attachment to
+  Paperless, and the three short ways from a trigger (to the assistant, to a message, to a
+  ticket)
 - **Describe instead of build:** one sentence is enough, a model draws the graph. The draft
   lands on the canvas, saving stays manual
 - **Dry run:** the flow runs end to end, every action only reports what it would do
 - **Step log per run:** what each step returned and which branch it took
-- **Expressions** `{{ path | filter:argument }}` with 19 filters (shorten, round, format
+- **Expressions** `{{ path | filter:argument }}` with 24 filters (shorten, round, format
   dates, fall back). Unquoted filter arguments may themselves be context paths
-- **Process sets:** one shipped default plus personal and project copies (copy on write,
-  resettable) for the named flows: AI lifecycle, review, procurement, ticket intake, mail
-  intake
+- **Process sets:** one shipped default plus a copy per project (copy on write, resettable)
+  for the four flows Traccoon sets off by name: AI lifecycle, acceptance, procurement,
+  ticket intake. The mail inbox is deliberately not among them — it is nobody's default but
+  one person's flow, and lives as a template. A personal set exists in the API; the interface
+  no longer offers one, because it was a full copy of ALL slots and event-driven flows then
+  ran twice
 - Anyone may create free-standing flows. They act only on artifacts the owner has rights to
 - Retries with delay, an error outlet per action, nesting and step limits
 
@@ -283,6 +288,18 @@ Deliberately no PostGIS: the extension is not in the image, the tests run agains
 and for a handful of places per person a haversine loop in Python answers faster than a
 database could accept the query.
 
+### Stores
+
+A flow that writes a text had nowhere to put it. The review an agent writes every morning
+ended up in the output field of a job run: cut off at 20,000 characters, without a heading,
+without a view, and findable only by whoever knew which run it was.
+
+A store is built like a series and for the same reason — a name and a sequence of versions.
+What stands in it (a review, a report, a log, a note) the flow knows; the store keeps it,
+holds the older versions beside the current one and shows what changed between two of them.
+Flows write with the `document` action and read back with `document_read`, and how many
+versions a store keeps stands on the store.
+
 ### Notifications and the messenger
 
 - **Telegram is the second window.** A notification is not a dead line of text but a card
@@ -307,8 +324,8 @@ database could accept the query.
   out in the language of the person who reads them
 - Usable on a phone: one column instead of three in the flow editor, blocks are added by
   tapping instead of dragging, lists replace tables where columns would not fit.
-  `tools/uitest/` measures it (overflow, touch targets, font sizes) across 29 screens at
-  three widths
+  `tools/uitest/` measures it (overflow, touch targets, font sizes) across 32 screens at
+  two widths (390 and 1400 px)
 
 ### Operations
 
@@ -332,7 +349,7 @@ database could accept the query.
 | `whisper`, `asr-gpu` | Python | local speech recognition (CPU or GPU) |
 | `filmer` | Node | end-of-day office film as a GIF |
 
-About 107,000 lines of code and 1,141 automated tests across 98 files, plus browser probes
+About 109,000 lines of code and 1,148 automated tests across 97 files, plus browser probes
 under `tools/uitest` for what only shows up in a browser.
 
 ## Getting started
@@ -382,9 +399,6 @@ Out of the box Traccoon is a complete ticket system. Everything else is opt-in:
 - The agent path needs a deployable project with `compose.preview.yml` for test
   environments and review to run end to end.
 - Model prices and identifiers in the catalog are defaults and editable in the UI.
-- **The Alembic history currently has three heads.** With `DEV_CREATE_ALL` (the default) that
-  does not matter, because the schema is applied at startup. Anyone who wants to migrate
-  properly has to write a merge revision first.
 
 ## Contributing
 
