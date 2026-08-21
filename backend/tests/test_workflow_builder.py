@@ -18,7 +18,7 @@ pytestmark = pytest.mark.asyncio
 
 
 GOOD = {
-    "erklaerung": "Meldet eingehende Störungen weiter.",
+    "explanation": "Meldet eingehende Störungen weiter.",
     "nodes": [
         {"id": "start", "type": "start", "data": {"config": {"label": "Start"}}},
         {"id": "melden", "type": "auto_action", "data": {"config": {
@@ -30,7 +30,7 @@ GOOD = {
 }
 
 BROKEN = {
-    "erklaerung": "Halb fertig.",
+    "explanation": "Halb fertig.",
     "nodes": [
         {"id": "start", "type": "start", "data": {"config": {}}},
         {"id": "weiche", "type": "decision", "data": {"config": {
@@ -75,8 +75,8 @@ async def test_a_clean_draft(db, monkeypatch):
     _model(monkeypatch, json.dumps(GOOD))
     r = await author.compose(db, owner_id=anna.id, description="melde Störungen",
                               subject_kind=WorkflowSubjectKind.standalone)
-    assert r["fehler"] == []
-    assert r["erklaerung"].startswith("Meldet")
+    assert r["errors"] == []
+    assert r["explanation"].startswith("Meldet")
     assert [n["id"] for n in r["graph"]["nodes"]] == ["start", "melden", "ende"]
     # Positions come from the server, not from the model; otherwise everything would lie on top of each other.
     assert {n["position"]["y"] for n in r["graph"]["nodes"]} == {0, 130, 260}
@@ -85,7 +85,7 @@ async def test_a_clean_draft(db, monkeypatch):
 async def test_the_configuration_is_found_flat_as_well(db, monkeypatch):
     """Models like to put the configuration somewhere else; it must never arrive empty."""
     anna = await make_user(db, "anna")
-    flat = {"erklaerung": "x", "edges": GOOD["edges"], "nodes": [
+    flat = {"explanation": "x", "edges": GOOD["edges"], "nodes": [
         {"id": "start", "type": "start", "config": {"label": "Start"}},
         {"id": "melden", "type": "auto_action",
          "data": {"label": "Melden", "action": {"action": "notify", "params": {}}}},
@@ -102,7 +102,7 @@ async def test_a_forgotten_default_branch_is_set(db, monkeypatch):
     """A branch without a default path demanded an edge called 'default', which nobody draws.
     We close that ourselves instead of sacrificing a model round for it."""
     anna = await make_user(db, "anna")
-    without = {"erklaerung": "x", "nodes": [
+    without = {"explanation": "x", "nodes": [
         {"id": "start", "type": "start", "data": {"config": {}}},
         {"id": "w", "type": "decision", "data": {"config": {"branches": [
             {"handle": "ja", "guard": {"==": [{"var": "a"}, 1]}}, {"handle": "nein"}]}}},
@@ -114,7 +114,7 @@ async def test_a_forgotten_default_branch_is_set(db, monkeypatch):
     counter, _ = _model(monkeypatch, json.dumps(without))
     r = await author.compose(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
-    assert r["fehler"] == [] and counter["n"] == 1, "no rework round needed"
+    assert r["errors"] == [] and counter["n"] == 1, "no rework round needed"
     decision = next(n for n in r["graph"]["nodes"] if n["id"] == "w")
     assert decision["data"]["config"]["default_handle"] == "nein"
     assert all(n["data"]["config"]["outcome"] == "completed"
@@ -126,7 +126,7 @@ async def test_code_fences_and_a_preamble_do_not_disturb(db, monkeypatch):
     _model(monkeypatch, "Klar, hier:\n```json\n" + json.dumps(GOOD) + "\n```\nViel Spaß!")
     r = await author.compose(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
-    assert r["fehler"] == [] and len(r["graph"]["nodes"]) == 3
+    assert r["errors"] == [] and len(r["graph"]["nodes"]) == 3
 
 
 async def test_errors_are_returned_and_repaired_once(db, monkeypatch):
@@ -135,7 +135,7 @@ async def test_errors_are_returned_and_repaired_once(db, monkeypatch):
     r = await author.compose(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
     assert counter["n"] == 2, "exactly one rework round"
-    assert r["fehler"] == []
+    assert r["errors"] == []
     # The correction gets the real validation sentences to see.
     message = chat.last["messages"][-1]["content"]
     assert "Kante für Ausgang 'ja' fehlt" in message
@@ -148,7 +148,7 @@ async def test_stubbornly_broken_still_arrives(db, monkeypatch):
     r = await author.compose(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
     assert counter["n"] == 2
-    assert r["graph"]["nodes"] and r["fehler"]
+    assert r["graph"]["nodes"] and r["errors"]
 
 
 async def test_no_json_no_crash(db, monkeypatch):
@@ -157,7 +157,7 @@ async def test_no_json_no_crash(db, monkeypatch):
     r = await author.compose(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
     assert r["graph"] == {"nodes": [], "edges": []}
-    assert r["fehler"]
+    assert r["errors"]
 
 
 async def test_a_rebuild_receives_the_existing_state(db, monkeypatch):
@@ -167,7 +167,7 @@ async def test_a_rebuild_receives_the_existing_state(db, monkeypatch):
                           subject_kind=WorkflowSubjectKind.standalone,
                           existing={"nodes": GOOD["nodes"], "edges": GOOD["edges"]})
     task = chat.last["messages"][-1]["content"]
-    assert "bestehende Ablauf" in task and "melden" in task
+    assert "existing flow" in task and "melden" in task
 
 
 async def test_without_a_ticket_the_ticket_actions_are_excluded(db, monkeypatch):
@@ -176,7 +176,7 @@ async def test_without_a_ticket_the_ticket_actions_are_excluded(db, monkeypatch)
     await author.compose(db, owner_id=anna.id, description="x",
                           subject_kind=WorkflowSubjectKind.standalone)
     system = chat.last["messages"][0]["content"]
-    assert "agent_task" in system and "NICHT zur Verfügung" in system
+    assert "agent_task" in system and "NOT available" in system
 
 
 async def test_the_endpoint_stores_nothing(client, db, monkeypatch):
