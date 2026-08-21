@@ -3,10 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDateTime } from "../../lib/formatTime";
 import { language, tr } from "../../i18n";
 import {
-  ApiError, seriesApi, type Grant, type Ort, type Series } from "../../api";
+  ApiError, seriesApi, type Grant, type Place, type Series } from "../../api";
 import {
-  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Etikett, Field, Fehlerzeile, ICON,
-  IconButton, Button, Listing, ListingLeer, ListenLine, LoeschDialog } from "../ui";
+  Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow, ICON,
+  IconButton, Button, Listing, ListingEmpty, ListenLine, DeleteDialog } from "../ui";
 
 /**
  * Standortreihen: die Geräte, deren Spur Traccoon mitschreibt.
@@ -16,21 +16,21 @@ import {
  * (Ruhefilter, Mindestabstand, Genauigkeitsgrenze) und die benannten Orte weiter unten.
  */
 
-const FARBEN = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#a855f7", "#06b6d4", "#ec4899"];
+const COLORS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#a855f7", "#06b6d4", "#ec4899"];
 
 /** Tausender in der Sprache der Oberfläche, nicht in der des Browsers — die beiden sind hier
  *  nicht dasselbe: Die Sprache haengt am angemeldeten Menschen. */
-const zahl = (n: number) => n.toLocaleString(language());
+const number = (n: number) => n.toLocaleString(language());
 
-const LEER = {
-  key: "", name: "", color: FARBEN[0],
+const EMPTY = {
+  key: "", name: "", color: COLORS[0],
   min_distance_m: 25, min_interval_s: 300, max_accuracy_m: 500,
 };
 
 export default function LocationsPanel() {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<Series | {} | null>(null);
-  const [loeschTarget, setLoeschTarget] = useState<Series | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Series | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [err, setErr] = useState("");
 
@@ -43,7 +43,7 @@ export default function LocationsPanel() {
   const inv = () => qc.invalidateQueries({ queryKey: ["series"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
 
-  const speichern = useMutation({
+  const save = useMutation({
     mutationFn: ({ key, body }: { key: string | null; body: Record<string, any> }) => {
       const { min_distance_m, min_interval_s, max_accuracy_m, ...remainder } = body;
       const settings = { min_distance_m, min_interval_s, max_accuracy_m };
@@ -56,42 +56,42 @@ export default function LocationsPanel() {
   });
   const remove = useMutation({
     mutationFn: (key: string) => seriesApi.del(key),
-    onSuccess: () => { setLoeschTarget(null); inv(); }, onError: fail,
+    onSuccess: () => { setDeleteTarget(null); inv(); }, onError: fail,
   });
 
   return (
     <div className="space-y-4">
-      <Area titel={tr("standorte.geraete")} hinweis={tr("standorte.einleitung")}
-        werkzeuge={<Button art="haupt" onClick={() => setDialog({})}>
+      <Area title={tr("standorte.geraete")} hint={tr("standorte.einleitung")}
+        tools={<Button variant="primary" onClick={() => setDialog({})}>
           {tr("standorte.geraet_anlegen")}</Button>}>
-        <Fehlerzeile text={err} />
+        <Errorrow text={err} />
         <Listing>
           {series?.map((r) => (
-            <DeviceLine key={r.key} reihe={r} offen={open === r.key}
-              onOeffnen={() => setOpen(open === r.key ? null : r.key)}
-              onBearbeiten={() => setDialog(r)}
-              onLoeschen={() => setLoeschTarget(r)}
-              onFehler={fail} />
+            <DeviceLine key={r.key} series={r} open={open === r.key}
+              onOpen={() => setOpen(open === r.key ? null : r.key)}
+              onEdit={() => setDialog(r)}
+              onDelete={() => setDeleteTarget(r)}
+              onError={fail} />
           ))}
-          {series?.length === 0 && <ListingLeer>{tr("standorte.keine_geraete")}</ListingLeer>}
+          {series?.length === 0 && <ListingEmpty>{tr("standorte.keine_geraete")}</ListingEmpty>}
         </Listing>
       </Area>
 
-      <Orte onFehler={fail} />
+      <Places onError={fail} />
 
       {dialog && (
-        <DeviceDialog reihe={"key" in dialog ? (dialog as Series) : null}
-          laeuft={speichern.isPending}
+        <DeviceDialog series={"key" in dialog ? (dialog as Series) : null}
+          runs={save.isPending}
           onClose={() => setDialog(null)}
-          onSpeichern={(body) => speichern.mutate({
+          onSave={(body) => save.mutate({
             key: "key" in dialog ? (dialog as Series).key : null, body })} />
       )}
-      {loeschTarget && (
-        <LoeschDialog was={loeschTarget.name || loeschTarget.key}
-          hinweis={tr("standorte.loeschen_hinweis", { anzahl: String(loeschTarget.points) })}
-          laeuft={remove.isPending}
-          onClose={() => setLoeschTarget(null)}
-          onLoeschen={() => remove.mutate(loeschTarget.key)} />
+      {deleteTarget && (
+        <DeleteDialog was={deleteTarget.name || deleteTarget.key}
+          hint={tr("standorte.loeschen_hinweis", { count: String(deleteTarget.points) })}
+          runs={remove.isPending}
+          onClose={() => setDeleteTarget(null)}
+          onDelete={() => remove.mutate(deleteTarget.key)} />
       )}
     </div>
   );
@@ -99,34 +99,34 @@ export default function LocationsPanel() {
 
 // ── Ein Gerät ────────────────────────────────────────────────────────────────
 
-function DeviceLine({ reihe: series, offen: open, onOeffnen: onOpen_it, onBearbeiten, onLoeschen: onDelete, onFehler: onError }: {
-  reihe: Series; offen: boolean; onOeffnen: () => void;
-  onBearbeiten: () => void; onLoeschen: () => void; onFehler: (e: unknown) => void;
+function DeviceLine({ series: series, open: open, onOpen: onOpen_it, onEdit, onDelete: onDelete, onError: onError }: {
+  series: Series; open: boolean; onOpen: () => void;
+  onEdit: () => void; onDelete: () => void; onError: (e: unknown) => void;
 }) {
   const state = series.state || {};
-  const orte: string[] = state.places || [];
+  const places: string[] = state.places || [];
 
   return (
-    <ListenLine gedimmt={!series.active}>
+    <ListenLine dimmed={!series.active}>
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 shrink-0 rounded-full"
-            style={{ background: series.color || FARBEN[0] }} />
+            style={{ background: series.color || COLORS[0] }} />
           <button onClick={onOpen_it} className="min-w-0 truncate text-left font-medium text-ink">
             {series.name || series.key}
           </button>
           <code className="shrink-0 font-mono text-xs text-muted">{series.key}</code>
-          {orte.map((o) => <Etikett key={o} farbe="gruen">{o}</Etikett>)}
-          {!series.own && <Etikett farbe="neutral">{series.owner}</Etikett>}
+          {places.map((o) => <Tag key={o} color="green">{o}</Tag>)}
+          {!series.own && <Tag color="neutral">{series.owner}</Tag>}
           <div className="flex-1" />
           <span className="shrink-0 text-xs text-muted">
-            {zahl(series.points)} {tr("standorte.punkte")}
+            {number(series.points)} {tr("standorte.punkte")}
           </span>
           {series.own && (
             <Actions>
-              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
-                onClick={onBearbeiten} />
-              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+                onClick={onEdit} />
+              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
                 onClick={onDelete} />
             </Actions>
           )}
@@ -140,42 +140,42 @@ function DeviceLine({ reihe: series, offen: open, onOeffnen: onOpen_it, onBearbe
             <span className="font-mono">{state.lat.toFixed(5)}, {state.lon.toFixed(5)}</span>
           )}
         </div>
-        {open && series.own && <Anschluss reihe={series} onFehler={onError} />}
+        {open && series.own && <Connection series={series} onError={onError} />}
       </div>
     </ListenLine>
   );
 }
 
 /** Adresse zum Melden und die Freigaben — beides erst auf Klick, beides nur für Besitzer. */
-function Anschluss({ reihe: series, onFehler: onError }: { reihe: Series; onFehler: (e: unknown) => void }) {
+function Connection({ series: series, onError: onError }: { series: Series; onError: (e: unknown) => void }) {
   const qc = useQueryClient();
-  const [adresse, setAdresse] = useState("");
-  const [neuerUser, setNeuerUser] = useState("");
+  const [address, setAddress] = useState("");
+  const [newUser, setNewUser] = useState("");
 
   const { data: grants } = useQuery({
     queryKey: ["series", series.key, "shares"], queryFn: () => seriesApi.shares(series.key),
   });
   const invF = () => qc.invalidateQueries({ queryKey: ["series", series.key, "shares"] });
 
-  const zeigen = useMutation({
+  const show = useMutation({
     mutationFn: () => series.has_token ? seriesApi.token(series.key)
-                                      : seriesApi.neuesToken(series.key),
-    onSuccess: (d) => setAdresse(`${location.origin}${d.path}`),
+                                      : seriesApi.newToken(series.key),
+    onSuccess: (d) => setAddress(`${location.origin}${d.path}`),
     onError: onError,
   });
   const renew = useMutation({
-    mutationFn: () => seriesApi.neuesToken(series.key),
+    mutationFn: () => seriesApi.newToken(series.key),
     onSuccess: (d) => {
-      setAdresse(`${location.origin}${d.path}`);
+      setAddress(`${location.origin}${d.path}`);
       qc.invalidateQueries({ queryKey: ["series"] });
     },
     onError: onError,
   });
-  const teilen = useMutation({
+  const share = useMutation({
     mutationFn: (user_id: number) => seriesApi.share(series.key, { user_id, level: "view" }),
-    onSuccess: () => { setNeuerUser(""); invF(); }, onError: onError,
+    onSuccess: () => { setNewUser(""); invF(); }, onError: onError,
   });
-  const entziehen = useMutation({
+  const revoke = useMutation({
     mutationFn: (id: number) => seriesApi.unshare(series.key, id),
     onSuccess: invF, onError: onError,
   });
@@ -186,17 +186,17 @@ function Anschluss({ reihe: series, onFehler: onError }: { reihe: Series; onFehl
         <div className="mb-1 text-xs font-medium text-ink">{tr("standorte.adresse")}</div>
         <p className="mb-2 text-xs text-muted">{tr("standorte.adresse_hinweis")}</p>
         <div className="flex items-center gap-2">
-          {adresse ? (
-            <input readOnly value={adresse} onFocus={(e) => e.target.select()}
+          {address ? (
+            <input readOnly value={address} onFocus={(e) => e.target.select()}
               className={`${INPUT_VALUE} font-mono text-xs`} />
           ) : (
-            <Button klein laeuft={zeigen.isPending} onClick={() => zeigen.mutate()}>
+            <Button small runs={show.isPending} onClick={() => show.mutate()}>
               {series.has_token ? tr("standorte.adresse_zeigen") : tr("standorte.adresse_erzeugen")}
             </Button>
           )}
           {series.has_token && (
-            <Button klein laeuft={renew.isPending} onClick={() => renew.mutate()}
-              titel={tr("standorte.token_erneuern_hinweis")}>
+            <Button small runs={renew.isPending} onClick={() => renew.mutate()}
+              title={tr("standorte.token_erneuern_hinweis")}>
               {tr("standorte.token_erneuern")}
             </Button>
           )}
@@ -210,20 +210,20 @@ function Anschluss({ reihe: series, onFehler: onError }: { reihe: Series; onFehl
             {grants.map((f: Grant) => (
               <div key={f.id} className="flex items-center gap-2 text-xs">
                 <span className="text-ink">{f.username}</span>
-                <Etikett farbe="neutral">{f.level}</Etikett>
+                <Tag color="neutral">{f.level}</Tag>
                 <div className="flex-1" />
-                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                  onClick={() => entziehen.mutate(f.id)} />
+                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                  onClick={() => revoke.mutate(f.id)} />
               </div>
             ))}
           </div>
         ) : <p className="mb-2 text-xs text-muted">{tr("standorte.keine_freigaben")}</p>}
         <div className="flex items-center gap-2">
-          <input value={neuerUser} onChange={(e) => setNeuerUser(e.target.value)}
+          <input value={newUser} onChange={(e) => setNewUser(e.target.value)}
             placeholder={tr("standorte.nutzer_id")} inputMode="numeric"
             className={`${INPUT_VALUE} max-w-[140px]`} />
-          <Button klein disabled={!neuerUser.trim()} laeuft={teilen.isPending}
-            onClick={() => teilen.mutate(Number(neuerUser))}>
+          <Button small disabled={!newUser.trim()} runs={share.isPending}
+            onClick={() => share.mutate(Number(newUser))}>
             {tr("standorte.freigeben")}
           </Button>
         </div>
@@ -232,38 +232,38 @@ function Anschluss({ reihe: series, onFehler: onError }: { reihe: Series; onFehl
   );
 }
 
-function DeviceDialog({ reihe: series, laeuft: running, onClose, onSpeichern }: {
-  reihe: Series | null; laeuft: boolean;
-  onClose: () => void; onSpeichern: (body: Record<string, any>) => void;
+function DeviceDialog({ series: series, runs: running, onClose, onSave }: {
+  series: Series | null; runs: boolean;
+  onClose: () => void; onSave: (body: Record<string, any>) => void;
 }) {
   const [form, setForm] = useState(series ? {
-    key: series.key, name: series.name, color: series.color || FARBEN[0],
-    min_distance_m: series.settings?.min_distance_m ?? LEER.min_distance_m,
-    min_interval_s: series.settings?.min_interval_s ?? LEER.min_interval_s,
-    max_accuracy_m: series.settings?.max_accuracy_m ?? LEER.max_accuracy_m,
-  } : { ...LEER });
-  const setz = (field: string, value: any) => setForm((f) => ({ ...f, [field]: value }));
+    key: series.key, name: series.name, color: series.color || COLORS[0],
+    min_distance_m: series.settings?.min_distance_m ?? EMPTY.min_distance_m,
+    min_interval_s: series.settings?.min_interval_s ?? EMPTY.min_interval_s,
+    max_accuracy_m: series.settings?.max_accuracy_m ?? EMPTY.max_accuracy_m,
+  } : { ...EMPTY });
+  const set = (field: string, value: any) => setForm((f) => ({ ...f, [field]: value }));
 
   return (
-    <Dialog titel={series ? tr("standorte.geraet_bearbeiten") : tr("standorte.geraet_anlegen")}
+    <Dialog title={series ? tr("standorte.geraet_bearbeiten") : tr("standorte.geraet_anlegen")}
       onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} laeuft={running}
-        deaktiviert={!form.key.trim()}
-        onSpeichern={() => onSpeichern(form)} />}>
+      foot={<DialogFoot onCancel={onClose} runs={running}
+        disabled={!form.key.trim()}
+        onSave={() => onSave(form)} />}>
       <div className="space-y-3">
         <Field label={tr("standorte.schluessel")}
-          hinweis={series ? tr("standorte.schluessel_umbenennen") : tr("standorte.schluessel_hinweis")}>
+          hint={series ? tr("standorte.schluessel_umbenennen") : tr("standorte.schluessel_hinweis")}>
           <input value={form.key} className={INPUT_VALUE}
-            placeholder="tracker.pixel" onChange={(e) => setz("key", e.target.value)} />
+            placeholder="tracker.pixel" onChange={(e) => set("key", e.target.value)} />
         </Field>
         <Field label={tr("standorte.name")}>
           <input value={form.name} className={INPUT_VALUE} placeholder="Pixel 9"
-            onChange={(e) => setz("name", e.target.value)} />
+            onChange={(e) => set("name", e.target.value)} />
         </Field>
-        <Field label={tr("standorte.farbe")} hinweis={tr("standorte.farbe_hinweis")}>
+        <Field label={tr("standorte.farbe")} hint={tr("standorte.farbe_hinweis")}>
           <div className="flex gap-1.5">
-            {FARBEN.map((f) => (
-              <button key={f} type="button" onClick={() => setz("color", f)}
+            {COLORS.map((f) => (
+              <button key={f} type="button" onClick={() => set("color", f)}
                 title={f}
                 className={`h-6 w-6 rounded-full border-2 ${
                   form.color === f ? "border-ink" : "border-transparent"}`}
@@ -271,17 +271,17 @@ function DeviceDialog({ reihe: series, laeuft: running, onClose, onSpeichern }: 
             ))}
           </div>
         </Field>
-        <Field label={tr("standorte.mindestabstand")} hinweis={tr("standorte.ruhefilter_hinweis")}>
+        <Field label={tr("standorte.mindestabstand")} hint={tr("standorte.ruhefilter_hinweis")}>
           <input type="number" min={0} value={form.min_distance_m} className={INPUT_VALUE}
-            onChange={(e) => setz("min_distance_m", Number(e.target.value))} />
+            onChange={(e) => set("min_distance_m", Number(e.target.value))} />
         </Field>
         <Field label={tr("standorte.mindestabstand_zeit")}>
           <input type="number" min={0} value={form.min_interval_s} className={INPUT_VALUE}
-            onChange={(e) => setz("min_interval_s", Number(e.target.value))} />
+            onChange={(e) => set("min_interval_s", Number(e.target.value))} />
         </Field>
-        <Field label={tr("standorte.genauigkeit")} hinweis={tr("standorte.genauigkeit_hinweis")}>
+        <Field label={tr("standorte.genauigkeit")} hint={tr("standorte.genauigkeit_hinweis")}>
           <input type="number" min={0} value={form.max_accuracy_m} className={INPUT_VALUE}
-            onChange={(e) => setz("max_accuracy_m", Number(e.target.value))} />
+            onChange={(e) => set("max_accuracy_m", Number(e.target.value))} />
         </Field>
       </div>
     </Dialog>
@@ -290,114 +290,114 @@ function DeviceDialog({ reihe: series, laeuft: running, onClose, onSpeichern }: 
 
 // ── Orte ─────────────────────────────────────────────────────────────────────
 
-const ORT_LEER = { key: "", name: "", lat: 0, lon: 0, radius_m: 150, notify: true,
+const PLACE_EMPTY = { key: "", name: "", lat: 0, lon: 0, radius_m: 150, notify: true,
                    color: "#f59e0b" };
 
-function Orte({ onFehler: onError }: { onFehler: (e: unknown) => void }) {
+function Places({ onError: onError }: { onError: (e: unknown) => void }) {
   const qc = useQueryClient();
-  const [dialog, setDialog] = useState<Ort | {} | null>(null);
-  const [loeschTarget, setLoeschTarget] = useState<Ort | null>(null);
+  const [dialog, setDialog] = useState<Place | {} | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Place | null>(null);
 
-  const { data: orte } = useQuery({ queryKey: ["places"], queryFn: () => seriesApi.orte() });
+  const { data: places } = useQuery({ queryKey: ["places"], queryFn: () => seriesApi.places() });
   const inv = () => qc.invalidateQueries({ queryKey: ["places"] });
 
-  const speichern = useMutation({
+  const save = useMutation({
     mutationFn: ({ id, body }: { id: number | null; body: Record<string, any> }) =>
-      id ? seriesApi.ortAendern(id, body) : seriesApi.ortAnlegen(body),
+      id ? seriesApi.placeChange(id, body) : seriesApi.placeCreate(body),
     onSuccess: () => { setDialog(null); inv(); }, onError: onError,
   });
   const remove = useMutation({
-    mutationFn: (id: number) => seriesApi.ortLoeschen(id),
-    onSuccess: () => { setLoeschTarget(null); inv(); }, onError: onError,
+    mutationFn: (id: number) => seriesApi.placeDelete(id),
+    onSuccess: () => { setDeleteTarget(null); inv(); }, onError: onError,
   });
 
   return (
-    <Area titel={tr("standorte.orte")} hinweis={tr("standorte.orte_einleitung")}
-      werkzeuge={<Button art="haupt" onClick={() => setDialog({})}>
+    <Area title={tr("standorte.orte")} hint={tr("standorte.orte_einleitung")}
+      tools={<Button variant="primary" onClick={() => setDialog({})}>
         {tr("standorte.ort_anlegen")}</Button>}>
       <Listing>
-        {orte?.map((o) => (
+        {places?.map((o) => (
           <ListenLine key={o.id}>
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 shrink-0 rounded-full"
                 style={{ background: o.color || "#f59e0b" }} />
               <span className="font-medium text-ink">{o.name || o.key}</span>
               <code className="font-mono text-xs text-muted">{o.key}</code>
-              {!o.notify && <Etikett farbe="neutral">{tr("standorte.still")}</Etikett>}
+              {!o.notify && <Tag color="neutral">{tr("standorte.still")}</Tag>}
               <div className="flex-1" />
               <span className="font-mono text-xs text-muted">
                 {o.lat.toFixed(5)}, {o.lon.toFixed(5)} · {o.radius_m} m
               </span>
               <Actions>
-                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
+                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
                   onClick={() => setDialog(o)} />
-                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                  onClick={() => setLoeschTarget(o)} />
+                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                  onClick={() => setDeleteTarget(o)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
-        {orte?.length === 0 && <ListingLeer>{tr("standorte.keine_orte")}</ListingLeer>}
+        {places?.length === 0 && <ListingEmpty>{tr("standorte.keine_orte")}</ListingEmpty>}
       </Listing>
 
       {dialog && (
-        <OrtDialog ort={"id" in dialog ? (dialog as Ort) : null}
-          laeuft={speichern.isPending}
+        <PlaceDialog place={"id" in dialog ? (dialog as Place) : null}
+          runs={save.isPending}
           onClose={() => setDialog(null)}
-          onSpeichern={(body) => speichern.mutate({
-            id: "id" in dialog ? (dialog as Ort).id : null, body })} />
+          onSave={(body) => save.mutate({
+            id: "id" in dialog ? (dialog as Place).id : null, body })} />
       )}
-      {loeschTarget && (
-        <LoeschDialog was={loeschTarget.name || loeschTarget.key}
-          laeuft={remove.isPending}
-          onClose={() => setLoeschTarget(null)}
-          onLoeschen={() => remove.mutate(loeschTarget.id)} />
+      {deleteTarget && (
+        <DeleteDialog was={deleteTarget.name || deleteTarget.key}
+          runs={remove.isPending}
+          onClose={() => setDeleteTarget(null)}
+          onDelete={() => remove.mutate(deleteTarget.id)} />
       )}
     </Area>
   );
 }
 
-function OrtDialog({ ort, laeuft: running, onClose, onSpeichern }: {
-  ort: Ort | null; laeuft: boolean;
-  onClose: () => void; onSpeichern: (body: Record<string, any>) => void;
+function PlaceDialog({ place, runs: running, onClose, onSave }: {
+  place: Place | null; runs: boolean;
+  onClose: () => void; onSave: (body: Record<string, any>) => void;
 }) {
-  const [form, setForm] = useState(ort ? {
-    key: ort.key, name: ort.name, lat: ort.lat, lon: ort.lon,
-    radius_m: ort.radius_m, notify: ort.notify, color: ort.color || ORT_LEER.color,
-  } : { ...ORT_LEER });
-  const setz = (field: string, value: any) => setForm((f) => ({ ...f, [field]: value }));
+  const [form, setForm] = useState(place ? {
+    key: place.key, name: place.name, lat: place.lat, lon: place.lon,
+    radius_m: place.radius_m, notify: place.notify, color: place.color || PLACE_EMPTY.color,
+  } : { ...PLACE_EMPTY });
+  const set = (field: string, value: any) => setForm((f) => ({ ...f, [field]: value }));
 
   return (
-    <Dialog titel={ort ? tr("standorte.ort_bearbeiten") : tr("standorte.ort_anlegen")}
+    <Dialog title={place ? tr("standorte.ort_bearbeiten") : tr("standorte.ort_anlegen")}
       onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} laeuft={running}
-        deaktiviert={!form.key.trim() || (!form.lat && !form.lon)}
-        onSpeichern={() => onSpeichern(form)} />}>
+      foot={<DialogFoot onCancel={onClose} runs={running}
+        disabled={!form.key.trim() || (!form.lat && !form.lon)}
+        onSave={() => onSave(form)} />}>
       <div className="space-y-3">
-        <Field label={tr("standorte.schluessel")} hinweis={tr("standorte.ort_schluessel_hinweis")}>
+        <Field label={tr("standorte.schluessel")} hint={tr("standorte.ort_schluessel_hinweis")}>
           <input value={form.key} className={INPUT_VALUE} placeholder="zuhause"
-            onChange={(e) => setz("key", e.target.value)} />
+            onChange={(e) => set("key", e.target.value)} />
         </Field>
         <Field label={tr("standorte.name")}>
           <input value={form.name} className={INPUT_VALUE} placeholder="Zuhause"
-            onChange={(e) => setz("name", e.target.value)} />
+            onChange={(e) => set("name", e.target.value)} />
         </Field>
-        <Field label={tr("standorte.koordinaten")} hinweis={tr("standorte.koordinaten_hinweis")}>
+        <Field label={tr("standorte.koordinaten")} hint={tr("standorte.koordinaten_hinweis")}>
           <div className="flex gap-2">
             <input type="number" step="any" value={form.lat} className={INPUT_VALUE}
-              placeholder="50.0825" onChange={(e) => setz("lat", Number(e.target.value))} />
+              placeholder="50.0825" onChange={(e) => set("lat", Number(e.target.value))} />
             <input type="number" step="any" value={form.lon} className={INPUT_VALUE}
-              placeholder="10.5663" onChange={(e) => setz("lon", Number(e.target.value))} />
+              placeholder="10.5663" onChange={(e) => set("lon", Number(e.target.value))} />
           </div>
         </Field>
-        <Field label={tr("standorte.radius")} hinweis={tr("standorte.radius_hinweis")}>
+        <Field label={tr("standorte.radius")} hint={tr("standorte.radius_hinweis")}>
           <input type="number" min={10} value={form.radius_m} className={INPUT_VALUE}
-            onChange={(e) => setz("radius_m", Number(e.target.value))} />
+            onChange={(e) => set("radius_m", Number(e.target.value))} />
         </Field>
-        <Field label={tr("standorte.meldet")} hinweis={tr("standorte.meldet_hinweis")}>
+        <Field label={tr("standorte.meldet")} hint={tr("standorte.meldet_hinweis")}>
           <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={form.notify}
-              onChange={(e) => setz("notify", e.target.checked)} />
+              onChange={(e) => set("notify", e.target.checked)} />
             {tr("standorte.meldet_an")}
           </label>
         </Field>

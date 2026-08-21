@@ -3,9 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api";
 import { formatDateTime } from "../../lib/formatTime";
 import { tr } from "../../i18n";
-import { Area, Etikett, Listing, ListingLeer, ListenLine } from "../ui";
+import { Area, Tag, Listing, ListingEmpty, ListenLine } from "../ui";
 
-type Ablage = { id: number; key: string; name: string; description: string;
+type Store = { id: number; key: string; name: string; description: string;
                 keep: number; last_title: string; last_at: string | null; count: number | null };
 
 /**
@@ -14,18 +14,18 @@ type Ablage = { id: number; key: string; name: string; description: string;
  * Das Gegenstück zu den Messreihen — dort Zahlen mit Verlauf, hier Texte mit Verlauf. Beide
  * beantworten dieselbe Frage: Was ein Ablauf erarbeitet hat, soll ihn überdauern.
  */
-export default function AblagenPanel() {
+export default function StoresPanel() {
   const nav = useNavigate();
   const { data } = useQuery({ queryKey: ["ablagen"],
-                              queryFn: () => api.get<Ablage[]>("/documents") });
-  const ablagen = data || [];
+                              queryFn: () => api.get<Store[]>("/documents") });
+  const stores = data || [];
 
   return (
-    <Area hinweis={tr("ablagen.einleitung")}>
+    <Area hint={tr("ablagen.einleitung")}>
       <Listing>
-        {ablagen.length === 0 && <ListingLeer>{tr("ablagen.keine")}</ListingLeer>}
-        {ablagen.map((a) => (
-          <ListenLine key={a.id} spalten="sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
+        {stores.length === 0 && <ListingEmpty>{tr("ablagen.keine")}</ListingEmpty>}
+        {stores.map((a) => (
+          <ListenLine key={a.id} columns="sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
             onClick={() => nav(`/documents/${encodeURIComponent(a.key)}`)}>
             <div className="min-w-0">
               <div className="truncate font-medium text-ink">{a.name || a.key}</div>
@@ -38,7 +38,7 @@ export default function AblagenPanel() {
             <span className="text-xs text-muted">
               {a.last_at ? formatDateTime(a.last_at) : "—"}
             </span>
-            <Etikett>{tr("ablagen.fassungen", { anzahl: String(a.count ?? 0) })}</Etikett>
+            <Tag>{tr("ablagen.fassungen", { count: String(a.count ?? 0) })}</Tag>
           </ListenLine>
         ))}
       </Listing>

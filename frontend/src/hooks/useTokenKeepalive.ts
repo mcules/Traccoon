@@ -28,15 +28,15 @@ export const KEEPALIVE_MS = 6 * 60 * 60 * 1000;
  * On mounting as well: a tab coming back from an eleven hour old token would otherwise have
  * one hour left and then the same login mask.
  */
-export function useTokenKeepalive(aktiv: boolean, intervallMs: number = KEEPALIVE_MS): void {
+export function useTokenKeepalive(active: boolean, intervalMs: number = KEEPALIVE_MS): void {
   useEffect(() => {
-    if (!aktiv) return;
-    let entlassen = false;
+    if (!active) return;
+    let release = false;
 
     const renew = async () => {
       try {
         const r = await api.post<{ access_token?: string }>("/auth/refresh");
-        if (!entlassen && r?.access_token) setToken(r.access_token);
+        if (!release && r?.access_token) setToken(r.access_token);
       } catch {
         // Expired, account deactivated or the backend momentarily gone: there is nothing to
         // heal here. The next ordinary call then runs into the regular 401 handling.
@@ -44,7 +44,7 @@ export function useTokenKeepalive(aktiv: boolean, intervallMs: number = KEEPALIV
     };
 
     void renew();
-    const timer = window.setInterval(() => { void renew(); }, intervallMs);
-    return () => { entlassen = true; window.clearInterval(timer); };
-  }, [aktiv, intervallMs]);
+    const timer = window.setInterval(() => { void renew(); }, intervalMs);
+    return () => { release = true; window.clearInterval(timer); };
+  }, [active, intervalMs]);
 }

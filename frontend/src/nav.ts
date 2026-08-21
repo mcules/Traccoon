@@ -19,8 +19,8 @@ import { tr } from "./i18n";
  * because a full screen one cannot leave except by the browser back button is a trap. Both
  * strings belong together, which is why they stand here and not in three components.
  */
-export const SCHIENE_BREITE = "w-[76px]";
-export const SCHIENE_FREILASSEN = "md:left-[76px]";
+export const RAIL_WIDTH = "w-[76px]";
+export const RAIL_LEAVEBLANK = "md:left-[76px]";
 
 export type NavEntry = {
   key: string;
@@ -28,21 +28,21 @@ export type NavEntry = {
   icon: string;
   to: string;
   /** Counter of what waits there: the assistant inbox, or unread mail across all accounts. */
-  zaehler?: "inbox" | "mail";
+  counter?: "inbox" | "mail";
 };
 
-export function hauptNavigation(istAdmin: boolean, plugins: NavEntry[] = []): NavEntry[] {
+export function primaryNavigation(isAdmin: boolean, plugins: NavEntry[] = []): NavEntry[] {
   return [
     { key: "projekte", label: tr("layout.projekte"), icon: "🗂️", to: "/" },
-    { key: "inbox", label: tr("layout.inbox"), icon: "📥", to: "/inbox", zaehler: "inbox" },
-    { key: "mail", label: "Mail", icon: "✉️", to: "/mail", zaehler: "mail" },
+    { key: "inbox", label: tr("layout.inbox"), icon: "📥", to: "/inbox", counter: "inbox" },
+    { key: "mail", label: "Mail", icon: "✉️", to: "/mail", counter: "mail" },
     { key: "buero", label: tr("layout.buero_2"), icon: "🏢", to: "/office" },
     { key: "prozesse", label: tr("layout.prozesse"), icon: "🔀", to: "/processes" },
     // Plugins stehen vor den Einstellungen: Sie sind Bereiche wie die anderen, und die
     // Einstellungen sollen der letzte Punkt vor der Verwaltung bleiben.
     ...plugins,
     { key: "einstellungen", label: tr("layout.einstellungen"), icon: "⚙️", to: "/settings" },
-    ...(istAdmin ? [{ key: "admin", label: tr("layout.admin"), icon: "🛠️", to: "/admin" }] : []),
+    ...(isAdmin ? [{ key: "admin", label: tr("layout.admin"), icon: "🛠️", to: "/admin" }] : []),
   ];
 }
 
@@ -53,7 +53,7 @@ export function hauptNavigation(istAdmin: boolean, plugins: NavEntry[] = []): Na
  * area just as much as the bare path. The start page is the exception, otherwise it would
  * be active everywhere.
  */
-export function istArea(path: string, to: string): boolean {
+export function isArea(path: string, to: string): boolean {
   if (to === "/") return path === "/" || path.startsWith("/projects");
   return path === to || path.startsWith(to + "/");
 }

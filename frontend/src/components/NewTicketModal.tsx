@@ -80,7 +80,7 @@ export default function NewTicketModal({
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-card p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold">{tr("new_ticket_modal.neues_ticket")}</h2>
-          <button onClick={onClose} className={BUTTON_TEXT.neben}>✕</button>
+          <button onClick={onClose} className={BUTTON_TEXT.secondary}>✕</button>
         </div>
 
         <label className="text-xs text-muted">{tr("new_ticket_modal.titel")}</label>
@@ -161,7 +161,7 @@ export default function NewTicketModal({
 
         <div className="flex justify-end gap-2">
           <button onClick={onClose}
-            className={BUTTON.neben}>{tr("new_ticket_modal.abbrechen")}</button>
+            className={BUTTON.secondary}>{tr("new_ticket_modal.abbrechen")}</button>
           <button disabled={!canSave} onClick={() => create.mutate()}
             className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">
             {tr(create.isPending ? "new_ticket_modal.legt_an" : "common.speichern")}

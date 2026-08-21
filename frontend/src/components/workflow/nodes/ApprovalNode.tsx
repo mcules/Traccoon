@@ -18,7 +18,7 @@ export default function ApprovalNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-emerald-500"
       selected={selected}
       runtimeState={data.runtimeState}
-      aus={!!data.config.deaktiviert}
+      from={!!data.config.disabled}
       sources={[
         { id: "approved", label: "genehmigt", color: "!bg-green-500" },
         { id: "rejected", label: "abgelehnt", color: "!bg-red-500" },

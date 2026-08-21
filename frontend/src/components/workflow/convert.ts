@@ -21,13 +21,13 @@ function edgeLabel(e: WorkflowGraph["edges"][number]): string | undefined {
  * immutable). Renaming them here while loading keeps the interface single-named, and whoever
  * touches such a node saves it under the new name anyway.
  */
-const ALT_ACTION: Record<string, string> = {
+const OLD_ACTION: Record<string, string> = {
   set_agent_status: "set_status",
   set_purchase_status: "set_status",
 };
 
-function neuerName(a: string): string {
-  return ALT_ACTION[a] || a;
+function newName(a: string): string {
+  return OLD_ACTION[a] || a;
 }
 
 /**
@@ -40,20 +40,20 @@ function neuerName(a: string): string {
  * overwritten them. That is why it is rewritten here while loading; what is saved is then the uniform form.
  */
 function normaliseAction(config: any): any {
-  const roh = config?.action;
-  if (roh && typeof roh === "object" && typeof roh.action === "string") {
-    const { hold_reason, ...params } = roh.params || {};
-    if (!ALT_ACTION[roh.action] && hold_reason === undefined) return config;
+  const raw = config?.action;
+  if (raw && typeof raw === "object" && typeof raw.action === "string") {
+    const { hold_reason, ...params } = raw.params || {};
+    if (!OLD_ACTION[raw.action] && hold_reason === undefined) return config;
     return {
       ...config,
       // `hold_reason` was called that in the predecessor; `set_status` calls it `reason`.
-      action: { action: neuerName(roh.action), params: { ...params, reason: hold_reason } },
+      action: { action: newName(raw.action), params: { ...params, reason: hold_reason } },
     };
   }
-  if (typeof roh !== "string") return config;
+  if (typeof raw !== "string") return config;
   const { action, kind, label, group, hold_reason, ...remainder } = config;
   const params = hold_reason !== undefined ? { ...remainder, reason: hold_reason } : remainder;
-  return { label, group, action: { action: neuerName(roh || kind || "noop"), params } };
+  return { label, group, action: { action: newName(raw || kind || "noop"), params } };
 }
 
 /** WorkflowGraph to the React Flow format (plus optional runtime states). */
@@ -74,7 +74,7 @@ export function graphToFlow(
     },
   }));
   // Determine back edges (loops) once: the edge then draws itself differently.
-  const rueck = feedbackEdges(graph);
+  const back = feedbackEdges(graph);
   const edges: Edge[] = (graph.edges || []).map((e) => ({
     id: e.id,
     source: e.source,
@@ -83,7 +83,7 @@ export function graphToFlow(
     targetHandle: e.targetHandle ?? undefined,
     type: "condition",
     label: edgeLabel(e),
-    data: { feedback: rueck.has(e.id) },
+    data: { feedback: back.has(e.id) },
     markerEnd: { type: MarkerType.ArrowClosed },
   }));
   return { nodes, edges };
@@ -127,13 +127,13 @@ export function flowToGraph(nodes: FlowNode[], edges: Edge[]): WorkflowGraph {
  * umgekehrt). Positionen fehlen bewusst — ein verschobener Kasten ändert nichts daran, was
  * der Ablauf tut.
  */
-export function inhaltsSignatur(graph: WorkflowGraph | null | undefined): string {
+export function contentSignature(graph: WorkflowGraph | null | undefined): string {
   if (!graph) return "";
-  const sortiert = (value: any): any => {
-    if (Array.isArray(value)) return value.map(sortiert);
+  const sorted = (value: any): any => {
+    if (Array.isArray(value)) return value.map(sorted);
     if (value && typeof value === "object") {
       return Object.keys(value).sort().reduce((acc: any, k) => {
-        if (value[k] !== undefined && value[k] !== null) acc[k] = sortiert(value[k]);
+        if (value[k] !== undefined && value[k] !== null) acc[k] = sorted(value[k]);
         return acc;
       }, {});
     }
@@ -142,7 +142,7 @@ export function inhaltsSignatur(graph: WorkflowGraph | null | undefined): string
   const nachId = (a: any, b: any) => String(a.id).localeCompare(String(b.id));
   return JSON.stringify({
     n: [...(graph.nodes || [])].sort(nachId).map((n: any) => ({
-      id: n.id, type: n.type, c: sortiert(n.data?.config ?? {}),
+      id: n.id, type: n.type, c: sorted(n.data?.config ?? {}),
     })),
     e: [...(graph.edges || [])].sort(nachId).map((e: any) => ({
       id: e.id, s: e.source, t: e.target,
@@ -151,13 +151,13 @@ export function inhaltsSignatur(graph: WorkflowGraph | null | undefined): string
   });
 }
 
-export function graphSignatur(graph: WorkflowGraph | null | undefined): string {
+export function graphSignature(graph: WorkflowGraph | null | undefined): string {
   if (!graph) return "";
-  const sortiert = (value: any): any => {
-    if (Array.isArray(value)) return value.map(sortiert);
+  const sorted = (value: any): any => {
+    if (Array.isArray(value)) return value.map(sorted);
     if (value && typeof value === "object") {
       return Object.keys(value).sort().reduce((acc: any, k) => {
-        if (value[k] !== undefined && value[k] !== null) acc[k] = sortiert(value[k]);
+        if (value[k] !== undefined && value[k] !== null) acc[k] = sorted(value[k]);
         return acc;
       }, {});
     }
@@ -168,7 +168,7 @@ export function graphSignatur(graph: WorkflowGraph | null | undefined): string {
     n: [...(graph.nodes || [])].sort(nachId).map((n: any) => ({
       id: n.id, type: n.type,
       x: Math.round(n.position?.x ?? 0), y: Math.round(n.position?.y ?? 0),
-      c: sortiert(n.data?.config ?? {}),
+      c: sorted(n.data?.config ?? {}),
     })),
     e: [...(graph.edges || [])].sort(nachId).map((e: any) => ({
       id: e.id, s: e.source, t: e.target,

@@ -5,9 +5,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Issue, Project, ProjectMeta } from "../api";
 import { usePageChrome } from "../pageChrome";
 import {
-  ALT_SECTION, ALT_UNTER, altenTabUmleiten, arbeitAnsichten, betriebAnsichten, canManage,
+  OLD_SECTION, OLD_SUBVIEW, redirectOldTab, workViews, operationViews, canManage,
   canWrite, projectChromeTabs,
-  projectTabs, projektPath, type ProjectTab,
+  projectTabs, projectPath, type ProjectTab,
 } from "../projectTabs";
 import { useAuth } from "../auth";
 import TicketDrawer from "../components/TicketDrawer";
@@ -32,7 +32,7 @@ import AgentMonitor from "../components/AgentMonitor";
 // The tab list and the icons lie in ../projectTabs so that the ticket page can render the
 // same sub-menu.
 export default function ProjectView() {
-  const { key, tab: tabParam, unter } = useParams();
+  const { key, tab: tabParam, under } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [newOpen, setNewOpen] = useState(false);
@@ -53,15 +53,15 @@ export default function ProjectView() {
   useEffect(() => {
     const t = searchParams.get("ticket");
     if (t) { navigate(`/projects/${key}/tickets/${t}`, { replace: true }); return; }
-    const alt = searchParams.get("tab");
-    const target = alt && key ? altenTabUmleiten(key, alt) : null;
+    const old = searchParams.get("tab");
+    const target = old && key ? redirectOldTab(key, old) : null;
     if (target) { navigate(target, { replace: true }); return; }
     // Deutsche Abschnitte im Pfad (`/projects/X/arbeit/liste`) auf die englischen: Adressen
     // sind englisch, und was in Lesezeichen steht, soll trotzdem ankommen.
-    const newTab = tab ? ALT_SECTION[tab] : undefined;
-    const newUnter = unter ? ALT_UNTER[unter] : undefined;
-    if (key && (newTab || newUnter)) {
-      navigate(projektPath(key, (newTab || tab) as any, newUnter || unter), { replace: true });
+    const newTab = tab ? OLD_SECTION[tab] : undefined;
+    const newUnder = under ? OLD_SUBVIEW[under] : undefined;
+    if (key && (newTab || newUnder)) {
+      navigate(projectPath(key, (newTab || tab) as any, newUnder || under), { replace: true });
     }
   }, []);
 
@@ -82,7 +82,7 @@ export default function ProjectView() {
   const { data: archivedIssues } = useQuery({
     queryKey: ["issues-archived", project?.id],
     queryFn: () => api.get<Issue[]>(`/projects/${project!.id}/issues?archived=true`),
-    enabled: !!project && unter === "archive",
+    enabled: !!project && under === "archive",
   });
 
   // Live updates over the real WebSocket (dispatcher and runner events)
@@ -102,14 +102,14 @@ export default function ProjectView() {
     return () => ws?.close();
   }, [project?.id]);
 
-  const mayVerwalten = canManage(project);
+  const mayManage = canManage(project);
   const mayWrite = canWrite(project);
 
   // Monaco/FilesPanel is a chunk of about 3.3 MB plus workers (ts.worker about 6 MB) and
   // would otherwise load only on a click on "code". When the code tab is available, prewarm
   // it completely while the page is idle: first the editor chunk, then the worker chunks, so that the first click is almost immediate.
   useEffect(() => {
-    if (!(project?.git_enabled && mayVerwalten)) return;
+    if (!(project?.git_enabled && mayManage)) return;
     const warm = async () => {
       await import("../components/FilesPanel");        // Editor-Chunk + monaco-core
       const m = await import("../monaco");
@@ -119,7 +119,7 @@ export default function ProjectView() {
     const cic = (window as any).cancelIdleCallback as undefined | ((id: number) => void);
     const id = ric ? ric(warm, { timeout: 4000 }) : (setTimeout(warm, 2000) as unknown as number);
     return () => { if (ric && cic) cic(id); else clearTimeout(id); };
-  }, [project?.id, mayVerwalten]);
+  }, [project?.id, mayManage]);
 
   // Role and flag dependent tab list (shared with the ticket page). Computed before the
   // project guard so that usePageChrome (a hook) is called unconditionally.
@@ -128,15 +128,15 @@ export default function ProjectView() {
 
   // Views of the current group. Unknown or missing falls back to the first one, so that a
   // project without an office does not end up on an empty page.
-  const arbeit = arbeitAnsichten();
-  const betrieb = useMemo(() => betriebAnsichten(project), [project]);
-  const ansichten: [string, string][] =
-    tab === "work" ? arbeit : tab === "operations" ? betrieb : [];
-  const ansicht = ansichten.some(([k]) => k === unter) ? unter! : (ansichten[0]?.[0] ?? "");
+  const work = workViews();
+  const operation = useMemo(() => operationViews(project), [project]);
+  const views: [string, string][] =
+    tab === "work" ? work : tab === "operations" ? operation : [];
+  const view = views.some(([k]) => k === under) ? under! : (views[0]?.[0] ?? "");
 
   usePageChrome(
     project?.name ?? "",
-    projectChromeTabs(project, { tab, unter: ansicht || unter }),
+    projectChromeTabs(project, { tab, sub: view || under }),
     tab,
     "seite",
   );
@@ -152,19 +152,19 @@ export default function ProjectView() {
         )}
         {tab === "work" && issues && meta && (
           <div className="flex items-center gap-3 text-xs text-muted">
-            <span>◷ {tr("project_view.gesamt", { anzahl: issues.length })}</span>
-            <span>⚡ {tr("project_view.aktiv", { anzahl: issues.filter((i) => i.agent_working).length })}</span>
-            <span className="text-green-400">✓ {tr("project_view.fertig", { anzahl: issues.filter((i) =>
+            <span>◷ {tr("project_view.gesamt", { count: issues.length })}</span>
+            <span>⚡ {tr("project_view.aktiv", { count: issues.filter((i) => i.agent_working).length })}</span>
+            <span className="text-green-400">✓ {tr("project_view.fertig", { count: issues.filter((i) =>
               meta.statuses.find((s) => s.id === i.status_id)?.category === "done").length })}</span>
           </div>
         )}
         {/* Die Ansichten einer Gruppe: eine Segmentleiste, keine eigene Menü-Ebene. */}
-        {ansichten.length > 1 && (
+        {views.length > 1 && (
           <div className="flex flex-wrap gap-1.5">
-            {ansichten.map(([k, label]) => (
-              <Link key={k} to={projektPath(project.key, tab, k)}
+            {views.map(([k, label]) => (
+              <Link key={k} to={projectPath(project.key, tab, k)}
                 className={`rounded-md border px-3 py-1 text-sm ${
-                  ansicht === k
+                  view === k
                     ? "border-brand bg-brand text-white"
                     : "border-line text-muted hover:bg-surface hover:text-ink"
                 }`}>
@@ -176,7 +176,7 @@ export default function ProjectView() {
         <div className="hidden flex-1 sm:block" />
         {mayWrite && tab === "work" && (
           <button onClick={() => setNewOpen(true)} title={tr("project_view.neues_ticket")}
-            className={BUTTON.haupt}>
+            className={BUTTON.primary}>
             + <span className="hidden sm:inline">{tr("project_view.neues_ticket")}</span>
           </button>
         )}
@@ -184,10 +184,10 @@ export default function ProjectView() {
 
       {tab === "work" && meta && issues && (
         <>
-          {ansicht === "board" && <Board project={project} meta={meta} issues={issues} onOpen={openTicket} />}
-          {ansicht === "list" && <IssueList project={project} meta={meta} issues={issues} onOpen={openTicket} />}
-          {ansicht === "backlog" && <Backlog project={project} meta={meta} issues={issues} onOpen={openTicket} />}
-          {ansicht === "archive" && (
+          {view === "board" && <Board project={project} meta={meta} issues={issues} onOpen={openTicket} />}
+          {view === "list" && <IssueList project={project} meta={meta} issues={issues} onOpen={openTicket} />}
+          {view === "backlog" && <Backlog project={project} meta={meta} issues={issues} onOpen={openTicket} />}
+          {view === "archive" && (
             (archivedIssues && archivedIssues.length > 0)
               ? <IssueList project={project} meta={meta} issues={archivedIssues} onOpen={openTicket} />
               : <div className="text-sm text-muted">{tr("project_view.keine_archivierten_tickets")}</div>
@@ -203,18 +203,18 @@ export default function ProjectView() {
       {tab === "pm" && <PmChat project={project} />}
       {tab === "operations" && (
         <>
-          {ansicht === "monitor" && <AgentMonitor project={project} />}
-          {ansicht === "office" && (
+          {view === "monitor" && <AgentMonitor project={project} />}
+          {view === "office" && (
             <Suspense fallback={<div className="text-sm text-muted">{tr("project_view.buero_laedt")}</div>}>
               <OfficeTab project={project} />
             </Suspense>
           )}
-          {ansicht === "testenvs" && mayWrite && <TestenvsPanel project={project} />}
-          {ansicht === "hardware" && <Hardware project={project} />}
+          {view === "testenvs" && mayWrite && <TestenvsPanel project={project} />}
+          {view === "hardware" && <Hardware project={project} />}
         </>
       )}
-      {tab === "settings" && mayVerwalten && (
-        <ProjectSettings project={project} bereich={unter} />
+      {tab === "settings" && mayManage && (
+        <ProjectSettings project={project} area={under} />
       )}
 
       {openKey && meta && (

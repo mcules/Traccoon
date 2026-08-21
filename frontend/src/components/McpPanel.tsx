@@ -3,8 +3,8 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, Listing,
-  ListingLeer, ListenLine, LoeschDialog, BUTTON, BUTTON_TEXT} from "./ui";
+  Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
+  ListingEmpty, ListenLine, DeleteDialog, BUTTON, BUTTON_TEXT} from "./ui";
 
 type Variable = { key: string; label: string; secret: boolean; required: boolean };
 const EMPTY = { id: 0, name: "", display_name: "", transport: "http", url: "", variables: [] as Variable[], enabled: true };
@@ -14,7 +14,7 @@ export default function McpPanel() {
   const { data: servers } = useQuery({ queryKey: ["mcp"], queryFn: () => api.get<any[]>("/mcp-servers") });
   const { data: myMcp } = useQuery({ queryKey: ["my-mcp"], queryFn: () => api.get<any>("/me/mcp") });
   const [dialog, setDialog] = useState<typeof EMPTY | null>(null);
-  const [loeschServer, setLoeschServer] = useState<any | null>(null);
+  const [deleteServer, setDeleteServer] = useState<any | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["mcp"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
@@ -35,7 +35,7 @@ export default function McpPanel() {
   });
   const del = useMutation({
     mutationFn: (id: number) => api.del(`/mcp-servers/${id}`),
-    onSuccess: () => { setLoeschServer(null); inv(); }, onError: fail });
+    onSuccess: () => { setDeleteServer(null); inv(); }, onError: fail });
 
   return (
     <Area>
@@ -43,20 +43,20 @@ export default function McpPanel() {
       {(myMcp?.available?.length ?? 0) > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3">
           <div className="text-sm">
-            <span className="font-medium text-ink">🔌 {tr("mcp_panel.verfuegbar_anzahl", { anzahl: myMcp.available.length })}</span>
+            <span className="font-medium text-ink">🔌 {tr("mcp_panel.verfuegbar_anzahl", { count: myMcp.available.length })}</span>
             {myMcp?.provisioned && <span className="ml-2 rounded bg-yellow-500/15 px-1.5 text-xs text-yellow-400">{tr("mcp_panel.gateway_gruppe_aktiv")}</span>}
             <p className="text-xs text-muted">{tr("mcp_panel.als_echte_editierbare_server_eintraege_u")}</p>
           </div>
           <div className="flex-1" />
           <button onClick={() => importMcp.mutate()} disabled={importMcp.isPending}
-            className={BUTTON.haupt}>
+            className={BUTTON.primary}>
             {tr(importMcp.isPending ? "mcp_panel.uebernehme" : "mcp_panel.server_uebernehmen")}</button>
         </div>
       )}
 
       <p className="mb-3 text-sm text-muted">{tr("mcp_panel.einleitung")}</p>
       <p className="mb-3 text-xs text-yellow-400">{tr("mcp_panel.nur_http_sse")}</p>
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
 
       <Listing className="mb-4">
         {servers?.map((m) => (
@@ -65,55 +65,55 @@ export default function McpPanel() {
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
               <span className="font-mono">{m.name}</span><span className="text-muted">{m.transport}</span>
               {(m.variables?.length ?? 0) > 0 && (
-                <span className="rounded bg-surface px-1 text-xs">{tr("mcp_panel.variablen_anzahl", { anzahl: m.variables.length })}</span>
+                <span className="rounded bg-surface px-1 text-xs">{tr("mcp_panel.variablen_anzahl", { count: m.variables.length })}</span>
               )}
               {m.enabled && <span className="text-xs text-green-400">{tr("mcp_panel.aktiv")}</span>}
             </div>
             <Actions>
-              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
+              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
                 onClick={() => { setErr(""); setDialog({
                   id: m.id, name: m.name, display_name: m.display_name || "", transport: m.transport,
                   url: m.url || "", variables: m.variables || [], enabled: m.enabled }); }} />
-              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschServer(m)} />
+              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteServer(m)} />
             </Actions>
             </div>
           </ListenLine>
         ))}
-        {servers?.length === 0 && <ListingLeer>{tr("mcp_panel.keine_mcp_server")}</ListingLeer>}
+        {servers?.length === 0 && <ListingEmpty>{tr("mcp_panel.keine_mcp_server")}</ListingEmpty>}
       </Listing>
 
       <button onClick={() => { setErr(""); setDialog({ ...EMPTY, variables: [] }); }}
-        className={BUTTON.haupt}>
-        {ICON.neu} {tr("mcp_panel.server_anlegen")}
+        className={BUTTON.primary}>
+        {ICON.fresh} {tr("mcp_panel.server_anlegen")}
       </button>
 
       {dialog && (
-        <ServerDialog start={dialog} fehler={err} laeuft={save.isPending}
+        <ServerDialog start={dialog} error={err} runs={save.isPending}
           onClose={() => { setDialog(null); setErr(""); }}
-          onSpeichern={(f) => save.mutate(f)} />
+          onSave={(f) => save.mutate(f)} />
       )}
-      {loeschServer && (
-        <LoeschDialog was={loeschServer.name} laeuft={del.isPending}
-          onClose={() => setLoeschServer(null)} onLoeschen={() => del.mutate(loeschServer.id)} />
+      {deleteServer && (
+        <DeleteDialog was={deleteServer.name} runs={del.isPending}
+          onClose={() => setDeleteServer(null)} onDelete={() => del.mutate(deleteServer.id)} />
       )}
     </Area>
   );
 }
 
-function ServerDialog({ start, fehler: error, laeuft: running, onClose, onSpeichern }: {
-  start: typeof EMPTY; fehler: string; laeuft: boolean;
-  onClose: () => void; onSpeichern: (f: typeof EMPTY) => void;
+function ServerDialog({ start, error: error, runs: running, onClose, onSave }: {
+  start: typeof EMPTY; error: string; runs: boolean;
+  onClose: () => void; onSave: (f: typeof EMPTY) => void;
 }) {
   const [form, setForm] = useState(start);
-  const setzeVariable = (i: number, patch: Partial<Variable>) =>
+  const setVariable = (i: number, patch: Partial<Variable>) =>
     setForm({ ...form, variables: form.variables.map((v, j) => j === i ? { ...v, ...patch } : v) });
 
   return (
-    <Dialog breit titel={form.id ? tr("mcp_panel.server_bearbeiten") : tr("mcp_panel.server_anlegen")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!form.name.trim()} laeuft={running}
-        onSpeichern={() => onSpeichern(form)}
-        speichernText={form.id ? undefined : tr("common.anlegen")} />}>
-      <Fehlerzeile text={error} />
+    <Dialog wide title={form.id ? tr("mcp_panel.server_bearbeiten") : tr("mcp_panel.server_anlegen")} onClose={onClose}
+      foot={<DialogFoot onCancel={onClose} disabled={!form.name.trim()} runs={running}
+        onSave={() => onSave(form)}
+        saveText={form.id ? undefined : tr("common.anlegen")} />}>
+      <Errorrow text={error} />
       <div className="space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={tr("mcp_panel.name_z_b_banking")}>
@@ -138,25 +138,25 @@ function ServerDialog({ start, fehler: error, laeuft: running, onClose, onSpeich
           <div className="mb-1 text-xs font-medium text-muted">{tr("mcp_panel.variablen_werden_pro_instanz_ausgefuellt")}</div>
           {form.variables.map((v, i) => (
             <div key={i} className="mb-1 flex flex-wrap items-center gap-2">
-              <input value={v.key} onChange={(e) => setzeVariable(i, { key: e.target.value })}
+              <input value={v.key} onChange={(e) => setVariable(i, { key: e.target.value })}
                 placeholder={tr("mcp_panel.key_z_b_authorization")} className={`w-44 ${INPUT_VALUE}`} />
-              <input value={v.label} onChange={(e) => setzeVariable(i, { label: e.target.value })}
+              <input value={v.label} onChange={(e) => setVariable(i, { label: e.target.value })}
                 placeholder={tr("mcp_panel.label")} className={`min-w-[8rem] flex-1 ${INPUT_VALUE}`} />
               <label className="flex items-center gap-1 text-xs text-muted">
-                <input type="checkbox" checked={v.secret} onChange={(e) => setzeVariable(i, { secret: e.target.checked })} />
+                <input type="checkbox" checked={v.secret} onChange={(e) => setVariable(i, { secret: e.target.checked })} />
                 {tr("mcp_panel.geheim")}
               </label>
               <label className="flex items-center gap-1 text-xs text-muted">
-                <input type="checkbox" checked={v.required} onChange={(e) => setzeVariable(i, { required: e.target.checked })} />
+                <input type="checkbox" checked={v.required} onChange={(e) => setVariable(i, { required: e.target.checked })} />
                 {tr("mcp_panel.pflicht")}
               </label>
-              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
                 onClick={() => setForm({ ...form, variables: form.variables.filter((_, j) => j !== i) })} />
             </div>
           ))}
           <button type="button"
             onClick={() => setForm({ ...form, variables: [...form.variables, { key: "", label: "", secret: true, required: false }] })}
-            className={BUTTON_TEXT.neben}>+ {tr("mcp_panel.variable")}</button>
+            className={BUTTON_TEXT.secondary}>+ {tr("mcp_panel.variable")}</button>
         </div>
       </div>
     </Dialog>

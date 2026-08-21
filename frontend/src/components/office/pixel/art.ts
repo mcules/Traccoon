@@ -169,12 +169,12 @@ export function fillA(
  *
  * Whoever passes an art through here gains no detail. They only gain the right to draw neighbouring parts finely.
  */
-export function verdoppelt(art: Art): Art {
+export function doubled(art: Art): Art {
   const rows: string[] = [];
   for (const row of art.rows) {
-    let breit = "";
-    for (const ch of row) breit += ch + ch;
-    rows.push(breit, breit);
+    let wide = "";
+    for (const ch of row) wide += ch + ch;
+    rows.push(wide, wide);
   }
   return { rows, map: art.map };
 }

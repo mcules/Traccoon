@@ -30,12 +30,12 @@
 
 import { tr } from "../../i18n";
 import { useEffect, useMemo, useRef } from "react";
-import Personalakte from "./Personalakte.tsx";
+import Personnelfile from "./Personalakte.tsx";
 import type { Scope } from "./api.ts";
 import type { Cmd, Roster, RosterEntry } from "./types.ts";
 import type { LogSource } from "./Timeline.tsx";
 import {
-  GATE_TEXT, durationText, passtZumFilter, statusFarbe, statusText, tokenText, uhrText, usdText, zahl,
+  GATE_TEXT, durationText, fitsToFilter, statusColor, statusText, tokenText, uhrText, usdText, number,
 } from "./TopBar.tsx";
 
 // ── Kappung ─────────────────────────────────────────────────────────────────────────────────
@@ -87,10 +87,10 @@ interface ChatLine {
   css?: string;
 }
 
-function chatAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: number | null): ChatLine[] {
+function chatFrom(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], to: number | null): ChatLine[] {
   const out: ChatLine[] = [];
   for (const e of log) {
-    if (bis !== null && e.ts > bis) continue;
+    if (to !== null && e.ts > to) continue;
     e.cmds.forEach((c, i) => {
       const key = `${e.seq}:${i}`;
       if (c.k === "say") out.push({ key, ts: e.ts, id: c.id, icon: "💬", text: c.text });
@@ -116,7 +116,7 @@ interface ToolLine {
   tool: string;
   target?: string;
   /** `null` = no end in the window (still running or the end was truncated away). */
-  dauer: number | null;
+  duration: number | null;
   /** Three valued **plus** `undefined` for "still running". `null` means *unknown*, not *good*. */
   ok: boolean | null | undefined;
 }
@@ -129,16 +129,16 @@ interface ToolLine {
  *  clock times, which on the legacy path (both synthesised from **one** row) correctly gives
  *  0 and not the substitute duration of the stage: that one is a display decision and not a
  *  measurement, and an invented duration in a list showing durations would be a lie. */
-function toolsAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: number | null): ToolLine[] {
+function toolsFrom(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], to: number | null): ToolLine[] {
   const open = new Map<string, ToolLine>();
   const out: ToolLine[] = [];
   for (const e of log) {
-    if (bis !== null && e.ts > bis) continue;
+    if (to !== null && e.ts > to) continue;
     e.cmds.forEach((c, i) => {
       if (c.k === "tool") {
         const z: ToolLine = {
           key: `${e.seq}:${i}`, ts: e.ts, id: c.id, tool: c.tool,
-          target: c.target, dauer: null, ok: undefined,
+          target: c.target, duration: null, ok: undefined,
         };
         // A second start without an end only displaces the first from the pairing; in the
         // list it stays (it did run) and keeps its "still running".
@@ -149,7 +149,7 @@ function toolsAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis:
         if (!z) return;
         open.delete(c.id);
         z.ok = c.ok;
-        z.dauer = Math.max(0, e.ts - z.ts);
+        z.duration = Math.max(0, e.ts - z.ts);
       }
     });
   }
@@ -164,8 +164,8 @@ export default function Dock({
   selectedId, onSelect, className,
 }: DockProps) {
   const log = useMemo(() => recorder.entries(), [recorder, revision]);
-  const chat = useMemo(() => chatAus(log, seekTs), [log, seekTs]);
-  const tools = useMemo(() => toolsAus(log, seekTs), [log, seekTs]);
+  const chat = useMemo(() => chatFrom(log, seekTs), [log, seekTs]);
+  const tools = useMemo(() => toolsFrom(log, seekTs), [log, seekTs]);
 
   const nachId = useMemo(() => {
     const m = new Map<string, RosterEntry>();
@@ -173,21 +173,21 @@ export default function Dock({
     return m;
   }, [roster]);
 
-  const agenten = useMemo(() => {
-    const kopie = [...roster];
+  const agents = useMemo(() => {
+    const copy = [...roster];
     // Running first, then the most recent: the order in which one looks.
-    kopie.sort((a, b) => {
+    copy.sort((a, b) => {
       const la = a.status === "running", lb = b.status === "running";
       if (la !== lb) return la ? -1 : 1;
       return (b.started_at ? Date.parse(b.started_at) : 0) - (a.started_at ? Date.parse(a.started_at) : 0);
     });
-    return kopie;
+    return copy;
   }, [roster]);
 
   /** The **role** of the selected figure, the jump point of the file. A run without a role
    *  (job, assistant) gives `null`: then the choice in the file stays with the viewer instead
    *  of pointing at an empty role. */
-  const gewaehlteRolle = selectedId ? (nachId.get(selectedId)?.agent || null) : null;
+  const chosenRole = selectedId ? (nachId.get(selectedId)?.agent || null) : null;
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Scroll to the end in live operation; when rewinding explicitly **not**, because there the
@@ -205,9 +205,9 @@ export default function Dock({
     if (!r) return id;
     return r.agent || `Lauf ${r.run_id}`;
   };
-  const gedimmt = (id: string): boolean => {
+  const dimmed = (id: string): boolean => {
     const r = nachId.get(id);
-    return r ? !passtZumFilter(scope, r, filter) : false;
+    return r ? !fitsToFilter(scope, r, filter) : false;
   };
 
   return (
@@ -243,20 +243,20 @@ export default function Dock({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
         {tab === "chat" && (
-          <ChatListing zeilen={chat} name={name} gedimmt={gedimmt} onSelect={onSelect} />
+          <ChatListing rows={chat} name={name} dimmed={dimmed} onSelect={onSelect} />
         )}
         {tab === "agents" && (
-          <AgentListing eintraege={agenten} scope={scope} filter={filter}
+          <AgentListing entries={agents} scope={scope} filter={filter}
             selectedId={selectedId} onSelect={onSelect} />
         )}
         {tab === "tools" && (
-          <ToolListing zeilen={tools} name={name} gedimmt={gedimmt} onSelect={onSelect} />
+          <ToolListing rows={tools} name={name} dimmed={dimmed} onSelect={onSelect} />
         )}
         {tab === "akte" && (
           // The role of the selected figure, not the figure itself: the inspector below keeps
           // showing the single run, the file the role. Two truths side by side, and neither
           // pretends to be the other.
-          <Personalakte scope={scope} focusAgent={gewaehlteRolle} />
+          <Personnelfile scope={scope} focusAgent={chosenRole} />
         )}
       </div>
     </div>
@@ -265,34 +265,34 @@ export default function Dock({
 
 // ── Kappungshinweis ─────────────────────────────────────────────────────────────────────────
 
-function Gekappt({ n }: { n: number }) {
+function Capped({ n }: { n: number }) {
   if (n <= 0) return null;
   return (
     <div className="mb-1 border-b border-dashed border-line pb-1 text-[11px] text-muted">
-      {tr("dock.gekappt", { anzahl: zahl(n) })}
+      {tr("dock.gekappt", { count: number(n) })}
     </div>
   );
 }
 
-function Leer({ text }: { text: string }) {
+function Empty({ text }: { text: string }) {
   return <div className="py-4 text-center text-xs text-muted">{text}</div>;
 }
 
 // ── Chat ────────────────────────────────────────────────────────────────────────────────────
 
-function ChatListing({ zeilen: lines, name, gedimmt, onSelect }: {
-  zeilen: ChatLine[];
+function ChatListing({ rows: lines, name, dimmed, onSelect }: {
+  rows: ChatLine[];
   name: (id: string) => string;
-  gedimmt: (id: string) => boolean;
+  dimmed: (id: string) => boolean;
   onSelect: (id: string) => void;
 }) {
-  if (lines.length === 0) return <Leer text={tr("dock.nichts_gesagt")} />;
-  const zeige = lines.slice(-CHAT_CAP);
+  if (lines.length === 0) return <Empty text={tr("dock.nichts_gesagt")} />;
+  const show = lines.slice(-CHAT_CAP);
   return (
     <div className="space-y-1">
-      <Gekappt n={lines.length - zeige.length} />
-      {zeige.map((z) => (
-        <div key={z.key} className={`flex gap-2 text-xs ${gedimmt(z.id) ? "opacity-40" : ""}`}>
+      <Capped n={lines.length - show.length} />
+      {show.map((z) => (
+        <div key={z.key} className={`flex gap-2 text-xs ${dimmed(z.id) ? "opacity-40" : ""}`}>
           <span className="shrink-0 font-mono text-[11px] text-muted">{uhrText(z.ts)}</span>
           <span className="shrink-0">{z.icon}</span>
           <button type="button" onClick={() => onSelect(z.id)}
@@ -309,38 +309,38 @@ function ChatListing({ zeilen: lines, name, gedimmt, onSelect }: {
 
 // ── Agenten ─────────────────────────────────────────────────────────────────────────────────
 
-function AgentListing({ eintraege: entries, scope, filter, selectedId, onSelect }: {
-  eintraege: RosterEntry[];
+function AgentListing({ entries: entries, scope, filter, selectedId, onSelect }: {
+  entries: RosterEntry[];
   scope: Scope;
   filter: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  if (entries.length === 0) return <Leer text={tr("dock.niemand_im_raum")} />;
-  const zeige = entries.slice(0, AGENT_CAP);
+  if (entries.length === 0) return <Empty text={tr("dock.niemand_im_raum")} />;
+  const show = entries.slice(0, AGENT_CAP);
   const now = Date.now();
   return (
     <div className="space-y-1">
-      {zeige.map((r) => {
+      {show.map((r) => {
         const start = r.started_at ? Date.parse(r.started_at) : NaN;
         const ende = r.ended_at ? Date.parse(r.ended_at) : (r.status === "running" ? now : NaN);
         const duration = Number.isFinite(start) && Number.isFinite(ende) ? ende - start : null;
-        const aus = !passtZumFilter(scope, r, filter);
+        const from = !fitsToFilter(scope, r, filter);
         return (
           <button key={r.agent_id} type="button" onClick={() => onSelect(r.agent_id)}
             aria-pressed={selectedId === r.agent_id}
             className={"flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded border px-2 py-1 text-left text-xs "
               + (selectedId === r.agent_id ? "border-brand bg-brand/5" : "border-transparent hover:border-line")
-              + (aus ? " opacity-40" : "")}>
+              + (from ? " opacity-40" : "")}>
             <span className="font-medium">{r.agent || `Lauf ${r.run_id}`}</span>
             {r.phase && <span className="text-muted">{tr(r.phase === "plan" ? "dock.planung" : "dock.ausfuehrung")}</span>}
-            <span className={statusFarbe(r.status)}>{statusText(r.status)}</span>
+            <span className={statusColor(r.status)}>{statusText(r.status)}</span>
             {r.issue_key && <span className="font-mono text-[11px] text-brand">{r.issue_key}</span>}
             <div className="flex-1" />
             <span className="text-muted" title={r.provider ? `${r.provider} · ${r.model ?? "—"}` : undefined}>
               {r.model || "—"}
             </span>
-            <span className="text-muted" title={`Eingabe ${zahl(r.in_tokens)} · Ausgabe ${zahl(r.out_tokens)}`}>
+            <span className="text-muted" title={`Eingabe ${number(r.in_tokens)} · Ausgabe ${number(r.out_tokens)}`}>
               {tokenText(r.in_tokens + r.out_tokens)}tok
             </span>
             <span className="text-muted">{usdText(r.cost_usd, r.cost_priced !== true)}</span>
@@ -348,7 +348,7 @@ function AgentListing({ eintraege: entries, scope, filter, selectedId, onSelect 
           </button>
         );
       })}
-      <Gekappt n={entries.length - zeige.length} />
+      <Capped n={entries.length - show.length} />
     </div>
   );
 }
@@ -357,30 +357,30 @@ function AgentListing({ eintraege: entries, scope, filter, selectedId, onSelect 
 
 /** `ok === null` is **unknown**, not green: with old data nobody measured whether the call went
  *  through. A tick on that would be a claim about data that does not exist. */
-function result(ok: boolean | null | undefined): { zeichen: string; css: string; titel: string } {
-  if (ok === undefined) return { zeichen: "…", css: "text-muted", titel: tr("dock.laeuft_noch") };
-  if (ok === true) return { zeichen: "✓", css: "text-green-400", titel: tr("buero.st_success") };
-  if (ok === false) return { zeichen: "✕", css: "text-red-400", titel: tr("buero.st_failed") };
-  return { zeichen: "?", css: "text-muted", titel: tr("dock.unbekannt_altdaten") };
+function result(ok: boolean | null | undefined): { symbol: string; css: string; title: string } {
+  if (ok === undefined) return { symbol: "…", css: "text-muted", title: tr("dock.laeuft_noch") };
+  if (ok === true) return { symbol: "✓", css: "text-green-400", title: tr("buero.st_success") };
+  if (ok === false) return { symbol: "✕", css: "text-red-400", title: tr("buero.st_failed") };
+  return { symbol: "?", css: "text-muted", title: tr("dock.unbekannt_altdaten") };
 }
 
-function ToolListing({ zeilen: lines, name, gedimmt, onSelect }: {
-  zeilen: ToolLine[];
+function ToolListing({ rows: lines, name, dimmed, onSelect }: {
+  rows: ToolLine[];
   name: (id: string) => string;
-  gedimmt: (id: string) => boolean;
+  dimmed: (id: string) => boolean;
   onSelect: (id: string) => void;
 }) {
-  if (lines.length === 0) return <Leer text={tr("dock.kein_werkzeug")} />;
-  const zeige = lines.slice(-TOOL_CAP);
+  if (lines.length === 0) return <Empty text={tr("dock.kein_werkzeug")} />;
+  const show = lines.slice(-TOOL_CAP);
   return (
     <div className="space-y-1">
-      <Gekappt n={lines.length - zeige.length} />
-      {zeige.map((z) => {
+      <Capped n={lines.length - show.length} />
+      {show.map((z) => {
         const e = result(z.ok);
         return (
-          <div key={z.key} className={`flex items-center gap-2 text-xs ${gedimmt(z.id) ? "opacity-40" : ""}`}>
+          <div key={z.key} className={`flex items-center gap-2 text-xs ${dimmed(z.id) ? "opacity-40" : ""}`}>
             <span className="shrink-0 font-mono text-[11px] text-muted">{uhrText(z.ts)}</span>
-            <span className={`shrink-0 ${e.css}`} title={e.titel}>{e.zeichen}</span>
+            <span className={`shrink-0 ${e.css}`} title={e.title}>{e.symbol}</span>
             <button type="button" onClick={() => onSelect(z.id)}
               className="shrink-0 max-w-[8rem] truncate text-left text-muted hover:text-brand"
               title={tr("dock.figur_waehlen", { name: name(z.id) })}>
@@ -388,7 +388,7 @@ function ToolListing({ zeilen: lines, name, gedimmt, onSelect }: {
             </button>
             <span className="shrink-0 font-mono">{z.tool}</span>
             <span className="min-w-0 flex-1 truncate text-muted" title={z.target}>{z.target ?? ""}</span>
-            <span className="shrink-0 text-muted">{z.ok === undefined ? "—" : durationText(z.dauer)}</span>
+            <span className="shrink-0 text-muted">{z.ok === undefined ? "—" : durationText(z.duration)}</span>
           </div>
         );
       })}

@@ -37,14 +37,14 @@ const ORDER: WorkflowNodeType[] = [
  * building block is a button at the same time; a tap hangs it behind the selected block, the
  * same rule that applies when dropping without a line.
  */
-export default function NodePalette({ onAdd, kompakt }: {
+export default function NodePalette({ onAdd, compact }: {
   onAdd?: (t: WorkflowNodeType) => void;
   /** Side by side instead of below each other, for the narrow view above the canvas. */
-  kompakt?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <div className={kompakt ? "flex flex-wrap gap-1.5" : "space-y-1.5"}>
-      {!kompakt && (
+    <div className={compact ? "flex flex-wrap gap-1.5" : "space-y-1.5"}>
+      {!compact && (
         <div className="mb-2 text-xs font-medium text-muted">
           {tr("node_palette.bausteine_in_die_flaeche_ziehen")}
         </div>
@@ -62,7 +62,7 @@ export default function NodePalette({ onAdd, kompakt }: {
           title={onAdd ? tr("node_palette.tippen_haengt_an") : undefined}
           className={"flex cursor-grab items-center gap-2 rounded border border-line bg-surface"
             + " px-2 py-1.5 text-sm hover:border-brand active:cursor-grabbing"
-            + (kompakt ? "" : " w-full")}
+            + (compact ? "" : " w-full")}
         >
           <span>{ICONS[t]}</span>
           <span>{tr(NODE_TYPE_LABELS[t])}</span>

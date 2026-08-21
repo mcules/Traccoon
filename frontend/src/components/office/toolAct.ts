@@ -55,9 +55,9 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   load_skill: "read",
 
   // ── worker/tools_memory.py: the memory tools ───────────────────────────────
-  erinnere_dich: "write",
-  vergiss: "write",
-  gedaechtnis_suchen: "read",
+  remember_this: "write",
+  forget: "write",
+  memory_search: "read",
 
   // ── worker/tools_traccoon.py: the twenty control tools ─────────────────────
   traccoon_list_projects: "read",
@@ -189,7 +189,7 @@ const SCREEN_BY_ACT: Record<ToolAct, ScreenKind> = {
 const SCREEN_BY_TOOL: Record<string, ScreenKind> = {
   // Searching looks different from reading: a hit list instead of source code.
   codegraph: "search",
-  gedaechtnis_suchen: "search",
+  memory_search: "search",
   fs_list: "search",
   // Looking at something rendered, not at source code.
   screenshot: "page",

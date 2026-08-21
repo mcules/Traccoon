@@ -73,7 +73,7 @@ export default function WorkflowTaskForm({
           <button
             disabled={approve.isPending}
             onClick={() => approve.mutate()}
-            className={BUTTON.zusage}
+            className={BUTTON.confirm}
           >
             ✅ Genehmigen
           </button>
@@ -115,7 +115,7 @@ export default function WorkflowTaskForm({
         disabled={complete.isPending || missing.length > 0}
         onClick={() => complete.mutate()}
         title={missing.length ? `Pflichtfelder: ${missing.join(", ")}` : undefined}
-        className={BUTTON.haupt}
+        className={BUTTON.primary}
       >
         ✓ Erledigt
       </button>

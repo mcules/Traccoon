@@ -65,17 +65,17 @@ async def test_active_step_behaves_as_before(db):
 
 
 async def test_skipped_lets_the_rest_run(db):
-    inst = await _run(db, {"deaktiviert": True, "deaktiviert_modus": "ueberspringen"})
+    inst = await _run(db, {"disabled": True, "disabled_mode": "skip"})
     assert inst.status.value == "completed"
     assert "a" not in inst.context, "the disabled action must not have done anything"
     assert inst.context["b"] == "2", "it has to continue after that"
     steps = await _steps(db, inst)
     assert steps["tut_was"].status.value == "skipped"
-    assert steps["tut_was"].result["deaktiviert"] is True
+    assert steps["tut_was"].result["disabled"] is True
 
 
 async def test_abort_ends_the_run(db):
-    inst = await _run(db, {"deaktiviert": True, "deaktiviert_modus": "abbrechen"})
+    inst = await _run(db, {"disabled": True, "disabled_mode": "abort"})
     assert inst.status.value == "cancelled"
     assert "abgeschaltet" in (inst.error or "")
     assert "a" not in inst.context and "b" not in inst.context
@@ -85,11 +85,22 @@ async def test_abort_ends_the_run(db):
 
 async def test_without_mode_it_is_skipped(db):
     """The harmless case is the default; the dangerous one has to be named."""
-    inst = await _run(db, {"deaktiviert": True})
+    inst = await _run(db, {"disabled": True})
     assert inst.status.value == "completed" and inst.context["b"] == "2"
 
 
 async def test_check_stays_satisfied(db):
     """A disabled step is not an error in the graph."""
     assert validate_graph(WorkflowSubjectKind.standalone,
-                          _graph({"deaktiviert": True})) == []
+                          _graph({"disabled": True})) == []
+
+
+async def test_the_old_german_keys_still_hold(db):
+    """A published version from before the rename must keep working.
+
+    Its graph carries `deaktiviert`/`abbrechen`, and an instance can hang on exactly that
+    version — the migration rewrites stored graphs, but not the one an instance already read.
+    """
+    inst = await _run(db, {"deaktiviert": True, "deaktiviert_modus": "abbrechen"})
+    assert inst.status.value == "cancelled"
+    assert "a" not in inst.context and "b" not in inst.context

@@ -875,7 +875,7 @@ export default function Stage(props: StageProps): JSX.Element {
         aria-label={
           empty
             ? tr("stage.leer")
-            : tr("stage.mit_agenten", { anzahl: roomCount })
+            : tr("stage.mit_agenten", { count: roomCount })
         }
       />
 

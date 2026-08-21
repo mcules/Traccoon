@@ -2,8 +2,8 @@ import { useState } from "react";
 import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { FlowNode } from "./nodes/shared";
-import Schrittprotokoll, { type Step } from "./Schrittprotokoll";
-import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
+import Steplog, { type Step } from "./Schrittprotokoll";
+import { BUTTON_SMALL, BUTTON_TEXT} from "../ui";
 
 /**
  * Play the flow through before it runs for real.
@@ -16,10 +16,10 @@ import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
  * The example payload from the start node serves as the input: it is there anyway, and
  * whoever maintained it has their test case with it.
  */
-export default function ProbelaufPanel(
+export default function DryrunPanel(
   { defId, nodes, graph }: { defId?: number; nodes: FlowNode[]; graph: () => unknown },
 ) {
-  const [läuft, setLäuft] = useState(false);
+  const [runs, setRuns] = useState(false);
   const [error, setError] = useState("");
   const [steps, setSteps] = useState<Step[] | null>(null);
   const [result, setResult] = useState("");
@@ -30,21 +30,21 @@ export default function ProbelaufPanel(
 
   const los = async () => {
     if (!defId) return;
-    setLäuft(true); setError(""); setSteps(null);
+    setRuns(true); setError(""); setSteps(null);
     try {
       // The state from the editor, not the saved one; otherwise one checks yesterday's.
-      const r = await workflowApi.probelauf(defId, probe, graph());
+      const r = await workflowApi.dryrun(defId, probe, graph());
       setSteps(r.steps);
-      const klartext: Record<string, string> = {
+      const plaintext: Record<string, string> = {
         completed: "durchgelaufen", failed: "abgebrochen", waiting: "wartet",
         running: "probelauf.laeuft_noch", cancelled: "probelauf.abgebrochen",
       };
-      setResult(r.error ? `${klartext[r.status] || r.status} — ${r.error}`
-                          : (klartext[r.status] || r.status));
+      setResult(r.error ? `${plaintext[r.status] || r.status} — ${r.error}`
+                          : (plaintext[r.status] || r.status));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Probelauf fehlgeschlagen");
     } finally {
-      setLäuft(false);
+      setRuns(false);
     }
   };
 
@@ -53,10 +53,10 @@ export default function ProbelaufPanel(
       <div className="flex items-center gap-2">
         <button
           onClick={los}
-          disabled={!defId || läuft}
-          className={BUTTON_KLEIN.neben}
+          disabled={!defId || runs}
+          className={BUTTON_SMALL.secondary}
         >
-          {tr(läuft ? "probelauf.laeuft" : "probelauf.starten")}
+          {tr(runs ? "probelauf.laeuft" : "probelauf.starten")}
         </button>
         {result && <span className="text-[11px]">Ergebnis: <b>{result}</b></span>}
       </div>
@@ -76,10 +76,10 @@ export default function ProbelaufPanel(
               Probelauf — {steps.length} Schritt{steps.length === 1 ? "" : "e"}
             </span>
             <button onClick={() => setSteps(null)}
-              className={BUTTON_TEXT.neben} title={tr("probelauf_panel.schliessen")}>✕</button>
+              className={BUTTON_TEXT.secondary} title={tr("probelauf_panel.schliessen")}>✕</button>
           </div>
-          <Schrittprotokoll schritte={steps} maxHoehe="18rem"
-            leerText={tr("probelauf.kein_schritt")} />
+          <Steplog steps={steps} maxHeight="18rem"
+            emptyText={tr("probelauf.kein_schritt")} />
         </div>
       )}
     </div>

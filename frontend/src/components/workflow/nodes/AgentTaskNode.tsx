@@ -16,11 +16,11 @@ const ROLE_LABEL: Record<string, string> = {
 /** Exits = possible results of a run. Exits that are not drawn fall back on "weiter", so
  *  that simple graphs get by with one edge. */
 function outcomes(phase?: string): SourceHandleDef[] {
-  const erst = phase === "planning"
+  const first = phase === "planning"
     ? { id: "planned", label: "Plan da", color: "!bg-green-500" }
     : { id: "done", label: "fertig", color: "!bg-green-500" };
   return [
-    erst,
+    first,
     { id: "loop_exhausted", label: "Zwischenstand", color: "!bg-amber-500" },
     { id: "blocked", label: tr("agent.ausgang.rueckfrage"), color: "!bg-yellow-500" },
     { id: "failed", label: "Fehler", color: "!bg-red-500" },
@@ -39,7 +39,7 @@ export default function AgentTaskNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-purple-500"
       selected={selected}
       runtimeState={data.runtimeState}
-      aus={!!data.config.deaktiviert}
+      from={!!data.config.disabled}
       sources={outcomes(c.phase)}
     >
       <div>Agent: {c.agent_role ? ROLE_LABEL[c.agent_role] || c.agent_role : "—"}</div>

@@ -77,7 +77,7 @@ export default function AssetWorkflow({
         <button
           onClick={() => start.mutate()}
           disabled={start.isPending}
-          className={BUTTON.haupt}
+          className={BUTTON.primary}
         >
           🧭 {tr("asset_workflow.beschaffung_starten")}
         </button>

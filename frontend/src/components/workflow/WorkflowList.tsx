@@ -3,8 +3,8 @@ import { tr } from "../../i18n";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi, type Project, type WorkflowSubjectKind } from "../../api";
-import { projektPath } from "../../projectTabs";
-import { Listing, ListingLeer, ListenLine, BUTTON} from "../ui";
+import { projectPath } from "../../projectTabs";
+import { Listing, ListingEmpty, ListenLine, BUTTON} from "../ui";
 
 const SUBJECT_LABEL: Record<WorkflowSubjectKind, string> = {
   issue: "Ticket",
@@ -43,7 +43,7 @@ export default function WorkflowList({ project }: { project: Project }) {
       setF(EMPTY);
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPath(project.key, "settings", "processes") } });
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projectPath(project.key, "settings", "processes") } });
     },
     onError: fail,
   });
@@ -68,7 +68,7 @@ export default function WorkflowList({ project }: { project: Project }) {
 
       <Listing className="mb-4">
         {defs?.map((d) => (
-          <ListenLine key={d.id} gedimmt={!d.enabled}>
+          <ListenLine key={d.id} dimmed={!d.enabled}>
             <div className="flex flex-wrap items-center gap-3">
             <span className="font-mono text-xs text-muted">{d.key}</span>
             <span className="font-medium">{d.name}</span>
@@ -91,7 +91,7 @@ export default function WorkflowList({ project }: { project: Project }) {
             </button>
             <button
               title={tr("workflow_list.bearbeiten")}
-              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPath(project.key, "settings", "processes") } })}
+              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projectPath(project.key, "settings", "processes") } })}
               className={ico + " hover:opacity-80"}
             >
               ✎
@@ -102,7 +102,7 @@ export default function WorkflowList({ project }: { project: Project }) {
             </div>
           </ListenLine>
         ))}
-        {defs?.length === 0 && <ListingLeer>{tr("workflow_list.noch_keine_eigenen_prozesse")}</ListingLeer>}
+        {defs?.length === 0 && <ListingEmpty>{tr("workflow_list.noch_keine_eigenen_prozesse")}</ListingEmpty>}
       </Listing>
 
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3">
@@ -135,7 +135,7 @@ export default function WorkflowList({ project }: { project: Project }) {
         />
         <button
           onClick={() => f.key.trim() && f.name.trim() && create.mutate()}
-          className={BUTTON.haupt}
+          className={BUTTON.primary}
         >
           + Prozess anlegen &amp; bearbeiten
         </button>

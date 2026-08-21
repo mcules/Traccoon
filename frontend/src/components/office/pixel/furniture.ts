@@ -24,7 +24,7 @@ import type { Ctx, RackState } from "../types.ts";
 import { ART } from "../const.ts";
 import { mix } from "../ids.ts";
 import type { Pal, PalKey } from "./palette.ts";
-import { artH, artLeft, artW, defineArt, drawArt, fill, fillA, verdoppelt } from "./art.ts";
+import { artH, artLeft, artW, defineArt, drawArt, fill, fillA, doubled } from "./art.ts";
 
 // ═══ Dimensions of the set ═══════════════════════════════════════════════════
 
@@ -511,9 +511,9 @@ const CLOCK = defineArt([
 /** The same art in the fine grid. `SIZE` below stays on the coarse one: the scene computes its
  *  geometry with that, and that is in art units. Whoever doubles `SIZE` here
  *  verschiebt jeden Sitzplatz. */
-const DESK_HD = verdoppelt(DESK);
-const CHAIR_FREE_HD = verdoppelt(CHAIR_FREE);
-const CHAIR_TAKEN_HD = verdoppelt(CHAIR_TAKEN);
+const DESK_HD = doubled(DESK);
+const CHAIR_FREE_HD = doubled(CHAIR_FREE);
+const CHAIR_TAKEN_HD = doubled(CHAIR_TAKEN);
 
 export const SIZE = {
   desk: { w: artW(DESK), h: artH(DESK) },
@@ -553,13 +553,13 @@ function contactShadow(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: number)
 
 /** The same shadow in the fine grid: five steps instead of three, because a step is half as
  *  high. It narrows towards the back, because the light comes from the windows, so from above. */
-function kontaktSchattenHD(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: number): void {
-  const halb = w >> 1;
-  fillA(ctx, pal, "shadow", 0.24, cx - halb + 4, yBase - 3, w - 8, 1);
-  fillA(ctx, pal, "shadow", 0.20, cx - halb + 1, yBase - 2, w - 2, 2);
-  fillA(ctx, pal, "shadow", 0.13, cx - halb - 1, yBase, w + 2, 2);
-  fillA(ctx, pal, "shadow", 0.07, cx - halb + 2, yBase + 2, w - 4, 1);
-  fillA(ctx, pal, "shadow", 0.04, cx - halb + 8, yBase + 3, w - 16, 1);
+function contactShadowHD(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: number): void {
+  const half = w >> 1;
+  fillA(ctx, pal, "shadow", 0.24, cx - half + 4, yBase - 3, w - 8, 1);
+  fillA(ctx, pal, "shadow", 0.20, cx - half + 1, yBase - 2, w - 2, 2);
+  fillA(ctx, pal, "shadow", 0.13, cx - half - 1, yBase, w + 2, 2);
+  fillA(ctx, pal, "shadow", 0.07, cx - half + 2, yBase + 2, w - 4, 1);
+  fillA(ctx, pal, "shadow", 0.04, cx - half + 8, yBase + 3, w - 16, 1);
 }
 
 export function drawDesk(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
@@ -568,7 +568,7 @@ export function drawDesk(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
   const X = cx * HD, Y = yBase * HD;
   const w = SIZE.desk.w * HD, h = SIZE.desk.h * HD;
   const x0 = X - (w >> 1);
-  kontaktSchattenHD(ctx, pal, X, Y, w);
+  contactShadowHD(ctx, pal, X, Y, w);
   drawArt(ctx, DESK_HD, X, Y, pal);
   // Front edge: a HAIRLINE of light with a line of shadow below it. Two buffer pixels thick
   // made the edge a bar; only a line with its own shadow reads as the rim of a top you could
@@ -594,7 +594,7 @@ export function drawChair(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?: 
   const art = opts?.occupied === true ? CHAIR_TAKEN_HD : CHAIR_FREE_HD;
   const X = cx * HD, Y = yBase * HD;
   const w = SIZE.chair.w * HD, h = SIZE.chair.h * HD;
-  kontaktSchattenHD(ctx, pal, X, Y, w - 4);
+  contactShadowHD(ctx, pal, X, Y, w - 4);
   drawArt(ctx, art, X, Y, pal, { flip: opts?.flip });
   // A light edge on the top of the backrest: it separates the backrest from the seat behind it,
   // which has the same tone, otherwise the chair is a blob.
@@ -803,15 +803,15 @@ export function drawRack(
   // The rising bar: one step per `LED_STEP_MS`, from bottom to top, then from the start. The
   // phase comes from `t - since`, so after a jump in the timeline it stands right immediately
   // instead of counting itself up frame by frame.
-  const stufe = Math.floor(Math.max(0, rack.t - rack.since) / LED_STEP_MS);
-  const an = rack.state === "start" ? 1 + (stufe % LED_ROWS.length) : LED_ROWS.length;
+  const level = Math.floor(Math.max(0, rack.t - rack.since) / LED_STEP_MS);
+  const an = rack.state === "start" ? 1 + (level % LED_ROWS.length) : LED_ROWS.length;
 
   // A faint wash of light across the whole front, in the colour of the **lowest** lit device:
   // from two metres away at 480×270 one sees first *that* the rack is alive, and only then
   // which rows. The colour is that of the state, not of the row: on `back` the topmost
   // (`blocked`) would be the wrong message for the surface.
-  const flaeche = ledKey(rack.state, LED_ROWS.length - 1);
-  fillA(ctx, pal, flaeche, 0.05, xLeft + 2, yTop + 2, SIZE.rack.w - 4, SIZE.rack.h - 6);
+  const area = ledKey(rack.state, LED_ROWS.length - 1);
+  fillA(ctx, pal, area, 0.05, xLeft + 2, yTop + 2, SIZE.rack.w - 4, SIZE.rack.h - 6);
 
   for (let i = 0; i < LED_ROWS.length; i++) {
     if (LED_ROWS.length - i > an) continue;
@@ -976,15 +976,15 @@ export function drawFloor(ctx: Ctx, pal: Pal): void {
  * At night the fill light is off (it is dark outside) and instead a very faint cold shimmer
  * lies there: a city outside the window throws light, only little of it.
  */
-export function drawLicht(ctx: Ctx, pal: Pal, xs: readonly number[], day: boolean): void {
+export function drawLight(ctx: Ctx, pal: Pal, xs: readonly number[], day: boolean): void {
   const TOP = WALL_H * HD;
-  const stufen = 14;
+  const levels = 14;
   for (const cx0 of xs) {
     const cx = cx0 * HD;
-    for (let i = 0; i < stufen; i++) {
-      const halb = 9 * HD + i * 3;
-      const a = (day ? 0.085 : 0.05) * (1 - i / stufen);
-      fillA(ctx, pal, day ? "floorHi" : "glass", a, cx - halb, TOP + i * 4, halb * 2, 4);
+    for (let i = 0; i < levels; i++) {
+      const half = 9 * HD + i * 3;
+      const a = (day ? 0.085 : 0.05) * (1 - i / levels);
+      fillA(ctx, pal, day ? "floorHi" : "glass", a, cx - half, TOP + i * 4, half * 2, 4);
     }
   }
 }

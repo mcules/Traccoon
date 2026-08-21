@@ -3,7 +3,7 @@ import { formatDate } from "../lib/formatTime";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
-import { Actions, ICON, IconButton, LoeschDialog, BUTTON} from "./ui";
+import { Actions, ICON, IconButton, DeleteDialog, BUTTON} from "./ui";
 
 interface Member {
   id: number; user_id: number; username: string; display_name: string;
@@ -29,8 +29,8 @@ export default function Members({ project }: { project: Project }) {
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
   const [q, setQ] = useState("");
-  const [entfernen, setEntfernen] = useState<Member | null>(null);
-  const [widerrufen, setWiderrufen] = useState<Invitation | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<Invitation | null>(null);
   const inv = () => qc.invalidateQueries({ queryKey: key });
   const invInv = () => qc.invalidateQueries({ queryKey: invKey });
 
@@ -107,8 +107,8 @@ export default function Members({ project }: { project: Project }) {
               <td className="py-1 text-right">
                 <div className="flex justify-end">
                   <Actions>
-                    <IconButton icon={ICON.loeschen} titel={tr("members.entfernen")} gefahr
-                      onClick={() => setEntfernen(m)} />
+                    <IconButton icon={ICON.remove} title={tr("members.entfernen")} danger
+                      onClick={() => setRemoveTarget(m)} />
                   </Actions>
                 </div>
               </td>
@@ -137,7 +137,7 @@ export default function Members({ project }: { project: Project }) {
                   {u.status !== "active" && <span className="ml-1 text-xs text-muted">({u.status})</span>}
                 </span>
                 <button onClick={() => addExisting.mutate(u.id)}
-                  className={BUTTON.haupt}>{tr("members.als_rolle", { rolle: role })}</button>
+                  className={BUTTON.primary}>{tr("members.als_rolle", { role: role })}</button>
               </div>
             ))}
           </div>
@@ -156,7 +156,7 @@ export default function Members({ project }: { project: Project }) {
           </select>
         </label>
         <button disabled={!emailValid} onClick={() => emailValid && invite.mutate()}
-          className={BUTTON.haupt}>
+          className={BUTTON.primary}>
           Einladen
         </button>
         {err && <span className="text-sm text-red-400">{err}</span>}
@@ -184,8 +184,8 @@ export default function Members({ project }: { project: Project }) {
                   <td className="py-1 text-right">
                     <div className="flex justify-end">
                       <Actions>
-                        <IconButton icon={ICON.loeschen} titel={tr("members.widerrufen")} gefahr
-                          onClick={() => setWiderrufen(i)} />
+                        <IconButton icon={ICON.remove} title={tr("members.widerrufen")} danger
+                          onClick={() => setRevokeTarget(i)} />
                       </Actions>
                     </div>
                   </td>
@@ -195,16 +195,16 @@ export default function Members({ project }: { project: Project }) {
           </table>
         </div>
       )}
-      {entfernen && (
-        <LoeschDialog was={entfernen.display_name || entfernen.username}
-          hinweis={tr("members.entfernen_hinweis")}
-          onClose={() => setEntfernen(null)}
-          onLoeschen={() => { remove.mutate(entfernen.user_id); setEntfernen(null); }} />
+      {removeTarget && (
+        <DeleteDialog was={removeTarget.display_name || removeTarget.username}
+          hint={tr("members.entfernen_hinweis")}
+          onClose={() => setRemoveTarget(null)}
+          onDelete={() => { remove.mutate(removeTarget.user_id); setRemoveTarget(null); }} />
       )}
-      {widerrufen && (
-        <LoeschDialog was={widerrufen.email} hinweis={tr("members.widerrufen_hinweis")}
-          onClose={() => setWiderrufen(null)}
-          onLoeschen={() => { revoke.mutate(widerrufen.id); setWiderrufen(null); }} />
+      {revokeTarget && (
+        <DeleteDialog was={revokeTarget.email} hint={tr("members.widerrufen_hinweis")}
+          onClose={() => setRevokeTarget(null)}
+          onDelete={() => { revoke.mutate(revokeTarget.id); setRevokeTarget(null); }} />
       )}
     </div>
   );

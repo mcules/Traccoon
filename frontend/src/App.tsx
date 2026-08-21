@@ -2,7 +2,7 @@ import { Suspense, lazy } from "react";
 import { tr } from "./i18n";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { useAuth } from "./auth";
-import { useLanguage, useLanguageVonUser } from "./i18n/useSprache";
+import { useLanguage, useLanguageFromUser } from "./i18n/useSprache";
 import Login from "./pages/Login";
 import AcceptInvite from "./pages/AcceptInvite";
 import Projects from "./pages/Projects";
@@ -10,10 +10,10 @@ import ProjectView from "./pages/ProjectView";
 import TicketView from "./pages/TicketView";
 import WorkflowEditor from "./pages/WorkflowEditor";
 import Processes from "./pages/Processes";
-import AblagePage from "./pages/Ablage";
+import StorePage from "./pages/Ablage";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
-import Konto from "./pages/Konto";
+import Account from "./pages/Konto";
 import Inbox from "./pages/Inbox";
 import Mail from "./pages/Mail";
 import PluginHost from "./pages/PluginHost";
@@ -31,7 +31,7 @@ import { PageChromeProvider } from "./pageChrome";
  * switch under the settings now. Every one of these paths stands in bookmarks, in tickets
  * and in the vault.
  */
-function AlteAdresse({ to }: { to: string }) {
+function OldAddress({ to }: { to: string }) {
   return <Navigate to={to} replace />;
 }
 
@@ -43,7 +43,7 @@ function AlteAdresse({ to }: { to: string }) {
  * müssen, in welcher Sprache dieser eine Abschnitt gemeint ist. Die alten leiten weiter,
  * denn sie stehen in Lesezeichen, in Tickets und im Vault.
  */
-function AlterSection({ karte, ziel: target }: { karte: Record<string, string>; ziel: string }) {
+function AlterSection({ karte, target: target }: { karte: Record<string, string>; target: string }) {
   const params = useParams();
   // Ein Abschnitt, der schon englisch hieß (person, mail), geht unverändert mit — sonst
   // landete `/account/person` im Nichts statt auf `/account/person`.
@@ -65,26 +65,26 @@ function AdminTab() {
   return <Admin />;
 }
 
-const KONTO_ALT = { ansicht: "appearance", meldungen: "notifications", agenten: "agents" };
-const PROZESSE_ALT = { eigene: "own", standard: "default", betrieb: "operations",
-                       ausloeser: "triggers", messreihen: "metrics", ablagen: "documents" };
+const ACCOUNT_OLD = { view: "appearance", reports: "notifications", agents: "agents" };
+const FLOWS_OLD = { own: "own", standard: "default", operation: "operations",
+                       trigger: "triggers", metricseries: "metrics", stores: "documents" };
 
-function KontoPage() {
+function AccountPage() {
   const { tab } = useParams();
-  return tab && tab in KONTO_ALT
-    ? <AlterSection karte={KONTO_ALT} ziel="/account" /> : <Konto />;
+  return tab && tab in ACCOUNT_OLD
+    ? <AlterSection karte={ACCOUNT_OLD} target="/account" /> : <Account />;
 }
 
-function ProzessePage() {
+function FlowsPage() {
   const { tab } = useParams();
-  return tab && tab in PROZESSE_ALT
-    ? <AlterSection karte={PROZESSE_ALT} ziel="/processes" /> : <Processes />;
+  return tab && tab in FLOWS_OLD
+    ? <AlterSection karte={FLOWS_OLD} target="/processes" /> : <Processes />;
 }
 
 export default function App() {
   const { user, loading } = useAuth();
   // The language hangs off the logged-in human; without a login the browser decides.
-  useLanguageVonUser(user?.locale);
+  useLanguageFromUser(user?.locale);
   useLanguage();
 
   if (loading) return <div className="p-8 text-muted">{tr("common.laedt")}</div>;
@@ -105,20 +105,20 @@ export default function App() {
         <Route path="/" element={<Projects />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/mail" element={<Mail />} />
-        <Route path="/account" element={<Konto />} />
-        <Route path="/account/:tab" element={<KontoPage />} />
-        <Route path="/konto" element={<AlteAdresse to="/account" />} />
-        <Route path="/account/:tab" element={<AlterSection karte={KONTO_ALT} ziel="/account" />} />
-        <Route path="/profil" element={<AlteAdresse to="/account" />} />
+        <Route path="/account" element={<Account />} />
+        <Route path="/account/:tab" element={<AccountPage />} />
+        <Route path="/konto" element={<OldAddress to="/account" />} />
+        <Route path="/account/:tab" element={<AlterSection karte={ACCOUNT_OLD} target="/account" />} />
+        <Route path="/profil" element={<OldAddress to="/account" />} />
         {/* Plugins liegen unter einem eigenen kurzen Praefix — sie sind Bereiche,
             aber keine eingebauten. */}
         <Route path="/p/:slug" element={<PluginHost />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/:tab" element={<SettingsTab />} />
-        <Route path="/documents/:key" element={<AblagePage />} />
-        <Route path="/documents/:key/:id" element={<AblagePage />} />
+        <Route path="/documents/:key" element={<StorePage />} />
+        <Route path="/documents/:key/:id" element={<StorePage />} />
         <Route path="/processes" element={<Processes />} />
-        <Route path="/processes/:tab" element={<ProzessePage />} />
+        <Route path="/processes/:tab" element={<FlowsPage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/:tab" element={<AdminTab />} />
         <Route path="/projects/:key/workflows/:id" element={<WorkflowEditor />} />
@@ -130,7 +130,7 @@ export default function App() {
         <Route path="/projects/:key" element={<ProjectView />} />
         <Route path="/projects/:key/:tab" element={<ProjectView />} />
         <Route path="/projects/:key/:tab/:unter" element={<ProjectView />} />
-        <Route path="/buero" element={<AlteAdresse to="/office" />} />
+        <Route path="/buero" element={<OldAddress to="/office" />} />
         <Route path="/office" element={
           <Suspense fallback={<div className="p-4 text-sm text-muted">{tr("common.laedt")}</div>}>
             <Office />

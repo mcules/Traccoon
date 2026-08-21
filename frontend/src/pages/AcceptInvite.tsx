@@ -136,11 +136,11 @@ export default function AcceptInvite() {
             placeholder={tr("accept_invite.passwort")} value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
-        <button className={`mt-4 w-full ${BUTTON.haupt}`}>
+        <button className={`mt-4 w-full ${BUTTON.primary}`}>
           {tr(mode === "login" ? "accept_invite.anmelden_beitreten" : "accept_invite.registrieren_beitreten")}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className={BUTTON_TEXT.neben}>
+          className={BUTTON_TEXT.secondary}>
           {tr(mode === "login" ? "accept_invite.neu_hier" : "accept_invite.bereits_registriert")}
         </button>
       </form>

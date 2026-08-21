@@ -36,7 +36,7 @@ export function prewarmMonaco(): void {
 }
 
 // Language from the file extension (Monaco derives much over the path; here the most common ones).
-export function langOf(path: string): string {
+export function longOf(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() || "";
   const map: Record<string, string> = {
     ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",

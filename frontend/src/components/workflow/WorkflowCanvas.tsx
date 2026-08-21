@@ -59,25 +59,25 @@ export interface WorkflowCanvasProps {
    *  then it belongs in between, not beside it. */
   onDropNode?: (type: WorkflowNodeType, pos: { x: number; y: number }, edgeId?: string) => void;
   /** Show this point (canvas coordinates) at the top centre. `token` triggers it. */
-  fokus?: { x: number; y: number; token: number };
+  focus?: { x: number; y: number; token: number };
 }
 
 function Inner(props: WorkflowCanvasProps) {
   const { nodes, edges, readOnly, onNodesChange, onEdgesChange, onConnect, onNodeClick,
-          onDropNode, fokus } = props;
+          onDropNode, focus } = props;
   const rf = useReactFlow();
-  const hoehe = useStore((st) => st.height);
+  const height = useStore((st) => st.height);
 
   // After arranging, the view should stand where the flow begins; otherwise one looks at an
   // arbitrary excerpt of the newly distributed cards after the click.
   useEffect(() => {
-    if (!fokus || !hoehe) return;
+    if (!focus || !height) return;
     const zoom = rf.getZoom();
-    const rand = 60;
-    rf.setCenter(fokus.x, fokus.y - rand + hoehe / (2 * zoom), { zoom, duration: 400 });
+    const edge = 60;
+    rf.setCenter(focus.x, focus.y - edge + height / (2 * zoom), { zoom, duration: 400 });
     // Deliberately only on `token`: aiming at the same target again is a new wish.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fokus?.token]);
+  }, [focus?.token]);
 
   const onDrop = useCallback(
     (ev: React.DragEvent) => {

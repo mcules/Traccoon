@@ -28,8 +28,8 @@ export default function NodeConfigPanel({
   onDelete,
   projectId,
   subjectKind,
-  kontextFelder: contextFields,
-  kontextFilter: contextFilter,
+  contextFields: contextFields,
+  contextFilter: contextFilter,
   defId,
 }: {
   node: FlowNode | null;
@@ -40,9 +40,9 @@ export default function NodeConfigPanel({
   /** Subject of the flow (issue|hardware_asset|standalone); controls actions and states. */
   subjectKind?: string;
   /** Context fields of this flow; the branch offers them for selection. */
-  kontextFelder?: ContextField[];
+  contextFields?: ContextField[];
   /** Vorlagen-Filter (Hilfe im Verzweigungs-Editor). */
-  kontextFilter?: import("./contextFields").ContextFilter[];
+  contextFilter?: import("./contextFields").ContextFilter[];
   /** Definition of this flow; the start node needs it for its own address. */
   defId?: number;
 }) {
@@ -61,7 +61,7 @@ export default function NodeConfigPanel({
         {node.type !== "start" && (
           <button
             onClick={() => onDelete(node.id)}
-            className={BUTTON_TEXT.gefahr}
+            className={BUTTON_TEXT.danger}
             title={tr("node_config_panel.knoten_loeschen")}
           >
             🗑
@@ -82,10 +82,10 @@ export default function NodeConfigPanel({
       {node.type === "human_task" && <HumanTaskConfig config={config} onChange={set} members={members} />}
       {node.type === "timer" && <TimerConfig config={config} onChange={set} />}
       {node.type === "loop" && (
-        <LoopConfig config={config} onChange={set} felder={contextFields} />
+        <LoopConfig config={config} onChange={set} fields={contextFields} />
       )}
       {node.type === "decision" && (
-        <DecisionConfig config={config} onChange={set} felder={contextFields}
+        <DecisionConfig config={config} onChange={set} fields={contextFields}
           filter={contextFilter} />
       )}
       {node.type === "approval" && <ApprovalConfig config={config} onChange={set} members={members} />}
@@ -122,7 +122,7 @@ export default function NodeConfigPanel({
       )}
 
       {node.type !== "start" && node.type !== "end" && (
-        <Abschalter config={config} onChange={set} />
+        <Killswitch config={config} onChange={set} />
       )}
     </div>
   );
@@ -137,35 +137,35 @@ export default function NodeConfigPanel({
  * off step would be exactly the dangerous outcome. That is why the choice stands there
  * explicitly instead of being guessed.
  */
-function Abschalter({ config, onChange }: {
+function Killswitch({ config, onChange }: {
   config: NodeConfig; onChange: (c: NodeConfig) => void;
 }) {
-  const aus = !!config.deaktiviert;
-  const modus = config.deaktiviert_modus || "ueberspringen";
+  const from = !!config.disabled;
+  const mode = config.disabled_mode || "skip";
   return (
     <div className={`space-y-2 rounded border p-2 ${
-      aus ? "border-amber-500/40 bg-amber-500/5" : "border-line"}`}>
+      from ? "border-amber-500/40 bg-amber-500/5" : "border-line"}`}>
       <label className="flex items-center gap-2 text-xs text-ink">
-        <input type="checkbox" checked={aus}
+        <input type="checkbox" checked={from}
           onChange={(e) => onChange({
             ...config,
-            deaktiviert: e.target.checked || undefined,
-            deaktiviert_modus: e.target.checked ? modus : undefined,
+            disabled: e.target.checked || undefined,
+            disabled_mode: e.target.checked ? mode : undefined,
           })} />
         {tr("abschalter.schalter")}
       </label>
-      {aus && (
+      {from && (
         <>
           <label className="block text-[11px] font-medium text-muted">
             {tr("abschalter.was_dann")}
-            <select value={modus} className="mt-1 w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
-              onChange={(e) => onChange({ ...config, deaktiviert_modus: e.target.value as NodeConfig["deaktiviert_modus"] })}>
-              <option value="ueberspringen">{tr("abschalter.ueberspringen")}</option>
-              <option value="abbrechen">{tr("abschalter.abbrechen")}</option>
+            <select value={mode} className="mt-1 w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
+              onChange={(e) => onChange({ ...config, disabled_mode: e.target.value as NodeConfig["disabled_mode"] })}>
+              <option value="skip">{tr("abschalter.ueberspringen")}</option>
+              <option value="abort">{tr("abschalter.abbrechen")}</option>
             </select>
           </label>
           <p className="text-[11px] text-muted">
-            {modus === "abbrechen"
+            {mode === "abort"
               ? tr("abschalter.hinweis_abbrechen")
               : tr("abschalter.hinweis_ueberspringen")}
           </p>

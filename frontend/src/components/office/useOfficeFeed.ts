@@ -156,7 +156,7 @@ export const ALL_WINDOW_H = 12;
 /** Extra switches of the feed. */
 export interface OfficeFeedOpts {
   /** Without a `sid`, mix **all** sessions into one room instead of staying empty. */
-  alleSitzungen?: boolean;
+  allSessions?: boolean;
   /** Fenster dieses Modus in Stunden. */
   sinceHours?: number;
 }
@@ -196,14 +196,14 @@ interface Snapshot {
  *  `lade` is the only difference between "one session" and "all sessions": both endpoints
  *  deliver the same shape, so **one** loop pages through both. Two loops would be two
  *  opportunities to lose the order differently. */
-async function fetchSnapshot(lade: (afterSeq?: number) => Promise<EventPage>): Promise<Snapshot> {
+async function fetchSnapshot(load: (afterSeq?: number) => Promise<EventPage>): Promise<Snapshot> {
   const events: Ev[] = [];
   let agents: Roster = [];
   let page: EventPage | null = null;
   let afterSeq: number | undefined;
 
   for (let i = 0; i < MAX_PAGES; i++) {
-    const p = await lade(afterSeq);
+    const p = await load(afterSeq);
     const batch = p.events ?? [];
     // The roster stands only on the first page; later pages do not overwrite it with an empty
     // field, otherwise the room would have no cast after paging.
@@ -258,7 +258,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
    *  decoration: without a `sid` the project tab is in the same state while its session list is
    *  still on the way, and it should not show the
    *  ganze Projekt laden, um es sofort wieder wegzuwerfen. */
-  const all = !sid && !!opts?.alleSitzungen;
+  const all = !sid && !!opts?.allSessions;
   // The identity of the log. It changes on a change of room **and** on a change of window:
   // both are a different log, and the recorder has to be empty in between.
   const key = sid ? sidKey(sid) : (all ? `alle:${scopeKey}:${sinceHours}` : null);

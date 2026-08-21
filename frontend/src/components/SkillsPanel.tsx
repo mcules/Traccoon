@@ -3,8 +3,8 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, Listing,
-  ListingLeer, ListenLine, LoeschDialog, BUTTON } from "./ui";
+  Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
+  ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "./ui";
 
 /**
  * Skills: reusable prompt blocks, versioned.
@@ -17,7 +17,7 @@ export default function SkillsPanel() {
   const qc = useQueryClient();
   const { data: skills } = useQuery({ queryKey: ["skills"], queryFn: () => api.get<any[]>("/skills") });
   const [dialog, setDialog] = useState<any | null>(null);     // {} = neuer Skill
-  const [loeschSkill, setLoeschSkill] = useState<any | null>(null);
+  const [deleteSkill, setDeleteSkill] = useState<any | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["skills"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
@@ -29,11 +29,11 @@ export default function SkillsPanel() {
   });
   const del = useMutation({
     mutationFn: (id: number) => api.del(`/skills/${id}`),
-    onSuccess: () => { setLoeschSkill(null); inv(); }, onError: fail });
+    onSuccess: () => { setDeleteSkill(null); inv(); }, onError: fail });
 
   return (
-    <Area hinweis={tr("skills_panel.wiederverwendbare_prompt_bausteine_versi")}>
-      <Fehlerzeile text={err} />
+    <Area hint={tr("skills_panel.wiederverwendbare_prompt_bausteine_versi")}>
+      <Errorrow text={err} />
       <Listing className="mb-4">
         {skills?.map((s) => (
           <ListenLine key={s.id}>
@@ -45,53 +45,53 @@ export default function SkillsPanel() {
               {s.autostart && <span className="rounded bg-surface px-1 text-xs">auto</span>}
             </div>
             <Actions>
-              <IconButton icon={ICON.bearbeiten} titel={tr("skills_panel.neue_version")}
+              <IconButton icon={ICON.edit} title={tr("skills_panel.neue_version")}
                 onClick={() => { setErr(""); setDialog(s); }} />
-              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschSkill(s)} />
+              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteSkill(s)} />
             </Actions>
             </div>
           </ListenLine>
         ))}
-        {skills?.length === 0 && <ListingLeer>{tr("skills_panel.keine_skills")}</ListingLeer>}
+        {skills?.length === 0 && <ListingEmpty>{tr("skills_panel.keine_skills")}</ListingEmpty>}
       </Listing>
       <button onClick={() => { setErr(""); setDialog({}); }}
-        className={BUTTON.haupt}>
-        {ICON.neu} {tr("skills_panel.skill_anlegen")}
+        className={BUTTON.primary}>
+        {ICON.fresh} {tr("skills_panel.skill_anlegen")}
       </button>
 
       {dialog && (
-        <SkillDialog skill={dialog.id ? dialog : null} fehler={err} laeuft={save.isPending}
+        <SkillDialog skill={dialog.id ? dialog : null} error={err} runs={save.isPending}
           onClose={() => { setDialog(null); setErr(""); }}
-          onSpeichern={(f) => save.mutate(f)} />
+          onSave={(f) => save.mutate(f)} />
       )}
-      {loeschSkill && (
-        <LoeschDialog was={loeschSkill.name} laeuft={del.isPending}
-          onClose={() => setLoeschSkill(null)} onLoeschen={() => del.mutate(loeschSkill.id)} />
+      {deleteSkill && (
+        <DeleteDialog was={deleteSkill.name} runs={del.isPending}
+          onClose={() => setDeleteSkill(null)} onDelete={() => del.mutate(deleteSkill.id)} />
       )}
     </Area>
   );
 }
 
-function SkillDialog({ skill, fehler: error, laeuft: running, onClose, onSpeichern }: {
-  skill: any | null; fehler: string; laeuft: boolean;
+function SkillDialog({ skill, error: error, runs: running, onClose, onSave }: {
+  skill: any | null; error: string; runs: boolean;
   onClose: () => void;
-  onSpeichern: (f: { name: string; body: string; autostart: boolean }) => void;
+  onSave: (f: { name: string; body: string; autostart: boolean }) => void;
 }) {
   const [name, setName] = useState(skill?.name || "");
   const [body, setBody] = useState(skill?.body || "");
   const [autostart, setAutostart] = useState(!!skill?.autostart);
   // Preview of the derived key
-  const keyVorschau = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const keyPreview = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
   return (
-    <Dialog breit titel={skill ? tr("skills_panel.neue_version") : tr("skills_panel.skill_anlegen")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!name.trim() || !body.trim()} laeuft={running}
-        onSpeichern={() => onSpeichern({ name: name.trim(), body, autostart })}
-        speichernText={skill ? tr("skills_panel.version_speichern") : tr("common.anlegen")} />}>
-      <Fehlerzeile text={error} />
+    <Dialog wide title={skill ? tr("skills_panel.neue_version") : tr("skills_panel.skill_anlegen")} onClose={onClose}
+      foot={<DialogFoot onCancel={onClose} disabled={!name.trim() || !body.trim()} runs={running}
+        onSave={() => onSave({ name: name.trim(), body, autostart })}
+        saveText={skill ? tr("skills_panel.version_speichern") : tr("common.anlegen")} />}>
+      <Errorrow text={error} />
       <div className="space-y-3">
         <Field label={tr("skills_panel.name_z_b_test_driven_development")}
-          hinweis={keyVorschau ? tr("skills_panel.key_automatisch", { key: keyVorschau }) : undefined}>
+          hint={keyPreview ? tr("skills_panel.key_automatisch", { key: keyPreview }) : undefined}>
           <input value={name} autoFocus onChange={(e) => setName(e.target.value)} className={INPUT_VALUE} />
         </Field>
         <Field label={tr("skills_panel.skill_text_markdown")}>

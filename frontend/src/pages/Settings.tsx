@@ -13,8 +13,8 @@ import JobsPanel from "../components/JobsPanel";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 import {
-  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton,
-  Etikett, Listing, ListingLeer, ListenLine, LoeschDialog, BUTTON } from "../components/ui";
+  Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton,
+  Tag, Listing, ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "../components/ui";
 
 /**
  * The settings hold resources, not a person.
@@ -38,15 +38,15 @@ const TABS: [Tab, string, string][] = [
   ["plugins", "settings.tabs.plugins", "\u{1F9E9}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
-const NUR_ADMIN: Tab[] = ["plugins"];
+const ONLY_ADMIN: Tab[] = ["plugins"];
 
 export default function Settings() {
   const { tab: tabParam } = useParams();
   // Derive the active tab from the URL; unknown becomes the default "secrets".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "secrets") as Tab;
   const { user } = useAuth();
-  const istAdmin = user?.global_role === "admin";
-  const visible = TABS.filter(([key]) => istAdmin || !NUR_ADMIN.includes(key));
+  const isAdmin = user?.global_role === "admin";
+  const visible = TABS.filter(([key]) => isAdmin || !ONLY_ADMIN.includes(key));
   usePageChrome(tr("nav.settings"), visible.map(([key, label, icon]) => ({
     key, label: tr(label), to: `/settings/${key}`, icon,
   })), tab, "seite");
@@ -59,7 +59,7 @@ export default function Settings() {
       {tab === "jobs" && <JobsPanel />}
       {tab === "webhooks" && <WebhooksPanel />}
       {tab === "skills" && <SkillsPanel />}
-      {tab === "plugins" && istAdmin && <PluginsPanel />}
+      {tab === "plugins" && isAdmin && <PluginsPanel />}
     </div>
   );
 }
@@ -71,10 +71,10 @@ const PROVIDER_LABEL: Record<string, string> = {
 function Secrets() {
   return (
     <div className="space-y-4">
-      <Area hinweis={tr("settings.keys_einleitung")}>
+      <Area hint={tr("settings.keys_einleitung")}>
         <ProviderTokens />
       </Area>
-      <Area hinweis={<>
+      <Area hint={<>
         Allgemeiner <b>{tr("settings.secret_tresor")}</b>: beliebige Tokens/Geheimnisse (API-Keys,
         {tr("settings.tresor_hinweis")}
       </>}>
@@ -108,7 +108,7 @@ function NamedSecrets() {
 
   return (
     <div>
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
       <Listing className="mb-3">
         {vault.map((s) => (
           <ListenLine key={s.name}>
@@ -117,34 +117,34 @@ function NamedSecrets() {
               {s.description && <span className="min-w-0 flex-1 truncate text-xs text-muted">{s.description}</span>}
               <div className="flex-1" />
               <Actions>
-                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
+                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
                   onClick={() => setDialog({ name: s.name, description: s.description })} />
-                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
                   onClick={() => setDelete(s.name)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
-        {vault.length === 0 && <ListingLeer>{tr("settings.noch_keine_secrets_im_tresor")}</ListingLeer>}
+        {vault.length === 0 && <ListingEmpty>{tr("settings.noch_keine_secrets_im_tresor")}</ListingEmpty>}
       </Listing>
       <button onClick={() => setDialog({ name: "", description: "" })}
-        className={BUTTON.haupt}>
-        {ICON.neu} {tr("settings.secret_anlegen")}
+        className={BUTTON.primary}>
+        {ICON.fresh} {tr("settings.secret_anlegen")}
       </button>
 
       {dialog && (
-        <SecretDialog vorhanden={dialog.name ? dialog : null} start={dialog}
+        <SecretDialog existing={dialog.name ? dialog : null} start={dialog}
           onClose={() => setDialog(null)}
-          onSpeichern={async (name, value, description) => {
+          onSave={async (name, value, description) => {
             const ok = await guard(() => api.put(`/me/secrets/${encodeURIComponent(name)}`,
               { value: value, description: description }));
             if (ok) setDialog(null);
           }} />
       )}
       {remove && (
-        <LoeschDialog was={`secret:${remove}`} hinweis={tr("settings.secret_loeschen_hinweis")}
+        <DeleteDialog was={`secret:${remove}`} hint={tr("settings.secret_loeschen_hinweis")}
           onClose={() => setDelete(null)}
-          onLoeschen={async () => {
+          onDelete={async () => {
             await guard(() => api.put(`/me/secrets/${encodeURIComponent(remove)}`,
               { value: "", description: "" }));
             setDelete(null);
@@ -154,32 +154,32 @@ function NamedSecrets() {
   );
 }
 
-function SecretDialog({ vorhanden, start, onClose, onSpeichern }: {
-  vorhanden: { name: string } | null;
+function SecretDialog({ existing, start, onClose, onSave }: {
+  existing: { name: string } | null;
   start: { name: string; description: string };
   onClose: () => void;
-  onSpeichern: (name: string, value: string, description: string) => void;
+  onSave: (name: string, value: string, description: string) => void;
 }) {
   const [name, setName] = useState(start.name);
   const [value, setValue] = useState("");
   const [description, setDescription] = useState(start.description);
-  const kann = !!name.trim() && !!value.trim();
+  const can = !!name.trim() && !!value.trim();
 
   return (
-    <Dialog titel={vorhanden ? tr("settings.secret_bearbeiten") : tr("settings.secret_anlegen")}
+    <Dialog title={existing ? tr("settings.secret_bearbeiten") : tr("settings.secret_anlegen")}
       onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!kann}
-        onSpeichern={() => onSpeichern(name.trim(), value.trim(), description.trim())} />}>
+      foot={<DialogFoot onCancel={onClose} disabled={!can}
+        onSave={() => onSave(name.trim(), value.trim(), description.trim())} />}>
       <div className="space-y-3">
-        <Field label={tr("settings.name")} hinweis={tr("settings.secret_name_hinweis")}>
-          <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!vorhanden}
-            autoFocus={!vorhanden} placeholder={tr("settings.name_z_b_github_pat")}
+        <Field label={tr("settings.name")} hint={tr("settings.secret_name_hinweis")}>
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!existing}
+            autoFocus={!existing} placeholder={tr("settings.name_z_b_github_pat")}
             className={`${INPUT_VALUE} disabled:opacity-60`} />
         </Field>
         <Field label={tr("settings.wert_token")}
-          hinweis={vorhanden ? tr("settings.wert_ersetzt_hinweis") : undefined}>
+          hint={existing ? tr("settings.wert_ersetzt_hinweis") : undefined}>
           <input type="password" value={value} onChange={(e) => setValue(e.target.value)}
-            autoFocus={!!vorhanden} placeholder={tr("settings.wert_token")} className={INPUT_VALUE} />
+            autoFocus={!!existing} placeholder={tr("settings.wert_token")} className={INPUT_VALUE} />
         </Field>
         <Field label={tr("settings.beschreibung_optional")}>
           <input value={description} onChange={(e) => setDescription(e.target.value)} className={INPUT_VALUE} />
@@ -212,7 +212,7 @@ function ProviderTokens() {
 
   return (
     <div>
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
       <Listing className="mb-3">
         {toks?.map((t) => (
           <ListenLine key={t.id}>
@@ -221,30 +221,30 @@ function ProviderTokens() {
               <div className="flex flex-wrap items-center gap-x-2">
                 <span className="font-medium text-ink">{t.name}</span>
                 <span className="text-xs text-muted">{PROVIDER_LABEL[t.provider] || t.provider}</span>
-                {t.is_default && <Etikett farbe="brand">{tr("settings.standard")}</Etikett>}
+                {t.is_default && <Tag color="brand">{tr("settings.standard")}</Tag>}
               </div>
               {t.base_url && <div className="truncate text-xs text-muted">→ {t.base_url}</div>}
             </div>
             <Actions>
               {!t.is_default && (
-                <IconButton icon={ICON.standard} titel={tr("common.als_standard")}
+                <IconButton icon={ICON.standard} title={tr("common.als_standard")}
                   onClick={() => guard(() => api.post(`/me/provider-tokens/${t.id}/default`))} />
               )}
-              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(t)} />
-              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setDelete(t)} />
+              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setDialog(t)} />
+              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDelete(t)} />
             </Actions>
             </div>
           </ListenLine>
         ))}
-        {toks?.length === 0 && <ListingLeer>{tr("settings.noch_keine_keys_hinterlegt")}</ListingLeer>}
+        {toks?.length === 0 && <ListingEmpty>{tr("settings.noch_keine_keys_hinterlegt")}</ListingEmpty>}
       </Listing>
-      <button onClick={() => setDialog({})} className={BUTTON.haupt}>
-        {ICON.neu} {tr("settings.token_anlegen")}
+      <button onClick={() => setDialog({})} className={BUTTON.primary}>
+        {ICON.fresh} {tr("settings.token_anlegen")}
       </button>
 
       {dialog && (
-        <TokenDialog eintrag={dialog.id ? dialog : null} onClose={() => setDialog(null)}
-          onSpeichern={async (values) => {
+        <TokenDialog entry={dialog.id ? dialog : null} onClose={() => setDialog(null)}
+          onSave={async (values) => {
             const ok = dialog.id
               ? await guard(() => api.patch(`/me/provider-tokens/${dialog.id}`, {
                   token: values.token || undefined,
@@ -260,8 +260,8 @@ function ProviderTokens() {
           }} />
       )}
       {remove && (
-        <LoeschDialog was={remove.name} onClose={() => setDelete(null)}
-          onLoeschen={async () => {
+        <DeleteDialog was={remove.name} onClose={() => setDelete(null)}
+          onDelete={async () => {
             await guard(() => api.del(`/me/provider-tokens/${remove.id}`));
             setDelete(null);
           }} />
@@ -270,10 +270,10 @@ function ProviderTokens() {
   );
 }
 
-function TokenDialog({ eintrag: entry, onClose, onSpeichern }: {
-  eintrag: any | null;
+function TokenDialog({ entry: entry, onClose, onSave }: {
+  entry: any | null;
   onClose: () => void;
-  onSpeichern: (values: {
+  onSave: (values: {
     provider: string; name: string; token: string; base_url: string; is_default: boolean;
   }) => void;
 }) {
@@ -281,15 +281,15 @@ function TokenDialog({ eintrag: entry, onClose, onSpeichern }: {
   const [name, setName] = useState(entry && entry.name !== "Standard" ? entry.name : "");
   const [token, setToken] = useState("");
   const [baseUrl, setBaseUrl] = useState(entry?.base_url || "");
-  const [istStandard, setIstStandard] = useState(!!entry?.is_default);
+  const [isStandard, setIsStandard] = useState(!!entry?.is_default);
   // A new entry without a token would be an empty box; an existing one keeps its stored value.
-  const kann = !!entry || !!token.trim();
+  const can = !!entry || !!token.trim();
 
   return (
-    <Dialog titel={entry ? tr("settings.token_bearbeiten") : tr("settings.token_anlegen")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!kann}
-        onSpeichern={() => onSpeichern({
-          provider, name, token: token.trim(), base_url: baseUrl.trim(), is_default: istStandard,
+    <Dialog title={entry ? tr("settings.token_bearbeiten") : tr("settings.token_anlegen")} onClose={onClose}
+      foot={<DialogFoot onCancel={onClose} disabled={!can}
+        onSave={() => onSave({
+          provider, name, token: token.trim(), base_url: baseUrl.trim(), is_default: isStandard,
         })} />}>
       <div className="space-y-3">
         <Field label={tr("settings.provider")}>
@@ -303,7 +303,7 @@ function TokenDialog({ eintrag: entry, onClose, onSpeichern }: {
             className={`${INPUT_VALUE} disabled:opacity-60`} />
         </Field>
         <Field label={tr("settings.wert_token")}
-          hinweis={entry ? tr("settings.neuer_wert_leer_behalten") : undefined}>
+          hint={entry ? tr("settings.neuer_wert_leer_behalten") : undefined}>
           <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
             autoFocus placeholder={tr("settings.token_platzhalter")} className={INPUT_VALUE} />
         </Field>
@@ -313,7 +313,7 @@ function TokenDialog({ eintrag: entry, onClose, onSpeichern }: {
           </Field>
         )}
         <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={istStandard} onChange={(e) => setIstStandard(e.target.checked)} />
+          <input type="checkbox" checked={isStandard} onChange={(e) => setIsStandard(e.target.checked)} />
           {tr("settings.standard")}
         </label>
       </div>

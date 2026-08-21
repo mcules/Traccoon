@@ -79,7 +79,7 @@ function BubbleChat({ messages, text, setText, send, boxRef }: ViewProps) {
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder={tr("pm_chat.nachricht_an_den_pm")} className="flex-1 rounded border border-line bg-surface px-3 py-2" />
-        <button onClick={send} className={BUTTON.haupt}>{tr("pm_chat.senden")}</button>
+        <button onClick={send} className={BUTTON.primary}>{tr("pm_chat.senden")}</button>
       </div>
     </div>
   );

@@ -5,23 +5,23 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, workflowApi, type IssueType, type Project } from "../../api";
 import type { WorkflowSlotInfo } from "./types";
 import {
-  Area, Etikett, Fehlerzeile, Listing, ListenLine, Zeilenknopf, BUTTON_TEXT} from "../ui";
-import { projektPath } from "../../projectTabs";
+  Area, Tag, Errorrow, Listing, ListenLine, Rowbutton, BUTTON_TEXT} from "../ui";
+import { projectPath } from "../../projectTabs";
 
 /** Where the applicable flow comes from: the most important information on this page. */
 // Keys instead of texts: the table comes into being while the module loads, and a tr() here
 // would fix the language of the first call.
-type EtikettFarbe = "neutral" | "gruen" | "gelb" | "rot" | "blau" | "violett" | "brand";
-const ORIGIN: Record<WorkflowSlotInfo["origin"], { label: string; farbe: EtikettFarbe; hint: string }> = {
-  builtin: { label: "slot_list.herkunft_builtin", farbe: "neutral",
+type TagColor = "neutral" | "green" | "yellow" | "red" | "blue" | "violet" | "brand";
+const ORIGIN: Record<WorkflowSlotInfo["origin"], { label: string; color: TagColor; hint: string }> = {
+  builtin: { label: "slot_list.herkunft_builtin", color: "neutral",
              hint: "slot_list.herkunft_builtin_hinweis" },
-  global: { label: "slot_list.herkunft_global", farbe: "blau",
+  global: { label: "slot_list.herkunft_global", color: "blue",
             hint: "slot_list.herkunft_global_hinweis" },
-  user: { label: "slot_list.herkunft_user", farbe: "violett",
+  user: { label: "slot_list.herkunft_user", color: "violet",
           hint: "slot_list.herkunft_user_hinweis" },
-  project: { label: "slot_list.herkunft_project", farbe: "gelb",
+  project: { label: "slot_list.herkunft_project", color: "yellow",
              hint: "slot_list.herkunft_project_hinweis" },
-  none: { label: "slot_list.herkunft_none", farbe: "rot",
+  none: { label: "slot_list.herkunft_none", color: "red",
           hint: "slot_list.herkunft_none_hinweis" },
 };
 
@@ -61,7 +61,7 @@ export default function SlotList({ project }: { project: Project }) {
     onSuccess: (d) => {
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPath(project.key, "settings", "processes") } });
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projectPath(project.key, "settings", "processes") } });
     },
     onError: fail,
     onSettled: () => setBusy(""),
@@ -85,15 +85,15 @@ export default function SlotList({ project }: { project: Project }) {
     onError: fail,
   });
 
-  const aktuellerPreset = slots?.find((s) => s.origin !== "project")?.set_id ?? null;
+  const currentPreset = slots?.find((s) => s.origin !== "project")?.set_id ?? null;
 
   return (
-    <Area hinweis={tr("slot_list.einleitung")}>
+    <Area hint={tr("slot_list.einleitung")}>
       {sets && sets.length > 1 && (
         <label className="block text-xs font-medium text-muted">
           {tr("slot_list.prozess_satz")}
           <select
-            value={aktuellerPreset ?? ""}
+            value={currentPreset ?? ""}
             onChange={(e) => chooseSet.mutate(e.target.value ? Number(e.target.value) : null)}
             className="mt-1 w-full max-w-md rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink"
           >
@@ -108,7 +108,7 @@ export default function SlotList({ project }: { project: Project }) {
         </label>
       )}
 
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
 
       <Listing>
         {slots?.map((s) => {
@@ -117,27 +117,27 @@ export default function SlotList({ project }: { project: Project }) {
             <ListenLine key={s.slot}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-ink">{s.name}</span>
-                <Etikett farbe={o.farbe} titel={tr(o.hint)}>{tr(o.label)}</Etikett>
+                <Tag color={o.color} title={tr(o.hint)}>{tr(o.label)}</Tag>
                 {!s.published && (
-                  <Etikett farbe="gelb">{tr("slot_list.nicht_veroeffentlicht")}</Etikett>
+                  <Tag color="yellow">{tr("slot_list.nicht_veroeffentlicht")}</Tag>
                 )}
                 <div className="flex-1" />
                 {s.definition_id && (
-                  <Zeilenknopf onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`,
-                    { state: { from: projektPath(project.key, "settings", "processes") } })}>
+                  <Rowbutton onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`,
+                    { state: { from: projectPath(project.key, "settings", "processes") } })}>
                     {tr(s.origin === "project" ? "slot_list.bearbeiten" : "slot_list.ansehen")}
-                  </Zeilenknopf>
+                  </Rowbutton>
                 )}
                 {s.origin === "project" ? (
-                  <Zeilenknopf gefahr titel={tr("slot_list.eigene_kopie_verwerfen_es_gilt_wieder_de")}
+                  <Rowbutton danger title={tr("slot_list.eigene_kopie_verwerfen_es_gilt_wieder_de")}
                     onClick={() => { setBusy(s.slot); reset.mutate({ slot: s.slot }); }}>
                     {tr("slot_list.zuruecksetzen")}
-                  </Zeilenknopf>
+                  </Rowbutton>
                 ) : (
-                  <Zeilenknopf titel={tr("slot_list.kopie_fuer_dieses_projekt_anlegen_und_be")}
+                  <Rowbutton title={tr("slot_list.kopie_fuer_dieses_projekt_anlegen_und_be")}
                     onClick={() => { setBusy(s.slot); customize.mutate({ slot: s.slot }); }}>
                     Anpassen
-                  </Zeilenknopf>
+                  </Rowbutton>
                 )}
               </div>
               <div className="mt-1 text-xs text-muted">{s.description}</div>
@@ -151,13 +151,13 @@ export default function SlotList({ project }: { project: Project }) {
                   {(s.per_issue_type || []).map((v) => (
                     <span key={v.issue_type_id}
                           className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
-                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: projektPath(project.key, "settings", "processes") } })}
+                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: projectPath(project.key, "settings", "processes") } })}
                               title={tr("slot_list.eigenen_ablauf_dieser_vorgangsart_bearbe")}>
                         {v.issue_type_name}
                       </button>
                       <button onClick={() => reset.mutate({ slot: s.slot, art: v.issue_type_id })}
                               title={tr("slot_list.eigenen_ablauf_verwerfen_die_vorgangsart")}
-                              className={BUTTON_TEXT.gefahr}>✕</button>
+                              className={BUTTON_TEXT.danger}>✕</button>
                     </span>
                   ))}
                   <select

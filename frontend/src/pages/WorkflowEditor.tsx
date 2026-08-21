@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { tr } from "../i18n";
-import { useSchmal } from "../lib/useSchmal";
+import { useNarrow } from "../lib/useSchmal";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,17 +24,17 @@ import {
 import WorkflowCanvas from "../components/workflow/WorkflowCanvas";
 import NodePalette from "../components/workflow/NodePalette";
 import NodeConfigPanel from "../components/workflow/NodeConfigPanel";
-import { verfuegbareFields } from "../components/workflow/contextFields";
-import ProbelaufPanel from "../components/workflow/ProbelaufPanel";
-import BaumeisterPanel from "../components/workflow/BaumeisterPanel";
+import { availableFields } from "../components/workflow/contextFields";
+import DryrunPanel from "../components/workflow/ProbelaufPanel";
+import BuilderPanel from "../components/workflow/BaumeisterPanel";
 import {
-  graphToFlow, flowToGraph, graphSignatur, inhaltsSignatur,
+  graphToFlow, flowToGraph, graphSignature, contentSignature,
 } from "../components/workflow/convert";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "../components/workflow/layout";
 import { validateGraph } from "../components/workflow/validate";
 import type { FlowNode } from "../components/workflow/nodes/shared";
-import { projektPath } from "../projectTabs";
-import { SCHIENE_FREILASSEN } from "../nav";
+import { projectPath } from "../projectTabs";
+import { RAIL_LEAVEBLANK } from "../nav";
 import VersionsDiff from "../components/workflow/VersionsDiff";
 import { ConfirmDialog, BUTTON, Button } from "../components/ui";
 
@@ -57,9 +57,9 @@ function defaultConfig(type: WorkflowNodeType): NodeConfig {
     case "subflow":
       return { inherit_context: true };
     case "loop":
-      return { liste: "", element: "element", index: "i" };
+      return { list: "", element: "element", index: "i" };
     case "timer":
-      return { dauer: 30, einheit: "m" };
+      return { duration: 30, unit: "m" };
     default:
       return {};
   }
@@ -80,8 +80,8 @@ function connectionLabel(nodes: FlowNode[], c: Connection): string | undefined {
 
 export default function WorkflowEditor() {
   const { key, id } = useParams();
-  const ort = useLocation();
-  const { data: katalog } = useQuery({
+  const place = useLocation();
+  const { data: catalog } = useQuery({
     queryKey: ["workflow-context-fields"], queryFn: workflowApi.contextFields,
     staleTime: 60 * 60 * 1000,   // ändert sich nur mit einem Deploy
   });
@@ -101,15 +101,15 @@ export default function WorkflowEditor() {
     queryFn: () => workflowApi.editable(wfId),
     retry: false,
   });
-  const nurRead = versionError instanceof ApiError && versionError.status === 403;
+  const onlyRead = versionError instanceof ApiError && versionError.status === 403;
   // Always loaded, not only in read-only mode: it shows which version applies out there, and
   // whether the draft is ahead of it.
-  const { data: veroeffentlicht } = useQuery({
+  const { data: published } = useQuery({
     queryKey: ["workflow-versions", wfId],
     queryFn: () => workflowApi.versions(wfId),
   });
-  const ansicht = version
-    || (nurRead ? veroeffentlicht?.find((v) => v.id === def?.current_version_id) : undefined);
+  const view = version
+    || (onlyRead ? published?.find((v) => v.id === def?.current_version_id) : undefined);
   const { data: meta } = useQuery({
     queryKey: ["meta", project?.id],
     queryFn: () => api.get<ProjectMeta>(`/projects/${project!.id}/meta`),
@@ -124,10 +124,10 @@ export default function WorkflowEditor() {
    *  references pointing nowhere. */
   const handleNodesChange = useCallback(
     (changes: Parameters<typeof onNodesChange>[0]) => {
-      const weg = changes.filter((c) => c.type === "remove").map((c) => c.id);
-      if (weg.length) {
-        setEdges((eds) => eds.filter((e) => !weg.includes(e.source) && !weg.includes(e.target)));
-        setMsg(tr("editor.schritte_geloescht", { anzahl: weg.length }));
+      const path = changes.filter((c) => c.type === "remove").map((c) => c.id);
+      if (path.length) {
+        setEdges((eds) => eds.filter((e) => !path.includes(e.source) && !path.includes(e.target)));
+        setMsg(tr("editor.schritte_geloescht", { count: path.length }));
       }
       onNodesChange(changes);
     },
@@ -137,30 +137,30 @@ export default function WorkflowEditor() {
   /** Deleted connections are a real change, and that has to be visible. */
   const handleEdgesChange = useCallback(
     (changes: Parameters<typeof onEdgesChange>[0]) => {
-      const weg = changes.filter((c) => c.type === "remove").length;
-      if (weg) setMsg(tr("editor.verbindungen_geloescht", { anzahl: weg }));
+      const path = changes.filter((c) => c.type === "remove").length;
+      if (path) setMsg(tr("editor.verbindungen_geloescht", { count: path }));
       onEdgesChange(changes);
     },
     [onEdgesChange],
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** "Main path" hides the disturbance branches, leaving the red thread. */
-  const [nurHauptweg, setNurHauptweg] = useState(false);
+  const [onlyMainpath, setOnlyMainpath] = useState(false);
   /** Target for the view after arranging (start node, top centre). */
-  const [fokus, setFokus] = useState<{ x: number; y: number; token: number } | undefined>();
+  const [focus, setFocus] = useState<{ x: number; y: number; token: number } | undefined>();
   const [errors, setErrors] = useState<string[]>([]);
   const [msg, setMsg] = useState("");
   // Woran man sieht, ob die Prüfung noch gilt: Sie gehört zu EINEM Stand des Graphen. Wer
   // danach etwas verschiebt, hat kein geprüftes Ergebnis mehr, sondern ein altes.
-  const [geprueft, setGeprueft] = useState<{ signatur: string; ok: boolean } | null>(null);
+  const [checked, setChecked] = useState<{ signature: string; ok: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [zeigeDiff, setZeigeDiff] = useState(false);
-  const [questionVerwerfen, setQuestionVerwerfen] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+  const [questionDiscard, setQuestionDiscard] = useState(false);
   const seeded = useRef(false);
   // The last saved graph as text. On it hangs the only question one really has when leaving
   // the editor: is this saved yet? Before, there was a message that disappeared after the
   // next click, and after that nobody knew any more.
-  const gesichert = useRef<string>("");
+  const secured = useRef<string>("");
   const [state, setState] = useState(0);   // forces the header to recompute
 
   // Spacing for "arrange", set globally by the admin.
@@ -173,15 +173,15 @@ export default function WorkflowEditor() {
 
   // Take the graph over from the draft version once.
   useEffect(() => {
-    if (ansicht && !seeded.current) {
-      const graph = needsLayout(ansicht.graph) ? layoutGraph(ansicht.graph, { gap }) : ansicht.graph;
+    if (view && !seeded.current) {
+      const graph = needsLayout(view.graph) ? layoutGraph(view.graph, { gap }) : view.graph;
       const flow = graphToFlow(graph);
       setNodes(flow.nodes);
       setEdges(flow.edges);
-      gesichert.current = graphSignatur(flowToGraph(flow.nodes, flow.edges));
+      secured.current = graphSignature(flowToGraph(flow.nodes, flow.edges));
       seeded.current = true;
     }
-  }, [ansicht]);
+  }, [view]);
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -204,8 +204,8 @@ export default function WorkflowEditor() {
 
   // On a phone the three columns do not fit beside each other: one is always shown, and the
   // switch hangs off this selection. On the desktop everything stays as it was.
-  const schmal = useSchmal();
-  const [spalte, setSpalte] = useState<"flaeche" | "baustein">("flaeche");
+  const narrow = useNarrow();
+  const [column, setColumn] = useState<"flaeche" | "baustein">("flaeche");
 
   const onDropNode = useCallback(
     (type: WorkflowNodeType, pos: { x: number; y: number }, edgeId?: string) => {
@@ -221,18 +221,18 @@ export default function WorkflowEditor() {
       setEdges((es) => {
         /** Push a building block into an existing connection: it now ends at the block, and
          *  from the block it continues. An end block closes the path. */
-        const einschieben = (edge: typeof es[number]) => {
+        const insert = (edge: typeof es[number]) => {
           const remainder = es.filter((e) => e.id !== edge.id);
-          const hinein = { ...edge, id: `e-${edge.source}-${edge.sourceHandle || "out"}-${id2}`,
+          const into = { ...edge, id: `e-${edge.source}-${edge.sourceHandle || "out"}-${id2}`,
                            target: id2, targetHandle: undefined };
-          const hinaus = { id: `e-${id2}-out-${edge.target}`, source: id2, target: edge.target,
+          const beyond = { id: `e-${id2}-out-${edge.target}`, source: id2, target: edge.target,
                            targetHandle: edge.targetHandle };
-          return type === "end" ? [...remainder, hinein] : [...remainder, hinein, hinaus];
+          return type === "end" ? [...remainder, into] : [...remainder, into, beyond];
         };
 
         if (edgeId) {
           const hits = es.find((e) => e.id === edgeId);
-          return hits ? einschieben(hits) : es;
+          return hits ? insert(hits) : es;
         }
 
         // No hit on a line: behind the selected node. If something already hangs there, it is
@@ -243,21 +243,21 @@ export default function WorkflowEditor() {
 
         // Branch, approval and loop have named exits; there nothing is guessed, the first
         // still free one is taken.
-        const benannt: Record<string, string[]> = {
+        const named: Record<string, string[]> = {
           decision: (source.data.config.branches || []).map((b) => b.handle),
           approval: ["approved", "rejected"],
           loop: ["element", "fertig"],
         };
-        const kandidaten = benannt[source.type || ""] || ["out"];
-        const frei = kandidaten.find(
+        const candidates = named[source.type || ""] || ["out"];
+        const free = candidates.find(
           (h) => !es.some((e) => e.source === source.id && (e.sourceHandle || "out") === h));
-        if (frei) {
-          return es.concat({ id: `e-${source.id}-${frei}-${id2}`, source: source.id,
-                             target: id2, sourceHandle: frei === "out" ? undefined : frei });
+        if (free) {
+          return es.concat({ id: `e-${source.id}-${free}-${id2}`, source: source.id,
+                             target: id2, sourceHandle: free === "out" ? undefined : free });
         }
         // Everything taken: insert into the first outgoing connection.
         const out = es.find((e) => e.source === source.id);
-        return out ? einschieben(out) : es;
+        return out ? insert(out) : es;
       });
     },
     [setNodes, setEdges, nodes, selectedId]
@@ -265,14 +265,14 @@ export default function WorkflowEditor() {
 
   /** Building block by tap: it lands under the selected one (or under the last one), and the
    *  rest, connecting and selecting, is done by `onDropNode`. */
-  const anhaengen = useCallback((type: WorkflowNodeType) => {
+  const append = useCallback((type: WorkflowNodeType) => {
     const reference = nodes.find((n) => n.id === selectedId) || nodes[nodes.length - 1];
     const pos = reference
       ? { x: reference.position.x, y: reference.position.y + gap }
       : { x: 0, y: 0 };
     onDropNode(type, pos);
-    if (schmal) setSpalte("baustein");
-  }, [nodes, selectedId, gap, onDropNode, schmal]);
+    if (narrow) setColumn("baustein");
+  }, [nodes, selectedId, gap, onDropNode, narrow]);
 
   const updateConfig = useCallback(
     (nodeId: string, config: NodeConfig) => {
@@ -306,8 +306,8 @@ export default function WorkflowEditor() {
     const start = nodes.find((n) => n.type === "start");
     const target = start && pos.get(start.id);
     if (target) {
-      const breite = sizes.get(start!.id)?.width ?? 220;
-      setFokus({ x: target.x + breite / 2, y: target.y, token: Date.now() });
+      const width = sizes.get(start!.id)?.width ?? 220;
+      setFocus({ x: target.x + width / 2, y: target.y, token: Date.now() });
     }
     setMsg(tr("editor.neu_angeordnet"));
   }, [nodes, edges, setNodes, gap]);
@@ -318,13 +318,13 @@ export default function WorkflowEditor() {
   // ALWAYS the complete graph (`nodes`/`edges`).
   const hatGroups = useMemo(() => nodes.some((n) => n.data.config.group), [nodes]);
   const visible = useMemo(() => {
-    if (!nurHauptweg) return { nodes, edges };
-    const weg = new Set(nodes.filter((n) => n.data.config.group === "stoerung").map((n) => n.id));
+    if (!onlyMainpath) return { nodes, edges };
+    const path = new Set(nodes.filter((n) => n.data.config.group === "stoerung").map((n) => n.id));
     return {
-      nodes: nodes.filter((n) => !weg.has(n.id)),
-      edges: edges.filter((e) => !weg.has(e.source) && !weg.has(e.target)),
+      nodes: nodes.filter((n) => !path.has(n.id)),
+      edges: edges.filter((e) => !path.has(e.source) && !path.has(e.target)),
     };
-  }, [nurHauptweg, nodes, edges]);
+  }, [onlyMainpath, nodes, edges]);
   const selected = nodes.find((n) => n.id === selectedId) || null;
 
   /**
@@ -341,9 +341,9 @@ export default function WorkflowEditor() {
     try {
       const graph = flowToGraph(nodes, edges);
       const r = await workflowApi.saveGraph(wfId, { graph });
-      gesichert.current = graphSignatur(graph);
+      secured.current = graphSignature(graph);
       setState((n) => n + 1);
-      setMsg(r.hinweis || "Gespeichert.");
+      setMsg(r.hint || "Gespeichert.");
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
     } catch (e) {
@@ -354,7 +354,7 @@ export default function WorkflowEditor() {
   };
 
   /** Entwurf wegwerfen und zurück auf das, was läuft. */
-  const verwerfen = async () => {
+  const discard = async () => {
     setMsg("");
     try {
       await workflowApi.discardDraft(wfId);
@@ -371,15 +371,15 @@ export default function WorkflowEditor() {
     setMsg("");
     try {
       const graph = flowToGraph(nodes, edges);
-      const gespeichert = await workflowApi.saveGraph(wfId, { graph });
-      gesichert.current = graphSignatur(graph);   // Validieren speichert mit
+      const stored = await workflowApi.saveGraph(wfId, { graph });
+      secured.current = graphSignature(graph);   // Validieren speichert mit
       setState((n) => n + 1);
-      const r = await workflowApi.validate(wfId, gespeichert.version.id);
+      const r = await workflowApi.validate(wfId, stored.version.id);
       setErrors(r.errors || []);
-      setGeprueft({ signatur: graphSignatur(graph), ok: !!r.ok });
+      setChecked({ signature: graphSignature(graph), ok: !!r.ok });
       setMsg(r.ok ? "Validierung ok." : `${r.errors.length} Problem(e) gefunden.`);
     } catch (e) {
-      setGeprueft(null);
+      setChecked(null);
       setMsg(e instanceof ApiError ? e.message : "Validierung fehlgeschlagen");
     }
   };
@@ -388,14 +388,14 @@ export default function WorkflowEditor() {
     setMsg("");
     try {
       const graph = flowToGraph(nodes, edges);
-      const gespeichert = await workflowApi.saveGraph(wfId, { graph });
+      const stored = await workflowApi.saveGraph(wfId, { graph });
       // Nichts Inhaltliches geändert: dann gibt es auch nichts zu veröffentlichen.
-      if (gespeichert.result === "layout" && gespeichert.version.status === "published") {
+      if (stored.result === "layout" && stored.version.status === "published") {
         setMsg("Nichts zu veröffentlichen — nur die Anordnung war anders.");
         return;
       }
-      await workflowApi.publish(wfId, gespeichert.version.id);
-      gesichert.current = graphSignatur(graph);
+      await workflowApi.publish(wfId, stored.version.id);
+      secured.current = graphSignature(graph);
       setState((n) => n + 1);
       setErrors([]);
       setMsg(tr("editor.veroeffentlicht_meldung"));
@@ -410,53 +410,53 @@ export default function WorkflowEditor() {
 
   // Unsaved? The comparison runs against the last saved graph, and a moved card counts too,
   // because positions are saved along.
-  const now = useMemo(() => graphSignatur(flowToGraph(nodes, edges)), [nodes, edges]);
-  const changed = !nurRead && seeded.current && now !== gesichert.current;
+  const now = useMemo(() => graphSignature(flowToGraph(nodes, edges)), [nodes, edges]);
+  const changed = !onlyRead && seeded.current && now !== secured.current;
 
   // And which version applies out there? Three situations that have to be told apart: never
   // published, published and identical, or published with the draft ahead. The third was
   // invisible until now: you rebuild, are happy, and out there the old version keeps
   // running.
-  const liveVersion = veroeffentlicht?.find((v) => v.id === def?.current_version_id);
+  const liveVersion = published?.find((v) => v.id === def?.current_version_id);
   // What is compared is the CONTENT, not the version number: on opening, the editor creates a
   // fresh draft version that carries a new number but contains the same thing character for
   // character. Going by the number would mean marking every flow as "not published" on mere
   // viewing.
   // Verglichen wird der INHALT: eine andere Anordnung ist keine Abweichung, sonst stünde
   // nach jedem Aufräumen „weicht von v7 ab" da, obwohl der Ablauf derselbe ist.
-  const inhaltNow = useMemo(
-    () => inhaltsSignatur(flowToGraph(nodes, edges)), [nodes, edges]);
-  const gleichWieLive = !!liveVersion && inhaltNow === inhaltsSignatur(liveVersion.graph);
-  const veroeffentlichung = !def?.current_version_id
-    ? { text: tr("editor.nie_veroeffentlicht"), stil: "text-muted",
-        titel: tr("editor.nie_veroeffentlicht_titel") }
-    : gleichWieLive
-      ? { text: `veröffentlicht (v${liveVersion?.version ?? "?"})`, stil: "text-green-400",
-          titel: tr("editor.live_titel") }
-      : { text: `weicht von v${liveVersion?.version ?? "?"} ab`, stil: "text-amber-300",
-          titel: tr("editor.abweichung_titel") };
+  const contentNow = useMemo(
+    () => contentSignature(flowToGraph(nodes, edges)), [nodes, edges]);
+  const sameAsLive = !!liveVersion && contentNow === contentSignature(liveVersion.graph);
+  const publication = !def?.current_version_id
+    ? { text: tr("editor.nie_veroeffentlicht"), style: "text-muted",
+        title: tr("editor.nie_veroeffentlicht_titel") }
+    : sameAsLive
+      ? { text: `veröffentlicht (v${liveVersion?.version ?? "?"})`, style: "text-green-400",
+          title: tr("editor.live_titel") }
+      : { text: `weicht von v${liveVersion?.version ?? "?"} ab`, style: "text-amber-300",
+          title: tr("editor.abweichung_titel") };
 
   // Ask when leaving the window with unsaved work: the browser only allows its own text, but
   // the question itself is the point.
   useEffect(() => {
     if (!changed) return;
-    const warnen = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
-    window.addEventListener("beforeunload", warnen);
-    return () => window.removeEventListener("beforeunload", warnen);
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
   }, [changed]);
 
   const allErrors = errors.length ? errors : clientErrors;
   // Which context fields this flow has follows from its trigger and its steps; the catalog
   // for that comes from the backend so that it does not drift apart.
   const contextFields = useMemo(
-    () => verfuegbareFields(nodes, katalog), [nodes, katalog]);
-  const herkunft = (ort.state as { from?: string } | null)?.from
-    || (key ? projektPath(key, "settings", "processes")
+    () => availableFields(nodes, catalog), [nodes, catalog]);
+  const origin = (place.state as { from?: string } | null)?.from
+    || (key ? projectPath(key, "settings", "processes")
             : def?.slot ? "/processes/default" : "/processes/own");
 
   return (
     // Wie im Büro: die Bereichsschiene bleibt stehen, der Rest der Seite verschwindet.
-    <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${SCHIENE_FREILASSEN}`}>
+    <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${RAIL_LEAVEBLANK}`}>
       {/* Kopfzeile */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-card px-3 py-2 sm:px-4">
         <button
@@ -467,22 +467,22 @@ export default function WorkflowEditor() {
           // where it does not stand at all.
           onClick={() => {
             if (changed && !confirm(tr("editor.zurueck_trotz_aenderungen"))) return;
-            nav(herkunft);
+            nav(origin);
           }}
-          className={BUTTON.neben}
+          className={BUTTON.secondary}
         >
           <span className="sm:hidden">←</span>
           <span className="hidden sm:inline">{tr("editor.zurueck")}</span>
         </button>
         <span className="hidden font-mono text-xs text-muted sm:inline">{def?.key}</span>
         <h1 className="text-sm font-semibold">{def?.name || "Prozess"}</h1>
-        {nurRead && (
+        {onlyRead && (
           <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
             title={tr("workflow_editor.dieser_ablauf_gehoert_zu_einem_prozess_s")}>
             {tr("editor.nur_ansehen")}
           </span>
         )}
-        {!nurRead && (
+        {!onlyRead && (
           <span className={`rounded px-1.5 py-0.5 text-xs ${
             changed ? "bg-amber-500/15 text-amber-300" : "text-muted"}`}
             title={changed
@@ -493,22 +493,22 @@ export default function WorkflowEditor() {
         )}
         {/* Die Abweichung ist anklickbar: „weicht von v7 ab" beantwortet nicht, WAS abweicht,
             und genau danach sucht man in dem Moment. */}
-        {!gleichWieLive && liveVersion && version?.id && version.id !== liveVersion.id ? (
-          <button onClick={() => setZeigeDiff(true)}
-            className={`rounded px-1.5 py-0.5 text-xs underline decoration-dotted ${veroeffentlichung.stil}`}
+        {!sameAsLive && liveVersion && version?.id && version.id !== liveVersion.id ? (
+          <button onClick={() => setShowDiff(true)}
+            className={`rounded px-1.5 py-0.5 text-xs underline decoration-dotted ${publication.style}`}
             title={tr("editor.unterschied_ansehen")}>
-            {veroeffentlichung.text}
+            {publication.text}
           </button>
         ) : (
-          <span className={`rounded px-1.5 py-0.5 text-xs ${veroeffentlichung.stil}`}
-            title={veroeffentlichung.titel}>
-            {veroeffentlichung.text}
+          <span className={`rounded px-1.5 py-0.5 text-xs ${publication.style}`}
+            title={publication.title}>
+            {publication.text}
           </span>
         )}
         {/* Entwurf wegwerfen: es gab keinen Weg zurück, außer den Graphen von Hand
             zurückzubauen. Nur sichtbar, wenn es wirklich einen offenen Entwurf gibt. */}
-        {!nurRead && version?.status === "draft" && version.id > 0 && (
-          <button onClick={() => setQuestionVerwerfen(true)}
+        {!onlyRead && version?.status === "draft" && version.id > 0 && (
+          <button onClick={() => setQuestionDiscard(true)}
             className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-red-400 hover:text-red-300"
             title={tr("editor.entwurf_verwerfen_titel")}>
             {tr("editor.entwurf_verwerfen")}
@@ -516,43 +516,43 @@ export default function WorkflowEditor() {
         )}
         <div className="flex-1" />
         {msg && <span className="text-xs text-muted">{msg}</span>}
-        {schmal && (
+        {narrow && (
           <div className="flex overflow-hidden rounded border border-line">
             {(["flaeche", "baustein"] as const).map((a) => (
-              <button key={a} type="button" onClick={() => setSpalte(a)}
-                className={`px-2 py-1 text-xs ${spalte === a
+              <button key={a} type="button" onClick={() => setColumn(a)}
+                className={`px-2 py-1 text-xs ${column === a
                   ? "bg-brand text-white" : "text-muted hover:text-ink"}`}>
                 {tr(a === "flaeche" ? "editor.ansicht_flaeche" : "editor.ansicht_baustein")}
               </button>
             ))}
           </div>
         )}
-        <Button onClick={autoLayout} disabled={nodes.length === 0 || nurRead} zeichen="⇅"
-          titel={tr("editor.anordnen_titel", { abstand: gap })}>
+        <Button onClick={autoLayout} disabled={nodes.length === 0 || onlyRead} symbol="⇅"
+          title={tr("editor.anordnen_titel", { distance: gap })}>
           {tr("editor.anordnen")}
         </Button>
         {/* Speichern kann nur, was sich geändert hat — sonst ist der Knopf ein Versprechen,
             das er nicht einlöst. */}
-        <Button onClick={save} disabled={!changed || saving || !version || nurRead}
-          zeichen="💾" titel={changed ? undefined : tr("editor.nichts_zu_speichern")}>
+        <Button onClick={save} disabled={!changed || saving || !version || onlyRead}
+          symbol="💾" title={changed ? undefined : tr("editor.nichts_zu_speichern")}>
           {tr(saving ? "editor.speichert" : "common.speichern")}
         </Button>
         {/* Das Ergebnis bleibt am Knopf stehen: Wer geprüft hat, will es später noch sehen,
             ohne noch einmal zu prüfen. Nach der nächsten Änderung ist es wieder offen. */}
-        <Button onClick={validateServer} disabled={!version || nurRead} zeichen="✓"
-          stand={geprueft && geprueft.signatur === now
-            ? (geprueft.ok ? "gut" : "schlecht") : "offen"}
-          titel={geprueft && geprueft.signatur === now
-            ? (geprueft.ok ? tr("editor.geprueft_ok") : tr("editor.geprueft_fehler"))
+        <Button onClick={validateServer} disabled={!version || onlyRead} symbol="✓"
+          state={checked && checked.signature === now
+            ? (checked.ok ? "good" : "bad") : "open"}
+          title={checked && checked.signature === now
+            ? (checked.ok ? tr("editor.geprueft_ok") : tr("editor.geprueft_fehler"))
             : tr("editor.noch_nicht_geprueft")}>
           {tr("editor.validieren")}
         </Button>
         {/* Nichts Neues, nichts zu veröffentlichen. Vorher lud der Knopf dazu ein und
             antwortete danach „nur die Anordnung war anders". */}
-        <Button art="haupt" onClick={publish} zeichen="⬆"
-          disabled={!version || clientErrors.length > 0 || gleichWieLive || nurRead}
-          titel={clientErrors.length ? tr("editor.erst_fehler_beheben")
-            : gleichWieLive ? tr("editor.nichts_zu_veroeffentlichen")
+        <Button variant="primary" onClick={publish} symbol="⬆"
+          disabled={!version || clientErrors.length > 0 || sameAsLive || onlyRead}
+          title={clientErrors.length ? tr("editor.erst_fehler_beheben")
+            : sameAsLive ? tr("editor.nichts_zu_veroeffentlichen")
               : tr("editor.veroeffentlichen")}>
           {tr("editor.veroeffentlichen")}
         </Button>
@@ -560,9 +560,9 @@ export default function WorkflowEditor() {
 
       {/* Arbeitsfläche */}
       <div className="flex min-h-0 flex-1">
-        {!nurRead && !schmal && (
+        {!onlyRead && !narrow && (
           <div className="w-52 shrink-0 overflow-y-auto border-r border-line bg-card p-3">
-            <NodePalette onAdd={anhaengen} />
+            <NodePalette onAdd={append} />
             <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-muted">
               {tr("editor.hilfe_verbinden")}<br />
               {tr("editor.hilfe_loeschen")}
@@ -571,32 +571,32 @@ export default function WorkflowEditor() {
         )}
 
         <div className={`relative min-w-0 flex-1 ${
-          schmal && spalte !== "flaeche" ? "hidden" : ""}`}>
+          narrow && column !== "flaeche" ? "hidden" : ""}`}>
           <WorkflowCanvas
             nodes={visible.nodes}
             edges={visible.edges}
-            readOnly={nurRead}
+            readOnly={onlyRead}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
-            onNodeClick={(id) => { setSelectedId(id); if (schmal) setSpalte("baustein"); }}
+            onNodeClick={(id) => { setSelectedId(id); if (narrow) setColumn("baustein"); }}
             onDropNode={onDropNode}
-            fokus={fokus}
+            focus={focus}
           />
         </div>
 
         <div className={`flex flex-col overflow-y-auto border-l border-line bg-card ${
-          schmal ? `w-full ${spalte === "baustein" ? "" : "hidden"}` : "w-80 shrink-0"}`}>
+          narrow ? `w-full ${column === "baustein" ? "" : "hidden"}` : "w-80 shrink-0"}`}>
           {/* Am Handy steht die Palette hier oben: ohne sie käme man in dieser Ansicht an
               keinen neuen Baustein, und die Fläche hat für eine Leiste keinen Platz. */}
-          {schmal && !nurRead && (
+          {narrow && !onlyRead && (
             <div className="border-b border-line p-2">
               <div className="mb-1.5 text-xs font-medium text-muted">{tr("node_palette.bausteine")}</div>
-              <NodePalette onAdd={anhaengen} kompakt />
+              <NodePalette onAdd={append} compact />
             </div>
           )}
           <div className="border-b border-line px-3 py-2 text-xs font-medium text-muted">{tr("workflow_editor.konfiguration")}</div>
-          {nurRead ? (
+          {onlyRead ? (
             <p className="p-3 text-sm text-muted">
               Dieser Ablauf gehört zu einem Prozess-Satz und wird hier nur angezeigt. Zum Ändern
               im Projekt unter <b>{tr("workflow_editor.prozesse")}</b> auf <b>{tr("workflow_editor.anpassen")}</b> gehen — das legt eine Kopie
@@ -605,16 +605,16 @@ export default function WorkflowEditor() {
           ) : (
             <NodeConfigPanel node={selected} members={members} onChange={updateConfig}
               onDelete={deleteNode} projectId={project?.id}
-              subjectKind={def?.subject_kind} kontextFelder={contextFields}
-              kontextFilter={katalog?.filter} defId={def?.id} />
+              subjectKind={def?.subject_kind} contextFields={contextFields}
+              contextFilter={catalog?.filter} defId={def?.id} />
           )}
 
-          {!nurRead && <ProbelaufPanel defId={def?.id} nodes={nodes}
+          {!onlyRead && <DryrunPanel defId={def?.id} nodes={nodes}
               graph={() => flowToGraph(nodes, edges)} />}
 
-          {!nurRead && <BaumeisterPanel defId={def?.id} knotenZahl={nodes.length}
+          {!onlyRead && <BuilderPanel defId={def?.id} nodeNumber={nodes.length}
               graph={() => flowToGraph(nodes, edges)}
-              uebernehmen={(g) => {
+              adopt={(g) => {
                 // The draft brings no sizes with it: arrange first, then draw, otherwise
                 // everything sticks on top of each other in the same grid.
                 const flow = graphToFlow(needsLayout(g) ? layoutGraph(g, { gap }) : g);
@@ -640,19 +640,19 @@ export default function WorkflowEditor() {
           )}
         </div>
       </div>
-      {zeigeDiff && liveVersion && version && (
-        <VersionsDiff defId={wfId} versionId={version.id} gegen={liveVersion.id}
-          titel={tr("editor.unterschied_titel", { version: liveVersion.version })}
-          onClose={() => setZeigeDiff(false)} />
+      {showDiff && liveVersion && version && (
+        <VersionsDiff defId={wfId} versionId={version.id} against={liveVersion.id}
+          title={tr("editor.unterschied_titel", { version: liveVersion.version })}
+          onClose={() => setShowDiff(false)} />
       )}
-      {questionVerwerfen && (
+      {questionDiscard && (
         <ConfirmDialog
-          titel={tr("editor.entwurf_verwerfen")}
+          title={tr("editor.entwurf_verwerfen")}
           text={tr("editor.entwurf_verwerfen_frage")}
-          hinweis={tr("editor.entwurf_verwerfen_hinweis")}
-          bestaetigenText={tr("editor.entwurf_verwerfen")}
-          onClose={() => setQuestionVerwerfen(false)}
-          onBestaetigen={() => { setQuestionVerwerfen(false); void verwerfen(); }} />
+          hint={tr("editor.entwurf_verwerfen_hinweis")}
+          confirmText={tr("editor.entwurf_verwerfen")}
+          onClose={() => setQuestionDiscard(false)}
+          onConfirm={() => { setQuestionDiscard(false); void discard(); }} />
       )}
     </div>
   );

@@ -6,12 +6,12 @@ import { formatDateTime } from "../lib/formatTime";
 import { tr } from "../i18n";
 import { usePageChrome } from "../pageChrome";
 import {
-  Area, Fehlerzeile, ICON, IconButton, Listing, ListingLeer, ListenLine,
+  Area, Errorrow, ICON, IconButton, Listing, ListingEmpty, ListenLine,
 } from "../components/ui";
 import Markdown from "../components/Markdown";
 
 type Entry = { id: number; title: string; format: string; ts: string | null; body?: string };
-type Ablage = { id: number; key: string; name: string; last_at: string | null };
+type Store = { id: number; key: string; name: string; last_at: string | null };
 
 /**
  * Eine Ablage: was ein Ablauf hier nach und nach hineingeschrieben hat.
@@ -20,7 +20,7 @@ type Ablage = { id: number; key: string; name: string; last_at: string | null };
  * Überschrift, und die Meldung dazu verwies auf eine Seite, die es nicht gab. Hier steht er
  * mit seinem Verlauf: links die Fassungen, rechts die gewählte.
  */
-export default function AblagePage() {
+export default function StorePage() {
   const { key = "", id } = useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
@@ -28,17 +28,17 @@ export default function AblagePage() {
 
   const { data: listing } = useQuery({
     queryKey: ["ablage", key],
-    queryFn: () => api.get<{ storage: Ablage; entries: Entry[] }>(
+    queryFn: () => api.get<{ storage: Store; entries: Entry[] }>(
       `/documents/${encodeURIComponent(key)}/entries`),
   });
   // Ohne Fassung in der Adresse die neueste: Ein Link aus einer Meldung soll auf den Stand
   // zeigen, nicht auf eine Nummer, die morgen eine andere ist.
-  const gewaehlt = id ? Number(id) : listing?.entries?.[0]?.id;
+  const chosen = id ? Number(id) : listing?.entries?.[0]?.id;
   const { data: entry } = useQuery({
-    queryKey: ["ablage-eintrag", key, gewaehlt],
+    queryKey: ["ablage-eintrag", key, chosen],
     queryFn: () => api.get<{ entry: Entry }>(
-      `/documents/${encodeURIComponent(key)}/entries/${gewaehlt}`),
-    enabled: !!gewaehlt,
+      `/documents/${encodeURIComponent(key)}/entries/${chosen}`),
+    enabled: !!chosen,
   });
 
   const remove = useMutation({
@@ -51,22 +51,22 @@ export default function AblagePage() {
   usePageChrome(listing?.storage?.name || key, [], "", "seite");
 
   return (
-    <Area hinweis={tr("ablage.einleitung")}>
-      <Fehlerzeile text={err} />
+    <Area hint={tr("ablage.einleitung")}>
+      <Errorrow text={err} />
       <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <Listing>
-          {(listing?.entries || []).length === 0 && <ListingLeer>{tr("ablage.leer")}</ListingLeer>}
+          {(listing?.entries || []).length === 0 && <ListingEmpty>{tr("ablage.leer")}</ListingEmpty>}
           {(listing?.entries || []).map((e) => (
-            <ListenLine key={e.id} spalten="sm:grid-cols-[minmax(0,1fr)_auto]" dicht
+            <ListenLine key={e.id} columns="sm:grid-cols-[minmax(0,1fr)_auto]" dense
               onClick={() => nav(`/documents/${encodeURIComponent(key)}/${e.id}`)}>
               <div className="min-w-0">
-                <div className={`truncate text-sm ${e.id === gewaehlt ? "font-medium text-ink" : "text-muted"}`}>
+                <div className={`truncate text-sm ${e.id === chosen ? "font-medium text-ink" : "text-muted"}`}>
                   {e.title || tr("ablage.ohne_titel")}
                 </div>
                 <div className="text-xs text-muted">{e.ts ? formatDateTime(e.ts) : ""}</div>
               </div>
               <div onClick={(ev) => ev.stopPropagation()}>
-                <IconButton icon={ICON.loeschen} gefahr titel={tr("common.loeschen")}
+                <IconButton icon={ICON.remove} danger title={tr("common.loeschen")}
                   onClick={() => remove.mutate(e.id)} />
               </div>
             </ListenLine>

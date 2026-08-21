@@ -4,14 +4,14 @@ import { tr } from "../../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../api";
 import {
-  Actions, Area, Fehlerzeile, ICON, IconButton, Listing, ListingLeer, ListenLine,
-  LoeschDialog, BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
+  Actions, Area, Errorrow, ICON, IconButton, Listing, ListingEmpty, ListenLine,
+  DeleteDialog, BUTTON_SMALL, BUTTON_TEXT} from "../ui";
 
 interface Trend {
-  points: number; wert: number | null; einheit: string;
-  pro_tag: number | null; rest_tage: number | null; leer_am: string | null;
-  guete: number | null; alter_stunden: number | null; letzter_am: string | null;
-  erster_wert: number | null; erster_am: string | null;
+  points: number; value: number | null; unit: string;
+  per_day: number | null; days_left: number | null; empty_at: string | null;
+  fit: number | null; age_hours: number | null; last_at: string | null;
+  first_value: number | null; first_at: string | null;
 }
 interface Series {
   id: number; key: string; name: string; unit: string; description: string;
@@ -19,9 +19,9 @@ interface Series {
   trend: Trend | null;
 }
 interface Point { id: number; ts: string; value: number; context: Record<string, any> }
-interface Verlauf extends Series { target: number; points: Point[] }
+interface History extends Series { target: number; points: Point[] }
 
-const ZEITRAeUME: [number, string][] = [[7, "7 Tage"], [30, "30 Tage"], [90, "90 Tage"],
+const TIMESPANS: [number, string][] = [[7, "7 Tage"], [30, "30 Tage"], [90, "90 Tage"],
                                         [365, "1 Jahr"]];
 
 /**
@@ -32,10 +32,10 @@ const ZEITRAeUME: [number, string][] = [[7, "7 Tage"], [30, "30 Tage"], [90, "90
  * here as a number alone but as a dashed extension of the points; a forecast one cannot
  * check is rightly not believed.
  */
-export default function MessreihenPanel() {
+export default function MetricseriesPanel() {
   const qc = useQueryClient();
   const [open, setOpen] = useState<string | null>(null);
-  const [loeschSeries, setLoeschSeries] = useState<any | null>(null);
+  const [deleteSeries, setDeleteSeries] = useState<any | null>(null);
   const [err, setErr] = useState("");
 
   const { data: series } = useQuery({
@@ -51,92 +51,92 @@ export default function MessreihenPanel() {
   });
 
   return (
-    <Area hinweis={tr("messreihen_panel.einleitung")}>
-      <Fehlerzeile text={err} />
+    <Area hint={tr("messreihen_panel.einleitung")}>
+      <Errorrow text={err} />
 
       <Listing>
         {series?.map((r) => (
-          <SeriesLine key={r.key} reihe={r}
-            offen={open === r.key}
-            umschalten={() => setOpen(open === r.key ? null : r.key)}
-            loeschen={() => setLoeschSeries(r)} />
+          <SeriesLine key={r.key} series={r}
+            open={open === r.key}
+            toggle={() => setOpen(open === r.key ? null : r.key)}
+            remove={() => setDeleteSeries(r)} />
         ))}
-        {!series?.length && <ListingLeer>{tr("messreihen_panel.keine_reihe")}</ListingLeer>}
+        {!series?.length && <ListingEmpty>{tr("messreihen_panel.keine_reihe")}</ListingEmpty>}
       </Listing>
-      {loeschSeries && (
-        <LoeschDialog was={loeschSeries.key} laeuft={remove.isPending}
-          onClose={() => setLoeschSeries(null)}
-          onLoeschen={() => { remove.mutate(loeschSeries.key); setLoeschSeries(null); }} />
+      {deleteSeries && (
+        <DeleteDialog was={deleteSeries.key} runs={remove.isPending}
+          onClose={() => setDeleteSeries(null)}
+          onDelete={() => { remove.mutate(deleteSeries.key); setDeleteSeries(null); }} />
       )}
     </Area>
   );
 }
 
-function SeriesLine({ reihe: series, offen: open, umschalten, loeschen: remove }: {
-  reihe: Series; offen: boolean; umschalten: () => void; loeschen: () => void;
+function SeriesLine({ series: series, open: open, toggle, remove: remove }: {
+  series: Series; open: boolean; toggle: () => void; remove: () => void;
 }) {
   const t = series.trend;
-  const knapp = t?.rest_tage != null && t.rest_tage <= 14;
-  const alt = (t?.alter_stunden ?? 0) > 26;
+  const knapp = t?.days_left != null && t.days_left <= 14;
+  const old = (t?.age_hours ?? 0) > 26;
 
   return (
-    <ListenLine warnung={knapp}>
+    <ListenLine warning={knapp}>
       <div className="flex flex-wrap items-baseline gap-2">
-        <button onClick={umschalten} className={BUTTON_TEXT.neben}>
+        <button onClick={toggle} className={BUTTON_TEXT.secondary}>
           {open ? "▾" : "▸"} {series.name}
         </button>
         <code className="font-mono text-[11px] text-muted">{series.key}</code>
         <div className="flex-1" />
         <span className="text-sm text-ink">{series.last_value ?? "—"} {series.unit}</span>
-        <span className={`text-[11px] ${alt ? "text-amber-300" : "text-muted"}`}>
+        <span className={`text-[11px] ${old ? "text-amber-300" : "text-muted"}`}>
           {formatDateTime(series.last_at)}
         </span>
       </div>
 
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-        {t?.pro_tag != null && (
-          <span>{t.pro_tag > 0 ? "+" : ""}{t.pro_tag} {series.unit}/Tag</span>
+        {t?.per_day != null && (
+          <span>{t.per_day > 0 ? "+" : ""}{t.per_day} {series.unit}/Tag</span>
         )}
-        {t?.rest_tage != null ? (
+        {t?.days_left != null ? (
           <span className={knapp ? "text-amber-300" : ""}>
-            {tr("messreihen.noch_tage", { tage: t.rest_tage, datum: t.leer_am ?? "" })}
+            {tr("messreihen.noch_tage", { days: t.days_left, date: t.empty_at ?? "" })}
           </span>
         ) : (
           <span>{tr((t?.points ?? 0) < 3 ? "messreihen.zu_wenige_werte" : "messreihen.kein_ende")}</span>
         )}
-        {t?.guete != null && <span>{tr("messreihen.guete", { wert: t.guete })}</span>}
+        {t?.fit != null && <span>{tr("messreihen.guete", { value: t.fit })}</span>}
         <span>{t?.points ?? 0} Werte</span>
-        {alt && t?.alter_stunden != null && (
+        {old && t?.age_hours != null && (
           <span className="text-amber-300">
-            {tr("messreihen.kein_neuer_wert", { stunden: Math.round(t.alter_stunden) })}
+            {tr("messreihen.kein_neuer_wert", { hours: Math.round(t.age_hours) })}
           </span>
         )}
         {series.warned_at && (
           <span className="text-amber-300">
-            {tr("messreihen_panel.gewarnt_am", { datum: formatDate(series.warned_at) })}
+            {tr("messreihen_panel.gewarnt_am", { date: formatDate(series.warned_at) })}
           </span>
         )}
       </div>
 
-      {open && <Detail reihe={series} loeschen={remove} />}
+      {open && <Detail series={series} remove={remove} />}
     </ListenLine>
   );
 }
 
 /** Everything about one series: choose the period, see the history, remove single values. */
-function Detail({ reihe: series, loeschen: remove }: { reihe: Series; loeschen: () => void }) {
+function Detail({ series: series, remove: remove }: { series: Series; remove: () => void }) {
   const qc = useQueryClient();
   const [days, setDays] = useState(30);
   const [target, setTarget] = useState(0);
   const [err, setErr] = useState("");
   const path = `/metrics/${encodeURIComponent(series.key)}/points`;
 
-  const { data: verlauf, isFetching } = useQuery({
+  const { data: history, isFetching } = useQuery({
     queryKey: ["metric-points", series.key, days, target],
-    queryFn: () => api.get<Verlauf>(`${path}?days=${days}&target=${target}`),
+    queryFn: () => api.get<History>(`${path}?days=${days}&target=${target}`),
   });
 
-  const wegwerfen = useMutation({
+  const discard = useMutation({
     mutationFn: (pid: number) => api.del(`${path}/${pid}`),
     onSuccess: () => {
       setErr("");
@@ -146,14 +146,14 @@ function Detail({ reihe: series, loeschen: remove }: { reihe: Series; loeschen: 
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
 
-  const points = verlauf?.points || [];
-  const t = verlauf?.trend;
+  const points = history?.points || [];
+  const t = history?.trend;
 
   return (
     <div className="mt-3 space-y-3 border-t border-line pt-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-muted">{tr("messreihen_panel.zeitraum")}</span>
-        {ZEITRAeUME.map(([d, label]) => (
+        {TIMESPANS.map(([d, label]) => (
           <button key={d} onClick={() => setDays(d)}
             className={`rounded border px-2 py-0.5 ${
               days === d ? "border-brand text-brand" : "border-line text-muted hover:text-ink"}`}>
@@ -169,15 +169,15 @@ function Detail({ reihe: series, loeschen: remove }: { reihe: Series; loeschen: 
         </label>
       </div>
 
-      <Verlaufsbild punkte={points} einheit={series.unit} trend={t} ziel={verlauf?.target ?? 0} />
+      <Historyimage points={points} unit={series.unit} trend={t} target={history?.target ?? 0} />
 
-      {t?.rest_tage != null && (
+      {t?.days_left != null && (
         <p className="text-xs text-muted">
           Die gestrichelte Linie ist die Fortschreibung dieser Punkte:{" "}
-          <b className="text-ink">{t.pro_tag} {series.unit}/Tag</b>, erreicht{" "}
-          <b className="text-ink">{verlauf?.target} {series.unit}</b> am{" "}
-          <b className="text-ink">{t.leer_am}</b> — in {t.rest_tage} Tagen. Güte {t.guete}
-          {(t.guete ?? 1) < 0.8 && " (die Punkte streuen — die Zahl ist grob)"}.
+          <b className="text-ink">{t.per_day} {series.unit}/Tag</b>, erreicht{" "}
+          <b className="text-ink">{history?.target} {series.unit}</b> am{" "}
+          <b className="text-ink">{t.empty_at}</b> — in {t.days_left} Tagen. Güte {t.fit}
+          {(t.fit ?? 1) < 0.8 && " (die Punkte streuen — die Zahl ist grob)"}.
         </p>
       )}
 
@@ -201,14 +201,14 @@ function Detail({ reihe: series, loeschen: remove }: { reihe: Series; loeschen: 
                 </td>
                 <td className="px-2 py-1 text-ink">{p.value} {series.unit}</td>
                 <td className="px-2 py-1 text-[11px] text-muted">
-                  {p.context?.quelle
-                    || (p.context?.instanz ? `Lauf #${p.context.instanz}` : "—")}
+                  {p.context?.source
+                    || (p.context?.instance ? `Lauf #${p.context.instance}` : "—")}
                 </td>
                 <td className="px-2 py-1 text-right">
                   <div className="flex justify-end">
-                    <IconButton icon={ICON.loeschen} gefahr
-                      titel={tr("messreihen_panel.diesen_wert_entfernen_z_b_einen_ausreiss")}
-                      onClick={() => wegwerfen.mutate(p.id)} />
+                    <IconButton icon={ICON.remove} danger
+                      title={tr("messreihen_panel.diesen_wert_entfernen_z_b_einen_ausreiss")}
+                      onClick={() => discard.mutate(p.id)} />
                   </div>
                 </td>
               </tr>
@@ -223,10 +223,10 @@ function Detail({ reihe: series, loeschen: remove }: { reihe: Series; loeschen: 
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-muted">{tr("messreihen_panel.werte_im_zeitraum", { anzahl: points.length })}</span>
+        <span className="text-[11px] text-muted">{tr("messreihen_panel.werte_im_zeitraum", { count: points.length })}</span>
         <div className="flex-1" />
         <button onClick={remove}
-          className={BUTTON_KLEIN.gefahr}>
+          className={BUTTON_SMALL.danger}>
           {tr("messreihen_panel.ganze_reihe_loeschen")}
         </button>
       </div>
@@ -241,8 +241,8 @@ function Detail({ reihe: series, loeschen: remove }: { reihe: Series; loeschen: 
  * deliberately gets the same area as the measurement, so that one sees how far it goes
  * beyond what was measured.
  */
-function Verlaufsbild({ punkte: points, einheit: unit, trend, ziel: target }: {
-  punkte: Point[]; einheit: string; trend?: Trend | null; ziel: number;
+function Historyimage({ points: points, unit: unit, trend, target: target }: {
+  points: Point[]; unit: string; trend?: Trend | null; target: number;
 }) {
   if (points.length < 2) {
     return <div className="text-[11px] text-muted">{tr("messreihen_panel.noch_keine_linie_dafuer_braucht_es_zwei_")}</div>;
@@ -251,7 +251,7 @@ function Verlaufsbild({ punkte: points, einheit: unit, trend, ziel: target }: {
 
   const xs = points.map((p) => new Date(p.ts).getTime());
   const ys = points.map((p) => p.value);
-  const ende = trend?.leer_am ? new Date(trend.leer_am + "T12:00:00").getTime() : null;
+  const ende = trend?.empty_at ? new Date(trend.empty_at + "T12:00:00").getTime() : null;
 
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs, ende ?? 0);
@@ -261,22 +261,22 @@ function Verlaufsbild({ punkte: points, einheit: unit, trend, ziel: target }: {
 
   const px = (x: number) => li + ((x - x0) / Math.max(1, x1 - x0)) * (B - li - re);
   const py = (y: number) => H - un - ((y - y0) / span) * (H - ob - un);
-  const linie = points.map((p) => `${px(new Date(p.ts).getTime())},${py(p.value)}`).join(" ");
+  const line = points.map((p) => `${px(new Date(p.ts).getTime())},${py(p.value)}`).join(" ");
 
   const last = points[points.length - 1];
-  const prognose = ende && trend?.rest_tage != null
+  const forecast = ende && trend?.days_left != null
     ? { x1: px(new Date(last.ts).getTime()), y1: py(last.value),
         x2: px(ende), y2: py(target) }
     : null;
 
-  const marken = [y0, (y0 + y1) / 2, y1];
+  const brands = [y0, (y0 + y1) / 2, y1];
   const tag = (ms: number) => new Date(ms).toLocaleDateString(undefined,
     { day: "2-digit", month: "2-digit" });
 
   return (
     <div className="overflow-x-auto">
       <svg viewBox={`0 0 ${B} ${H}`} className="h-64 w-full min-w-[420px]">
-        {marken.map((y, i) => (
+        {brands.map((y, i) => (
           <g key={i}>
             <line x1={li} y1={py(y)} x2={B - re} y2={py(y)}
                   className="stroke-line" strokeWidth="1" strokeDasharray="2 4" />
@@ -287,20 +287,20 @@ function Verlaufsbild({ punkte: points, einheit: unit, trend, ziel: target }: {
           </g>
         ))}
 
-        {prognose && (
+        {forecast && (
           <>
-            <line x1={prognose.x1} y1={prognose.y1} x2={prognose.x2} y2={prognose.y2}
+            <line x1={forecast.x1} y1={forecast.y1} x2={forecast.x2} y2={forecast.y2}
                   className="stroke-amber-400" strokeWidth="2" strokeDasharray="6 5"
                   opacity="0.85" />
-            <circle cx={prognose.x2} cy={prognose.y2} r="4" className="fill-amber-400" />
-            <text x={prognose.x2} y={prognose.y2 - 8} textAnchor="end"
+            <circle cx={forecast.x2} cy={forecast.y2} r="4" className="fill-amber-400" />
+            <text x={forecast.x2} y={forecast.y2 - 8} textAnchor="end"
                   className="fill-current text-[11px] text-amber-300">
-              {target} {unit} am {trend?.leer_am}
+              {target} {unit} am {trend?.empty_at}
             </text>
           </>
         )}
 
-        <polyline points={linie} fill="none" className="stroke-brand" strokeWidth="2" />
+        <polyline points={line} fill="none" className="stroke-brand" strokeWidth="2" />
         {points.map((p) => (
           <circle key={p.id} cx={px(new Date(p.ts).getTime())} cy={py(p.value)} r="3"
                   className="fill-brand">

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Project } from "../api";
-import { BUTTON_KLEIN } from "./ui";
+import { BUTTON_SMALL } from "./ui";
 
 const ST_COLOR: Record<string, string> = {
   running: "text-yellow-400", success: "text-green-400", done: "text-green-400",
@@ -21,12 +21,12 @@ interface RunGroup {
 export default function AgentMonitor({ project }: { project: Project }) {
   const qc = useQueryClient();
   // Archived runs (the ticket is archived) are hidden by default (TRA-29).
-  const [zeigeArchiv, setZeigeArchiv] = useState(false);
-  const [zu, setZu] = useState<Record<string, boolean>>({});
+  const [showArchive, setShowArchive] = useState(false);
+  const [to, setTo] = useState<Record<string, boolean>>({});
   const { data: grouped } = useQuery({
-    queryKey: ["runs-grouped", project.id, zeigeArchiv],
+    queryKey: ["runs-grouped", project.id, showArchive],
     queryFn: () => api.get<{ groups: RunGroup[]; truncated: boolean }>(
-      `/projects/${project.id}/runs/grouped?archived=${zeigeArchiv}`),
+      `/projects/${project.id}/runs/grouped?archived=${showArchive}`),
     refetchInterval: 4000,
   });
   const { data: perms } = useQuery({
@@ -66,7 +66,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
                 <span className="text-xs text-muted">seit {fmtDuration(a.running_seconds)}</span>
                 <div className="flex-1" />
                 <button onClick={() => stop.mutate(a.issue_key)}
-                  className={BUTTON_KLEIN.gefahr}>
+                  className={BUTTON_SMALL.danger}>
                   ⏹ Stoppen</button>
               </div>
             ))}
@@ -87,7 +87,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
                 <div className="flex-1" />
                 {["once", "always", "never"].map((d) => (
                   <button key={d} onClick={() => decide.mutate({ id: p.id, decision: d })}
-                    className={BUTTON_KLEIN.neben}>
+                    className={BUTTON_SMALL.secondary}>
                     {tr(d === "once" ? "agent_monitor.einmal" : d === "always" ? "agent_monitor.immer" : "agent_monitor.nie")}</button>
                 ))}
               </div>
@@ -100,20 +100,20 @@ export default function AgentMonitor({ project }: { project: Project }) {
         <div className="mb-2 flex items-center gap-3">
           <h3 className="font-medium">{tr("agent_monitor.agenten_laeufe")}</h3>
           <label className="flex items-center gap-1.5 text-xs text-muted">
-            <input type="checkbox" checked={zeigeArchiv}
-              onChange={(e) => setZeigeArchiv(e.target.checked)} />
+            <input type="checkbox" checked={showArchive}
+              onChange={(e) => setShowArchive(e.target.checked)} />
             Archivierte anzeigen
           </label>
         </div>
         <div className="space-y-2">
           {grouped?.groups.map((g) => {
-            const eingeklappt = zu[g.issue_key] ?? false;
+            const collapsed = to[g.issue_key] ?? false;
             return (
               <div key={g.issue_key} className="rounded border border-line bg-card">
                 <button
-                  onClick={() => setZu({ ...zu, [g.issue_key]: !eingeklappt })}
+                  onClick={() => setTo({ ...to, [g.issue_key]: !collapsed })}
                   className="flex w-full items-center gap-2 p-2 text-left text-sm">
-                  <span className="text-muted">{eingeklappt ? "▸" : "▾"}</span>
+                  <span className="text-muted">{collapsed ? "▸" : "▾"}</span>
                   <span className="font-mono text-xs text-brand">{g.issue_key}</span>
                   <span className={`flex-1 truncate ${g.issue_archived ? "text-muted line-through" : ""}`}>
                     {g.issue_summary}
@@ -123,7 +123,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
                     {g.cost_usd ? ` · $${g.cost_usd.toFixed(4)}` : ""}
                   </span>
                 </button>
-                {!eingeklappt && (
+                {!collapsed && (
                   <div className="space-y-1 border-t border-line p-2">
                     {g.runs.map((r) => (
                       <div key={r.id} className="flex items-center gap-3 text-sm">
@@ -143,7 +143,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
           })}
           {grouped?.groups.length === 0 && (
             <div className="text-sm text-muted">
-              {tr(zeigeArchiv ? "agent_monitor.keine_archivierten" : "agent_monitor.noch_keine_laeufe")}
+              {tr(showArchive ? "agent_monitor.keine_archivierten" : "agent_monitor.noch_keine_laeufe")}
             </div>
           )}
           {grouped?.truncated && (

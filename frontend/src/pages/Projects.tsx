@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import Onboarding from "../components/Onboarding";
 import MyWork from "../components/MyWork";
-import { Etikett, BUTTON} from "../components/ui";
+import { Tag, BUTTON} from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 export default function Projects() {
@@ -39,7 +39,7 @@ export default function Projects() {
       <MyWork />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">{tr("projects.projekte")}</h1>
-        <button onClick={() => setShow(!show)} className={BUTTON.haupt}>
+        <button onClick={() => setShow(!show)} className={BUTTON.primary}>
           + Projekt
         </button>
       </div>
@@ -61,7 +61,7 @@ export default function Projects() {
             <input type="checkbox" checked={managed} onChange={(e) => setManaged(e.target.checked)} />
             KI-gemanagt
           </label>
-          <button className={BUTTON.haupt}>{tr("projects.anlegen")}</button>
+          <button className={BUTTON.primary}>{tr("projects.anlegen")}</button>
           {err && <span className="text-sm text-red-400">{err}</span>}
         </form>
       )}
@@ -73,17 +73,17 @@ export default function Projects() {
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-muted">{p.key}</span>
               <div className="flex gap-1">
-                {p.is_new && <Etikett farbe="gruen">{tr("projects.neu")}</Etikett>}
-                {!p.is_member && <Etikett farbe="gelb">{tr("projects.fremd")}</Etikett>}
-                {p.managed && <Etikett farbe="brand">KI</Etikett>}
-                <Etikett>
+                {p.is_new && <Tag color="green">{tr("projects.neu")}</Tag>}
+                {!p.is_member && <Tag color="yellow">{tr("projects.fremd")}</Tag>}
+                {p.managed && <Tag color="brand">KI</Tag>}
+                <Tag>
                   {p.my_role}{p.my_role_inherited ? ` (${tr("projects.geerbt")})` : ""}
-                </Etikett>
+                </Tag>
               </div>
             </div>
             <div className="mt-1 font-medium">{p.name}</div>
             {parentName(p.parent_id) && (
-              <div className="text-xs text-muted">↳ {tr("projects.unterprojekt_von", { eltern: parentName(p.parent_id) || "" })}</div>
+              <div className="text-xs text-muted">↳ {tr("projects.unterprojekt_von", { parent: parentName(p.parent_id) || "" })}</div>
             )}
             {!p.my_ai_assign && (
               <div className="mt-2 text-xs text-muted">{tr("projects.ticketsystem_kein_ki_recht")}</div>

@@ -15,8 +15,8 @@ import { tr } from "../i18n";
 
 /** Icons of the recurring actions. One place, so "delete" looks the same everywhere. */
 export const ICON = {
-  neu: "＋", bearbeiten: "✏️", loeschen: "🗑️", testen: "🧪", starten: "▶️",
-  standard: "⭐", kopieren: "⧉", zurueck: "↩", oeffnen: "↗",
+  fresh: "＋", edit: "✏️", remove: "🗑️", testing: "🧪", start: "▶️",
+  standard: "⭐", copy: "⧉", back: "↩", open: "↗",
 } as const;
 
 /**
@@ -40,8 +40,8 @@ export const ICON = {
  * `stand` hängt ein Ergebnis an den Knopf (✓/✗) — für Handlungen, deren Ausgang man später
  * noch sehen will, ohne sie zu wiederholen.
  */
-export type ButtonArt = "haupt" | "neben" | "zusage" | "gefahr";
-export type ButtonState = "gut" | "schlecht" | "offen";
+export type ButtonVariant = "primary" | "secondary" | "confirm" | "danger";
+export type ButtonState = "good" | "bad" | "open";
 
 /**
  * Die Klassen dazu, für die Stellen, die (noch) ein blankes `<button>` brauchen —
@@ -51,27 +51,27 @@ export type ButtonState = "gut" | "schlecht" | "offen";
  * wird mit `<Knopf>`; die Konstanten sind für Knöpfe mit eigener Mechanik (Umschalter,
  * Dateiauswahl, Reiter), die keine Komponente sein wollen.
  */
-const RUMPF = "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 "
+const BASE = "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 "
   + "text-sm leading-none transition-colors disabled:cursor-not-allowed "
   + "disabled:border-line disabled:bg-transparent disabled:text-muted";
 // Blau heißt: die FLÄCHE ist blau, nicht die Schrift. Ein Knopf mit blauem Rahmen und
 // blauer Schrift ist immer noch überwiegend Hintergrund — und damit fast so leise wie der
 // graue, den er ablösen sollte.
-const FARBE = {
-  haupt: "border border-brand bg-brand text-white hover:bg-brand/90",
+const COLOR = {
+  primary: "border border-brand bg-brand text-white hover:bg-brand/90",
   // Grün ist keine Willkür, sondern eine Bedeutung wie Rot: „ich stimme zu" — freigeben,
   // abnehmen, bestätigen. Deshalb bleibt sie, statt in Blau aufzugehen.
-  zusage: "border border-green-600 bg-green-600 text-white hover:bg-green-600/90",
+  confirm: "border border-green-600 bg-green-600 text-white hover:bg-green-600/90",
   // Optisch gleich: „haupt" sagt im Code, worum es auf der Fläche geht, und ist kein
   // Versprechen auf ein anderes Aussehen. Wer später abstufen will, ändert diese eine Zeile.
-  neben: "border border-brand bg-brand text-white hover:bg-brand/90",
-  gefahr: "border border-red-600 bg-red-600 text-white hover:bg-red-600/90",
+  secondary: "border border-brand bg-brand text-white hover:bg-brand/90",
+  danger: "border border-red-600 bg-red-600 text-white hover:bg-red-600/90",
 } as const;
 export const BUTTON = {
-  haupt: `${RUMPF} ${FARBE.haupt}`,
-  neben: `${RUMPF} ${FARBE.neben}`,
-  zusage: `${RUMPF} ${FARBE.zusage}`,
-  gefahr: `${RUMPF} ${FARBE.gefahr}`,
+  primary: `${BASE} ${COLOR.primary}`,
+  secondary: `${BASE} ${COLOR.secondary}`,
+  confirm: `${BASE} ${COLOR.confirm}`,
+  danger: `${BASE} ${COLOR.danger}`,
 } as const;
 
 /**
@@ -82,44 +82,44 @@ export const BUTTON = {
  * steht, statt ihn zu unterbrechen.
  */
 export const BUTTON_TEXT = {
-  neben: "text-brand transition-colors hover:underline disabled:text-muted disabled:no-underline",
-  gefahr: "text-red-400 transition-colors hover:text-red-300 disabled:text-muted",
+  secondary: "text-brand transition-colors hover:underline disabled:text-muted disabled:no-underline",
+  danger: "text-red-400 transition-colors hover:text-red-300 disabled:text-muted",
 } as const;
 
 /** Dieselben Knöpfe in klein — für Zeilen und Werkzeugleisten, wo die volle Höhe die
  *  Zeile auseinanderzöge. Farbe und Bedeutung bleiben gleich. */
-const RUMPF_KLEIN = RUMPF.replace("px-3 py-1.5 text-sm", "px-2 py-1 text-xs");
-export const BUTTON_KLEIN = {
-  haupt: `${RUMPF_KLEIN} ${FARBE.haupt}`,
-  neben: `${RUMPF_KLEIN} ${FARBE.neben}`,
-  zusage: `${RUMPF_KLEIN} ${FARBE.zusage}`,
-  gefahr: `${RUMPF_KLEIN} ${FARBE.gefahr}`,
+const BASE_SMALL = BASE.replace("px-3 py-1.5 text-sm", "px-2 py-1 text-xs");
+export const BUTTON_SMALL = {
+  primary: `${BASE_SMALL} ${COLOR.primary}`,
+  secondary: `${BASE_SMALL} ${COLOR.secondary}`,
+  confirm: `${BASE_SMALL} ${COLOR.confirm}`,
+  danger: `${BASE_SMALL} ${COLOR.danger}`,
 } as const;
 
-export function Button({ art = "neben", zeichen: chars, stand: state, titel: title, onClick, type = "button",
-                        disabled = false, laeuft: running = false, breit = false, klein = false,
+export function Button({ variant = "secondary", symbol: chars, state, title: title, onClick, type = "button",
+                        disabled = false, runs: running = false, wide = false, small = false,
                         children }: {
-  art?: ButtonArt; zeichen?: string; stand?: ButtonState; titel?: string;
-  onClick?: () => void; type?: "button" | "submit"; disabled?: boolean; laeuft?: boolean;
-  breit?: boolean; klein?: boolean; children: ReactNode;
+  variant?: ButtonVariant; symbol?: string; state?: ButtonState; title?: string;
+  onClick?: () => void; type?: "button" | "submit"; disabled?: boolean; runs?: boolean;
+  wide?: boolean; small?: boolean; children: ReactNode;
 }) {
-  const aus = disabled || running;
+  const from = disabled || running;
   // Abgeschaltet ist abgeschaltet: keine Farbe, kein Zeiger, kein Hover. Sonst sieht ein
   // Knopf, der gerade nichts kann, aus wie einer, der etwas kann.
-  const farbe = aus
-    ? `${klein ? RUMPF_KLEIN : RUMPF} border border-line bg-transparent text-muted cursor-not-allowed`
-    : (klein ? BUTTON_KLEIN : BUTTON)[art];
-  const zeigen = { gut: "✓", schlecht: "✗", offen: "" }[state ?? "offen"];
+  const color = from
+    ? `${small ? BASE_SMALL : BASE} border border-line bg-transparent text-muted cursor-not-allowed`
+    : (small ? BUTTON_SMALL : BUTTON)[variant];
+  const show = { good: "✓", bad: "✗", open: "" }[state ?? "open"];
   return (
     <button
       type={type}
       onClick={onClick}
-      disabled={aus}
+      disabled={from}
       title={title}
-      className={`${breit ? "w-full" : ""} ${farbe}`}
+      className={`${wide ? "w-full" : ""} ${color}`}
     >
-      {zeigen && (
-        <span className={state === "gut" ? "text-green-400" : "text-red-400"}>{zeigen}</span>
+      {show && (
+        <span className={state === "good" ? "text-green-400" : "text-red-400"}>{show}</span>
       )}
       {chars && <span className="sm:hidden">{chars}</span>}
       <span className={chars ? "hidden sm:inline" : ""}>{children}</span>
@@ -133,9 +133,9 @@ export function Button({ art = "neben", zeichen: chars, stand: state, titel: tit
  * `titel` is not decoration: it is the tooltip AND the accessible name, and without it an
  * icon button is a mystery to anybody not seeing the picture.
  */
-export function IconButton({ icon, titel: title, onClick, gefahr = false, disabled = false, aktiv = false }: {
-  icon: string; titel: string; onClick: () => void;
-  gefahr?: boolean; disabled?: boolean; aktiv?: boolean;
+export function IconButton({ icon, title: title, onClick, danger = false, disabled = false, active = false }: {
+  icon: string; title: string; onClick: () => void;
+  danger?: boolean; disabled?: boolean; active?: boolean;
 }) {
   return (
     <button
@@ -149,8 +149,8 @@ export function IconButton({ icon, titel: title, onClick, gefahr = false, disabl
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm
         leading-none transition-colors disabled:border-line disabled:text-muted
         disabled:opacity-60 ${
-        aktiv ? "border-brand bg-brand text-white ring-2 ring-brand/40"
-          : gefahr ? "border-red-600 bg-red-600 text-white hover:bg-red-600/90"
+        active ? "border-brand bg-brand text-white ring-2 ring-brand/40"
+          : danger ? "border-red-600 bg-red-600 text-white hover:bg-red-600/90"
                    : "border-brand bg-brand text-white hover:bg-brand/90"
       }`}
     >
@@ -170,38 +170,38 @@ export function Actions({ children }: { children: ReactNode }) {
  * Escape closes, a click beside it closes, and the body does not scroll underneath while it
  * is open. The heading says what is being edited, because the row it came from is covered.
  */
-export function Dialog({ titel: title, onClose, children, fuss, breit = false, festhalten = false }: {
-  titel: string; onClose: () => void; children: ReactNode; fuss?: ReactNode; breit?: boolean;
+export function Dialog({ title: title, onClose, children, foot, wide = false, hold = false }: {
+  title: string; onClose: () => void; children: ReactNode; foot?: ReactNode; wide?: boolean;
   /** Kein Escape, kein Klick daneben — nur die eigenen Knöpfe schließen.
    *
    *  Für Dialoge, in denen etwas entsteht: Ein danebengegangener Klick hat einen halb
    *  geschriebenen Text gekostet, und „Escape" tippt man beim Formulieren schneller, als man
    *  denkt. Wo nur ausgewählt wird, bleibt beides — dort ist Wegklicken bequem, nicht teuer. */
-  festhalten?: boolean;
+  hold?: boolean;
 }) {
   useEffect(() => {
-    const zu = (e: KeyboardEvent) => { if (e.key === "Escape" && !festhalten) onClose(); };
-    window.addEventListener("keydown", zu);
-    const vorher = document.body.style.overflow;
+    const to = (e: KeyboardEvent) => { if (e.key === "Escape" && !hold) onClose(); };
+    window.addEventListener("keydown", to);
+    const before = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", zu); document.body.style.overflow = vorher; };
-  }, [onClose, festhalten]);
+    return () => { window.removeEventListener("keydown", to); document.body.style.overflow = before; };
+  }, [onClose, hold]);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
-      onClick={festhalten ? undefined : onClose} role="dialog" aria-modal="true" aria-label={title}>
+      onClick={hold ? undefined : onClose} role="dialog" aria-modal="true" aria-label={title}>
       <div onClick={(e) => e.stopPropagation()}
         className={`flex max-h-[88vh] w-full flex-col rounded-xl border border-line bg-card shadow-2xl ${
-          breit ? "max-w-3xl" : "max-w-lg"}`}>
+          wide ? "max-w-3xl" : "max-w-lg"}`}>
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 className="text-base font-semibold text-ink">{title}</h2>
           <button onClick={onClose} title={tr("common.schliessen")} aria-label={tr("common.schliessen")}
             className="text-muted hover:text-ink">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
-        {fuss && (
+        {foot && (
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3">
-            {fuss}
+            {foot}
           </div>
         )}
       </div>
@@ -210,23 +210,23 @@ export function Dialog({ titel: title, onClose, children, fuss, breit = false, f
 }
 
 /** The two buttons at the foot of nearly every dialog. */
-export function DialogFuss({ onAbbrechen: onCancel, onSpeichern, speichernText, laeuft: running = false, deaktiviert = false }: {
-  onAbbrechen: () => void; onSpeichern: () => void; speichernText?: string;
-  laeuft?: boolean; deaktiviert?: boolean;
+export function DialogFoot({ onCancel: onCancel, onSave, saveText, runs: running = false, disabled = false }: {
+  onCancel: () => void; onSave: () => void; saveText?: string;
+  runs?: boolean; disabled?: boolean;
 }) {
   return (
     <>
       <Button onClick={onCancel}>{tr("common.abbrechen")}</Button>
-      <Button art="haupt" onClick={onSpeichern} disabled={deaktiviert} laeuft={running}>
-        {speichernText || tr("common.speichern")}
+      <Button variant="primary" onClick={onSave} disabled={disabled} runs={running}>
+        {saveText || tr("common.speichern")}
       </Button>
     </>
   );
 }
 
 /** A labelled field in a dialog. Label above, hint below, both optional. */
-export function Field({ label, hinweis: hint, children }: {
-  label: string; hinweis?: string; children: ReactNode;
+export function Field({ label, hint: hint, children }: {
+  label: string; hint?: string; children: ReactNode;
 }) {
   return (
     <label className="block">
@@ -247,16 +247,16 @@ export const INPUT_VALUE = "w-full rounded border border-line bg-surface px-2 py
  * happen to whom, and a list of nine similar entries is exactly the place where that
  * matters.
  */
-export function ConfirmDialog({ titel: title, text, hinweis: hint, bestaetigenText: confirmText, gefahr = true,
-                                    onClose, onBestaetigen: onConfirm, laeuft: running = false }: {
-  titel: string; text: string; hinweis?: string; bestaetigenText: string; gefahr?: boolean;
-  onClose: () => void; onBestaetigen: () => void; laeuft?: boolean;
+export function ConfirmDialog({ title: title, text, hint: hint, confirmText: confirmText, danger = true,
+                                    onClose, onConfirm: onConfirm, runs: running = false }: {
+  title: string; text: string; hint?: string; confirmText: string; danger?: boolean;
+  onClose: () => void; onConfirm: () => void; runs?: boolean;
 }) {
   return (
-    <Dialog titel={title} onClose={onClose} fuss={
+    <Dialog title={title} onClose={onClose} foot={
       <>
         <Button onClick={onClose}>{tr("common.abbrechen")}</Button>
-        <Button art={gefahr ? "gefahr" : "haupt"} onClick={onConfirm} laeuft={running}>
+        <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} runs={running}>
           {confirmText}
         </Button>
       </>
@@ -268,13 +268,13 @@ export function ConfirmDialog({ titel: title, text, hinweis: hint, bestaetigenTe
 }
 
 /** The delete case of the safety question, named after what disappears. */
-export function LoeschDialog({ was, hinweis: hint, onClose, onLoeschen: onDelete, laeuft: running = false }: {
-  was: string; hinweis?: string; onClose: () => void; onLoeschen: () => void; laeuft?: boolean;
+export function DeleteDialog({ was, hint: hint, onClose, onDelete: onDelete, runs: running = false }: {
+  was: string; hint?: string; onClose: () => void; onDelete: () => void; runs?: boolean;
 }) {
   return (
-    <ConfirmDialog titel={tr("common.loeschen")} text={tr("common.wirklich_loeschen", { was })}
-      hinweis={hint} bestaetigenText={tr("common.loeschen")} laeuft={running}
-      onClose={onClose} onBestaetigen={onDelete} />
+    <ConfirmDialog title={tr("common.loeschen")} text={tr("common.wirklich_loeschen", { was })}
+      hint={hint} confirmText={tr("common.loeschen")} runs={running}
+      onClose={onClose} onConfirm={onDelete} />
   );
 }
 
@@ -301,7 +301,7 @@ export function Listing({ children, className = "" }: {
 }
 
 /** The line that stands in place of entries when there are none. */
-export function ListingLeer({ children }: { children: ReactNode }) {
+export function ListingEmpty({ children }: { children: ReactNode }) {
   return <div className="bg-surface px-3 py-2.5 text-xs text-muted">{children}</div>;
 }
 
@@ -312,9 +312,9 @@ export function ListingLeer({ children }: { children: ReactNode }) {
  * bright bar across the list and cut the very surface in two that was meant to hold it
  * together. What separates the heading is the type — small, quiet, spaced out — not a wall.
  */
-export function ListenHeader({ spalten, children }: { spalten: string; children: ReactNode }) {
+export function ListenHeader({ columns, children }: { columns: string; children: ReactNode }) {
   return (
-    <div className={`hidden gap-x-3 bg-surface px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted/70 sm:grid ${spalten}`}>
+    <div className={`hidden gap-x-3 bg-surface px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted/70 sm:grid ${columns}`}>
       {children}
     </div>
   );
@@ -330,25 +330,25 @@ export function ListenHeader({ spalten, children }: { spalten: string; children:
  *  click, context menu) and therefore cannot be a `ListenZeile`. */
 export const LINE = "group block bg-surface px-3 py-2.5 text-sm transition-colors hover:bg-card";
 
-export function ListenLine({ spalten, gedimmt = false, warnung = false, dicht = false,
+export function ListenLine({ columns, dimmed = false, warning = false, dense = false,
                              onClick, children }: {
-  spalten?: string; gedimmt?: boolean; warnung?: boolean; dicht?: boolean;
+  columns?: string; dimmed?: boolean; warning?: boolean; dense?: boolean;
   onClick?: () => void; children: ReactNode;
 }) {
   // Without columns the entry only gets the surface and its padding; the layout inside is
   // the caller's business. That way an entry with a second line (a URL, a last run) does not
   // have to be pressed into a grid it does not want.
-  const layout = spalten
-    ? `flex flex-wrap items-center gap-x-3 gap-y-1 sm:grid ${spalten}`
+  const layout = columns
+    ? `flex flex-wrap items-center gap-x-3 gap-y-1 sm:grid ${columns}`
     : "";
   return (
     <div
       onClick={onClick}
-      className={`group bg-surface px-3 text-sm transition-colors ${dicht ? "py-1.5" : "py-2.5"} ${layout} ${
-        onClick ? "cursor-pointer hover:bg-card" : ""} ${gedimmt ? "opacity-55" : ""} ${
+      className={`group bg-surface px-3 text-sm transition-colors ${dense ? "py-1.5" : "py-2.5"} ${layout} ${
+        onClick ? "cursor-pointer hover:bg-card" : ""} ${dimmed ? "opacity-55" : ""} ${
         // Ein Streifen links statt einer eingefärbten Fläche: die Zeile bleibt lesbar, und
         // in einer langen Liste sieht man die auffälligen Einträge trotzdem von weitem.
-        warnung ? "border-l-2 border-amber-400 pl-[calc(0.75rem-2px)]" : ""}`}
+        warning ? "border-l-2 border-amber-400 pl-[calc(0.75rem-2px)]" : ""}`}
     >
       {children}
     </div>
@@ -362,8 +362,8 @@ export function ListenLine({ spalten, gedimmt = false, warnung = false, dicht = 
  * its list into a card, the next left it loose on the page, a third invented its own heading.
  * From a step away that reads as five pages instead of one.
  */
-export function Area({ titel: title, nebentitel, hinweis: hint, werkzeuge: tools, children }: {
-  titel?: ReactNode; nebentitel?: ReactNode; hinweis?: ReactNode; werkzeuge?: ReactNode;
+export function Area({ title: title, subtitle, hint: hint, tools: tools, children }: {
+  title?: ReactNode; subtitle?: ReactNode; hint?: ReactNode; tools?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -371,7 +371,7 @@ export function Area({ titel: title, nebentitel, hinweis: hint, werkzeuge: tools
       {title && (
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-sm font-semibold text-ink">{title}</span>
-          {nebentitel && <span className="font-mono text-xs text-muted">{nebentitel}</span>}
+          {subtitle && <span className="font-mono text-xs text-muted">{subtitle}</span>}
         </div>
       )}
       {hint && <p className="text-sm text-muted">{hint}</p>}
@@ -390,18 +390,18 @@ export function Area({ titel: title, nebentitel, hinweis: hint, werkzeuge: tools
  * not have to learn a second language for the same movement. What it does not do is change
  * the address — that stays the job of `usePageChrome`.
  */
-export function Reiter<T extends string>({ aktiv, auswahl: selection, onWaehlen, senkrecht = false }: {
-  aktiv: T; auswahl: [T, string][]; onWaehlen: (value: T) => void; senkrecht?: boolean;
+export function Tab<T extends string>({ active, selection: selection, onChoose, vertical = false }: {
+  active: T; selection: [T, string][]; onChoose: (value: T) => void; vertical?: boolean;
 }) {
   return (
-    <div className={senkrecht
+    <div className={vertical
       ? "flex shrink-0 flex-row flex-wrap gap-1 sm:w-40 sm:flex-col sm:flex-nowrap sm:border-r sm:border-line sm:pr-3"
       : "flex flex-wrap gap-1 border-b border-line pb-2"}>
       {selection.map(([value, label]) => (
-        <button key={value} onClick={() => onWaehlen(value)}
+        <button key={value} onClick={() => onChoose(value)}
           className={`rounded-md px-2.5 py-1.5 text-sm transition-colors ${
-            senkrecht ? "text-left" : ""} ${
-            aktiv === value
+            vertical ? "text-left" : ""} ${
+            active === value
               ? "bg-brand/15 font-medium text-brand ring-1 ring-inset ring-brand/30"
               : "text-muted hover:bg-card hover:text-ink"}`}>
           {label}
@@ -418,44 +418,44 @@ export function Reiter<T extends string>({ aktiv, auswahl: selection, onWaehlen,
  * instead of being mixed anew each time (there were `bg-amber-500/15`, `/10` and `/20` in
  * three files, all meaning "watch out").
  */
-export function Etikett({ farbe = "neutral", titel: title, children }: {
-  farbe?: "neutral" | "gruen" | "gelb" | "rot" | "blau" | "violett" | "brand";
-  titel?: string; children: ReactNode;
+export function Tag({ color = "neutral", title: title, children }: {
+  color?: "neutral" | "green" | "yellow" | "red" | "blue" | "violet" | "brand";
+  title?: string; children: ReactNode;
 }) {
-  const stil = {
+  const style = {
     neutral: "border-line bg-card text-muted",
-    gruen: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-    gelb: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-    rot: "border-red-500/30 bg-red-500/10 text-red-300",
-    blau: "border-sky-500/30 bg-sky-500/10 text-sky-300",
-    violett: "border-violet-500/30 bg-violet-500/10 text-violet-300",
+    green: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    yellow: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    red: "border-red-500/30 bg-red-500/10 text-red-300",
+    blue: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+    violet: "border-violet-500/30 bg-violet-500/10 text-violet-300",
     brand: "border-brand/40 bg-brand/15 text-brand",
-  }[farbe];
+  }[color];
   return (
     <span title={title}
-      className={`shrink-0 truncate rounded border px-1.5 py-0.5 text-[11px] ${stil}`}>
+      className={`shrink-0 truncate rounded border px-1.5 py-0.5 text-[11px] ${style}`}>
       {children}
     </span>
   );
 }
 
 /** Secondary action inside an entry ("versions", "history", "cancel"). */
-export function Zeilenknopf({ onClick, titel: title, gefahr = false, children }: {
-  onClick: () => void; titel?: string; gefahr?: boolean; children: ReactNode;
+export function Rowbutton({ onClick, title: title, danger = false, children }: {
+  onClick: () => void; title?: string; danger?: boolean; children: ReactNode;
 }) {
   return (
     // Auch der Zeilenknopf ist ein Knopf: blau, nicht grau (siehe DESIGN.md).
     <button onClick={(e) => { e.stopPropagation(); onClick(); }} title={title}
-      className={gefahr ? BUTTON_KLEIN.gefahr : BUTTON_KLEIN.neben}>
+      className={danger ? BUTTON_SMALL.danger : BUTTON_SMALL.secondary}>
       {children}
     </button>
   );
 }
 
 /** State of an entry: a dot plus a word. Colour carries the urgency, the word the meaning. */
-export function State({ farbe, text }: { farbe: "gruen" | "gelb" | "grau" | "rot"; text: string }) {
-  const point = { gruen: "bg-emerald-400", gelb: "bg-amber-400", grau: "bg-muted",
-                  rot: "bg-red-400" }[farbe];
+export function State({ color, text }: { color: "green" | "yellow" | "grey" | "red"; text: string }) {
+  const point = { green: "bg-emerald-400", yellow: "bg-amber-400", grey: "bg-muted",
+                  red: "bg-red-400" }[color];
   return (
     <span className="flex items-center gap-1.5 text-xs text-muted">
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${point}`} />
@@ -465,7 +465,7 @@ export function State({ farbe, text }: { farbe: "gruen" | "gelb" | "grau" | "rot
 }
 
 /** Error line inside a dialog or above a list. */
-export function Fehlerzeile({ text }: { text: string }) {
+export function Errorrow({ text }: { text: string }) {
   if (!text) return null;
   return (
     <div className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">

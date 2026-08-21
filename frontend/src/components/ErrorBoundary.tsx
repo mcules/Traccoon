@@ -17,11 +17,11 @@
 // Afterwards the message stays: failing visibly is better than circling silently.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { BUTTON_KLEIN } from "./ui";
+import { BUTTON_SMALL } from "./ui";
 
 /** Prefix of the keys in the `sessionStorage`. Deliberately `session`, not `local`: a brake
  *  should brake a running tab, not the machine for tomorrow. */
-const STORE_PRAEFIX = "traccoon_reload:";
+const STORE_PREFIX = "traccoon_reload:";
 
 /**
  * Reloads the page, at most once per `grund` within `mindestAbstandMs`.
@@ -29,14 +29,14 @@ const STORE_PRAEFIX = "traccoon_reload:";
  * It lies here and not with the watchdog because both need the same discipline and two
  * reload rules are guaranteed to drift apart. `true` = a reload happened.
  */
-export function sicheresNeuladen(reason: string, minDistanceMs: number): boolean {
-  const key = STORE_PRAEFIX + reason;
+export function safeReload(reason: string, minDistanceMs: number): boolean {
+  const key = STORE_PREFIX + reason;
   try {
-    const vorher = Number(sessionStorage.getItem(key) ?? "0");
+    const before = Number(sessionStorage.getItem(key) ?? "0");
     const now = Date.now();
-    if (Number.isFinite(vorher) && now - vorher < minDistanceMs) {
+    if (Number.isFinite(before) && now - before < minDistanceMs) {
       console.warn(`[traccoon] Neuladen (${reason}) unterdrückt — zuletzt vor `
-        + `${Math.round((now - vorher) / 1000)} s.`);
+        + `${Math.round((now - before) / 1000)} s.`);
       return false;
     }
     sessionStorage.setItem(key, String(now));
@@ -61,15 +61,15 @@ export interface ErrorBoundaryProps {
 }
 
 interface State {
-  fehler: Error | null;
+  error: Error | null;
 }
 
 export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
-  state: State = { fehler: null };
+  state: State = { error: null };
   private timer: number | null = null;
 
   static getDerivedStateFromError(error: Error): State {
-    return { fehler: error };
+    return { error: error };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
@@ -79,7 +79,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
     if (nach === undefined || this.timer !== null) return;
     this.timer = window.setTimeout(() => {
       this.timer = null;
-      sicheresNeuladen(`boundary:${this.props.label ?? "view"}`,
+      safeReload(`boundary:${this.props.label ?? "view"}`,
         this.props.reloadMinGapMs ?? 10 * 60_000);
     }, nach);
   }
@@ -91,7 +91,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
   private reloadNow = () => location.reload();
 
   render(): ReactNode {
-    const { fehler: error } = this.state;
+    const { error: error } = this.state;
     if (!error) return this.props.children;
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -110,7 +110,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
         <button
           type="button"
           onClick={this.reloadNow}
-          className={BUTTON_KLEIN.neben}
+          className={BUTTON_SMALL.secondary}
         >
           Jetzt neu laden
         </button>

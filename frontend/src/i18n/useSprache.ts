@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { beiSprachwechsel, setzeLanguage, language } from ".";
+import { atLanguageswitch, setLanguage, language } from ".";
 
 /**
  * Keeps a component tied to the current language.
@@ -10,16 +10,16 @@ import { beiSprachwechsel, setzeLanguage, language } from ".";
  */
 export function useLanguage(): string {
   const [, tick] = useState(0);
-  useEffect(() => beiSprachwechsel(() => tick((n) => n + 1)), []);
+  useEffect(() => atLanguageswitch(() => tick((n) => n + 1)), []);
   return language();
 }
 
 /** Take over the language of the signed in person (profile, else browser, else German). */
-export function useLanguageVonUser(locale: string | undefined): void {
+export function useLanguageFromUser(locale: string | undefined): void {
   useEffect(() => {
-    const gewuenscht = locale || navigator.language?.slice(0, 2) || "de";
-    if (gewuenscht !== language()) void setzeLanguage(gewuenscht);
+    const wanted = locale || navigator.language?.slice(0, 2) || "de";
+    if (wanted !== language()) void setLanguage(wanted);
   }, [locale]);
 }
 
-export { setzeLanguage };
+export { setLanguage };

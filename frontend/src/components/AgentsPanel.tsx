@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Actions, Area, Dialog, DialogFuss, Fehlerzeile, ICON, IconButton, Listing, ListenLine, LoeschDialog, BUTTON, BUTTON_KLEIN, BUTTON_TEXT} from "./ui";
+  Actions, Area, Dialog, DialogFoot, Errorrow, ICON, IconButton, Listing, ListenLine, DeleteDialog, BUTTON, BUTTON_SMALL, BUTTON_TEXT} from "./ui";
 
 interface Agent {
   id: number; role: string; display_name: string; system_prompt: string;
@@ -38,7 +38,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   const { data: skills } = useQuery({ queryKey: ["skills"], queryFn: () => api.get<any[]>("/skills") });
   const { data: mcpServers } = useQuery({ queryKey: ["mcp-servers"], queryFn: () => api.get<any[]>("/mcp-servers") });
   const [edit, setEdit] = useState<Partial<Agent> | null>(null);
-  const [loeschAgent, setLoeschAgent] = useState<Agent | null>(null);
+  const [deleteAgent, setDeleteAgent] = useState<Agent | null>(null);
   const [showAdv, setShowAdv] = useState(false);
   const inv = () => qc.invalidateQueries({ queryKey: key });
   const tokensFor = (p?: string) => (tokens || []).filter((t) => t.provider === p);
@@ -67,7 +67,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   });
   const del = useMutation({
     mutationFn: (id: number) => api.del(`/agents/${id}`),
-    onSuccess: () => { setLoeschAgent(null); inv(); }, onError: fail });
+    onSuccess: () => { setDeleteAgent(null); inv(); }, onError: fail });
   const seed = useMutation({ mutationFn: () => api.post("/agents/seed-defaults"), onSuccess: inv, onError: fail });
   const loadInto = useMutation({
     mutationFn: (id: number) => api.post(`/agents/${id}/copy-to-project`, { project_id: projectId }),
@@ -92,20 +92,20 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
 
   return (
     <Area>
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
       {note && <div className="mb-2 text-sm text-green-400">{note}</div>}
       <div className="mb-3 flex items-center gap-2">
         <p className="flex-1 text-sm text-muted">
           {tr(projectId ? "agents_panel.einleitung_projekt" : "agents_panel.einleitung_eigene")}</p>
         {!projectId && (!allAgents || allAgents.length === 0) && (
-          <button onClick={() => seed.mutate()} className={BUTTON.neben}>
+          <button onClick={() => seed.mutate()} className={BUTTON.secondary}>
             {tr("agents_panel.standard_agenten_anlegen")}</button>
         )}
         <button onClick={() => fetchModels.mutate()} disabled={fetchModels.isPending}
           title={tr("agents_panel.verfuegbare_modelle_live_bei_den_provide")}
-          className={BUTTON.neben}>
+          className={BUTTON.secondary}>
           {fetchModels.isPending ? tr("common.laedt") : `↻ ${tr("agents_panel.modelle_abrufen")}`}</button>
-        <button onClick={newAgent} className={BUTTON.haupt}>
+        <button onClick={newAgent} className={BUTTON.primary}>
           + Agent</button>
       </div>
 
@@ -131,11 +131,11 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
             <div className="hidden flex-1 sm:block" />
             <Actions>
               {!projectId && (
-                <IconButton icon="🔗" titel={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}
+                <IconButton icon="🔗" title={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}
                   onClick={() => syncLinked.mutate(a.id)} disabled={syncLinked.isPending} />
               )}
-              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setEdit(a)} />
-              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschAgent(a)} />
+              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setEdit(a)} />
+              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteAgent(a)} />
             </Actions>
             </div>
           </ListenLine>
@@ -147,16 +147,16 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
         <div key={`inh-${a.id}`} className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-dashed border-line px-2.5 py-1.5 text-sm text-muted">
           <span className="font-mono">{a.role}</span><span className="text-xs">geerbt (global)</span>
           <div className="flex-1" />
-          <button onClick={() => loadInto.mutate(a.id)} className={BUTTON_TEXT.neben}>{tr("agents_panel.in_projekt_laden")}</button>
+          <button onClick={() => loadInto.mutate(a.id)} className={BUTTON_TEXT.secondary}>{tr("agents_panel.in_projekt_laden")}</button>
         </div>
       ))}
 
       {edit && (
-        <Dialog breit titel={tr(edit.id ? "agents_panel.agent_bearbeiten" : "agents_panel.agent_anlegen")}
+        <Dialog wide title={tr(edit.id ? "agents_panel.agent_bearbeiten" : "agents_panel.agent_anlegen")}
           onClose={() => setEdit(null)}
-          fuss={<DialogFuss onAbbrechen={() => setEdit(null)} laeuft={save.isPending}
-            deaktiviert={!edit.role?.trim()} onSpeichern={() => save.mutate(edit)}
-            speichernText={edit.id ? undefined : tr("common.anlegen")} />}>
+          foot={<DialogFoot onCancel={() => setEdit(null)} runs={save.isPending}
+            disabled={!edit.role?.trim()} onSave={() => save.mutate(edit)}
+            saveText={edit.id ? undefined : tr("common.anlegen")} />}>
           <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-2">
                 <F label={tr("agents_panel.rolle_kennung")}><input value={edit.role || ""} onChange={(e) => setEdit({ ...edit, role: e.target.value })} className={inp} /></F>
@@ -207,7 +207,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                   : <div className="text-xs text-muted">{tr("agents_panel.erst_speichern_dann_mcp_server_freigeben")}</div>}
               </Sec>
 
-              <button onClick={() => setShowAdv(!showAdv)} className={BUTTON_TEXT.neben}>
+              <button onClick={() => setShowAdv(!showAdv)} className={BUTTON_TEXT.secondary}>
                 {showAdv ? "▾" : "▸"} Erweitert (Fähigkeiten, Limits)
               </button>
               {showAdv && (
@@ -233,9 +233,9 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
           </div>
         </Dialog>
       )}
-      {loeschAgent && (
-        <LoeschDialog was={loeschAgent.role} laeuft={del.isPending}
-          onClose={() => setLoeschAgent(null)} onLoeschen={() => del.mutate(loeschAgent.id)} />
+      {deleteAgent && (
+        <DeleteDialog was={deleteAgent.role} runs={del.isPending}
+          onClose={() => setDeleteAgent(null)} onDelete={() => del.mutate(deleteAgent.id)} />
       )}
     </Area>
   );
@@ -323,7 +323,7 @@ function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
             <span>{i.name}</span>
             {i.set_keys?.length > 0 && <span className="text-xs text-muted">({i.set_keys.length} Variable(n))</span>}
             <div className="flex-1" />
-            <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => del(i.id)} />
+            <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => del(i.id)} />
           </div>
         ))}
         {instances?.length === 0 && <div className="text-xs text-muted">{tr("agents_panel.keine_mcp_server_freigegeben")}</div>}
@@ -345,7 +345,7 @@ function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
                 className="w-full rounded border border-line bg-card px-2 py-1 text-sm" />
             ))}
             {(server.variables || []).length === 0 && <div className="text-xs text-muted">{tr("agents_panel.dieser_server_braucht_keine_variablen")}</div>}
-            <button onClick={add} className={BUTTON_KLEIN.haupt}>{tr("agents_panel.instanz_hinzufuegen")}</button>
+            <button onClick={add} className={BUTTON_SMALL.primary}>{tr("agents_panel.instanz_hinzufuegen")}</button>
           </div>
         )}
       </div>

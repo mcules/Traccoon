@@ -9,11 +9,11 @@ import { NODE_TYPE_LABELS } from "./workflow/types";
 import { Area, Listing, LINE, BUTTON_TEXT} from "./ui";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 
-const PRIO_FARBE: Record<string, string> = {
+const PRIO_COLOR: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400", medium: "text-yellow-400",
   low: "text-sky-400", lowest: "text-slate-400",
 };
-const KAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
+const CAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
 
 export default function MyWork() {
   const { data } = useQuery({
@@ -30,27 +30,27 @@ export default function MyWork() {
   if (!data) return null;
 
   const s = data.stats;
-  const leer =
+  const empty =
     data.action.length === 0 && data.assigned.length === 0 && (wfTasks?.length ?? 0) === 0;
 
   return (
     <div className="mb-6 space-y-4">
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
-        <Kachel label={tr("my_work.wartet_auf_dich")} wert={s.action}
-          farbe={s.action ? "text-yellow-400" : undefined} />
-        <Kachel label={tr("my_work.mir_zugewiesen")} wert={s.assigned} />
-        <Kachel label={tr("my_work.laeuft_gerade")} wert={s.working}
-          farbe={s.working ? "text-sky-400" : undefined} />
-        <Kachel label={tr("my_work.erledigt_7_t")} wert={s.done_7d} farbe="text-green-400" />
-        <Kachel label={tr("my_work.projekte")} wert={s.projects} />
+        <Tile label={tr("my_work.wartet_auf_dich")} value={s.action}
+          color={s.action ? "text-yellow-400" : undefined} />
+        <Tile label={tr("my_work.mir_zugewiesen")} value={s.assigned} />
+        <Tile label={tr("my_work.laeuft_gerade")} value={s.working}
+          color={s.working ? "text-sky-400" : undefined} />
+        <Tile label={tr("my_work.erledigt_7_t")} value={s.done_7d} color="text-green-400" />
+        <Tile label={tr("my_work.projekte")} value={s.projects} />
         <Link to="/inbox" className="block">
-          <Kachel label={tr("my_work.ungelesen")} wert={s.unread}
-            farbe={s.unread ? "text-brand" : undefined} />
+          <Tile label={tr("my_work.ungelesen")} value={s.unread}
+            color={s.unread ? "text-brand" : undefined} />
         </Link>
       </div>
 
       {(wfTasks?.length ?? 0) > 0 && (
-        <Sektion titel={`🧭 ${tr("my_work.meine_schritte")}`} hinweis={tr("my_work.meine_schritte_hinweis")}>
+        <Section title={`🧭 ${tr("my_work.meine_schritte")}`} hint={tr("my_work.meine_schritte_hinweis")}>
           <div className="space-y-1.5">
             {wfTasks!.map((t) => (
               <button
@@ -72,22 +72,22 @@ export default function MyWork() {
               </button>
             ))}
           </div>
-        </Sektion>
+        </Section>
       )}
 
       {data.action.length > 0 && (
-        <Sektion titel={`⚡ ${tr("my_work.braucht_dich")}`} hinweis={tr("my_work.braucht_dich_hinweis")}>
-          <ProjektGroups tickets={data.action} />
-        </Sektion>
+        <Section title={`⚡ ${tr("my_work.braucht_dich")}`} hint={tr("my_work.braucht_dich_hinweis")}>
+          <ProjectGroups tickets={data.action} />
+        </Section>
       )}
 
       {data.assigned.length > 0 && (
-        <Sektion titel={`📋 ${tr("my_work.mir_zugewiesen")}`} hinweis={tr("my_work.mir_zugewiesen_hinweis")}>
-          <ProjektGroups tickets={data.assigned} />
-        </Sektion>
+        <Section title={`📋 ${tr("my_work.mir_zugewiesen")}`} hint={tr("my_work.mir_zugewiesen_hinweis")}>
+          <ProjectGroups tickets={data.assigned} />
+        </Section>
       )}
 
-      {leer && (
+      {empty && (
         <div className="rounded-lg border border-line bg-card p-4 text-sm text-muted">
           🎉 {tr("my_work.nichts_offen")}
         </div>
@@ -112,7 +112,7 @@ function TaskModal({ task, onClose }: { task: WorkflowTaskLite; onClose: () => v
       >
         <div className="mb-3 flex items-center justify-between">
           <div className="text-sm font-medium">{task.node_config.label || task.definition_name}</div>
-          <button onClick={onClose} className={BUTTON_TEXT.neben}>
+          <button onClick={onClose} className={BUTTON_TEXT.secondary}>
             ✕
           </button>
         </div>
@@ -134,7 +134,7 @@ function TaskModal({ task, onClose }: { task: WorkflowTaskLite; onClose: () => v
   );
 }
 
-function ProjektGroups({ tickets }: { tickets: MyTicket[] }) {
+function ProjectGroups({ tickets }: { tickets: MyTicket[] }) {
   // Group by project, keeping the order of first appearance (already sorted by updated_at).
   const groups: { id: number; key: string; name: string; items: MyTicket[] }[] = [];
   const idx = new Map<number, number>();
@@ -181,25 +181,25 @@ function TicketLine({ t }: { t: MyTicket }) {
         }`} title={wi.title}>{wi.icon} {wi.label}</span>
       )}
       {t.assigned_agent && <span className="hidden shrink-0 text-xs text-muted sm:inline">🤖 {t.assigned_agent}</span>}
-      <span className={`hidden shrink-0 text-xs sm:inline ${PRIO_FARBE[t.priority] || "text-muted"}`}>{t.priority}</span>
-      <span className="hidden shrink-0 text-xs text-muted md:inline">{KAT_LABEL[t.category] || t.category}</span>
+      <span className={`hidden shrink-0 text-xs sm:inline ${PRIO_COLOR[t.priority] || "text-muted"}`}>{t.priority}</span>
+      <span className="hidden shrink-0 text-xs text-muted md:inline">{CAT_LABEL[t.category] || t.category}</span>
       <span className="hidden shrink-0 text-xs text-muted lg:inline">{formatTime(t.updated_at)}</span>
     </Link>
   );
 }
 
-function Kachel({ label, wert: value, farbe }: { label: string; wert: number; farbe?: string }) {
+function Tile({ label, value: value, color }: { label: string; value: number; color?: string }) {
   return (
     <div className="rounded-lg border border-line bg-card p-2 sm:p-3">
-      <div className={`text-xl font-semibold sm:text-2xl ${farbe || "text-ink"}`}>{value}</div>
+      <div className={`text-xl font-semibold sm:text-2xl ${color || "text-ink"}`}>{value}</div>
       <div className="truncate text-[11px] leading-tight text-muted sm:text-xs" title={label}>{label}</div>
     </div>
   );
 }
 
-function Sektion({ titel: title, hinweis: hint, children }: { titel: string; hinweis: string; children: React.ReactNode }) {
+function Section({ title: title, hint: hint, children }: { title: string; hint: string; children: React.ReactNode }) {
   return (
-    <Area titel={title} hinweis={hint}>
+    <Area title={title} hint={hint}>
       <Listing>{children}</Listing>
     </Area>
   );

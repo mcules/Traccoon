@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { WorkflowGraph } from "./types";
-import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
+import { BUTTON_SMALL, BUTTON_TEXT} from "../ui";
 
 /**
  * "Describe it, I draw it": the entry for everybody who has no graph in their head.
@@ -11,44 +11,44 @@ import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
  * as always. And because it replaces the previous state there is an undo; otherwise one
  * attempt would cost the work of the last half hour.
  */
-export default function BaumeisterPanel({
+export default function BuilderPanel({
   defId,
   graph,
-  uebernehmen,
-  knotenZahl: nodeZahl,
+  adopt,
+  nodeNumber: nodeNumber,
 }: {
   defId?: number;
   graph: () => WorkflowGraph;
-  uebernehmen: (g: WorkflowGraph) => void;
-  knotenZahl: number;
+  adopt: (g: WorkflowGraph) => void;
+  nodeNumber: number;
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   // More than a start and an end on the canvas? Then a rebuild is usually meant.
-  const [umbauen, setUmbauen] = useState(nodeZahl > 2);
+  const [rebuild, setRebuild] = useState(nodeNumber > 2);
   const [running, setRunning] = useState(false);
-  const [erklaerung, setErklaerung] = useState("");
+  const [explanation, setExplanation] = useState("");
   const [error, setError] = useState<string[]>([]);
   const [err, setErr] = useState("");
-  const [vorher, setVorher] = useState<WorkflowGraph | null>(null);
+  const [before, setBefore] = useState<WorkflowGraph | null>(null);
 
-  const bauen = async () => {
+  const build = async () => {
     if (!defId || !text.trim()) return;
     setRunning(true);
     setErr("");
-    setErklaerung("");
+    setExplanation("");
     setError([]);
-    const alt = graph();
+    const old = graph();
     try {
-      const r = await workflowApi.entwurf(defId, text.trim(), umbauen ? alt : undefined);
+      const r = await workflowApi.draft(defId, text.trim(), rebuild ? old : undefined);
       if (!r.graph?.nodes?.length) {
         setErr(tr("baumeister.kein_ablauf"));
         return;
       }
-      setVorher(alt);
-      uebernehmen(r.graph as WorkflowGraph);
-      setErklaerung(r.erklaerung || "");
-      setError(r.fehler || []);
+      setBefore(old);
+      adopt(r.graph as WorkflowGraph);
+      setExplanation(r.explanation || "");
+      setError(r.error || []);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Fehler");
     } finally {
@@ -57,10 +57,10 @@ export default function BaumeisterPanel({
   };
 
   const back = () => {
-    if (!vorher) return;
-    uebernehmen(vorher);
-    setVorher(null);
-    setErklaerung("");
+    if (!before) return;
+    adopt(before);
+    setBefore(null);
+    setExplanation("");
     setError([]);
   };
 
@@ -68,7 +68,7 @@ export default function BaumeisterPanel({
     return (
       <div className="border-t border-line p-3">
         <button onClick={() => setOpen(true)}
-          className={BUTTON_KLEIN.neben}>
+          className={BUTTON_SMALL.secondary}>
           ✍ Beschreiben statt bauen
         </button>
       </div>
@@ -80,41 +80,41 @@ export default function BaumeisterPanel({
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted">{tr("baumeister_panel.beschreiben_statt_bauen")}</span>
         <button onClick={() => setOpen(false)} title={tr("baumeister_panel.schliessen")}
-          className={BUTTON_TEXT.neben}>✕</button>
+          className={BUTTON_TEXT.secondary}>✕</button>
       </div>
 
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={4}
-        placeholder={umbauen
+        placeholder={rebuild
           ? tr("baumeister.platzhalter_umbau")
           : tr("baumeister.platzhalter")}
         className="w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
       />
 
       <label className="flex items-center gap-2 text-[11px] text-muted">
-        <input type="checkbox" checked={umbauen} onChange={(e) => setUmbauen(e.target.checked)} />
+        <input type="checkbox" checked={rebuild} onChange={(e) => setRebuild(e.target.checked)} />
         {tr("baumeister.auf_bestand_bauen")}
       </label>
 
       <div className="flex items-center gap-2">
-        <button onClick={bauen} disabled={running || !text.trim() || !defId}
-          className={BUTTON_KLEIN.haupt}>
+        <button onClick={build} disabled={running || !text.trim() || !defId}
+          className={BUTTON_SMALL.primary}>
           {running ? "zeichnet…" : "Zeichnen lassen"}
         </button>
-        {vorher && (
+        {before && (
           <button onClick={back}
-            className={BUTTON_KLEIN.neben}>
+            className={BUTTON_SMALL.secondary}>
             {tr("baumeister.zurueck_zum_stand")}
           </button>
         )}
       </div>
 
       {err && <div className="text-[11px] text-red-300">{err}</div>}
-      {erklaerung && (
+      {explanation && (
         <div className="rounded border border-line bg-surface p-2 text-[11px] text-muted">
-          {erklaerung}
+          {explanation}
           <div className="mt-1 opacity-70">
             {tr("baumeister.auf_der_flaeche")}
           </div>
@@ -122,7 +122,7 @@ export default function BaumeisterPanel({
       )}
       {error.length > 0 && (
         <div className="text-[11px] text-amber-300">
-          {tr("baumeister.fehlende_stellen", { anzahl: error.length })}
+          {tr("baumeister.fehlende_stellen", { count: error.length })}
         </div>
       )}
     </div>

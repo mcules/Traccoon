@@ -26,8 +26,8 @@ const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text
  * nobody looks for a save button. A field with multiple selection shows its values as marks
  * that can be selected and deselected.
  */
-export default function ArtifactFields({ artifactId, compact, alle: all }: {
-  artifactId: number; compact?: boolean; alle?: boolean;
+export default function ArtifactFields({ artifactId, compact, all: all }: {
+  artifactId: number; compact?: boolean; all?: boolean;
 }) {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
@@ -36,7 +36,7 @@ export default function ArtifactFields({ artifactId, compact, alle: all }: {
     queryFn: () => api.get<Answer>(`/artifacts/${artifactId}/values`),
   });
 
-  const speichern = useMutation({
+  const save = useMutation({
     mutationFn: (values: Record<string, any[]>) =>
       api.put<Answer>(`/artifacts/${artifactId}/values`, { values: values }),
     onSuccess: () => {
@@ -55,8 +55,8 @@ export default function ArtifactFields({ artifactId, compact, alle: all }: {
   // Built-in fields (status, priority, issue type …) have their familiar masks, and showing
   // them here as well would mean the same entry twice on one screen. `alle` shows them
   // deliberately (for an own artifact type without a mask for instance).
-  const aktive = (data?.fields || []).filter((f) => f.enabled && (all || !f.source));
-  if (isLoading || aktive.length === 0) return null;
+  const active = (data?.fields || []).filter((f) => f.enabled && (all || !f.source));
+  if (isLoading || active.length === 0) return null;
 
   return (
     <div className={compact ? "space-y-2" : "space-y-3"}>
@@ -65,18 +65,18 @@ export default function ArtifactFields({ artifactId, compact, alle: all }: {
           {err}
         </div>
       )}
-      {aktive.map((f) => (
+      {active.map((f) => (
         <FieldLine
-          key={f.id} feld={f} werte={data?.values[f.key] || []}
-          onSet={(values) => speichern.mutate({ [f.key]: values })}
+          key={f.id} field={f} values={data?.values[f.key] || []}
+          onSet={(values) => save.mutate({ [f.key]: values })}
         />
       ))}
     </div>
   );
 }
 
-function FieldLine({ feld: field, werte: values, onSet }: {
-  feld: Field; werte: any[]; onSet: (values: any[]) => void;
+function FieldLine({ field: field, values: values, onSet }: {
+  field: Field; values: any[]; onSet: (values: any[]) => void;
 }) {
   const label = (
     <label className="mb-0.5 block text-xs text-muted" title={field.description || undefined}>
@@ -86,17 +86,17 @@ function FieldLine({ feld: field, werte: values, onSet }: {
   );
 
   if (field.kind === "select") {
-    const gewaehlt = new Set(values.map(String));
-    const waehlbar = field.dynamic_options.length
+    const chosen = new Set(values.map(String));
+    const selectable = field.dynamic_options.length
       ? field.dynamic_options.map(([v, l]) => ({ id: v, value: v, label: l, enabled: true }))
-      : field.options.filter((o) => o.enabled || gewaehlt.has(o.value));
+      : field.options.filter((o) => o.enabled || chosen.has(o.value));
     return (
       <div>
         {label}
         {field.multi ? (
           <div className="flex flex-wrap gap-1.5">
-            {waehlbar.map((o) => {
-              const an = gewaehlt.has(o.value);
+            {selectable.map((o) => {
+              const an = chosen.has(o.value);
               return (
                 <button
                   key={o.id}
@@ -110,7 +110,7 @@ function FieldLine({ feld: field, werte: values, onSet }: {
                 </button>
               );
             })}
-            {waehlbar.length === 0 && (
+            {selectable.length === 0 && (
               <span className="text-xs text-muted">{tr("artifact_fields.keine_werte_gepflegt")}</span>
             )}
           </div>
@@ -121,7 +121,7 @@ function FieldLine({ feld: field, werte: values, onSet }: {
             className={inp}
           >
             <option value="">—</option>
-            {waehlbar.map((o) => (
+            {selectable.map((o) => (
               <option key={o.id} value={o.value}>{o.label || o.value}</option>
             ))}
           </select>
@@ -144,14 +144,14 @@ function FieldLine({ feld: field, werte: values, onSet }: {
     <div>
       {label}
       {field.multi
-        ? <MehrfachText werte={values} kind={field.kind} onSet={onSet} />
-        : <EinzelText wert={values[0]} kind={field.kind} onSet={(w) => onSet(w === "" ? [] : [w])} />}
+        ? <MultiText values={values} kind={field.kind} onSet={onSet} />
+        : <SingleText value={values[0]} kind={field.kind} onSet={(w) => onSet(w === "" ? [] : [w])} />}
     </div>
   );
 }
 
-function EinzelText({ wert: value, kind, onSet }: {
-  wert: any; kind: string; onSet: (w: string) => void;
+function SingleText({ value: value, kind, onSet }: {
+  value: any; kind: string; onSet: (w: string) => void;
 }) {
   const [text, setText] = useState(value != null ? String(value) : "");
   // Take over values changed from outside (another user, a reload).
@@ -168,8 +168,8 @@ function EinzelText({ wert: value, kind, onSet }: {
   );
 }
 
-function MehrfachText({ werte: values, kind, onSet }: {
-  werte: any[]; kind: string; onSet: (w: any[]) => void;
+function MultiText({ values: values, kind, onSet }: {
+  values: any[]; kind: string; onSet: (w: any[]) => void;
 }) {
   const [fresh, setNew] = useState("");
   return (
@@ -178,7 +178,7 @@ function MehrfachText({ werte: values, kind, onSet }: {
         <span key={`${w}-${i}`} className="flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-xs">
           {String(w)}
           <button onClick={() => onSet(values.filter((_, j) => j !== i))}
-            className={BUTTON_TEXT.gefahr} title={tr("artifact_fields.entfernen")}>✕</button>
+            className={BUTTON_TEXT.danger} title={tr("artifact_fields.entfernen")}>✕</button>
         </span>
       ))}
       <input

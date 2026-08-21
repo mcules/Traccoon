@@ -199,7 +199,7 @@ export default function LifecycleView({
     const visuals = computeVisuals(agentStatus);
     const holdSub =
       agentStatus === "hold" && holdReason
-        ? tr("lifecycle.grund", { grund: HOLD_REASON[holdReason] ? tr(HOLD_REASON[holdReason]) : holdReason })
+        ? tr("lifecycle.grund", { reason: HOLD_REASON[holdReason] ? tr(HOLD_REASON[holdReason]) : holdReason })
         : undefined;
 
     const nodes: Node<LifecycleNodeData>[] = (Object.keys(NODE_LABEL) as NodeId[]).map((id) => ({

@@ -37,14 +37,14 @@ const handleDot = "!h-2.5 !w-2.5 !border !border-card";
  * the target node then looks as if it hung in the air. That is why all exits existing edges
  * actually use are added here as well.
  */
-export function useSourceHandles(nodeId: string, vorgabe: SourceHandleDef[]): SourceHandleDef[] {
-  const genutzt = useStore((st) => {
-    const namen = new Set<string>();
-    for (const e of st.edges) if (e.source === nodeId) namen.add(e.sourceHandle || "out");
-    return [...namen].sort().join("\u0000");
+export function useSourceHandles(nodeId: string, fallbackValue: SourceHandleDef[]): SourceHandleDef[] {
+  const used = useStore((st) => {
+    const names = new Set<string>();
+    for (const e of st.edges) if (e.source === nodeId) names.add(e.sourceHandle || "out");
+    return [...names].sort().join("\u0000");
   });
-  const extra = genutzt ? genutzt.split("\u0000") : [];
-  const out = [...vorgabe];
+  const extra = used ? used.split("\u0000") : [];
+  const out = [...fallbackValue];
   for (const name of extra) {
     if (!out.some((h) => h.id === name)) out.push({ id: name, label: name });
   }
@@ -59,7 +59,7 @@ export function BaseNode({
   accent,
   selected,
   runtimeState,
-  aus,
+  from,
   hasTarget = true,
   sources = [{ id: "out" }],
   children,
@@ -72,7 +72,7 @@ export function BaseNode({
   selected?: boolean;
   runtimeState?: RuntimeState;
   /** Switched off step: visibly pale, so that it is not overlooked in the graph. */
-  aus?: boolean;
+  from?: boolean;
   hasTarget?: boolean;
   sources?: SourceHandleDef[];
   children?: React.ReactNode;
@@ -90,7 +90,7 @@ export function BaseNode({
     <div
       className={`relative max-w-[280px] border-t-4 ${accent} rounded-md border ${border} bg-card px-3 py-2 text-ink shadow-sm ${
         labeled ? "pb-5" : ""
-      } ${aus ? "opacity-60 [border-style:dashed]" : ""}`}
+      } ${from ? "opacity-60 [border-style:dashed]" : ""}`}
       style={{ minWidth: Math.max(160, labeled * 92) }}
     >
       {hasTarget && (
@@ -99,7 +99,7 @@ export function BaseNode({
       <div className="flex items-center gap-1.5 text-xs font-medium">
         {icon && <span>{icon}</span>}
         <span className="truncate">{title}</span>
-        {aus && <span className="ml-auto text-[9px] uppercase text-amber-300">aus</span>}
+        {from && <span className="ml-auto text-[9px] uppercase text-amber-300">aus</span>}
         {rs && <span className={`ml-auto ${rs.text}`}>{rs.icon}</span>}
       </div>
       {children && <div className="mt-1 space-y-0.5 text-[11px] text-muted">{children}</div>}

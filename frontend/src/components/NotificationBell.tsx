@@ -43,7 +43,7 @@ export default function NotificationBell() {
     inv();
   }
 
-  async function gelesen(n: Notice) {
+  async function read(n: Notice) {
     if (n.read) return;
     await api.post(`/notifications/${n.id}/read`);
     inv();
@@ -75,7 +75,7 @@ export default function NotificationBell() {
               {all ? tr("notification_bell.verlauf") : tr("notification_bell.offen")}
             </span>
             <div className="flex items-center gap-2">
-              <button onClick={() => setAll((v) => !v)} className={BUTTON_TEXT.neben}>
+              <button onClick={() => setAll((v) => !v)} className={BUTTON_TEXT.secondary}>
                 {all ? tr("notification_bell.nur_offene") : tr("notification_bell.alle_zeigen")}
               </button>
               <button onClick={readAll} className="text-xs text-brand">{tr("notification_bell.alle_gelesen")}</button>
@@ -83,7 +83,7 @@ export default function NotificationBell() {
           </div>
           {list?.map((n) => {
             const to = target(n);
-            const inhalt = (
+            const content = (
               <>
                 <div className="flex items-start gap-1.5">
                   <span className="flex-1 font-medium">{n.title}</span>
@@ -96,9 +96,9 @@ export default function NotificationBell() {
             const cls = `block rounded p-2 text-sm hover:bg-surface ${n.read ? "opacity-60" : ""}`;
             return to ? (
               <Link key={n.id} to={to} className={cls}
-                onClick={() => { setOpen(false); gelesen(n); }}>{inhalt}</Link>
+                onClick={() => { setOpen(false); read(n); }}>{content}</Link>
             ) : (
-              <div key={n.id} className={cls} onClick={() => gelesen(n)}>{inhalt}</div>
+              <div key={n.id} className={cls} onClick={() => read(n)}>{content}</div>
             );
           })}
           {list?.length === 0 && (

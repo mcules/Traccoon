@@ -15,23 +15,23 @@ import { useCanvasReadOnly } from "./canvasMode";
  */
 function ruecklaufPath(
   sx: number, sy: number, tx: number, ty: number, id: string,
-  rand: { links: number; rechts: number },
+  edge: { links: number; right: number },
 ): [string, number, number] {
   // The track lies OUTSIDE all nodes: only that way does it cross none of them for certain.
   // Several back edges per side are staggered so that they do not lie on top of each other.
-  const versatz = (Math.abs(hash(id)) % 4) * 26;
+  const offset = (Math.abs(hash(id)) % 4) * 26;
   const page = sx >= tx ? 1 : -1;
-  const lane = page > 0 ? rand.rechts + 48 + versatz : rand.links - 48 - versatz;
-  const runter = sy + 26;                 // erst ein Stück unter die Quelle
-  const rauf = ty - 26;                   // und oberhalb des Ziels wieder herein
+  const lane = page > 0 ? edge.right + 48 + offset : edge.links - 48 - offset;
+  const down = sy + 26;                 // erst ein Stück unter die Quelle
+  const up = ty - 26;                   // und oberhalb des Ziels wieder herein
   const r = 14 * page;
   return [
-    `M ${sx},${sy} L ${sx},${runter - 14} Q ${sx},${runter} ${sx + r},${runter} ` +
-    `L ${lane - r},${runter} Q ${lane},${runter} ${lane},${runter - 14} ` +
-    `L ${lane},${rauf + 14} Q ${lane},${rauf} ${lane - r},${rauf} ` +
-    `L ${tx + r},${rauf} Q ${tx},${rauf} ${tx},${rauf + 14} L ${tx},${ty}`,
+    `M ${sx},${sy} L ${sx},${down - 14} Q ${sx},${down} ${sx + r},${down} ` +
+    `L ${lane - r},${down} Q ${lane},${down} ${lane},${down - 14} ` +
+    `L ${lane},${up + 14} Q ${lane},${up} ${lane - r},${up} ` +
+    `L ${tx + r},${up} Q ${tx},${up} ${tx},${up + 14} L ${tx},${ty}`,
     lane,
-    (runter + rauf) / 2,
+    (down + up) / 2,
   ];
 }
 
@@ -65,25 +65,25 @@ export default function ConditionEdge({
   const feedback = !!data?.feedback;
   // Outer edges of the picture (as a string, so that the selection stays comparable and does
   // not trigger anew on every render).
-  const randKey = useStore((st) => {
+  const edgeKey = useStore((st) => {
     if (!feedback) return "";
-    let links = Infinity, rechts = -Infinity;
+    let links = Infinity, right = -Infinity;
     for (const [, n] of st.nodeLookup) {
       links = Math.min(links, n.position.x);
-      rechts = Math.max(rechts, n.position.x + (n.measured?.width ?? 220));
+      right = Math.max(right, n.position.x + (n.measured?.width ?? 220));
     }
-    return `${Math.round(links)}|${Math.round(rechts)}`;
+    return `${Math.round(links)}|${Math.round(right)}`;
   });
-  const [l, r] = randKey.split("|");
-  const rand = { links: Number(l) || 0, rechts: Number(r) || 0 };
+  const [l, r] = edgeKey.split("|");
+  const edge = { links: Number(l) || 0, right: Number(r) || 0 };
   const [path, labelX, labelY] = feedback
-    ? ruecklaufPath(sourceX, sourceY, targetX, targetY, id, rand)
+    ? ruecklaufPath(sourceX, sourceY, targetX, targetY, id, edge)
     : getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const readOnly = useCanvasReadOnly();
   const { deleteElements } = useReactFlow();
   const [hover, setHover] = useState(false);
   const text = (label as string) || (data?.label as string) || "";
-  const aktiv = !readOnly && (hover || selected);
+  const active = !readOnly && (hover || selected);
 
   return (
     <>
@@ -126,7 +126,7 @@ export default function ConditionEdge({
               {text}
             </span>
           )}
-          {aktiv && (
+          {active && (
             <button
               type="button"
               title={tr("condition_edge.verbindung_loeschen")}

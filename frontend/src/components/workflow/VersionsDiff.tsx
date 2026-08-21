@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { tr } from "../../i18n";
 import { workflowApi, type WfDiff, type WfDiffNode } from "../../api";
-import { Dialog, Fehlerzeile } from "../ui";
+import { Dialog, Errorrow } from "../ui";
 
 /**
  * Was sich zwischen zwei Fassungen geändert hat.
@@ -12,24 +12,24 @@ import { Dialog, Fehlerzeile } from "../ui";
  * der man sucht. Die Anordnung bleibt außen vor; sie ist keine Fassung wert und deshalb auch
  * kein Unterschied.
  */
-export default function VersionsDiff({ defId, versionId, gegen, titel: title, onClose }: {
-  defId: number; versionId: number; gegen?: number; titel: string; onClose: () => void;
+export default function VersionsDiff({ defId, versionId, against, title: title, onClose }: {
+  defId: number; versionId: number; against?: number; title: string; onClose: () => void;
 }) {
   const { data, error, isLoading } = useQuery({
-    queryKey: ["wf-diff", defId, versionId, gegen ?? null],
-    queryFn: () => workflowApi.diff(defId, versionId, gegen),
+    queryKey: ["wf-diff", defId, versionId, against ?? null],
+    queryFn: () => workflowApi.diff(defId, versionId, against),
   });
 
   return (
-    <Dialog breit titel={title} onClose={onClose}>
+    <Dialog wide title={title} onClose={onClose}>
       {isLoading && <p className="text-sm text-muted">{tr("common.laedt")}</p>}
-      <Fehlerzeile text={error ? String((error as Error).message || error) : ""} />
-      {data && <DiffInhalt d={data} />}
+      <Errorrow text={error ? String((error as Error).message || error) : ""} />
+      {data && <DiffContent d={data} />}
     </Dialog>
   );
 }
 
-function DiffInhalt({ d }: { d: WfDiff }) {
+function DiffContent({ d }: { d: WfDiff }) {
   if (d.identical) {
     return (
       <p className="text-sm text-muted">
@@ -41,12 +41,12 @@ function DiffInhalt({ d }: { d: WfDiff }) {
     <div className="space-y-4 text-sm">
       <p className="text-xs text-muted">
         {d.from_version === null
-          ? tr("diff.gegen_nichts", { bis: d.to_version })
-          : tr("diff.von_bis", { von: d.from_version, bis: d.to_version })}
+          ? tr("diff.gegen_nichts", { to: d.to_version })
+          : tr("diff.von_bis", { from: d.from_version, to: d.to_version })}
       </p>
 
-      <Group titel={tr("diff.knoten_neu")} eintraege={d.nodes_added} farbe="text-green-400" />
-      <Group titel={tr("diff.knoten_weg")} eintraege={d.nodes_removed} farbe="text-red-400" />
+      <Group title={tr("diff.knoten_neu")} entries={d.nodes_added} color="text-green-400" />
+      <Group title={tr("diff.knoten_weg")} entries={d.nodes_removed} color="text-red-400" />
 
       {d.nodes_changed.length > 0 && (
         <div>
@@ -81,14 +81,14 @@ function DiffInhalt({ d }: { d: WfDiff }) {
         </div>
       )}
 
-      <Edges titel={tr("diff.kanten_neu")} texte={d.edges_added} farbe="text-green-400" />
-      <Edges titel={tr("diff.kanten_weg")} texte={d.edges_removed} farbe="text-red-400" />
+      <Edges title={tr("diff.kanten_neu")} texts={d.edges_added} color="text-green-400" />
+      <Edges title={tr("diff.kanten_weg")} texts={d.edges_removed} color="text-red-400" />
     </div>
   );
 }
 
-function Group({ titel: title, eintraege: entries, farbe }: {
-  titel: string; eintraege: WfDiffNode[]; farbe: string;
+function Group({ title: title, entries: entries, color }: {
+  title: string; entries: WfDiffNode[]; color: string;
 }) {
   if (entries.length === 0) return null;
   return (
@@ -96,7 +96,7 @@ function Group({ titel: title, eintraege: entries, farbe }: {
       <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{title}</div>
       <ul className="space-y-0.5">
         {entries.map((k) => (
-          <li key={k.id} className={`text-sm ${farbe}`}>
+          <li key={k.id} className={`text-sm ${color}`}>
             {k.label || k.id} <span className="font-mono text-xs opacity-70">{k.id}</span>
           </li>
         ))}
@@ -105,13 +105,13 @@ function Group({ titel: title, eintraege: entries, farbe }: {
   );
 }
 
-function Edges({ titel: title, texte, farbe }: { titel: string; texte: string[]; farbe: string }) {
-  if (texte.length === 0) return null;
+function Edges({ title: title, texts, color }: { title: string; texts: string[]; color: string }) {
+  if (texts.length === 0) return null;
   return (
     <div>
       <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">{title}</div>
       <ul className="space-y-0.5">
-        {texte.map((t) => <li key={t} className={`font-mono text-xs ${farbe}`}>{t}</li>)}
+        {texts.map((t) => <li key={t} className={`font-mono text-xs ${color}`}>{t}</li>)}
       </ul>
     </div>
   );

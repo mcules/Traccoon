@@ -12,11 +12,11 @@ import { tr } from "../../../i18n";
 export default function LoopConfig({
   config,
   onChange,
-  felder: fields = [],
+  fields: fields = [],
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
-  felder?: ContextField[];
+  fields?: ContextField[];
 }) {
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
   const set = (p: Partial<NodeConfig>) => onChange({ ...config, ...p });
@@ -29,8 +29,8 @@ export default function LoopConfig({
       <label className="block text-xs font-medium text-muted">
         Liste (Kontext-Pfad)
         <input
-          value={(config.liste as string) || ""}
-          onChange={(e) => set({ liste: e.target.value.trim() })}
+          value={(config.list as string) || ""}
+          onChange={(e) => set({ list: e.target.value.trim() })}
           list={fields.length ? "wf-listenfelder" : undefined}
           placeholder="tool.json.items"
           className={`mt-1 font-mono ${inp}`}
@@ -72,8 +72,8 @@ export default function LoopConfig({
       <label className="block text-xs font-medium text-muted">
         Ergebnis je Durchlauf einsammeln (Kontext-Pfad, optional)
         <input
-          value={(config.sammle as string) || ""}
-          onChange={(e) => set({ sammle: e.target.value.trim() })}
+          value={(config.collect as string) || ""}
+          onChange={(e) => set({ collect: e.target.value.trim() })}
           placeholder="tool.json"
           className={`mt-1 font-mono ${inp}`}
         />

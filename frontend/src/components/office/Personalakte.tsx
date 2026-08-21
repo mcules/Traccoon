@@ -40,7 +40,7 @@ import { tr } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { officeApi, type AgentRecord, type Scope } from "./api.ts";
-import { durationText, statusFarbe, statusText, tokenText, usdText, zahl } from "./TopBar.tsx";
+import { durationText, statusColor, statusText, tokenText, usdText, number } from "./TopBar.tsx";
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
 
@@ -48,10 +48,10 @@ import { durationText, statusFarbe, statusText, tokenText, usdText, zahl } from 
  *  key figure without its window is not a key figure. 30 days is the default value of
  *  `run_retention_days`; beyond that there simply are no runs any more, and a window that
  *  promises more than the retention delivers would be an empty promise. */
-const WINDOW: readonly { h: number; kurz: string; lang: string }[] = [
-  { h: 24, kurz: "akte.fenster_24h_kurz", lang: "akte.fenster_24h" },
-  { h: 24 * 7, kurz: "akte.fenster_7t_kurz", lang: "akte.fenster_7t" },
-  { h: 24 * 30, kurz: "akte.fenster_30t_kurz", lang: "akte.fenster_30t" },
+const WINDOW: readonly { h: number; kurz: string; long: string }[] = [
+  { h: 24, kurz: "akte.fenster_24h_kurz", long: "akte.fenster_24h" },
+  { h: 24 * 7, kurz: "akte.fenster_7t_kurz", long: "akte.fenster_7t" },
+  { h: 24 * 30, kurz: "akte.fenster_30t_kurz", long: "akte.fenster_30t" },
 ];
 
 /** Default: the whole retention window. The file is a review, not an alarm clock. */
@@ -62,7 +62,7 @@ const WINDOW_STD = 24 * 30;
 const TOOL_LIMIT = 8;
 
 /** An aggregate over weeks does not change every second. */
-const AKTE_REFETCH_MS = 60_000;
+const FILE_REFETCH_MS = 60_000;
 
 // ── Farben ──────────────────────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ const AKTE_REFETCH_MS = 60_000;
  *  class names as text from the source, so a name assembled at runtime would not exist in the
  *  finished CSS at all. And if `ST_FARBE` drifts one day, the entry is missing here: the bar
  *  turns grey instead of being silently wrong. */
-const FLAECHE: Record<string, string> = {
+const AREA: Record<string, string> = {
   "text-green-400": "bg-green-400",
   "text-orange-400": "bg-orange-400",
   "text-red-400": "bg-red-400",
@@ -81,8 +81,8 @@ const FLAECHE: Record<string, string> = {
   "text-sky-400": "bg-sky-400",
 };
 
-function flaeche(status: string): string {
-  return FLAECHE[statusFarbe(status)] ?? "bg-line";
+function area(status: string): string {
+  return AREA[statusColor(status)] ?? "bg-line";
 }
 
 // ── The three bars ──────────────────────────────────────────────────────────────────────────
@@ -91,26 +91,26 @@ function flaeche(status: string): string {
 // are computed by the server. If `success` stands green in the agent monitor, "delivered" is
 // the same green here; otherwise the same run would look different in two views.
 
-interface BalkenArt {
+interface BarArt {
   key: "delivered" | "waiting" | "aborted";
   label: string;
   /** For the colour, see above. */
   status: string;
-  titel: string;
+  title: string;
 }
 
-const BALKEN: readonly BalkenArt[] = [
+const BAR: readonly BarArt[] = [
   {
     key: "delivered", label: "akte.balken_abgeliefert", status: "success",
-    titel: "akte.balken_abgeliefert_titel",
+    title: "akte.balken_abgeliefert_titel",
   },
   {
     key: "waiting", label: "akte.balken_wartet", status: "blocked",
-    titel: "akte.balken_wartet_titel",
+    title: "akte.balken_wartet_titel",
   },
   {
     key: "aborted", label: "akte.balken_abgebrochen", status: "failed",
-    titel: "akte.balken_abgebrochen_titel",
+    title: "akte.balken_abgebrochen_titel",
   },
 ];
 
@@ -118,40 +118,40 @@ const BALKEN: readonly BalkenArt[] = [
 
 /** One decimal place with a German comma. By hand instead of `toLocaleString`, so that the
  *  same number looks the same in every browser, the same reasoning as with `zahl` in `TopBar`. */
-function komma1(v: number): string {
+function comma1(v: number): string {
   return v.toFixed(1).replace(".", ",");
 }
 
-function prozent(part: number, ganzes: number): number {
-  return ganzes > 0 ? (part / ganzes) * 100 : 0;
+function percent(part: number, whole: number): number {
+  return whole > 0 ? (part / whole) * 100 : 0;
 }
 
 /** How long ago, roughly. The exact moment stands in the `title`. */
-function herText(iso: string | null | undefined, now: number): string {
+function agoText(iso: string | null | undefined, now: number): string {
   if (!iso) return "—";
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "—";
   const d = Math.max(0, now - t);
   const min = Math.round(d / 60_000);
   if (min < 1) return "gerade eben";
-  if (min < 60) return tr("akte.vor_min", { anzahl: min });
+  if (min < 60) return tr("akte.vor_min", { count: min });
   const std = Math.round(min / 60);
-  if (std < 48) return tr("akte.vor_std", { anzahl: std });
-  return tr("akte.vor_tagen", { anzahl: Math.round(std / 24) });
+  if (std < 48) return tr("akte.vor_std", { count: std });
+  return tr("akte.vor_tagen", { count: Math.round(std / 24) });
 }
 
 /** Label of a histogram bucket. `lt_ms` is the **upper** bound; when it is missing this is the
  *  open bucket at the top. */
-function eimerText(lt: number | null | undefined, vorher: number | null): string {
+function bucketText(lt: number | null | undefined, before: number | null): string {
   if (lt === null || lt === undefined || !Number.isFinite(lt)) {
-    return vorher !== null ? `> ${durationText(vorher)}` : tr("akte.darueber");
+    return before !== null ? `> ${durationText(before)}` : tr("akte.darueber");
   }
-  return vorher !== null ? `${durationText(vorher)} – ${durationText(lt)}` : `< ${durationText(lt)}`;
+  return before !== null ? `${durationText(before)} – ${durationText(lt)}` : `< ${durationText(lt)}`;
 }
 
 // ── Interface ───────────────────────────────────────────────────────────────────────────────
 
-export interface PersonalakteProps {
+export interface PersonnelfileProps {
   scope: Scope;
   /** Role that should be expanded and scrolled to, the role of the selected figure.
    *  `null` or missing means nobody is selected, and then the choice stays with the viewer. A
@@ -164,18 +164,18 @@ export interface PersonalakteProps {
 
 // ── The component ───────────────────────────────────────────────────────────────────────────
 
-export default function Personalakte({
+export default function Personnelfile({
   scope, focusAgent, initialSinceHours, className,
-}: PersonalakteProps): JSX.Element {
+}: PersonnelfileProps): JSX.Element {
   const [hours, setHours] = useState<number>(initialSinceHours ?? WINDOW_STD);
   const [open, setOpen] = useState<string | null>(focusAgent ?? null);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
-  const akte = useQuery({
+  const file = useQuery({
     queryKey: ["office", "agents", scopeKey, hours],
     queryFn: () => officeApi.agents(scope, { sinceHours: hours, toolLimit: TOOL_LIMIT }),
-    refetchInterval: AKTE_REFETCH_MS,
+    refetchInterval: FILE_REFETCH_MS,
     refetchOnWindowFocus: false,
     staleTime: 30_000,
     retry: 1,
@@ -191,17 +191,17 @@ export default function Personalakte({
       ?.scrollIntoView({ block: "nearest" });
   }, [focusAgent]);
 
-  const gemessen = akte.data?.since_hours ?? hours;
-  const hits = WINDOW.find((f) => f.h === gemessen);
-  const windowText = hits ? tr(hits.lang)
-    : tr("akte.fenster_tage", { anzahl: Math.round(gemessen / 24) });
+  const measured = file.data?.since_hours ?? hours;
+  const hits = WINDOW.find((f) => f.h === measured);
+  const windowText = hits ? tr(hits.long)
+    : tr("akte.fenster_tage", { count: Math.round(measured / 24) });
 
   // Order: the busiest role first, on a tie the most recently active one. That is the order in
   // which one looks, and it is stable because it does not depend on who is selected right
   // now.
-  const rollen = useMemo(() => {
-    const kopie = [...(akte.data?.agents ?? [])];
-    kopie.sort((a, b) => {
+  const roles = useMemo(() => {
+    const copy = [...(file.data?.agents ?? [])];
+    copy.sort((a, b) => {
       const d = (b.runs ?? 0) - (a.runs ?? 0);
       if (d !== 0) return d;
       const ta = a.last_run_at ? Date.parse(a.last_run_at) : 0;
@@ -209,8 +209,8 @@ export default function Personalakte({
       if (tb !== ta) return tb - ta;
       return a.agent < b.agent ? -1 : 1;
     });
-    return kopie;
-  }, [akte.data]);
+    return copy;
+  }, [file.data]);
 
   const now = Date.now();
 
@@ -226,7 +226,7 @@ export default function Personalakte({
           {WINDOW.map((f) => (
             <button key={f.h} type="button" onClick={() => setHours(f.h)}
               aria-pressed={hours === f.h}
-              title={`Kennzahlen ${f.lang}`}
+              title={`Kennzahlen ${f.long}`}
               className={"px-1.5 py-0.5 " + (hours === f.h ? "bg-brand text-white" : "text-muted hover:bg-surface")}>
               {f.kurz}
             </button>
@@ -238,23 +238,23 @@ export default function Personalakte({
         {tr("akte.aufbewahrung_hinweis")}
       </p>
 
-      {akte.isLoading && <div className="py-4 text-center text-xs text-muted">{tr("akte.wird_geladen")}</div>}
+      {file.isLoading && <div className="py-4 text-center text-xs text-muted">{tr("akte.wird_geladen")}</div>}
 
-      {akte.error && (
+      {file.error && (
         <div className="rounded border border-red-400/40 bg-red-400/5 px-2 py-1 text-xs text-red-400">
-          {tr("akte.nicht_ladbar")}: {(akte.error as Error).message}
+          {tr("akte.nicht_ladbar")}: {(file.error as Error).message}
         </div>
       )}
 
-      {!akte.isLoading && !akte.error && rollen.length === 0 && (
+      {!file.isLoading && !file.error && roles.length === 0 && (
         <div className="py-4 text-center text-xs text-muted">
-          {tr("akte.kein_lauf", { fenster: windowText })}
+          {tr("akte.kein_lauf", { window: windowText })}
         </div>
       )}
 
-      {rollen.map((r) => (
-        <Rollenkarte key={r.agent} r={r} jetzt={now}
-          offen={open === r.agent}
+      {roles.map((r) => (
+        <Rolecard key={r.agent} r={r} now={now}
+          open={open === r.agent}
           onToggle={() => setOpen((v) => (v === r.agent ? null : r.agent))} />
       ))}
     </div>
@@ -263,24 +263,24 @@ export default function Personalakte({
 
 // ── One role ────────────────────────────────────────────────────────────────────────────────
 
-function Rollenkarte({ r, jetzt: now, offen: open, onToggle }: {
+function Rolecard({ r, now: now, open: open, onToggle }: {
   r: AgentRecord;
-  jetzt: number;
-  offen: boolean;
+  now: number;
+  open: boolean;
   onToggle: () => void;
 }) {
   const runs = r.runs ?? 0;
-  const values: Record<BalkenArt["key"], number> = {
+  const values: Record<BarArt["key"], number> = {
     delivered: r.delivered ?? 0,
     waiting: r.waiting ?? 0,
     aborted: r.aborted ?? 0,
   };
-  const beurteilt = values.delivered + values.waiting + values.aborted;
+  const judged = values.delivered + values.waiting + values.aborted;
   // What is left over is still running (or has a status the server assigns to none of the
   // three groups). It gets a grey remainder of its own; distributing it among the three would
   // be exactly the kind of silent arithmetic this view is meant to avoid.
-  const remainder = Math.max(0, runs - beurteilt);
-  const basis = beurteilt + remainder;
+  const remainder = Math.max(0, runs - judged);
+  const basis = judged + remainder;
 
   return (
     <div data-rolle={r.agent}
@@ -289,21 +289,21 @@ function Rollenkarte({ r, jetzt: now, offen: open, onToggle }: {
         className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-xs">
         <span className="shrink-0 text-[11px] text-muted">{open ? "▾" : "▸"}</span>
         <span className="font-medium">{r.agent}</span>
-        <span className="text-muted">{zahl(runs)} {tr(runs === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}</span>
+        <span className="text-muted">{number(runs)} {tr(runs === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}</span>
         {(r.running ?? 0) > 0 && (
           <span className="text-yellow-400" title={`${r.running} laufen gerade`}>
-            ● {zahl(r.running ?? 0)} aktiv
+            ● {number(r.running ?? 0)} aktiv
           </span>
         )}
         <div className="flex-1" />
         <span className="text-muted" title={tr("akte.letzter_lauf")}>
-          {herText(r.last_run_at, now)}
+          {agoText(r.last_run_at, now)}
         </span>
       </button>
 
-      <Balkenband werte={values} rest={remainder} basis={basis} />
+      <Barband values={values} rest={remainder} basis={basis} />
 
-      {open && <Details r={r} basis={basis} werte={values} rest={remainder} />}
+      {open && <Details r={r} basis={basis} values={values} rest={remainder} />}
     </div>
   );
 }
@@ -314,39 +314,39 @@ function Rollenkarte({ r, jetzt: now, offen: open, onToggle }: {
 // stand beside it: a bar alone says "about a third", and about is too little with twelve
 // runs.
 
-function Balkenband({ werte: values, rest: remainder, basis }: {
-  werte: Record<BalkenArt["key"], number>;
+function Barband({ values: values, rest: remainder, basis }: {
+  values: Record<BarArt["key"], number>;
   rest: number;
   basis: number;
 }) {
   return (
     <div className="mt-1">
       <div className="flex h-2 w-full overflow-hidden rounded-sm bg-line/40">
-        {BALKEN.map((b) => {
+        {BAR.map((b) => {
           const n = values[b.key];
           if (n <= 0) return null;
           return (
-            <div key={b.key} className={flaeche(b.status)}
-              style={{ width: `${prozent(n, basis)}%` }}
-              title={`${tr(b.label)}: ${zahl(n)} ${tr("akte.von")} ${zahl(basis)}`} />
+            <div key={b.key} className={area(b.status)}
+              style={{ width: `${percent(n, basis)}%` }}
+              title={`${tr(b.label)}: ${number(n)} ${tr("akte.von")} ${number(basis)}`} />
           );
         })}
         {remainder > 0 && (
-          <div className="bg-line" style={{ width: `${prozent(remainder, basis)}%` }}
-            title={`${tr("akte.ohne_urteil")}: ${zahl(remainder)} ${tr("akte.von")} ${zahl(basis)}`} />
+          <div className="bg-line" style={{ width: `${percent(remainder, basis)}%` }}
+            title={`${tr("akte.ohne_urteil")}: ${number(remainder)} ${tr("akte.von")} ${number(basis)}`} />
         )}
       </div>
       <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0 text-[11px]">
-        {BALKEN.map((b) => (
-          <span key={b.key} className={values[b.key] > 0 ? statusFarbe(b.status) : "text-muted"}
-            title={b.titel}>
-            {b.label} {zahl(values[b.key])}
-            <span className="text-muted"> ({Math.round(prozent(values[b.key], basis))} %)</span>
+        {BAR.map((b) => (
+          <span key={b.key} className={values[b.key] > 0 ? statusColor(b.status) : "text-muted"}
+            title={b.title}>
+            {b.label} {number(values[b.key])}
+            <span className="text-muted"> ({Math.round(percent(values[b.key], basis))} %)</span>
           </span>
         ))}
         {remainder > 0 && (
           <span className="text-muted" title={tr("akte.ohne_urteil_titel")}>
-            {tr("dock.laeuft_noch")} {zahl(remainder)}
+            {tr("dock.laeuft_noch")} {number(remainder)}
           </span>
         )}
       </div>
@@ -356,23 +356,23 @@ function Balkenband({ werte: values, rest: remainder, basis }: {
 
 // ── The expanded part ───────────────────────────────────────────────────────────────────────
 
-function Details({ r, basis, werte: values, rest: remainder }: {
+function Details({ r, basis, values: values, rest: remainder }: {
   r: AgentRecord;
   basis: number;
-  werte: Record<BalkenArt["key"], number>;
+  values: Record<BarArt["key"], number>;
   rest: number;
 }) {
   const status = r.by_status ?? {};
   const statusLines = Object.entries(status).filter(([, n]) => n > 0);
   const duration = r.duration ?? {};
-  const eimer = duration.buckets ?? [];
-  const eimerMax = eimer.reduce((m, b) => Math.max(m, b.n ?? 0), 0);
+  const bucket = duration.buckets ?? [];
+  const bucketMax = bucket.reduce((m, b) => Math.max(m, b.n ?? 0), 0);
   const tools = r.tools ?? [];
   const toolMax = tools.reduce((m, t) => Math.max(m, t.n ?? 0), 0);
   // `!== false` and not `=== true`: if the field is missing it is unknown whether everything
   // was priced, and unknown belongs on the side of the lower bound. An amount without "≥"
   // would be a precision claim nobody checked.
-  const unbepreist = r.cost_partial !== false;
+  const unpriced = r.cost_partial !== false;
 
   return (
     <div className="mt-2 space-y-2 border-t border-line pt-2 text-[11px]">
@@ -381,8 +381,8 @@ function Details({ r, basis, werte: values, rest: remainder }: {
         <div className="flex flex-wrap gap-x-2 gap-y-0.5"
           title={tr("akte.rohe_status")}>
           {statusLines.map(([s, n]) => (
-            <span key={s} className={statusFarbe(s)}>
-              {statusText(s)} <b className="text-ink">{zahl(n)}</b>
+            <span key={s} className={statusColor(s)}>
+              {statusText(s)} <b className="text-ink">{number(n)}</b>
             </span>
           ))}
         </div>
@@ -390,30 +390,30 @@ function Details({ r, basis, werte: values, rest: remainder }: {
 
       {/* Runden und Schritte — getrennt beschriftet, weil es zwei verschiedene Dinge sind. */}
       <dl className="grid grid-cols-[7.5rem_1fr] gap-x-2 gap-y-1">
-        <Field label={tr("akte.runden")} titel={tr("akte.runden_titel")}>
-          Ø {komma1(r.iterations_avg ?? 0)} · max {zahl(r.iterations_max ?? 0)}
+        <Field label={tr("akte.runden")} title={tr("akte.runden_titel")}>
+          Ø {comma1(r.iterations_avg ?? 0)} · max {number(r.iterations_max ?? 0)}
         </Field>
-        <Field label={tr("akte.schritte")} titel={tr("akte.schritte_titel")}>
-          Ø {komma1(r.steps_avg ?? 0)} · max {zahl(r.steps_max ?? 0)}
+        <Field label={tr("akte.schritte")} title={tr("akte.schritte_titel")}>
+          Ø {comma1(r.steps_avg ?? 0)} · max {number(r.steps_max ?? 0)}
         </Field>
         <Field label={tr("buero.tokens")}
-          titel={tr("akte.cache_gelesen", { anzahl: zahl(r.cache_read_tokens ?? 0) })}>
+          title={tr("akte.cache_gelesen", { count: number(r.cache_read_tokens ?? 0) })}>
           {tokenText((r.in_tokens ?? 0) + (r.out_tokens ?? 0))}
           <span className="text-muted">
-            {" "}({zahl(r.in_tokens ?? 0)} {tr("akte.ein")} · {zahl(r.out_tokens ?? 0)} {tr("akte.aus")})
+            {" "}({number(r.in_tokens ?? 0)} {tr("akte.ein")} · {number(r.out_tokens ?? 0)} {tr("akte.aus")})
           </span>
         </Field>
         <Field label={tr("akte.kosten")}
-          titel={unbepreist
+          title={unpriced
             ? tr("akte.kosten_teilweise")
             : tr("akte.kosten_voll")}>
-          {usdText(r.cost_usd ?? 0, unbepreist)}
+          {usdText(r.cost_usd ?? 0, unpriced)}
         </Field>
-        <Field label={tr("agent_monitor.laeufe")} titel={tr("akte.laeufe_titel")}>
-          {zahl(basis)}
+        <Field label={tr("agent_monitor.laeufe")} title={tr("akte.laeufe_titel")}>
+          {number(basis)}
           <span className="text-muted">
-            {" "}({zahl(values.delivered)} + {zahl(values.waiting)} + {zahl(values.aborted)}
-            {remainder > 0 ? ` + ${zahl(remainder)} ${tr("akte.laufend")}` : ""})
+            {" "}({number(values.delivered)} + {number(values.waiting)} + {number(values.aborted)}
+            {remainder > 0 ? ` + ${number(remainder)} ${tr("akte.laufend")}` : ""})
           </span>
         </Field>
       </dl>
@@ -435,21 +435,21 @@ function Details({ r, basis, werte: values, rest: remainder }: {
         <p className="mb-1 text-[11px] text-muted">
           {tr("akte.kein_mittelwert")}
         </p>
-        {eimer.length === 0 ? (
+        {bucket.length === 0 ? (
           <div className="text-muted">{tr("akte.keine_verteilung")}</div>
         ) : (
           <div className="space-y-0.5">
-            {eimer.map((b, i) => {
+            {bucket.map((b, i) => {
               const n = b.n ?? 0;
-              const label = eimerText(b.lt_ms, i > 0 ? (eimer[i - 1].lt_ms ?? null) : null);
+              const label = bucketText(b.lt_ms, i > 0 ? (bucket[i - 1].lt_ms ?? null) : null);
               return (
                 <div key={i} className="flex items-center gap-1.5">
                   <span className="w-[6.5rem] shrink-0 text-right text-muted">{label}</span>
                   <span className="h-2 min-w-0 flex-1 rounded-sm bg-line/40">
                     <span className="block h-2 rounded-sm bg-sky-400"
-                      style={{ width: `${prozent(n, eimerMax)}%` }} />
+                      style={{ width: `${percent(n, bucketMax)}%` }} />
                   </span>
-                  <span className="w-8 shrink-0 text-right text-muted">{zahl(n)}</span>
+                  <span className="w-8 shrink-0 text-right text-muted">{number(n)}</span>
                 </div>
               );
             })}
@@ -471,14 +471,14 @@ function Details({ r, basis, werte: values, rest: remainder }: {
                 </span>
                 <span className="h-2 min-w-0 flex-1 rounded-sm bg-line/40">
                   <span className="block h-2 rounded-sm bg-sky-400"
-                    style={{ width: `${prozent(t.n ?? 0, toolMax)}%` }} />
+                    style={{ width: `${percent(t.n ?? 0, toolMax)}%` }} />
                 </span>
-                <span className="w-8 shrink-0 text-right text-muted">{zahl(t.n ?? 0)}</span>
+                <span className="w-8 shrink-0 text-right text-muted">{number(t.n ?? 0)}</span>
                 <span className={"w-14 shrink-0 text-right " + ((t.failed ?? 0) > 0 ? "text-red-400" : "text-muted")}
                   title={(t.failed ?? 0) > 0
-                    ? tr("akte.aufrufe_fehl", { fehl: t.failed ?? 0, ok: t.ok ?? 0 })
+                    ? tr("akte.aufrufe_fehl", { fail: t.failed ?? 0, ok: t.ok ?? 0 })
                     : tr("akte.kein_fehlschlag")}>
-                  {(t.failed ?? 0) > 0 ? `✕ ${zahl(t.failed ?? 0)}` : "—"}
+                  {(t.failed ?? 0) > 0 ? `✕ ${number(t.failed ?? 0)}` : "—"}
                 </span>
               </div>
             ))}
@@ -489,9 +489,9 @@ function Details({ r, basis, werte: values, rest: remainder }: {
   );
 }
 
-function Field({ label, titel: title, children }: {
+function Field({ label, title: title, children }: {
   label: string;
-  titel?: string;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (

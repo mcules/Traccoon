@@ -3,9 +3,9 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Editor from "@monaco-editor/react";
 import { api, ApiError, Project } from "../api";
-import { langOf } from "../monaco";
+import { longOf } from "../monaco";
 import Markdown from "./Markdown";
-import { BUTTON, BUTTON_KLEIN, BUTTON_TEXT} from "./ui";
+import { BUTTON, BUTTON_SMALL, BUTTON_TEXT} from "./ui";
 
 type RepoStatus = { branch: string; dirty: string[]; ahead: number; behind: number; has_remote: boolean };
 type Node = { name: string; path: string; dir: boolean; children: Node[] };
@@ -162,13 +162,13 @@ export default function FilesPanel({ project }: { project: Project }) {
         {st?.has_remote && (
           <>
             <button onClick={() => pull.mutate()} disabled={pull.isPending}
-              className={BUTTON_KLEIN.neben}>{pull.isPending ? "…" : "↓ Pull"}</button>
+              className={BUTTON_SMALL.secondary}>{pull.isPending ? "…" : "↓ Pull"}</button>
             <button onClick={() => push.mutate()} disabled={push.isPending}
-              className={BUTTON_KLEIN.neben}>{push.isPending ? "…" : "↑ Push"}</button>
+              className={BUTTON_SMALL.secondary}>{push.isPending ? "…" : "↑ Push"}</button>
           </>
         )}
         <button onClick={() => { setErr(""); setCommitOpen(true); }} disabled={!st || st.dirty.length === 0}
-          className={BUTTON_KLEIN.haupt}>{tr("files_panel.commit")}</button>
+          className={BUTTON_SMALL.primary}>{tr("files_panel.commit")}</button>
       </div>
       {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
       {msg && <div className="mb-2 text-sm text-green-400">{msg}</div>}
@@ -197,12 +197,12 @@ export default function FilesPanel({ project }: { project: Project }) {
                 <div className="flex-1" />
                 {isMarkdown(sel) && (
                   <button onClick={() => setPreview((v) => !v)}
-                    className={BUTTON_KLEIN.neben}>
+                    className={BUTTON_SMALL.secondary}>
                     {preview ? "✎ Editor" : "👁 Vorschau"}</button>
                 )}
                 {!img && (
                   <button onClick={() => save.mutate()} disabled={!dirty || save.isPending}
-                    className={BUTTON_KLEIN.haupt}>{save.isPending ? "…" : "Speichern (⌘S)"}</button>
+                    className={BUTTON_SMALL.primary}>{save.isPending ? "…" : "Speichern (⌘S)"}</button>
                 )}
               </div>
               <div className="min-h-0 flex-1">
@@ -219,7 +219,7 @@ export default function FilesPanel({ project }: { project: Project }) {
                 ) : isMarkdown(sel) && preview ? (
                   <div className="h-full overflow-auto p-4"><Markdown text={value} /></div>
                 ) : (
-                  <Editor height="100%" theme="vs-dark" path={sel} language={langOf(sel)}
+                  <Editor height="100%" theme="vs-dark" path={sel} language={longOf(sel)}
                     value={value} onChange={(v) => setValue(v ?? "")}
                     onMount={(editor, monaco) => {
                       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => { if (value !== orig) save.mutate(); });
@@ -260,12 +260,12 @@ function CommitModal({ pid, onClose, onDone }: { pid: number; onClose: () => voi
       <div className="w-full max-w-xl rounded-xl border border-line bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold">{tr("files_panel.commit")}</h2>
-          <button onClick={onClose} className={BUTTON_TEXT.neben}>✕</button>
+          <button onClick={onClose} className={BUTTON_TEXT.secondary}>✕</button>
         </div>
         <div className="mb-2 flex items-center gap-2">
           <label className="text-xs text-muted">{tr("files_panel.titel")}</label>
           <button onClick={() => gen.mutate()} disabled={gen.isPending}
-            className={BUTTON_TEXT.neben}>{gen.isPending ? "generiert…" : "↻ neu generieren"}</button>
+            className={BUTTON_TEXT.secondary}>{gen.isPending ? "generiert…" : "↻ neu generieren"}</button>
         </div>
         <input value={title} onChange={(e) => setTitle(e.target.value)}
           className="mb-3 w-full rounded border border-line bg-surface px-3 py-2 text-sm" />
@@ -274,9 +274,9 @@ function CommitModal({ pid, onClose, onDone }: { pid: number; onClose: () => voi
           className="mb-3 mt-1 w-full rounded border border-line bg-surface px-3 py-2 text-sm" />
         {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={BUTTON.neben}>{tr("files_panel.abbrechen")}</button>
+          <button onClick={onClose} className={BUTTON.secondary}>{tr("files_panel.abbrechen")}</button>
           <button onClick={() => title.trim() && commit.mutate()} disabled={!title.trim() || commit.isPending}
-            className={BUTTON.haupt}>{commit.isPending ? "Committet…" : "Committen"}</button>
+            className={BUTTON.primary}>{commit.isPending ? "Committet…" : "Committen"}</button>
         </div>
       </div>
     </div>

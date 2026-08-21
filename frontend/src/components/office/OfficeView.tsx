@@ -71,11 +71,11 @@ import Stage from "./Stage.tsx";
 import Timeline from "./Timeline.tsx";
 import Dock, { DOCK_TABS, type DockTab } from "./Dock.tsx";
 import Inspector from "./Inspector.tsx";
-import TopBar, { passtZumFilter, type Tempo } from "./TopBar.tsx";
+import TopBar, { fitsToFilter, type Pace } from "./TopBar.tsx";
 import { officeApi, parseSid, sidKey, type Scope, type SessionSummary } from "./api.ts";
 import { ALL_WINDOW_H, useOfficeFeed } from "./useOfficeFeed.ts";
 import { useTheme } from "./useTheme.ts";
-import { BUTTON, BUTTON_KLEIN} from "../ui";
+import { BUTTON, BUTTON_SMALL} from "../ui";
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ const ALL = "alle";
 
 /** One arrow key press seeks this far, ten times as far with shift. */
 const STEP_MS = 1000;
-const STEP_GROSS_MS = 10_000;
+const STEP_LARGE_MS = 10_000;
 
 /** The picker fetches this many sessions. Nobody searches through more than that. */
 const SESSION_LIMIT = 30;
@@ -153,10 +153,10 @@ export default function OfficeView({
   scope, variant, initialAt, onAtChange, onFullscreen, onClose,
   initialSid, onSidChange, onErrorChange, className,
 }: OfficeViewProps): JSX.Element {
-  const voll = variant === "full";
+  const full = variant === "full";
   const kiosk = variant === "kiosk";
   /** The stage fills the area instead of sitting in a 16:9 box; applies to both large forms. */
-  const grossflaechig = voll || kiosk;
+  const largearea = full || kiosk;
 
   // ── Zustand ────────────────────────────────────────────────────────────────────────────────
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -166,17 +166,17 @@ export default function OfficeView({
   const [dockOpen, setDockOpen] = useState(true);
   /** The **chosen** speed. Paused is a switch of its own, so that the space bar brings the
    *  previous value back instead of jumping bluntly to 1×. */
-  const [speed, setSpeed] = useState<Tempo>(1);
+  const [speed, setSpeed] = useState<Pace>(1);
   const [paused, setPaused] = useState(false);
   const [sessionFilter, setSessionFilter] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   /** Is there an "all sessions" here at all? Globally yes, in the project tab no (a ticket is
    *  the room there), and on the wall screen no either: that one rotates through the running
    *  rooms itself and needs a concrete one for that. */
-  const allMoeglich = scope.kind === "global" && !kiosk;
+  const allPossible = scope.kind === "global" && !kiosk;
   const [sidStr, setSidStr] = useState<string | null>(
-    initialSid ?? (allMoeglich ? ALL : null));
-  const allModus = allMoeglich && sidStr === ALL;
+    initialSid ?? (allPossible ? ALL : null));
+  const allMode = allPossible && sidStr === ALL;
 
   const grade = useTheme();
 
@@ -213,21 +213,21 @@ export default function OfficeView({
   // (`since_hours`) it follows up as well instead of pointing at a dead room.
   useEffect(() => {
     // "All" is a choice, not a missing value: nothing follows up here.
-    if (allModus) return;
+    if (allMode) return;
     // …unless the scope cannot do it at all: `?sid=alle` in the project tab (or on the wall
     // screen) has to fall onto a real room, otherwise the stage would stay empty.
     if (!listing.length) return;
     if (sidStr && sidStr !== ALL && listing.some((s) => s.sid === sidStr)) return;
-    const naechste = listing.find((s) => s.live) ?? listing[0];
-    setSidStr(naechste.sid);
-    onSidChangeRef.current?.(naechste.sid);
-  }, [listing, sidStr, allModus]);
+    const next = listing.find((s) => s.live) ?? listing[0];
+    setSidStr(next.sid);
+    onSidChangeRef.current?.(next.sid);
+  }, [listing, sidStr, allMode]);
 
   const sid = useMemo(() => parseSid(sidStr) ?? undefined, [sidStr]);
-  const gewaehlt = listing.find((s) => s.sid === sidStr) ?? null;
+  const chosen = listing.find((s) => s.sid === sidStr) ?? null;
 
   const { recorder, revision, roster, totals, live, error } = useOfficeFeed(
-    scope, sid, { alleSitzungen: allModus, sinceHours: ALL_WINDOW_H });
+    scope, sid, { allSessions: allMode, sinceHours: ALL_WINDOW_H });
 
   // ── Sprungpunkt ───────────────────────────────────────────────────────────────────────────
   //
@@ -245,7 +245,7 @@ export default function OfficeView({
     onAtChangeRef.current?.(ts);
   }, []);
 
-  const waehleSession = useCallback((s: string) => {
+  const chooseSession = useCallback((s: string) => {
     setSidStr(s);
     onSidChangeRef.current?.(s);
     // Another room has other characters and another time axis: reset both, otherwise the
@@ -275,12 +275,12 @@ export default function OfficeView({
       if (!still) return;
       // The list arrives sorted by the last event, descending, so the first hit is the
       // frischeste laufende Raum.
-      const naechster = listing.find((s) => s.live && s.sid !== sidStr);
-      if (naechster) waehleSession(naechster.sid);
+      const next = listing.find((s) => s.live && s.sid !== sidStr);
+      if (next) chooseSession(next.sid);
     };
     const timer = window.setInterval(tick, KIOSK_ROTATE_TICK_MS);
     return () => window.clearInterval(timer);
-  }, [kiosk, listing, sidStr, waehleSession]);
+  }, [kiosk, listing, sidStr, chooseSession]);
 
   // ── The ⛶ button (kiosk only) ─────────────────────────────────────────────────────────────
   //
@@ -293,27 +293,27 @@ export default function OfficeView({
   useEffect(() => {
     if (!kiosk) return;
     let timer: number | null = null;
-    const zeigen = (v: boolean) => {
+    const show = (v: boolean) => {
       if (buttonRef.current === v) return;   // je Mausbewegung ein Renderdurchlauf wäre absurd
       buttonRef.current = v;
       setButtonVisible(v);
     };
-    const wach = () => {
-      zeigen(true);
+    const awake = () => {
+      show(true);
       if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(() => zeigen(false), KIOSK_BUTTON_MS);
+      timer = window.setTimeout(() => show(false), KIOSK_BUTTON_MS);
     };
-    wach();
-    window.addEventListener("pointermove", wach, { passive: true });
-    window.addEventListener("pointerdown", wach, { passive: true });
+    awake();
+    window.addEventListener("pointermove", awake, { passive: true });
+    window.addEventListener("pointerdown", awake, { passive: true });
     return () => {
       if (timer !== null) window.clearTimeout(timer);
-      window.removeEventListener("pointermove", wach);
-      window.removeEventListener("pointerdown", wach);
+      window.removeEventListener("pointermove", awake);
+      window.removeEventListener("pointerdown", awake);
     };
   }, [kiosk]);
 
-  const vollbildUmschalten = useCallback(() => {
+  const fullscreenToggle = useCallback(() => {
     try {
       if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
       else void document.documentElement.requestFullscreen?.().catch(() => {});
@@ -328,9 +328,9 @@ export default function OfficeView({
   // The listener is registered **once**. Everything it needs to know it reads from a mirror
   // ref, otherwise it would have to be re-registered on every hover over a character.
   const state = useRef({
-    voll, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose,
+    full, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose,
   });
-  state.current = { voll, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose };
+  state.current = { full, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -363,7 +363,7 @@ export default function OfficeView({
         // The mapping is generic (`DOCK_TABS[digit - 1]`): a fifth tab would only need its
         // digit here. `4` is the personnel file.
         case "1": case "2": case "3": case "4": {
-          if (!s.voll) return;                       // im Reiter gibt es kein Dock
+          if (!s.full) return;                       // im Reiter gibt es kein Dock
           const t = DOCK_TABS[Number(e.key) - 1];
           if (!t) return;
           setDockTab(t.key);
@@ -373,7 +373,7 @@ export default function OfficeView({
         }
 
         case "b": case "B":
-          if (!s.voll) return;
+          if (!s.full) return;
           setDockOpen((v) => !v);
           e.preventDefault();
           return;
@@ -391,11 +391,11 @@ export default function OfficeView({
         case "ArrowLeft": case "ArrowRight": {
           const b = s.recorder.bounds();
           if (!b || b.t1 === 0) return;
-          const step = (e.shiftKey ? STEP_GROSS_MS : STEP_MS) * (e.key === "ArrowLeft" ? -1 : 1);
+          const step = (e.shiftKey ? STEP_LARGE_MS : STEP_MS) * (e.key === "ArrowLeft" ? -1 : 1);
           const basis = s.seekTs ?? b.t1;
-          const ziel2 = basis + step;
+          const target2 = basis + step;
           // Beyond the newest event there is only one sensible place: the present.
-          setSeek(ziel2 >= b.t1 ? null : Math.max(b.t0, ziel2));
+          setSeek(target2 >= b.t1 ? null : Math.max(b.t0, target2));
           e.preventDefault();
           return;
         }
@@ -403,10 +403,10 @@ export default function OfficeView({
         case "Escape":
           // Unwind from the inside out, one Esc per level.
           if (s.helpOpen) { setHelpOpen(false); e.preventDefault(); return; }
-          if (s.voll && s.dockOpen) { setDockOpen(false); e.preventDefault(); return; }
+          if (s.full && s.dockOpen) { setDockOpen(false); e.preventDefault(); return; }
           if (s.seekTs !== null) { setSeek(null); e.preventDefault(); return; }
           if (s.selectedId !== null) { setSelectedId(null); e.preventDefault(); return; }
-          if (s.voll && s.onClose) { s.onClose(); e.preventDefault(); }
+          if (s.full && s.onClose) { s.onClose(); e.preventDefault(); }
           return;
 
         default:
@@ -421,10 +421,10 @@ export default function OfficeView({
   // not belong goes **pale** on the stage, it is not removed. Removing would free its seat, let
   // the handover lines point into nothing and show a different room per tab. Without an active
   // filter the set stays `undefined`, and then the dimming costs no work at all.
-  const gedimmt = useMemo(() => {
+  const dimmed = useMemo(() => {
     if (sessionFilter === null) return undefined;
     const out = new Set<string>();
-    for (const r of roster) if (!passtZumFilter(scope, r, sessionFilter)) out.add(r.agent_id);
+    for (const r of roster) if (!fitsToFilter(scope, r, sessionFilter)) out.add(r.agent_id);
     return out;
   }, [roster, scope, sessionFilter]);
 
@@ -434,13 +434,13 @@ export default function OfficeView({
   );
   // The window belongs in the heading, not in a footnote: the room shows an excerpt, and an
   // unnamed excerpt would look like "there was nothing more going on".
-  const title = allModus
-    ? tr("office_view.alle_sitzungen_fenster", { stunden: ALL_WINDOW_H })
-    : (gewaehlt ? [gewaehlt.issue_key, gewaehlt.title].filter(Boolean).join(" · ") : undefined);
+  const title = allMode
+    ? tr("office_view.alle_sitzungen_fenster", { hours: ALL_WINDOW_H })
+    : (chosen ? [chosen.issue_key, chosen.title].filter(Boolean).join(" · ") : undefined);
   // `error` is already taken by the destructuring above — this is the text shown, not the
   // error object itself.
   const errorText = error
-    ?? (sessions.error ? tr("office_view.sitzungen_nicht_ladbar", { fehler: (sessions.error as Error).message }) : undefined);
+    ?? (sessions.error ? tr("office_view.sitzungen_nicht_ladbar", { error: (sessions.error as Error).message }) : undefined);
 
   // The watchdog of the kiosk page lives outside this component (it reloads the page, which is
   // not the business of a view). Through the mirror ref the effect stays tied to `fehler` and
@@ -452,7 +452,7 @@ export default function OfficeView({
   const header = (
     <TopBar
       scope={scope}
-      titel={title || undefined}
+      title={title || undefined}
       roster={roster}
       totals={totals}
       // The pill says something about the **stream**, not about playback: paused does not mean
@@ -464,26 +464,26 @@ export default function OfficeView({
       onSpeedChange={(t) => { setSpeed(t); setPaused(false); }}
       filter={sessionFilter}
       onFilterChange={setSessionFilter}
-      onFullscreen={voll ? undefined : onFullscreen}
+      onFullscreen={full ? undefined : onFullscreen}
       error={error}
       kiosk={kiosk}
     />
   );
 
-  const werkzeugleiste = (
+  const toolbar = (
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      {(allMoeglich || listing.length > 1) && (
+      {(allPossible || listing.length > 1) && (
         <label className="flex min-w-0 items-center gap-1.5 text-muted">
           <span className="shrink-0">Sitzung</span>
           <select
             value={sidStr ?? ""}
-            onChange={(e) => waehleSession(e.target.value)}
+            onChange={(e) => chooseSession(e.target.value)}
             title={tr("office_view.welcher_raum")}
             className="max-w-[22rem] truncate rounded border border-line bg-surface px-2 py-1 text-ink"
           >
             {/* Erste Option und Vorgabe: der ganze Betrieb in einem Raum. */}
-            {allMoeglich && (
-              <option value={ALL}>{tr("office_view.alle_sitzungen_option", { stunden: ALL_WINDOW_H })}</option>
+            {allPossible && (
+              <option value={ALL}>{tr("office_view.alle_sitzungen_option", { hours: ALL_WINDOW_H })}</option>
             )}
             {listing.map((s) => (
               <option key={s.sid} value={s.sid}>
@@ -499,18 +499,18 @@ export default function OfficeView({
         onClick={() => setPaused((v) => !v)}
         aria-pressed={paused}
         title={paused ? "Wiedergabe fortsetzen (Leertaste)" : "Wiedergabe anhalten (Leertaste)"}
-        className={BUTTON_KLEIN.neben}
+        className={BUTTON_SMALL.secondary}
       >
         {paused ? "▶ Fortsetzen" : "⏸ Anhalten"}
       </button>
 
-      {voll && (
+      {full && (
         <button
           type="button"
           onClick={() => setDockOpen((v) => !v)}
           aria-pressed={dockOpen}
           title={tr("office_view.dock_umschalten")}
-          className={BUTTON_KLEIN.neben}
+          className={BUTTON_SMALL.secondary}
         >
           {dockOpen ? "▸ Dock ausblenden" : "◂ Dock einblenden"}
         </button>
@@ -524,14 +524,14 @@ export default function OfficeView({
         type="button"
         onClick={() => setHelpOpen(true)}
         title={tr("office_view.tastenkuerzel")}
-        className={BUTTON_KLEIN.neben}
+        className={BUTTON_SMALL.secondary}
       >
         ? Tasten
       </button>
     </div>
   );
 
-  const buehne = (
+  const stage = (
     <Stage
       recorder={recorder}
       revision={revision}
@@ -540,19 +540,19 @@ export default function OfficeView({
       grade={grade}
       selected={selectedId ?? undefined}
       hover={hoverId}
-      dimmed={gedimmt}
+      dimmed={dimmed}
       onSelect={(id) => setSelectedId(id ?? null)}
       onHover={setHoverId}
       // Kiosk: the stage steers the camera itself (`office/kiosk.ts`), following the action
       // instead of rigidly showing the whole room.
       kiosk={kiosk}
-      className={grossflaechig
+      className={largearea
         ? "min-h-0 flex-1 rounded border border-line"
         : "aspect-[16/9] w-full rounded border border-line"}
     />
   );
 
-  const zeitleiste = (
+  const timeline = (
     <Timeline
       recorder={recorder}
       revision={revision}
@@ -569,10 +569,10 @@ export default function OfficeView({
     return (
       <div className={`relative flex min-h-0 flex-col gap-2 ${className ?? ""}`}>
         {header}
-        {buehne}
+        {stage}
         <button
           type="button"
-          onClick={vollbildUmschalten}
+          onClick={fullscreenToggle}
           title={tr("office_view.vollbild")}
           aria-label="Vollbild umschalten"
           className={"absolute right-3 top-3 z-10 rounded border border-line bg-card/80 px-2 py-1 "
@@ -588,13 +588,13 @@ export default function OfficeView({
   return (
     <div className={`flex min-h-0 flex-col gap-2 ${className ?? ""}`}>
       {header}
-      {werkzeugleiste}
+      {toolbar}
 
-      {voll ? (
+      {full ? (
         <div className="flex min-h-0 flex-1 gap-2">
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            {buehne}
-            {zeitleiste}
+            {stage}
+            {timeline}
           </div>
           {dockOpen && (
             <aside className="flex w-[24rem] shrink-0 flex-col gap-2 xl:w-[28rem]">
@@ -624,7 +624,7 @@ export default function OfficeView({
                 // dock reads the role from `selectedId`), the inspector stays on the **single
                 // run**. Both truths at once, neither replaces the other.
                 // andere.
-                onOpenAkte={() => { setDockTab("akte"); setDockOpen(true); }}
+                onOpenFile={() => { setDockTab("akte"); setDockOpen(true); }}
                 className="max-h-[45%] shrink-0"
               />
             </aside>
@@ -632,12 +632,12 @@ export default function OfficeView({
         </div>
       ) : (
         <>
-          {buehne}
-          {zeitleiste}
+          {stage}
+          {timeline}
         </>
       )}
 
-      {helpOpen && <Hilfe voll={voll} onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <Help full={full} onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }
@@ -645,17 +645,17 @@ export default function OfficeView({
 // ── Hilfe ───────────────────────────────────────────────────────────────────────────────────
 
 /** The same table that stands in the header of this file, only where one looks for it. */
-function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.Element {
+function Help({ full, onClose }: { full: boolean; onClose: () => void }): JSX.Element {
   const lines: [string, string][] = [
     ["?", tr("office_view.hilfe_umschalten")],
-    ...(voll ? ([
+    ...(full ? ([
       ["1 2 3 4", "Dock: Chat, Agenten, Werkzeuge, Personalakte"],
       ["B", tr("office_view.dock_taste")],
     ] as [string, string][]) : []),
     ["L", tr("buero.zurueck_zu_live")],
     [tr("office_view.leertaste"), tr("office_view.wiedergabe_taste")],
     ["← →", tr("office_view.pfeile")],
-    ["Esc", voll
+    ["Esc", full
       ? tr("office_view.esc_voll")
       : tr("office_view.esc_reiter")],
     ["Alt + ← ↑ → ↓", tr("office_view.schwenken")],
@@ -677,14 +677,14 @@ function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.E
           <h2 className="text-sm font-semibold">🏢 {tr("office_view.tastenkuerzel_titel")}</h2>
           <div className="flex-1" />
           <button type="button" onClick={onClose} autoFocus
-            className={BUTTON_KLEIN.neben}>
+            className={BUTTON_SMALL.secondary}>
             {tr("office_view.schliessen")}
           </button>
         </div>
         <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1.5 text-xs">
-          {lines.map(([taste, text]) => (
-            <div key={taste} className="contents">
-              <dt className="font-mono text-ink">{taste}</dt>
+          {lines.map(([key, text]) => (
+            <div key={key} className="contents">
+              <dt className="font-mono text-ink">{key}</dt>
               <dd className="text-muted">{text}</dd>
             </div>
           ))}
