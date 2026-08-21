@@ -492,7 +492,7 @@ async def digest_due(db: AsyncSession) -> int:
             # not fit into the callback of a button when an action already stands there.
             user_id=owner_id, spam_verdict_id=cases[0].id, kind="spam_digest",
             chat_id=owner.telegram_chat_id,
-            title=(await tr(db, "server.notify.spam_verdacht", owner.locale,
+            title=(await tr(db, "server.notify.spam_suspicion", owner.locale,
                             count=len(cases)))[:200],
             body="\n".join(lines)[:4000]))
         sent += 1

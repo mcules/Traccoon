@@ -51,7 +51,7 @@ class User(TimestampMixin, Base):
         ForeignKey("destinations.id", ondelete="SET NULL"), nullable=True)
     # UI language. German is the source language of the shipped catalogs, everything else
     # is a translation, so an unknown value simply falls back to it.
-    locale: Mapped[str] = mapped_column(String(10), default="de")
+    locale: Mapped[str] = mapped_column(String(10), default="en")
     # Timezone of this person (IANA, e.g. "Europe/Berlin"). It decides what "8 o'clock" means:
     # in the UI, in the night window and in the schedule of their jobs. Without it the server
     # computed in UTC and in a hard-wired zone — a cron job "0 8 * * *" then ran at 10, and

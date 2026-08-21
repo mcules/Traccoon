@@ -2,7 +2,7 @@ import { Suspense, lazy } from "react";
 import { tr } from "./i18n";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { useAuth } from "./auth";
-import { useLanguage, useLanguageFromUser } from "./i18n/useSprache";
+import { useLanguage, useLanguageFromUser } from "./i18n/useLanguage";
 import Login from "./pages/Login";
 import AcceptInvite from "./pages/AcceptInvite";
 import Projects from "./pages/Projects";

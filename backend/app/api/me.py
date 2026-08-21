@@ -156,7 +156,7 @@ async def set_locale(d: StrIn, u: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
     """UI language of this person. Unknown values fall back to the source language."""
     value = (d.value or "de").strip().lower().replace("_", "-")[:10]
-    u.locale = value if value and value.replace("-", "").isalnum() else "de"
+    u.locale = value if value and value.replace("-", "").isalnum() else "en"
     await db.commit()
 
 

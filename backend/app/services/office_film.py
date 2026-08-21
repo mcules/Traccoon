@@ -530,8 +530,8 @@ async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
         if not still:
             db.add(_notification(
                 kind="film",
-                title=await tr(db, "server.notify.feierabend", language, date=balance.date),
-                body=await tr(db, "server.notify.film_still", language),
+                title=await tr(db, "server.notify.end_of_day", language, date=balance.date),
+                body=await tr(db, "server.notify.film_quiet", language),
                 chat_id=job.notify_chat))
         return
 
@@ -558,8 +558,8 @@ async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
         if not still:
             db.add(_notification(
                 kind="film",
-                title=await tr(db, "server.notify.feierabend", language, date=balance.date),
-                body=await tr(db, "server.notify.film_still", language),
+                title=await tr(db, "server.notify.end_of_day", language, date=balance.date),
+                body=await tr(db, "server.notify.film_quiet", language),
                 chat_id=job.notify_chat))
         return
     if status != 200 or not data:
