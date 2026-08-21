@@ -30,7 +30,7 @@ The other probes start the same way:
 
 | Probe | What it covers |
 |---|---|
-| `usability.mjs` | overflow, touch targets, font sizes and hidden content across 29 screens at 390 and 1400 px. Writes `findings-usability.json` and compares against the previous run |
+| `usability.mjs` | overflow, touch targets, font sizes and hidden content across 42 screens at 390 and 1400 px. Writes `findings-usability.json` and compares against the previous run |
 | `mobile-editor.mjs` | the flow editor on a phone: tap a block, change it, attach a new one. Saves nothing |
 | `metric-series.mjs` | the measurement series view |
 | `editor-state.mjs` | the unsaved and published markers in the editor |
@@ -38,6 +38,7 @@ The other probes start the same way:
 | `language.mjs`, `language-admin.mjs` | switching language, and creating, renaming, disabling and deleting one |
 | `error-text.mjs` | a server error in a German and in an English browser, no login needed |
 | `shot.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
+| `map-check.mjs` | a plugin in its iframe: console, failed requests, container height, and how many map tiles really loaded. `PLUGIN=<slug>` for another one. Exits non-zero when something is broken |
 
 **Clean up afterwards**, the probe creates real flows:
 
