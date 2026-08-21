@@ -72,7 +72,7 @@ async def test_an_aborted_reviewer_produces_no_task(db, monkeypatch):
     from sqlalchemy import select
     texts = [c.body for c in (await db.execute(select(Comment).where(
         Comment.issue_id == issue.id))).scalars().all()]
-    assert any("UNGEPRÜFT" in t for t in texts), "the human does not learn that nobody checked"
+    assert any("UNCHECKED" in t for t in texts), "the human does not learn that nobody checked"
 
 
 async def test_real_findings_still_trigger_a_correction(db, monkeypatch):
