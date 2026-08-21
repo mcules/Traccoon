@@ -69,15 +69,28 @@ const ACCOUNT_OLD = { view: "appearance", reports: "notifications", agents: "age
 const FLOWS_OLD = { own: "own", standard: "default", operation: "operations",
                        trigger: "triggers", metricseries: "metrics", stores: "documents" };
 
+/**
+ * Is this section one that has actually been **renamed**?
+ *
+ * The maps above also list names that stayed as they were (`own`, `agents`) — they belong in
+ * the list, they were old addresses too. But redirecting them is not a redirect, it is a loop:
+ * the page sends itself to its own address, React Router renders it again, and after a few
+ * thousand rounds there stands an empty page instead of the section. Whoever tests only the
+ * renamed entries never sees it, because those arrive after exactly one hop.
+ */
+function renamed(karte: Record<string, string>, tab: string | undefined): boolean {
+  return !!tab && !!karte[tab] && karte[tab] !== tab;
+}
+
 function AccountPage() {
   const { tab } = useParams();
-  return tab && tab in ACCOUNT_OLD
+  return renamed(ACCOUNT_OLD, tab)
     ? <AlterSection karte={ACCOUNT_OLD} target="/account" /> : <Account />;
 }
 
 function FlowsPage() {
   const { tab } = useParams();
-  return tab && tab in FLOWS_OLD
+  return renamed(FLOWS_OLD, tab)
     ? <AlterSection karte={FLOWS_OLD} target="/processes" /> : <Processes />;
 }
 
@@ -108,7 +121,6 @@ export default function App() {
         <Route path="/account" element={<Account />} />
         <Route path="/account/:tab" element={<AccountPage />} />
         <Route path="/konto" element={<OldAddress to="/account" />} />
-        <Route path="/account/:tab" element={<AlterSection karte={ACCOUNT_OLD} target="/account" />} />
         <Route path="/profil" element={<OldAddress to="/account" />} />
         {/* Plugins live under a short prefix of their own — they are areas,
             but no built-in ones. */}
