@@ -11,7 +11,7 @@ from conftest import add_member, auth, make_asset, make_location, make_project, 
 
 # ── Vergeben / Entziehen ─────────────────────────────────────────────────────
 
-async def test_maintainer_may_grant_vergeben_und_entziehen(client, db):
+async def test_a_maintainer_may_grant_and_withdraw(client, db):
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
@@ -37,7 +37,7 @@ async def test_maintainer_may_grant_vergeben_und_entziehen(client, db):
     assert listed.json() == []
 
 
-async def test_member_may_keine_grants_vergeben(client, db):
+async def test_a_member_may_not_grant(client, db):
     owner = await make_user(db, "owner")
     plain = await make_user(db, "plain")
     guest = await make_user(db, "guest")
@@ -56,7 +56,7 @@ async def test_member_may_keine_grants_vergeben(client, db):
 
 # ── Validierung ──────────────────────────────────────────────────────────────
 
-async def test_unbekannter_user_und_obj_werden_abgewiesen(client, db):
+async def test_an_unknown_user_and_object_are_rejected(client, db):
     owner = await make_user(db, "owner")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
@@ -77,7 +77,7 @@ async def test_unbekannter_user_und_obj_werden_abgewiesen(client, db):
     assert r.status_code == 400
 
 
-async def test_obj_aus_fremdem_projekt_wird_abgewiesen(client, db):
+async def test_an_object_from_a_foreign_project_is_rejected(client, db):
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     mine = await make_project(db, "WRT", "Wart")
@@ -93,7 +93,7 @@ async def test_obj_aus_fremdem_projekt_wird_abgewiesen(client, db):
     assert r.status_code == 400
 
 
-async def test_doppelter_grant_gibt_409(client, db):
+async def test_a_duplicate_grant_gives_409(client, db):
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
@@ -107,7 +107,7 @@ async def test_doppelter_grant_gibt_409(client, db):
                               headers=auth(owner))).status_code == 409
 
 
-async def test_recursive_wird_bei_assets_normalisiert(client, db):
+async def test_recursive_is_normalised_for_assets(client, db):
     """`recursive` is meaningless with units, so always store False."""
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
@@ -127,7 +127,7 @@ async def test_recursive_wird_bei_assets_normalisiert(client, db):
 
 # ── Access over grants ───────────────────────────────────────────────────────
 
-async def test_grant_user_sieht_nur_freigegebenes_asset(client, db):
+async def test_a_granted_user_sees_only_the_released_asset(client, db):
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
@@ -146,7 +146,7 @@ async def test_grant_user_sieht_nur_freigegebenes_asset(client, db):
     assert mast.id in ids and haus.id not in ids
 
 
-async def test_ohne_grant_und_ohne_mitgliedschaft_nichts_visible(client, db):
+async def test_without_a_grant_and_without_membership_nothing_is_visible(client, db):
     owner = await make_user(db, "owner")
     outsider = await make_user(db, "outsider")
     proj = await make_project(db, "WRT", "Wart")
@@ -158,7 +158,7 @@ async def test_ohne_grant_und_ohne_mitgliedschaft_nichts_visible(client, db):
     assert (await client.get("/locations", headers=auth(outsider))).json() == []
 
 
-async def test_location_grant_rekursiv_deckt_kind_ort(client, db):
+async def test_a_recursive_location_grant_covers_the_child_location(client, db):
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
@@ -175,7 +175,7 @@ async def test_location_grant_rekursiv_deckt_kind_ort(client, db):
     assert haus.id in ids and mast.id in ids
 
 
-async def test_location_grant_ohne_rekursion_deckt_kind_ort_nicht(client, db):
+async def test_a_non_recursive_location_grant_does_not_cover_the_child_location(client, db):
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
@@ -192,7 +192,7 @@ async def test_location_grant_ohne_rekursion_deckt_kind_ort_nicht(client, db):
     assert haus.id in ids and mast.id not in ids
 
 
-async def test_view_grant_allowed_kein_write_manage_schon(client, db):
+async def test_a_view_grant_allows_no_writing_a_manage_grant_does(client, db):
     owner = await make_user(db, "owner")
     viewer = await make_user(db, "viewer")
     manager = await make_user(db, "manager")
@@ -216,7 +216,7 @@ async def test_view_grant_allowed_kein_write_manage_schon(client, db):
     assert r.status_code == 200
 
 
-async def test_manage_grant_auf_ort_allowed_asset_verwaltung(client, db):
+async def test_a_manage_grant_on_a_location_allows_managing_its_assets(client, db):
     owner = await make_user(db, "owner")
     manager = await make_user(db, "manager")
     proj = await make_project(db, "WRT", "Wart")
@@ -236,7 +236,7 @@ async def test_manage_grant_auf_ort_allowed_asset_verwaltung(client, db):
 
 # ── Projekt-Rollen-Vererbung (Teil A) ────────────────────────────────────────
 
-async def test_rolle_wird_an_subprojekt_vererbt_owner_gecappt(client, db):
+async def test_the_role_is_inherited_by_the_subproject_owner_capped(client, db):
     regio = await make_user(db, "regio")
     top = await make_project(db, "FFB", "Freifunk Haßberge")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
@@ -250,7 +250,7 @@ async def test_rolle_wird_an_subprojekt_vererbt_owner_gecappt(client, db):
     assert body["is_member"] is True           # inherited counts as a member, not as "foreign"
 
 
-async def test_vererbung_abschaltbar(client, db):
+async def test_inheritance_can_be_switched_off(client, db):
     regio = await make_user(db, "regio")
     top = await make_project(db, "FFB", "Freifunk Haßberge")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id, inherit_members=False)
@@ -259,7 +259,7 @@ async def test_vererbung_abschaltbar(client, db):
     assert (await client.get(f"/projects/{sub.id}", headers=auth(regio))).status_code == 404
 
 
-async def test_direkte_rolle_schlaegt_geerbte(client, db):
+async def test_a_direct_role_beats_an_inherited_one(client, db):
     user = await make_user(db, "u")
     top = await make_project(db, "FFB", "Freifunk Haßberge")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
@@ -271,7 +271,7 @@ async def test_direkte_rolle_schlaegt_geerbte(client, db):
     assert body["my_role_inherited"] is False
 
 
-async def test_geerbte_rolle_sieht_hardware_des_subprojekts(client, db):
+async def test_an_inherited_role_sees_the_hardware_of_the_subproject(client, db):
     regio = await make_user(db, "regio")
     top = await make_project(db, "FFB", "Freifunk Haßberge")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
@@ -282,7 +282,7 @@ async def test_geerbte_rolle_sieht_hardware_des_subprojekts(client, db):
     assert asset.id in ids
 
 
-async def test_list_projects_enthaelt_geerbte_subprojekte(client, db):
+async def test_listing_projects_includes_inherited_subprojects(client, db):
     regio = await make_user(db, "regio")
     top = await make_project(db, "FFB", "Freifunk Haßberge")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
@@ -295,7 +295,7 @@ async def test_list_projects_enthaelt_geerbte_subprojekte(client, db):
 
 # ── Cycle protection while rehanging ─────────────────────────────────────────
 
-async def test_parent_may_kein_nachfahre_sein(client, db):
+async def test_a_parent_may_not_be_a_descendant(client, db):
     owner = await make_user(db, "owner")
     top = await make_project(db, "FFB", "Freifunk Haßberge")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)

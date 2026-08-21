@@ -60,7 +60,7 @@ async def _lauf(db, graph: dict, name: str):
                                 context={}, actor_id=user.id)
 
 
-async def test_timer_haelt_den_lauf_an(db):
+async def test_the_timer_halts_the_run(db):
     inst = await _lauf(db, _graph(timer={"dauer": 30, "einheit": "m"}), "wartet")
     assert inst.status == WorkflowInstanceStatus.waiting
     token = (await db.execute(select(WorkflowToken).where(
@@ -75,7 +75,7 @@ async def test_timer_haelt_den_lauf_an(db):
         <= dt.timedelta(minutes=30)
 
 
-async def test_faelliger_timer_weckt_und_running_weiter(db):
+async def test_a_due_timer_wakes_and_carries_on(db):
     inst = await _lauf(db, _graph(timer={"dauer": 30, "einheit": "m"}), "geweckt")
     step = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.instance_id == inst.id))).scalars().one()
@@ -92,7 +92,7 @@ async def test_faelliger_timer_weckt_und_running_weiter(db):
     assert inst.status == WorkflowInstanceStatus.completed
 
 
-async def test_moment_in_der_vergangenheit_wartet_nicht(db):
+async def test_a_moment_in_the_past_does_not_wait(db):
     """A point in time that has already passed means "now", not "never"."""
     gestern = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).isoformat()
     inst = await _lauf(db, _graph(timer={"bis": gestern}), "vergangen")
@@ -101,7 +101,7 @@ async def test_moment_in_der_vergangenheit_wartet_nicht(db):
     assert inst.status == WorkflowInstanceStatus.completed
 
 
-async def test_wiederholung_haelt_distance_und_gibt_dann_auf(db, monkeypatch):
+async def test_a_repeat_keeps_its_distance_and_then_gives_up(db, monkeypatch):
     """A failure to the outside is mostly one of the moment. So: wait, try again, but not
     endlessly."""
     versuche = {"n": 0}
@@ -140,7 +140,7 @@ async def test_wiederholung_haelt_distance_und_gibt_dann_auf(db, monkeypatch):
     assert inst.context.get("_versuche", {}).get("tun") is None
 
 
-async def test_fehlerzweig_faengt_den_fehlschlag_auf(db, monkeypatch):
+async def test_the_error_branch_catches_the_failure(db, monkeypatch):
     """Whoever wires an `error` exit wants to handle the error instead of losing the run."""
     async def kaputt(db_, inst_, node_):
         raise ValueError("kaputt")
@@ -156,13 +156,13 @@ async def test_fehlerzweig_faengt_den_fehlschlag_auf(db, monkeypatch):
     assert inst.status == WorkflowInstanceStatus.completed
 
 
-async def test_validierung_verlangt_duration_oder_moment():
+async def test_validation_demands_a_duration_or_a_moment():
     assert validate_graph("standalone", _graph(timer={"dauer": 5, "einheit": "m"})) == []
     error = validate_graph("standalone", _graph(timer={}))
     assert any("weder Dauer noch Zeitpunkt" in f for f in error)
 
 
-async def test_lange_wartezeit_wird_gedeckelt():
+async def test_a_long_wait_is_capped():
     """A flow that sleeps for two years is almost always a typo."""
     due = workflow_engine._due_ab({"dauer": 900, "einheit": "t"}, {})
     assert due - dt.datetime.now(dt.timezone.utc) <= dt.timedelta(days=90)

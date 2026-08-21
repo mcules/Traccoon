@@ -56,7 +56,7 @@ async def _counter(db, feature: str) -> tuple[int, int]:
     return ((row.spam_count, row.ham_count) if row else (0, 0))
 
 
-async def test_spam_folder_wird_zu_lehrstoff(db, anna, imap):
+async def test_the_spam_folder_becomes_teaching_material(db, anna, imap):
     imap[("privat", "Junk")] = [_hits(1, "wer@zufall.top", "Gewinn abholen")]
     gelesen, gelernt = await spam_bootstrap.nachlernen(
         db, anna.id, "privat", "Junk", ist_spam=True)
@@ -65,7 +65,7 @@ async def test_spam_folder_wird_zu_lehrstoff(db, anna, imap):
     assert await _counter(db, "dom:zufall.top") == (1, 0)
 
 
-async def test_zweiter_lauf_zaehlt_nicht_doppelt(db, anna, imap):
+async def test_a_second_run_does_not_count_twice(db, anna, imap):
     imap[("privat", "Junk")] = [_hits(1, "wer@zufall.top", "Gewinn abholen")]
     await spam_bootstrap.nachlernen(db, anna.id, "privat", "Junk", ist_spam=True)
     gelesen, gelernt = await spam_bootstrap.nachlernen(
@@ -81,7 +81,7 @@ async def test_zweiter_lauf_zaehlt_nicht_doppelt(db, anna, imap):
     assert await get_setting(db, "spam_lernstand:privat:Junk") == "2"
 
 
-async def test_fremde_recipient_werden_nicht_gelernt(db, anna, imap):
+async def test_foreign_recipients_are_not_learned(db, anna, imap):
     """Bulk sending carries foreign addresses in To and CC, and those never turn up again."""
     imap[("privat", "Junk")] = [
         _hits(7, "wer@zufall.top", "Angebot", to="fremde.person@woanders.de")]
@@ -90,7 +90,7 @@ async def test_fremde_recipient_werden_nicht_gelernt(db, anna, imap):
     assert await _counter(db, "from:wer@zufall.top") == (1, 0)
 
 
-async def test_alias_wird_aus_dem_nachlauf_nicht_gelernt(db, anna, imap):
+async def test_an_alias_is_not_learned_from_the_follow_up(db, anna, imap):
     """The addressed alias was once a feature; out of the follow-up it separates nothing:
     everything goes to a catch-all anyway, and after 1755 ham observations it pulled every
     assessment down. What is learned is only WHO wrote."""
@@ -101,7 +101,7 @@ async def test_alias_wird_aus_dem_nachlauf_nicht_gelernt(db, anna, imap):
     assert await _counter(db, "from:shop@laden.de") == (0, 1)
 
 
-async def test_technische_signale_bleiben_aussen_vor(db, anna, imap):
+async def test_technical_signals_stay_out(db, anna, imap):
     """The follow-up sees no check results, and no `sig:` features may be made of that;
     otherwise the memory would learn the way of reading instead of the mail."""
     imap[("privat", "INBOX")] = [_hits(4, "wer@laden.de", "Rechnung 4711")]
@@ -111,7 +111,7 @@ async def test_technische_signale_bleiben_aussen_vor(db, anna, imap):
     assert sig == []
 
 
-async def test_kaltstart_deckt_spam_und_ham_ab(db, anna, imap):
+async def test_the_cold_start_covers_spam_and_ham(db, anna, imap):
     imap[("privat", "Junk")] = [_hits(1, "wer@zufall.top", "Gewinn")]
     imap[("privat", "INBOX")] = [_hits(2, "chef@firma.de", "Termin Montag")]
     imap[("privat", "Archives/2025")] = [_hits(3, "oma@familie.de", "Grüße")]
@@ -126,7 +126,7 @@ async def test_kaltstart_deckt_spam_und_ham_ab(db, anna, imap):
     assert score < 0.5 and reasons
 
 
-async def test_rueckkopplung_liest_nur_den_spam_folder(db, anna, imap):
+async def test_the_feedback_reads_only_the_spam_folder(db, anna, imap):
     imap[("privat", "Junk")] = [_hits(9, "neu@zufall.top", "Werbung")]
     imap[("privat", "INBOX")] = [_hits(10, "chef@firma.de", "Termin")]
     assert await spam_bootstrap.spam_rueckkopplung(db, anna.id) == 1
@@ -134,7 +134,7 @@ async def test_rueckkopplung_liest_nur_den_spam_folder(db, anna, imap):
     assert await _counter(db, "from:chef@firma.de") == (0, 0)
 
 
-def test_ordnerauswahl_trennt_lehrstoff_von_eigenem():
+def test_the_folder_choice_separates_teaching_material_from_own_mail():
     """Sent mail is no proof of "wanted" (I am the sender there), and archives from years ago
     carry addresses that never turn up again."""
     waehle = lambda n: spam_bootstrap.ist_ham_folder(  # noqa: E731
@@ -144,7 +144,7 @@ def test_ordnerauswahl_trennt_lehrstoff_von_eigenem():
     assert not waehle("Archives/2009")
 
 
-async def test_kaltstart_ueberspringt_gesendetes_und_alte_archive(db, anna, imap):
+async def test_the_cold_start_skips_sent_mail_and_old_archives(db, anna, imap):
     imap[("privat", "INBOX")] = [_hits(1, "chef@firma.de", "Termin")]
     imap[("privat", "INBOX/Bewerbung")] = [_hits(2, "hr@firma.de", "Ihre Bewerbung")]
     imap[("privat", "Archives/2025")] = [_hits(3, "oma@familie.de", "Grüße")]
@@ -160,7 +160,7 @@ async def test_kaltstart_ueberspringt_gesendetes_und_alte_archive(db, anna, imap
 
 # ── „Je geantwortet?" ────────────────────────────────────────────────────────
 
-async def test_recipient_eigener_post_werden_known(db, anna, imap):
+async def test_recipients_of_own_mail_become_known(db, anna, imap):
     """Whoever I write to I know; that is the acquittal that costs no question."""
     from app.models.assistant import AssistantContact
     from app.services.vault_contacts import kontakt_hits
@@ -179,7 +179,7 @@ async def test_recipient_eigener_post_werden_known(db, anna, imap):
     assert eigen == []
 
 
-async def test_gesendet_zaehlt_nur_new_uids(db, anna, imap):
+async def test_sent_counts_only_new_uids(db, anna, imap):
     imap[("privat", "Sent")] = [{
         "uid": 5, "from": [], "to": [{"name": "", "addr": "wer@firma.de"}], "cc": [],
         "subject": "Hallo", "message_id": "<5@x>", "date": "", "flags": []}]
@@ -187,7 +187,7 @@ async def test_gesendet_zaehlt_nur_new_uids(db, anna, imap):
     assert await spam_bootstrap.answer_kontakte(db, anna.id) == 0
 
 
-async def test_vault_reconcile_raeumt_gesendet_kontakte_nicht_ab(db, anna, imap, tmp_path):
+async def test_the_vault_reconcile_does_not_clear_sent_contacts(db, anna, imap, tmp_path):
     """Both sources share one table: the vault mirror may only clear away its own entries;
     otherwise the answer list would be empty again after an hour."""
     from app.models.assistant import AssistantContact
@@ -210,7 +210,7 @@ async def test_vault_reconcile_raeumt_gesendet_kontakte_nicht_ab(db, anna, imap,
 
 # ── What the follow-up must NOT learn ────────────────────────────────────────
 
-async def test_nachlauf_lernt_nur_die_absender_identity(db, anna, imap):
+async def test_the_follow_up_learns_only_the_sender_identity(db, anna, imap):
     """A mailbox contains thousands of wanted mails and a handful of rubbish. Whoever counts
     subject words from that makes "rechnung" a ham signal, and a phishing mail with exactly
     that word then slips below the question threshold (2026-08-18)."""
@@ -227,7 +227,7 @@ async def test_nachlauf_lernt_nur_die_absender_identity(db, anna, imap):
     assert await _counter(db, "to:ich@meine-domain.de") == (0, 0)
 
 
-async def test_echte_entscheidung_lernt_weiterhin_alles(db, anna):
+async def test_a_real_decision_still_learns_everything(db, anna):
     """The restriction applies only to the follow-up: where a human decided, both classes
     stand in a ratio that means something."""
     from app.models.assistant import SpamVerdict

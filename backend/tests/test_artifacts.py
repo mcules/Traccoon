@@ -21,7 +21,7 @@ async def register(db):
     return db
 
 
-async def test_eingebaute_typen_decken_die_echten_zustaende_ab(db, register):
+async def test_builtin_types_cover_the_real_states(db, register):
     """The keys MUST correspond to the enum values: they are stored that way."""
     ticket = await kind.type_by_key(db, "ticket")
     hardware = await kind.type_by_key(db, "hardware")
@@ -33,13 +33,13 @@ async def test_eingebaute_typen_decken_die_echten_zustaende_ab(db, register):
     assert ticket.backing == "issue" and hardware.backing == "hardware_asset"
 
 
-async def test_subjekt_findet_seinen_kind(db, register):
+async def test_subject_finds_its_kind(db, register):
     assert (await kind.type_for_subject(db, WorkflowSubjectKind.issue)).key == "ticket"
     assert (await kind.type_for_subject(db, "hardware_asset")).key == "hardware"
     assert await kind.type_for_subject(db, WorkflowSubjectKind.standalone) is None
 
 
-async def test_state_set_wirkt_auf_das_ticket(db, register):
+async def test_setting_state_affects_the_ticket(db, register):
     proj = await make_project(db, "TST", "Test")
     t = IssueType(project_id=proj.id, name="Aufgabe")
     for i, (name, kat) in enumerate([("To Do", StatusCategory.todo),
@@ -61,7 +61,7 @@ async def test_state_set_wirkt_auf_das_ticket(db, register):
     assert issue.status_id == spalten["Warten"].id      # the board column follows
 
 
-async def test_state_set_wirkt_auf_die_hardware(db, register):
+async def test_setting_state_affects_the_hardware(db, register):
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
     await kind.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset, asset=asset,
@@ -70,7 +70,7 @@ async def test_state_set_wirkt_auf_die_hardware(db, register):
     assert asset.delivery_date is not None       # the date is carried along
 
 
-async def test_unbekannter_state_wird_abgewiesen(db, register):
+async def test_unknown_state_is_rejected(db, register):
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
     with pytest.raises(ValueError, match="is not a state"):
@@ -78,7 +78,7 @@ async def test_unbekannter_state_wird_abgewiesen(db, register):
                                asset=asset, status_key="gibtsnicht")
 
 
-async def test_seed_ist_idempotent_und_behaelt_beschriftungen(db, register):
+async def test_seed_is_idempotent_and_keeps_labels(db, register):
     ticket = await kind.type_by_key(db, "ticket")
     field = await fields.status_field(db, ticket.id)
     s = (await db.execute(select(ArtifactFieldOption).where(
@@ -93,7 +93,7 @@ async def test_seed_ist_idempotent_und_behaelt_beschriftungen(db, register):
     assert len(await kind.statuses(db, ticket.id)) == len(TicketAgentStatus)
 
 
-async def test_nur_admin_pflegt_typen(client, db, register):
+async def test_only_an_admin_curates_types(client, db, register):
     normal = await make_user(db, "otto")
     chef = await make_user(db, "chef", admin=True)
 
@@ -110,7 +110,7 @@ async def test_nur_admin_pflegt_typen(client, db, register):
     assert r.json()["backing"] == "generic" and r.json()["builtin"] is False
 
 
-async def test_eingebauter_kind_laesst_sich_nicht_delete(client, db, register):
+async def test_builtin_kind_cannot_be_deleted(client, db, register):
     chef = await make_user(db, "chef", admin=True)
     ticket = await kind.type_by_key(db, "ticket")
     r = await client.delete(f"/artifact-types/{ticket.id}", headers=auth(chef))
@@ -118,7 +118,7 @@ async def test_eingebauter_kind_laesst_sich_nicht_delete(client, db, register):
     assert "cannot be deleted" in r.json()["detail"]
 
 
-async def test_beschriftung_eines_eingebauten_zustands_ist_aenderbar(client, db, register):
+async def test_label_of_a_builtin_state_can_be_changed(client, db, register):
     """The key stays (it IS the stored value), the label does not."""
     chef = await make_user(db, "chef", admin=True)
     ticket = await kind.type_by_key(db, "ticket")
@@ -131,7 +131,7 @@ async def test_beschriftung_eines_eingebauten_zustands_ist_aenderbar(client, db,
     assert r.json()["value"] == "to_test"        # unchanged
 
 
-async def test_uebergreifende_listing_zeigt_ticket_und_hardware(client, db, register):
+async def test_combined_listing_shows_ticket_and_hardware(client, db, register):
     """The actual gain: "what is pending?" over both worlds in one query."""
     from app.models.enums import ProjectRole, StatusCategory
     from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
@@ -166,7 +166,7 @@ async def test_uebergreifende_listing_zeigt_ticket_und_hardware(client, db, regi
     assert wartend[0]["status_label"] == "Plan wartet auf Freigabe"
 
 
-async def test_fremde_projekte_bleiben_unsichtbar(client, db, register):
+async def test_foreign_projects_stay_invisible(client, db, register):
     from app.models.enums import ProjectRole, StatusCategory
     from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
     from conftest import add_member

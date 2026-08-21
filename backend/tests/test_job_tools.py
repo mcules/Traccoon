@@ -26,7 +26,7 @@ async def _tool(db, user, tool, **args) -> str:
     return await call_traccoon_tool(db, user.id, tool, args)
 
 
-async def test_jobs_auflisten_zeigt_zeitplan_und_state(db, anna):
+async def test_listing_jobs_shows_schedule_and_state(db, anna):
     db.add(Job(user_id=anna.id, name="KI- & Tech-News", type="cron", schedule="0 6 * * *",
                kind="prompt", agent="news", enabled=True))
     await db.commit()
@@ -34,7 +34,7 @@ async def test_jobs_auflisten_zeigt_zeitplan_und_state(db, anna):
     assert "KI- & Tech-News" in out and "cron:0 6 * * *" in out and "[an]" in out
 
 
-async def test_fremde_jobs_sind_unsichtbar(db, anna):
+async def test_foreign_jobs_are_invisible(db, anna):
     bob = await make_user(db, "bob")
     db.add(Job(user_id=bob.id, name="Bobs Job", kind="prompt", prompt="x"))
     await db.commit()
@@ -43,7 +43,7 @@ async def test_fremde_jobs_sind_unsichtbar(db, anna):
     assert await _tool(db, anna, "traccoon_get_job", job_id=j.id) == "Job nicht gefunden."
 
 
-async def test_create_ueber_template(db, anna):
+async def test_creating_from_a_template(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="Security-News",
                       template="recherche-digest",
                       params={"titel": "Security-News", "thema": "IT-Sicherheit"})
@@ -55,23 +55,23 @@ async def test_create_ueber_template(db, anna):
     assert j.notify_chat == "123"                  # meldet an denselben Chat
 
 
-async def test_create_meldet_offene_platzhalter(db, anna):
+async def test_creating_reports_open_placeholders(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="Halbfertig",
                       prompt="Berichte über {{thema}} aus {{quellen}}.", params={"thema": "x"})
     assert "ACHTUNG" in out and "quellen" in out
 
 
-async def test_create_ohne_prompt_und_template(db, anna):
+async def test_creating_without_a_prompt_and_a_template(db, anna):
     assert "Ohne Prompt" in await _tool(db, anna, "traccoon_create_job", name="Leer")
     assert (await db.execute(select(Job))).scalars().first() is None
 
 
-async def test_unbekannte_template_nennt_die_echten(db, anna):
+async def test_an_unknown_template_names_the_real_ones(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="X", template="quatsch")
     assert "recherche-digest" in out
 
 
-async def test_parameter_werden_nachgezogen_nicht_ersetzt(db, anna):
+async def test_parameters_are_merged_not_replaced(db, anna):
     """Otherwise a job loses all other values when ONE is changed."""
     db.add(Job(user_id=anna.id, name="Digest", kind="prompt", prompt="{{thema}} {{sprache}}",
                args={"thema": "Funk", "sprache": "Deutsch"}))
@@ -82,7 +82,7 @@ async def test_parameter_werden_nachgezogen_nicht_ersetzt(db, anna):
     assert j.args == {"thema": "Recht", "sprache": "Deutsch"}
 
 
-async def test_abschalten_ueber_update(db, anna):
+async def test_disabling_through_an_update(db, anna):
     db.add(Job(user_id=anna.id, name="Alt", kind="prompt", prompt="x", enabled=True))
     await db.commit()
     j = (await db.execute(select(Job))).scalars().one()
@@ -91,7 +91,7 @@ async def test_abschalten_ueber_update(db, anna):
     assert j.enabled is False and "enabled" in out
 
 
-async def test_der_agent_bekommt_das_result_des_laufs(db, anna, redis_stub):
+async def test_the_agent_receives_the_result_of_the_run(db, anna, redis_stub):
     """Ein Job wird hier ausgeführt, nicht eingereiht: Seit die Arten Abläufe sind, gibt es
     keinen zweiten Weg mehr, auf dem ein Lauf am Zeitplan vorbei startet."""
     db.add(Job(user_id=anna.id, name="Digest", kind="prompt", prompt="x"))
@@ -104,7 +104,7 @@ async def test_der_agent_bekommt_das_result_des_laufs(db, anna, redis_stub):
     assert lauf.workflow_instance_id is not None
 
 
-async def test_schreibende_jobtools_brauchen_grant(db):
+async def test_writing_job_tools_need_a_grant(db):
     """A schedule keeps acting permanently, unlike a comment on a ticket."""
     assert TRACCOON_GATED_TOOLS <= TRACCOON_TOOL_NAMES
     assert "traccoon_create_job" in TRACCOON_GATED_TOOLS

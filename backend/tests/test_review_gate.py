@@ -62,7 +62,7 @@ async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x", run
     return result, runs, issue
 
 
-async def test_abgebrochener_pruefer_erzeugt_keinen_task(db, monkeypatch):
+async def test_an_aborted_reviewer_produces_no_task(db, monkeypatch):
     result, runs, issue = await _gate(
         db, monkeypatch, RunResult("failed", "claude: Antwort bei max_tokens abgeschnitten"))
 
@@ -75,7 +75,7 @@ async def test_abgebrochener_pruefer_erzeugt_keinen_task(db, monkeypatch):
     assert any("UNGEPRÜFT" in t for t in texte), "the human does not learn that nobody checked"
 
 
-async def test_echte_befunde_loesen_weiter_eine_korrektur_aus(db, monkeypatch):
+async def test_real_findings_still_trigger_a_correction(db, monkeypatch):
     """The counter-check: a reviewer that runs through CLEANLY and finds something sends the
     developer off as before."""
     result, runs, _ = await _gate(
@@ -86,13 +86,13 @@ async def test_echte_befunde_loesen_weiter_eine_korrektur_aus(db, monkeypatch):
     assert result.status == "done"
 
 
-async def test_bestandener_review_laesst_alles_stehen(db, monkeypatch):
+async def test_a_passed_review_leaves_everything_standing(db, monkeypatch):
     result, runs, _ = await _gate(db, monkeypatch, RunResult("done", "<review-ok/>"))
     assert runs == ["code_reviewer"]
     assert result.text == "fertig"
 
 
-async def test_verbrauchte_runden_ueberleben_den_neustart(db, monkeypatch):
+async def test_used_rounds_survive_the_restart(db, monkeypatch):
     """The round counter belongs on the ticket, not in the loop.
 
     TRA-32 on 2026-08-07: the worker was restarted in the middle of correction round 2, and
@@ -106,7 +106,7 @@ async def test_verbrauchte_runden_ueberleben_den_neustart(db, monkeypatch):
     assert result.blocker_kind == "review"
 
 
-async def test_begonnene_runde_wird_sofort_verbucht(db, monkeypatch):
+async def test_a_started_round_is_booked_at_once(db, monkeypatch):
     """Booking happens at the start of the correction, not at its end; otherwise exactly the
     round the restart hits does not count."""
     _, runs, issue = await _gate(db, monkeypatch, RunResult("done", "1. Befund"))
@@ -115,7 +115,7 @@ async def test_begonnene_runde_wird_sofort_verbucht(db, monkeypatch):
     assert issue.review_rounds >= 1
 
 
-async def test_offene_befunde_landen_am_ticket(db, monkeypatch):
+async def test_open_findings_land_on_the_ticket(db, monkeypatch):
     """Whoever has to decide needs the reason in the same place as the decision.
 
     TRA-32 on 2026-08-07: the gate handed the ticket to the human after two rounds, and on
@@ -134,7 +134,7 @@ async def test_offene_befunde_landen_am_ticket(db, monkeypatch):
     assert any("Der Timeout ist zu kurz." in t for t in texte), "the findings are missing on the ticket"
 
 
-async def test_stillstand_beendet_das_gate_statt_der_rundenzahl(db, monkeypatch):
+async def test_standstill_ends_the_gate_rather_than_the_round_count(db, monkeypatch):
     """The limit is standstill, not a number.
 
     A ticket should run as long as it makes progress. Only when a correction changes nothing
@@ -180,7 +180,7 @@ async def test_stillstand_beendet_das_gate_statt_der_rundenzahl(db, monkeypatch)
     assert runs.count("code_reviewer") == 1 < worker.REVIEW_RUNDEN
 
 
-async def test_fortschritt_may_weiterlaufen(db, monkeypatch):
+async def test_progress_may_carry_on(db, monkeypatch):
     """Counter-check: as long as the diff changes, the gate runs on, until it passes."""
     from app.worker.runtime import RunResult
 
@@ -220,7 +220,7 @@ async def test_fortschritt_may_weiterlaufen(db, monkeypatch):
     assert runde["n"] == 4
 
 
-async def test_pannenmeldungen_erreichen_den_prompt_nicht(db):
+async def test_breakdown_notices_do_not_reach_the_prompt(db):
     """An error message of the infrastructure is not a work assignment.
 
     On 2026-08-07 an agent read "❌ failed: claude: answer truncated at max_tokens, raise

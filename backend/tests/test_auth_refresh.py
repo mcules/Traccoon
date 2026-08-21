@@ -37,7 +37,7 @@ def header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def test_gueltiges_token_wird_verlaengert(client, db):
+async def test_a_valid_token_is_extended(client, db):
     """The normal case: a new token, and the new token carries."""
     user = await make_user(db, "wandschirm")
     alt = create_access_token(user.id)
@@ -53,7 +53,7 @@ async def test_gueltiges_token_wird_verlaengert(client, db):
     assert me.json()["id"] == user.id
 
 
-async def test_abgelaufenes_token_wird_abgelehnt(client, db):
+async def test_an_expired_token_is_rejected(client, db):
     """A refresh extends a living session; it does not wake a dead one."""
     user = await make_user(db, "spaet")
     now = dt.datetime.now(tz=dt.timezone.utc)
@@ -63,7 +63,7 @@ async def test_abgelaufenes_token_wird_abgelehnt(client, db):
     assert r.status_code == 401
 
 
-async def test_token_von_vor_dem_passwortwechsel(client, db):
+async def test_token_from_before_the_password_change(client, db):
     """Session invalidation: whoever changed their password ended all old tokens.
 
     A refresh that ignored that would be a back door for exactly the case the check was built
@@ -82,7 +82,7 @@ async def test_token_von_vor_dem_passwortwechsel(client, db):
     assert r.status_code == 401
 
 
-async def test_deaktiviertes_konto(client, db):
+async def test_disabled_account(client, db):
     """Deactivated means deactivated, even for a token that would still be valid for twelve hours.
 
     403 is the answer of the house here (`deps.get_current_user`: "Account not active"); the
@@ -97,12 +97,12 @@ async def test_deaktiviertes_konto(client, db):
     assert r.status_code in (401, 403)
 
 
-async def test_ohne_token(client):
+async def test_without_a_token(client):
     r = await client.post("/auth/refresh")
     assert r.status_code == 401
 
 
-async def test_kein_rechtezuwachs(client, db):
+async def test_no_gain_in_permissions(client, db):
     """The new token is the same token, only later, and in particular with the same role.
 
     Checked on both levels: the claims in the token (there are exactly three, and none of them

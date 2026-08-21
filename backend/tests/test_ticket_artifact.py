@@ -34,7 +34,7 @@ async def register(db):
     await kind.ensure_builtin_types(db)
 
 
-async def test_reconcile_legt_fehlende_lines_an(db, register):
+async def test_the_reconcile_creates_missing_rows(db, register):
     proj = await make_project(db, "TST", "Test")
     a = await _ticket(db, proj, "Erstes", 1)
     b = await _ticket(db, proj, "Zweites", 2, TicketAgentStatus.plan_review)
@@ -50,7 +50,7 @@ async def test_reconcile_legt_fehlende_lines_an(db, register):
     assert kind_b.project_id == proj.id
 
 
-async def test_reconcile_holt_beliebige_schreibstellen_nach(db, register):
+async def test_the_reconcile_catches_up_on_arbitrary_write_points(db, register):
     """The actual purpose: a place sets agent_status directly (as the bot, the PM chat or the
     worker do), and the reconciliation pulls the artifact row along."""
     proj = await make_project(db, "TST", "Test")
@@ -69,7 +69,7 @@ async def test_reconcile_holt_beliebige_schreibstellen_nach(db, register):
     assert a.status_key == "hold" and a.title == "Neu benannt"
 
 
-async def test_reconcile_ist_idempotent(db, register):
+async def test_the_reconcile_is_idempotent(db, register):
     proj = await make_project(db, "TST", "Test")
     await _ticket(db, proj, "Eins", 1)
     await make_asset(db, "Switch", project=proj)
@@ -79,7 +79,7 @@ async def test_reconcile_ist_idempotent(db, register):
     assert not any(zweiter.values()), zweiter
 
 
-async def test_state_set_schreibt_sofort_mit(db, register):
+async def test_setting_the_state_writes_along_immediately(db, register):
     """The common path does not wait for the reconciliation."""
     proj = await make_project(db, "TST", "Test")
     i = await _ticket(db, proj, "Sofort", 1)
@@ -94,7 +94,7 @@ async def test_state_set_schreibt_sofort_mit(db, register):
     assert a.status_key == "to_test"
 
 
-async def test_hardware_und_ticket_teilen_dieselbe_ablage(db, register):
+async def test_hardware_and_ticket_share_the_same_store(db, register):
     proj = await make_project(db, "TST", "Test")
     await _ticket(db, proj, "Ticket", 1)
     asset = await make_asset(db, "Switch", project=proj)

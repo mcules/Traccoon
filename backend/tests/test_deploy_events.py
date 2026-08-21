@@ -95,7 +95,7 @@ async def deploy_steps(db, run_id: int) -> list[RunStep]:
 
 # ── Idempotenz ───────────────────────────────────────────────────────────────
 
-async def test_zweimal_watchen_erzaehlt_einmal(db):
+async def test_watching_twice_tells_it_once(db):
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     run = await lauf(db, issue=issue, status="running")
@@ -139,7 +139,7 @@ def test_states_for(announced, status, erwartet):
 
 # ── Ankerwahl ────────────────────────────────────────────────────────────────
 
-async def test_anker_agentenwerkzeug_ist_der_wartende_lauf(db):
+async def test_the_anchor_for_an_agent_tool_is_the_waiting_run(db):
     """`worktree <> ''` means: an agent called `deploy` and is waiting inline. The row
     belongs to ITS run, not to the most recent one, which may long be a review."""
     projekt = await make_project(db, "TRA", "Traccoon")
@@ -154,7 +154,7 @@ async def test_anker_agentenwerkzeug_ist_der_wartende_lauf(db):
     assert await deploy_steps(db, juenger.id) == []
 
 
-async def test_anker_merge_ist_der_juengste_lauf(db):
+async def test_the_anchor_for_a_merge_is_the_newest_run(db):
     """Without a worktree no agent waited (merge, workflow), and then the most recent run of
     the ticket tells it, because it is the one the room is showing right now."""
     projekt = await make_project(db, "TRA", "Traccoon")
@@ -169,7 +169,7 @@ async def test_anker_merge_ist_der_juengste_lauf(db):
     assert await deploy_steps(db, aelter.id) == []
 
 
-async def test_wartungsupdate_erzeugt_kein_ereignis(db, kein_redis):
+async def test_a_maintenance_update_raises_no_event(db, kein_redis):
     """**A decision, not an oversight.** A self-deploy recreates the backend container that
     supplies the stage: the WebSocket falls in the middle of the animation, and the process
     that would draw it dies of it. Animating a process that kills the animator is a category
@@ -187,7 +187,7 @@ async def test_wartungsupdate_erzeugt_kein_ereignis(db, kein_redis):
     assert dep.announced_status == "building"
 
 
-async def test_ohne_lauf_kein_ereignis(db):
+async def test_no_event_without_a_run(db):
     """A ticket without a single run has no anchor. Better a gap than a row in a run that has
     nothing to do with the deploy."""
     projekt = await make_project(db, "TRA", "Traccoon")
@@ -196,7 +196,7 @@ async def test_ohne_lauf_kein_ereignis(db):
     assert await dw.tick(db) == 0
 
 
-async def test_altbestand_bleibt_stumm(db):
+async def test_existing_stock_stays_silent(db):
     """The 186 existing rows have `announced_status=''` and would otherwise all be "new": the
     first beat would tell three months of history as if it had just happened."""
     projekt = await make_project(db, "TRA", "Traccoon")
@@ -208,7 +208,7 @@ async def test_altbestand_bleibt_stumm(db):
     assert await deploy_steps(db, run.id) == []
 
 
-async def test_angefangene_geschichte_wird_zu_ende_erzaehlt(db):
+async def test_a_started_story_is_told_to_its_end(db):
     """The opening was told, the outcome only after a long backend outage: the window must
     not drop the row now, because otherwise the rack would stay building forever."""
     projekt = await make_project(db, "TRA", "Traccoon")
@@ -223,7 +223,7 @@ async def test_angefangene_geschichte_wird_zu_ende_erzaehlt(db):
 
 # ── Freier Anschluss: deployment.finished ────────────────────────────────────
 
-async def test_deployment_finished_feuert_einmal(db, monkeypatch):
+async def test_deployment_finished_fires_once(db, monkeypatch):
     """The trigger name has been in `BUILTIN_EVENTS` all along and has never fired."""
     import app.services.events as eventsmod
     seen: list[tuple[str, dict]] = []
@@ -254,7 +254,7 @@ async def test_deployment_finished_feuert_einmal(db, monkeypatch):
     assert len(seen) == 1                   # acknowledged is acknowledged
 
 
-async def test_deployment_finished_auch_ohne_buehne(db, monkeypatch):
+async def test_deployment_finished_even_without_a_stage(db, monkeypatch):
     """The maintenance update gets no stage event, but the process trigger hangs off the
     conclusion, not off the stage."""
     import app.services.events as eventsmod
@@ -295,7 +295,7 @@ def ctx() -> RunCtx:
     return RunCtx(run_id=8871, project_id=27, owner_id=3, sid="issue:412", agent="dev")
 
 
-def test_bestand_hangs_an_der_letzten_line_davor():
+def test_existing_stock_hangs_on_the_last_line_before_it():
     lines = [_Line(100, 60), _Line(101, 40), _Line(102, 10)]
     anker = deploy_anchor_step_id(lines, _Dep().created_at)
     assert anker == 101
@@ -305,7 +305,7 @@ def test_bestand_hangs_an_der_letzten_line_davor():
     assert ev["target"] == "/stacks/tra" and ev["log_head"] == "alles gut"
 
 
-def test_slot3_kollision_weicht_auf_die_vorgaengerzeile():
+def test_a_slot3_collision_moves_to_the_preceding_line():
     """The `run_end` boundary sits on `last*4+3`, exactly the place the deployment wanted to
     borrow. It has precedence (it ends a run, while the deployment illustrates one), so the
     deployment slips back one row."""
@@ -318,7 +318,7 @@ def test_slot3_kollision_weicht_auf_die_vorgaengerzeile():
     assert deploy_anchor_step_id(lines, _Dep().created_at, blocked={100, 101}) is None
 
 
-def test_bestand_ohne_line_davor_bekommt_nichts():
+def test_stock_without_a_line_before_it_gets_nothing():
     """A deploy lying before the first loaded row has no honest place: hung in at the front
     it would stand before its own trigger."""
     lines = [_Line(100, 5)]
@@ -327,13 +327,13 @@ def test_bestand_ohne_line_davor_bekommt_nichts():
 
 
 @pytest.mark.parametrize("status", ["pending", "pending-check", "cancelled", ""])
-def test_bestand_ohne_zeigbaren_status_bleibt_stumm(status):
+def test_stock_without_a_showable_status_stays_silent(status):
     assert deployment_events(_Dep(status=status), ctx(), anchor_step_id=100) == []
 
 
 # ── Lesepfad ─────────────────────────────────────────────────────────────────
 
-async def test_api_zeigt_bestandsdeployment_an_seiner_stelle(client, db):
+async def test_the_api_shows_a_stock_deployment_in_its_place(client, db):
     user = await make_user(db, "anna", admin=True)
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
@@ -357,7 +357,7 @@ async def test_api_zeigt_bestandsdeployment_an_seiner_stelle(client, db):
     assert ende["seq"] > deploys[0]["seq"]
 
 
-async def test_api_erzaehlt_nicht_doppelt(client, db):
+async def test_the_api_does_not_tell_it_twice(client, db):
     """What the watcher wrote as a real row is not borrowed a second time."""
     user = await make_user(db, "anna", admin=True)
     projekt = await make_project(db, "TRA", "Traccoon")
@@ -375,7 +375,7 @@ async def test_api_erzaehlt_nicht_doppelt(client, db):
 
 # ── The live path ────────────────────────────────────────────────────────────
 
-async def test_watcher_sendet_in_den_kanal(db, kein_redis):
+async def test_the_watcher_sends_into_the_channel(db, kein_redis):
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     await lauf(db, issue=issue, status="running")
@@ -384,7 +384,7 @@ async def test_watcher_sendet_in_den_kanal(db, kein_redis):
     assert len(kein_redis) == 1 and '"kind": "deploy"' in kein_redis[0][1]
 
 
-async def test_publish_step_schluckt_redis_ausfall(db, monkeypatch):
+async def test_the_publish_step_swallows_a_redis_outage(db, monkeypatch):
     """The view is a spectator, not a participant: a dead Redis must not turn a deploy into
     an error."""
     import app.core.redis as redismod

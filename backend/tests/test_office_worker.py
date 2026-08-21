@@ -146,7 +146,7 @@ async def ticket(db, projekt):
 
 # ── The basic case ───────────────────────────────────────────────────────────
 
-async def test_lauf_schreibt_die_ereignisse_in_seq_reihenfolge(db, lauf):
+async def test_a_run_writes_the_events_in_seq_order(db, lauf):
     _, _ = await lauf([
         answer("Ich schaue nach.", in_tok=100, out_tok=20, cache=7,
                 calls=[ToolCall(id="t1", name="open_tasks", arguments={})]),
@@ -160,7 +160,7 @@ async def test_lauf_schreibt_die_ereignisse_in_seq_reihenfolge(db, lauf):
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
 
 
-async def test_task_steht_as_user_message_im_raum(db, lauf):
+async def test_the_task_stands_in_the_room_as_a_user_message(db, lauf):
     await lauf([answer("fertig")])
     run = await last_lauf(db)
     line = next(s for s in await steps(db) if s.kind == "user_message")
@@ -169,7 +169,7 @@ async def test_task_steht_as_user_message_im_raum(db, lauf):
     assert run.status == "success"
 
 
-async def test_tool_wird_geoeffnet_und_geschlossen(db, lauf):
+async def test_a_tool_is_opened_and_closed(db, lauf):
     await lauf([
         answer(calls=[ToolCall(id="t1", name="open_tasks", arguments={})]),
         answer("fertig"),
@@ -180,7 +180,7 @@ async def test_tool_wird_geoeffnet_und_geschlossen(db, lauf):
     assert ende.duration_ms is not None and ende.duration_ms >= 0
 
 
-async def test_reiner_werkzeugzug_sagt_nichts_im_raum(db, lauf):
+async def test_a_pure_tool_move_says_nothing_in_the_room(db, lauf):
     """Without text the turn stays a pure cost row; otherwise every agent would say
     "(Tool-Call)" every few seconds."""
     await lauf([
@@ -193,7 +193,7 @@ async def test_reiner_werkzeugzug_sagt_nichts_im_raum(db, lauf):
     assert [e["kind"] for e in office.step_events(zug, office.RunCtx.from_run(run))] == ["usage"]
 
 
-async def test_fehlerhaftes_tool_ist_belegt_gescheitert(db, lauf):
+async def test_a_failing_tool_is_provably_failed(db, lauf):
     await lauf([
         answer(calls=[ToolCall(id="t1", name="load_skill", arguments={"key": "gibtsnicht"})]),
         answer("fertig"),
@@ -203,7 +203,7 @@ async def test_fehlerhaftes_tool_ist_belegt_gescheitert(db, lauf):
     assert ende.target == "gibtsnicht"      # the label from the table, not guessed
 
 
-async def test_duration_waechst_mit_dem_langsamen_tool(db, lauf):
+async def test_the_duration_grows_with_the_slow_tool(db, lauf):
     await lauf([
         answer(calls=[ToolCall(id="t1", name="langsames_tool", arguments={})]),
         answer("fertig"),
@@ -214,7 +214,7 @@ async def test_duration_waechst_mit_dem_langsamen_tool(db, lauf):
 
 # ── Regression guard: the gate before the tool start ─────────────────────────
 
-async def test_abgelehntes_tool_erzeugt_keinen_start(db, lauf):
+async def test_a_refused_tool_produces_no_start(db, lauf):
     """The `deny` branch does `continue`. If the start stood before it, an agent would sit in
     the room typing forever on a tool that never comes back."""
     result, _ = await lauf([
@@ -229,7 +229,7 @@ async def test_abgelehntes_tool_erzeugt_keinen_start(db, lauf):
 
 # ── Delegation ───────────────────────────────────────────────────────────────
 
-async def test_delegation_verbindet_eltern_und_kind(db, lauf):
+async def test_delegation_links_parent_and_child(db, lauf):
     async def loader(rolle):
         return agentdef(name="reviewer", role="reviewer")
 
@@ -259,7 +259,7 @@ async def test_delegation_verbindet_eltern_und_kind(db, lauf):
 
 # ── Affiliation of the run ───────────────────────────────────────────────────
 
-async def test_ticketlauf_traegt_projekt_und_owner(db, lauf):
+async def test_a_ticket_run_carries_project_and_owner(db, lauf):
     user = await make_user(db, "anna")
     projekt = await make_project(db, "TST", "Test")
     i = await ticket(db, projekt)
@@ -272,7 +272,7 @@ async def test_ticketlauf_traegt_projekt_und_owner(db, lauf):
     assert run.project_id == projekt.id and run.owner_id == user.id and run.issue_id == i.id
 
 
-async def test_joblauf_hat_kein_projekt_aber_einen_menschen(db, lauf):
+async def test_a_job_run_has_no_project_but_a_person(db, lauf):
     user = await make_user(db, "anna")
     await lauf([answer("fertig")], owner_id=user.id)
     run = await last_lauf(db)
@@ -282,7 +282,7 @@ async def test_joblauf_hat_kein_projekt_aber_einen_menschen(db, lauf):
 
 # ── Tokens and costs ─────────────────────────────────────────────────────────
 
-async def test_step_tokens_summieren_sich_zum_lauf(db, lauf):
+async def test_step_tokens_add_up_to_the_run(db, lauf):
     await lauf([
         answer("Erster Zug.", in_tok=100, out_tok=10,
                 calls=[ToolCall(id="t1", name="open_tasks", arguments={})]),
@@ -294,7 +294,7 @@ async def test_step_tokens_summieren_sich_zum_lauf(db, lauf):
     assert sum(s.out_tokens for s in alle) == run.output_tokens == 50
 
 
-async def test_provider_error_verliert_die_tokens_nicht(db, lauf):
+async def test_a_provider_error_does_not_lose_the_tokens(db, lauf):
     """Up to the error everything is paid for; until now the whole run fell out of the bill."""
     result, _ = await lauf([
         answer("Erster Zug.", in_tok=500, out_tok=60,
@@ -310,7 +310,7 @@ async def test_provider_error_verliert_die_tokens_nicht(db, lauf):
     assert (await steps(db))[-1].kind == "run_end"
 
 
-async def test_ohne_katalogeintrag_ist_die_null_eine_luecke(db, lauf):
+async def test_without_a_catalog_entry_the_zero_is_a_gap(db, lauf):
     await lauf([answer("fertig", in_tok=1000, out_tok=100)])
     run = await last_lauf(db)
     entry = (await db.execute(select(CostEntry))).scalars().first()
@@ -318,7 +318,7 @@ async def test_ohne_katalogeintrag_ist_die_null_eine_luecke(db, lauf):
     assert entry.priced is False and entry.cost_usd == 0.0
 
 
-async def test_katalogeintrag_mit_preis_null_ist_bepreist(db, lauf):
+async def test_a_catalog_entry_priced_zero_is_priced(db, lauf):
     db.add(ProviderModel(provider="claude_code", model="sonnet", price_input=0.0,
                          price_output=0.0, price_cache_read=0.0))
     await db.commit()
@@ -327,14 +327,14 @@ async def test_katalogeintrag_mit_preis_null_ist_bepreist(db, lauf):
     assert entry.priced is True and entry.cost_usd == 0.0
 
 
-async def test_lauf_ohne_tokens_bekommt_eine_ausgeschriebene_null(db, lauf):
+async def test_a_run_without_tokens_gets_an_explicit_zero(db, lauf):
     await lauf([answer("fertig")])
     run = await last_lauf(db)
     assert run.cost_usd == 0.0
     assert (await db.execute(select(CostEntry))).scalars().all() == []
 
 
-async def test_fallback_landet_am_step_nicht_am_lauf(db, lauf):
+async def test_the_fallback_lands_on_the_step_not_on_the_run(db, lauf):
     """The run is configured on claude_code; what answered was the fallback. Without that on
     the step the turn would be priced with the wrong model."""
     await lauf([answer("fertig", in_tok=10, out_tok=2, provider="codex", model="gpt-5-codex")])
@@ -346,7 +346,7 @@ async def test_fallback_landet_am_step_nicht_am_lauf(db, lauf):
 
 # ── Abschluss ────────────────────────────────────────────────────────────────
 
-async def test_run_end_traegt_den_abschlussbericht(db, lauf):
+async def test_run_end_carries_the_closing_report(db, lauf):
     await lauf([answer("fertig", in_tok=10, out_tok=2)])
     run = await last_lauf(db)
     ende = (await steps(db))[-1]
@@ -357,7 +357,7 @@ async def test_run_end_traegt_den_abschlussbericht(db, lauf):
     assert ereignis["cost_priced"] is False      # no catalog entry in the test
 
 
-async def test_blockierter_lauf_nennt_den_reason(db, lauf):
+async def test_a_blocked_run_names_the_reason(db, lauf):
     result, _ = await lauf([
         answer(calls=[ToolCall(id="t1", name="ask_human",
                                 arguments={"question": "Welche Farbe?"})]),
@@ -369,7 +369,7 @@ async def test_blockierter_lauf_nennt_den_reason(db, lauf):
     assert office.step_events(ende, office.RunCtx.from_run(run))[0]["blocker_kind"] == "ask_human"
 
 
-async def test_ereignisse_gehen_auch_live_out(db, lauf, kein_redis):
+async def test_events_also_go_out_live(db, lauf, kein_redis):
     await lauf([answer("fertig")])
     channels = {k for k, _ in kein_redis}
     assert channels == {office.CHANNEL}

@@ -42,7 +42,7 @@ async def _instanzen(db) -> list[WorkflowInstance]:
     return list((await db.execute(select(WorkflowInstance))).scalars().all())
 
 
-async def test_ereignis_startet_all_zuhoerer(db):
+async def test_an_event_starts_all_listeners(db):
     await _flow(db, key="a", trigger={"event": "mail.received"})
     await _flow(db, key="b", trigger={"event": "mail.received"})
     await _flow(db, key="c", trigger={"event": "issue.created"})
@@ -59,7 +59,7 @@ async def test_ereignis_startet_all_zuhoerer(db):
     assert inst[0].context["event"]["name"] == "mail.received"
 
 
-async def test_trigger_auf_ein_projekt_begrenzt(db):
+async def test_a_trigger_limited_to_one_project(db):
     p1 = await make_project(db, "AAA", "Eins")
     p2 = await make_project(db, "BBB", "Zwei")
     await _flow(db, key="nur_p1", trigger={"event": "x", "project_id": p1.id})
@@ -69,7 +69,7 @@ async def test_trigger_auf_ein_projekt_begrenzt(db):
     assert len(await emit(db, "x", project_id=p1.id)) == 2      # beide
 
 
-async def test_projektgebundener_flow_hoert_nur_auf_sein_projekt(db):
+async def test_a_project_bound_flow_listens_only_to_its_project(db):
     p1 = await make_project(db, "AAA", "Eins")
     p2 = await make_project(db, "BBB", "Zwei")
     await _flow(db, key="im_p1", trigger={"event": "x"}, project_id=p1.id)
@@ -78,7 +78,7 @@ async def test_projektgebundener_flow_hoert_nur_auf_sein_projekt(db):
     assert len(await listeners(db, "x", p1.id)) == 1
 
 
-async def test_bedingung_filtert(db):
+async def test_the_condition_filters(db):
     await _flow(db, key="nur_dringend", trigger={
         "event": "issue.created",
         "filter": {"==": [{"var": "issue.priority"}, "highest"]},
@@ -87,14 +87,14 @@ async def test_bedingung_filtert(db):
     assert len(await emit(db, "issue.created", payload={"issue": {"priority": "highest"}})) == 1
 
 
-async def test_doppelte_notice_startet_nur_einmal(db):
+async def test_a_duplicate_notice_starts_it_only_once(db):
     await _flow(db, key="a", trigger={"event": "mail.received"})
     erst = await emit(db, "mail.received", source_ref="uid-42")
     zweit = await emit(db, "mail.received", source_ref="uid-42")
     assert len(erst) == 1 and zweit == []
 
 
-async def test_kaputter_flow_stoppt_die_anderen_nicht(db):
+async def test_a_broken_flow_does_not_stop_the_others(db):
     """An event is a report, not an assignment: a broken listener must neither tear the
     trigger nor the other flows with it."""
     kaputt = await _flow(db, key="kaputt", trigger={"event": "x"})
@@ -107,7 +107,7 @@ async def test_kaputter_flow_stoppt_die_anderen_nicht(db):
     assert len(ids) == 1
 
 
-async def test_ticket_create_meldet_das_ereignis(client, db, seeded):
+async def test_creating_a_ticket_raises_the_event(client, db, seeded):
     """The most important connection: a new ticket triggers `issue.created`."""
     from app.models.enums import StatusCategory
     from app.models.ticket import IssueCounter, IssueType, WorkflowStatus

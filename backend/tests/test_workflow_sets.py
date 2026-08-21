@@ -11,7 +11,7 @@ from conftest import add_member, auth, make_project, make_user
 LIFECYCLE = WorkflowSlot.ticket_lifecycle.value
 
 
-async def test_standard_preset_gilt_ohne_zutun(db, seeded):
+async def test_the_default_preset_applies_without_action(db, seeded):
     proj = await make_project(db, "TST", "Test")
     d = await sets.resolve_definition(db, proj.id, LIFECYCLE)
     assert d is not None and d.set_id == seeded.id
@@ -19,7 +19,7 @@ async def test_standard_preset_gilt_ohne_zutun(db, seeded):
     assert info["origin"] == "builtin"
 
 
-async def test_eigener_preset_gilt_fuer_meine_owner_projekte(db, seeded):
+async def test_an_own_preset_applies_to_my_owned_projects(db, seeded):
     owner = await make_user(db, "owner")
     fremd = await make_user(db, "fremd")
     meins = await make_project(db, "MEIN", "Meins")
@@ -36,7 +36,7 @@ async def test_eigener_preset_gilt_fuer_meine_owner_projekte(db, seeded):
     assert (await sets.resolve_source(db, anderes.id, LIFECYCLE))["origin"] == "builtin"
 
 
-async def test_anpassen_entkoppelt_und_zuruecksetzen_bindet_wieder(db, seeded):
+async def test_adjusting_detaches_and_resetting_binds_again(db, seeded):
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     await add_member(db, proj, owner, ProjectRole.owner)
@@ -56,7 +56,7 @@ async def test_anpassen_entkoppelt_und_zuruecksetzen_bindet_wieder(db, seeded):
     assert kopie.archived_at is not None
 
 
-async def test_zuruecksetzen_laesst_laufende_instanz_unberuehrt(db, seeded, client):
+async def test_resetting_leaves_a_running_instance_untouched(db, seeded, client):
     """A running instance hangs off its version: resetting must not topple it."""
     from app.models.enums import WorkflowInstanceStatus, WorkflowSubjectKind
     from app.services.workflow_engine import start_workflow
@@ -76,7 +76,7 @@ async def test_zuruecksetzen_laesst_laufende_instanz_unberuehrt(db, seeded, clie
     assert await db.get(WorkflowDefinition, kopie.id) is not None
 
 
-async def test_slot_overview_zeigt_herkunft(client, db, seeded):
+async def test_the_slot_overview_shows_the_origin(client, db, seeded):
     owner = await make_user(db, "owner", admin=True)
     proj = await make_project(db, "TST", "Test")
     m = await add_member(db, proj, owner, ProjectRole.owner)
@@ -103,7 +103,7 @@ async def test_slot_overview_zeigt_herkunft(client, db, seeded):
     assert {s["slot"]: s for s in r.json()}[LIFECYCLE]["origin"] == "builtin"
 
 
-async def test_seed_ist_idempotent(db, seeded):
+async def test_seeding_is_idempotent(db, seeded):
     from app.services.workflow_seed import ensure_builtin_set
     from sqlalchemy import func, select
     from app.models.workflow import WorkflowVersion
@@ -114,7 +114,7 @@ async def test_seed_ist_idempotent(db, seeded):
     assert (await db.execute(select(func.count()).select_from(WorkflowVersion))).scalar() == vorher
 
 
-async def test_fremder_persoenlicher_preset_ist_tabu(client, db, seeded):
+async def test_another_persons_preset_is_off_limits(client, db, seeded):
     a = await make_user(db, "anna")
     b = await make_user(db, "bert")
     preset = await sets.create_user_set(db, a)
@@ -126,7 +126,7 @@ async def test_fremder_persoenlicher_preset_ist_tabu(client, db, seeded):
     assert r.status_code == 403
 
 
-async def test_instanz_kennt_projekt_auch_bei_preset_template(db, seeded):
+async def test_the_instance_knows_the_project_even_with_a_preset_template(db, seeded):
     """Templates are project-less; the instance still has to hang off the project, because
     otherwise the rights check and the live events do not work."""
     from app.models.enums import TicketAgentStatus

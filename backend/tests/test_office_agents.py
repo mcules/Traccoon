@@ -1,6 +1,6 @@
 """The personnel file: key figures per **role**, not per run.
 
-The most important test of this file is `test_project_manager_steht_nicht_bei_null`. A
+The most important test of this file is `test_the_project_manager_does_not_start_at_zero`. A
 success rate of `success/runs` would report the `project_manager` at 0 % (it has 0 `success`
 and 7 `planned` in the running instance) and the `architect` at 6 % instead of 78 %.
 `office/engine.ts::verdictOf` on the other hand treats `planned` as "ok" **today already**. A
@@ -80,7 +80,7 @@ def rolle(payload: dict, name: str) -> dict:
 # ── The three bars ───────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_project_manager_steht_nicht_bei_null(client, db):
+async def test_the_project_manager_does_not_start_at_zero(client, db):
     """The test it is all about: 0 `success`, 7 `planned`, and 7 of 11 delivered regardless.
 
     What is reproduced is the real distribution of the `project_manager` in the running
@@ -107,7 +107,7 @@ async def test_project_manager_steht_nicht_bei_null(client, db):
 
 
 @pytest.mark.asyncio
-async def test_architekt_78_prozent(client, db):
+async def test_architect_at_78_percent(client, db):
     """`architect` in echt: 3 success + 36 planned + 5 blocked + 6 failed = 39/50."""
     user, proj, issue = await buehne(db)
     for status, n in (("success", 3), ("planned", 36), ("blocked", 5), ("failed", 6)):
@@ -147,7 +147,7 @@ async def test_status_mapping(client, db):
 # ── Sichtbarkeit ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_fremdes_projekt_ist_404(client, db):
+async def test_a_foreign_project_is_404(client, db):
     """A non-member gets a 404, never a 403; a 403 would reveal the existence of the project."""
     user, proj, issue = await buehne(db)
     fremder = await make_user(db, "bob")
@@ -158,7 +158,7 @@ async def test_fremdes_projekt_ist_404(client, db):
 
 
 @pytest.mark.asyncio
-async def test_viewer_genuegt(client, db):
+async def test_viewer_is_enough(client, db):
     """A viewer may read the file. `/costs/global` is `require_admin`; the office explicitly
     is not, because otherwise an empty tab would stand there for most users."""
     user, proj, issue = await buehne(db, rolle=ProjectRole.viewer)
@@ -170,7 +170,7 @@ async def test_viewer_genuegt(client, db):
 
 
 @pytest.mark.asyncio
-async def test_global_zeigt_fremdes_nicht(client, db):
+async def test_the_global_view_does_not_show_foreign_ones(client, db):
     """Global is no 404 surface (there is no path whose existence would be revealed) but
     simply empty: the stranger sees no foreign roles."""
     user, proj, issue = await buehne(db)
@@ -183,7 +183,7 @@ async def test_global_zeigt_fremdes_nicht(client, db):
 
 
 @pytest.mark.asyncio
-async def test_admin_sieht_alles(client, db):
+async def test_an_admin_sees_everything(client, db):
     user, proj, issue = await buehne(db)
     chef = await make_user(db, "chef", admin=True)
     await lauf(db, issue, agent="developer")
@@ -198,7 +198,7 @@ async def test_admin_sieht_alles(client, db):
 # ── Parameter ────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_agent_filter_verengt(client, db):
+async def test_the_agent_filter_narrows(client, db):
     user, proj, issue = await buehne(db)
     await lauf(db, issue, agent="developer")
     await lauf(db, issue, agent="architect", status="planned")
@@ -208,7 +208,7 @@ async def test_agent_filter_verengt(client, db):
 
 
 @pytest.mark.asyncio
-async def test_window_klemmt_und_steht_in_der_answer(client, db):
+async def test_the_window_is_clamped_and_named_in_the_answer(client, db):
     """`since_hours` is clamped and delivered along: the view should be able to say "of the
     last N hours", because `run_retention_days` deletes older runs."""
     user, proj, issue = await buehne(db)
@@ -230,7 +230,7 @@ async def test_window_klemmt_und_steht_in_der_answer(client, db):
 # ── Duration: a distribution instead of an average ───────────────────────────
 
 @pytest.mark.asyncio
-async def test_perzentile_und_histogramm(client, db):
+async def test_percentiles_and_histogram(client, db):
     """A distribution computed by hand: 12 s · 25 s · 100 s · 480 s · 1700 s.
 
     p50 is the 3rd value (100 s), so it lies in the ladder bucket up to 120 s, giving `p50_ms=120000`.
@@ -260,7 +260,7 @@ async def test_perzentile_und_histogramm(client, db):
 
 
 @pytest.mark.asyncio
-async def test_laufender_lauf_hat_keine_duration(client, db):
+async def test_a_running_run_has_no_duration(client, db):
     """A still running run counts in `running` but in no duration bucket: "until now" is not
     a duration but a number that changes on the next fetch."""
     user, proj, issue = await buehne(db)
@@ -276,7 +276,7 @@ async def test_laufender_lauf_hat_keine_duration(client, db):
 # ── Rounds and steps are two things ──────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_runden_und_steps_getrennt(client, db):
+async def test_rounds_and_steps_kept_apart(client, db):
     """`iterations` (rounds) and `run_steps` (steps) have fields of their own: in reality they
     stand at an average of 6.9 against 21.5, and a common field would have made both unreadable."""
     user, proj, issue = await buehne(db)
@@ -293,7 +293,7 @@ async def test_runden_und_steps_getrennt(client, db):
 
 
 @pytest.mark.asyncio
-async def test_schrittschnitt_zaehlt_nur_runs_mit_schritten(client, db):
+async def test_the_step_average_counts_only_runs_with_steps(client, db):
     """A run whose steps the retention deleted did not have "0 steps", so it does not pull the
     average down."""
     user, proj, issue = await buehne(db)
@@ -310,7 +310,7 @@ async def test_schrittschnitt_zaehlt_nur_runs_mit_schritten(client, db):
 # ── Costs: always a lower bound ──────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_cost_partial_solange_priced_null(client, db):
+async def test_cost_is_partial_while_priced_is_null(client, db):
     """`priced IS NULL` means "never recorded whether there was a catalog entry", and in the
     running instance that applies to ALL 411 entries. Every sum is therefore a lower bound."""
     user, proj, issue = await buehne(db)
@@ -324,7 +324,7 @@ async def test_cost_partial_solange_priced_null(client, db):
 
 
 @pytest.mark.asyncio
-async def test_cost_partial_falsch_wenn_alles_bepreist(client, db):
+async def test_cost_partial_is_false_when_everything_is_priced(client, db):
     user, proj, issue = await buehne(db)
     r1 = await lauf(db, issue, agent="developer")
     await posten(db, r1, cost=1.0, priced=True)
@@ -338,7 +338,7 @@ async def test_cost_partial_falsch_wenn_alles_bepreist(client, db):
 
 
 @pytest.mark.asyncio
-async def test_kosten_ueberleben_den_lauf(client, db):
+async def test_costs_survive_the_run(client, db):
     """Grouping happens by `cost_entries.agent`, not by `runs.agent`: `run_id` is `SET NULL`,
     and an entry survives the deletion of the run. Computed over `runs.agent` the bill would
     disappear with the run."""
@@ -358,7 +358,7 @@ async def test_kosten_ueberleben_den_lauf(client, db):
 # ── Werkzeugtabelle ──────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_tools_reihenfolge_und_kappung(client, db):
+async def test_tool_order_and_capping(client, db):
     user, proj, issue = await buehne(db)
     r1 = await lauf(db, issue, agent="developer")
     seq = 0
@@ -382,7 +382,7 @@ async def test_tools_reihenfolge_und_kappung(client, db):
 # ── Projekt- gegen globale Akte ──────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_projektakte_zeigt_nur_das_projekt(client, db):
+async def test_the_project_file_shows_only_that_project(client, db):
     user, proj, issue = await buehne(db)
     zweit = await make_project(db, "BBB", "Beta")
     await add_member(db, zweit, user, ProjectRole.viewer)

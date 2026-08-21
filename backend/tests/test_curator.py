@@ -60,14 +60,14 @@ def test_answer_split():
     assert _parts("### BEHALTEN\n\n### ARCHIV\n- alles weg") is None   # nichts behalten
 
 
-async def test_kurze_notiz_wird_nicht_angefasst(db, monkeypatch):
+async def test_a_short_note_is_left_alone(db, monkeypatch):
     _aux(monkeypatch, "### BEHALTEN\n- eins")
     mcp = FakeMcp("- nur eine Zeile")
     assert await _lauf(db, mcp) is None
     assert mcp.notizen[PATH] == "- nur eine Zeile"
 
 
-async def test_prune_kuerzt_und_archiviert(db, monkeypatch):
+async def test_pruning_shortens_and_archives(db, monkeypatch):
     behalten = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
     _aux(monkeypatch, f"### BEHALTEN\n{behalten}\n### ARCHIV\n- Erkenntnis 39: alt.")
     mcp = FakeMcp()
@@ -79,7 +79,7 @@ async def test_prune_kuerzt_und_archiviert(db, monkeypatch):
     assert "Erkenntnis 39" in archiv and "Aussortiert am" in archiv
 
 
-async def test_angepinntes_muss_ueberleben(db, monkeypatch):
+async def test_pinned_material_has_to_survive(db, monkeypatch):
     """If a pin is missing in the result, nothing is written at all: the human nailed this
     line down explicitly."""
     inhalt = NOTIZ + f"\n- {PIN} Niemals ohne Rückfrage deployen"
@@ -90,7 +90,7 @@ async def test_angepinntes_muss_ueberleben(db, monkeypatch):
     assert mcp.notizen[PATH] == inhalt
 
 
-async def test_kahlschlag_wird_verweigert(db, monkeypatch):
+async def test_clear_cutting_is_refused(db, monkeypatch):
     """Two thirds gone is no longer tidying up."""
     _aux(monkeypatch, "### BEHALTEN\n- eins\n### ARCHIV\n- der ganze Rest")
     mcp = FakeMcp()
@@ -98,21 +98,21 @@ async def test_kahlschlag_wird_verweigert(db, monkeypatch):
     assert mcp.notizen[PATH] == NOTIZ
 
 
-async def test_formatfehler_laesst_alles_stehen(db, monkeypatch):
+async def test_a_format_error_leaves_everything_standing(db, monkeypatch):
     _aux(monkeypatch, "Klar, ich habe aufgeräumt! Hier das Ergebnis: ...")
     mcp = FakeMcp()
     assert await _lauf(db, mcp) is None
     assert mcp.notizen[PATH] == NOTIZ
 
 
-async def test_ohne_aux_passiert_nichts(db, monkeypatch):
+async def test_without_aux_nothing_happens(db, monkeypatch):
     _aux(monkeypatch, None)
     mcp = FakeMcp()
     assert await _lauf(db, mcp) is None
     assert mcp.notizen[PATH] == NOTIZ
 
 
-async def test_klemmendes_archiv_haelt_die_notiz_unveraendert(db, monkeypatch):
+async def test_a_stuck_archive_keeps_the_note_unchanged(db, monkeypatch):
     """Archive first, truncate afterwards: if the archive jams, nothing may be truncated,
     because otherwise what was sorted out would be gone without replacement."""
     behalten = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
@@ -122,7 +122,7 @@ async def test_klemmendes_archiv_haelt_die_notiz_unveraendert(db, monkeypatch):
     assert mcp.notizen[PATH] == NOTIZ
 
 
-async def test_hoechstens_einmal_am_tag(db, monkeypatch):
+async def test_at_most_once_a_day(db, monkeypatch):
     now = dt.datetime.now(tz=dt.timezone.utc)
     assert await due(db, 1, PATH) is True                     # never run yet
     await set_setting(db, f"curator_last:1:{PATH}", now.isoformat())
@@ -133,7 +133,7 @@ async def test_hoechstens_einmal_am_tag(db, monkeypatch):
     assert await due(db, 1, PATH) is True
 
 
-async def test_erfolgreicher_lauf_merkt_sich_den_moment(db, monkeypatch):
+async def test_a_successful_run_remembers_the_moment(db, monkeypatch):
     behalten = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
     _aux(monkeypatch, f"### BEHALTEN\n{behalten}\n### ARCHIV\nkeine")
     await _lauf(db, FakeMcp(), owner_id=7)
@@ -141,7 +141,7 @@ async def test_erfolgreicher_lauf_merkt_sich_den_moment(db, monkeypatch):
     assert await due(db, 7, PATH) is False
 
 
-async def test_ohne_eigenes_modell_bleibt_die_pflege_aus(db, monkeypatch):
+async def test_without_an_own_model_no_curation_happens(db, monkeypatch):
     """The curator is diligence work in the background. If it ran on the working model for
     lack of a setting, it would cost money unasked AND write in the vault of the human."""
     from app.worker import __main__ as worker

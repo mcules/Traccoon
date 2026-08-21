@@ -26,7 +26,7 @@ ALLOWED = {
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_ausgaenge_sind_am_node_vorhanden(slot):
+def test_the_outputs_exist_on_the_node(slot):
     graph = BUILDERS[slot]()
     node = {n["id"]: n for n in graph["nodes"]}
     for e in graph["edges"]:
@@ -46,7 +46,7 @@ def test_ausgaenge_sind_am_node_vorhanden(slot):
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_kein_step_hangs_in_der_luft(slot):
+def test_no_step_hangs_in_the_air(slot):
     graph = BUILDERS[slot]()
     ein = {e["target"] for e in graph["edges"]}
     aus = {e["source"] for e in graph["edges"]}
@@ -59,7 +59,7 @@ def test_kein_step_hangs_in_der_luft(slot):
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_standard_branch_ist_ein_branch(slot):
+def test_the_default_branch_is_a_branch(slot):
     """The default branch has to stand in the branch list.
 
     Otherwise the node shows an exit the configuration does not know: the panel presents it
@@ -80,7 +80,7 @@ def test_standard_branch_ist_ein_branch(slot):
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_actions_in_einheitlicher_form(slot):
+def test_actions_in_a_uniform_shape(slot):
     """Action nodes have to use the nested form.
 
     In the flat form (`{"action": "name", "status": …}`) the editor shows neither the action
@@ -97,7 +97,7 @@ def test_actions_in_einheitlicher_form(slot):
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_keine_zwei_node_auf_derselben_stelle(slot):
+def test_no_two_nodes_on_the_same_spot(slot):
     """Two nodes at the same position cover each other, and with them the edge that hangs
     there. In the mail inbox exactly that stood out only in the picture."""
     if slot == "ticket_lifecycle":

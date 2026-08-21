@@ -49,7 +49,7 @@ async def _dest(db, **kw) -> Destination:
     return d
 
 
-def test_url_bau():
+def test_url_building():
     """Base URL plus path plus query, without doubled or missing slashes."""
     b = svc.build_url
     assert b("https://a.test/v1", "orders") == "https://a.test/v1/orders"
@@ -75,7 +75,7 @@ async def test_bearer_auth(db, calls):
     assert calls[0].headers["authorization"] == "Bearer t0k3n"
 
 
-async def test_api_key_header_und_query(db, calls):
+async def test_api_key_in_header_and_query(db, calls):
     d = await _dest(db, auth_type="api_key", api_key_name="X-Key",
                     secret_enc=encrypt_secret("abc"))
     await svc.call(db, d, method="GET", path="/x")
@@ -90,7 +90,7 @@ async def test_api_key_header_und_query(db, calls):
     assert "abc" not in res["url"]
 
 
-async def test_hmac_signatur_ohne_praefix(db, calls):
+async def test_hmac_signature_without_a_prefix(db, calls):
     """Signature over the sent body; the prefix is configurable and empty by default (Hermes
     rejects a `sha256=` prefix)."""
     d = await _dest(db, auth_type="hmac", secret_enc=encrypt_secret("s3cr3t"),
@@ -107,7 +107,7 @@ async def test_hmac_signatur_ohne_praefix(db, calls):
     assert calls[1].headers["x-webhook-signature"].startswith("sha256=")
 
 
-async def test_oauth2_holt_token_und_merkt_ihn(db, monkeypatch):
+async def test_oauth2_fetches_a_token_and_remembers_it(db, monkeypatch):
     """Client credentials: fetch the token once, take it from the cache afterwards."""
     aufrufe: list[httpx.Request] = []
 
@@ -141,7 +141,7 @@ async def test_oauth2_holt_token_und_merkt_ihn(db, monkeypatch):
     assert d.oauth_expires_at is not None and d.oauth_token_enc
 
 
-async def test_methoden_und_body(db, calls):
+async def test_methods_and_body(db, calls):
     d = await _dest(db, auth_type="none")
     for verb in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"):
         await svc.call(db, d, method=verb, body={"x": 1})
@@ -155,7 +155,7 @@ async def test_methoden_und_body(db, calls):
         await svc.call(db, d, method="TRACE")
 
 
-async def test_kopfzeilen_des_ziels_und_des_aufrufs(db, calls):
+async def test_headers_of_the_destination_and_of_the_call(db, calls):
     d = await _dest(db, auth_type="none", default_headers={"X-Mandant": "a", "X-Fest": "1"})
     await svc.call(db, d, method="GET", headers={"X-Mandant": "b", "X-Extra": "2"})
     h = calls[0].headers
@@ -163,7 +163,7 @@ async def test_kopfzeilen_des_ziels_und_des_aufrufs(db, calls):
     assert h["x-fest"] == "1" and h["x-extra"] == "2"
 
 
-async def test_aufloesung_projekt_vor_user_vor_global(db):
+async def test_resolution_project_before_user_before_global(db):
     user = await make_user(db, "anna")
     proj = await make_project(db, "TST", "Test")
     await _dest(db, name="crm", base_url="https://global.test")
@@ -184,7 +184,7 @@ async def test_aufloesung_projekt_vor_user_vor_global(db):
     assert await svc.resolve(db, "gibtsnicht") is None
 
 
-async def test_agenten_nur_ueber_freigegebene_targets(db, calls):
+async def test_agents_only_through_released_destinations(db, calls):
     await _dest(db, name="intern", auth_type="none")
     with pytest.raises(ValueError, match="not released for AI agents"):
         await svc.call_by_name(db, "intern", agents_only=True, method="GET")
@@ -196,7 +196,7 @@ async def test_agenten_nur_ueber_freigegebene_targets(db, calls):
     assert res["ok"]
 
 
-async def test_geheimnis_wird_nie_zurueckgegeben(client, db):
+async def test_a_secret_is_never_returned(client, db):
     admin = await make_user(db, "chef", admin=True)
     r = await client.post("/destinations", headers=auth(admin), json={
         "name": "crm", "base_url": "https://api.test", "auth_type": "bearer", "token": "streng",
@@ -214,7 +214,7 @@ async def test_geheimnis_wird_nie_zurueckgegeben(client, db):
     assert r2.json()["has_secret"] is True
 
 
-async def test_systemweites_target_nur_admin(client, db):
+async def test_a_system_wide_destination_is_admin_only(client, db):
     normal = await make_user(db, "otto")
     r = await client.post("/destinations", headers=auth(normal), json={
         "name": "extern", "base_url": "https://api.test"})
@@ -245,7 +245,7 @@ def grosse_answer(monkeypatch):
     return GROSSE_ANSWER
 
 
-async def test_antwortgrenze_standard_kuerzt(db, grosse_answer):
+async def test_the_default_response_limit_shortens(db, grosse_answer):
     """Without an entry of its own it stays at 4000 characters: existing destinations do not change."""
     d = await _dest(db, name="klein")
     assert d.max_response_chars == 4000
@@ -254,7 +254,7 @@ async def test_antwortgrenze_standard_kuerzt(db, grosse_answer):
     assert "text" not in res          # too long, so only as json, the full text suppressed
 
 
-async def test_antwortgrenze_je_target_greift(db, grosse_answer):
+async def test_the_per_destination_response_limit_applies(db, grosse_answer):
     """A destination may let more through; otherwise an agent would plan on truncated JSON."""
     d = await _dest(db, name="gross", max_response_chars=40000)
     res = await svc.call(db, d, method="GET")
@@ -262,7 +262,7 @@ async def test_antwortgrenze_je_target_greift(db, grosse_answer):
     assert res["text"] == grosse_answer
 
 
-async def test_http_call_kuerzt_nicht_nochmal(db, grosse_answer):
+async def test_http_call_does_not_shorten_a_second_time(db, grosse_answer):
     """The agent tool must not revoke the permission of the destination."""
     from app.worker.tools_traccoon import call_traccoon_tool
     u = await make_user(db, "zielnutzer")
@@ -274,7 +274,7 @@ async def test_http_call_kuerzt_nicht_nochmal(db, grosse_answer):
     assert len(out) > 9000
 
 
-async def test_http_call_meldet_den_schnitt(db, grosse_answer):
+async def test_http_call_reports_the_cut(db, grosse_answer):
     """If it is truncated after all, the agent has to see it: a silent cut is worse than a
     short answer, because it plans on fragments."""
     from app.worker.tools_traccoon import call_traccoon_tool

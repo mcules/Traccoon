@@ -19,16 +19,16 @@ def _lauf(n: int) -> list[dict]:
     return m
 
 
-def test_unter_der_threshold_passiert_nichts():
+def test_below_the_threshold_nothing_happens():
     assert plan(_lauf(20), limit_tokens=100_000, gemessen=50_000) is None
 
 
-def test_ohne_limit_passiert_nichts():
+def test_without_a_limit_nothing_happens():
     """No `max_context_tokens` means the behaviour as before, no matter how large the context."""
     assert plan(_lauf(20), limit_tokens=0, gemessen=10_000_000) is None
 
 
-def test_ueber_der_threshold_wird_der_mittelteil_gewaehlt():
+def test_above_the_threshold_the_middle_part_is_picked():
     m = _lauf(20)
     von, bis = plan(m, limit_tokens=100_000, gemessen=85_000)
     assert von == 2                      # system plus assignment stay untouched
@@ -36,11 +36,11 @@ def test_ueber_der_threshold_wird_der_mittelteil_gewaehlt():
     assert bis - von >= compaction.MIN_BLOCK
 
 
-def test_kurzer_verlauf_lohnt_nicht():
+def test_a_short_history_is_not_worth_it():
     assert plan(_lauf(1), limit_tokens=1000, gemessen=999) is None
 
 
-def test_schnitt_trennt_nie_werkzeugaufruf_von_seiner_answer():
+def test_the_cut_never_separates_a_tool_call_from_its_answer():
     """The expensive error: an `assistant` with tool_calls without the corresponding `tool`
     answers is an invalid request for the provider (HTTP 400), turning threatening into certain."""
     m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
@@ -59,7 +59,7 @@ def test_schnitt_trennt_nie_werkzeugaufruf_von_seiner_answer():
             assert remainder[i - 1].get("tool_calls"), "a tool answer without its call"
 
 
-async def test_zusammenfassung_ersetzt_den_mittelteil(db, monkeypatch):
+async def test_the_summary_replaces_the_middle_part(db, monkeypatch):
     async def fake_aux(*a, **kw):
         return "- Schritt A erledigt\n- Entscheidung B getroffen"
 
@@ -73,7 +73,7 @@ async def test_zusammenfassung_ersetzt_den_mittelteil(db, monkeypatch):
     assert new[-1] == m[-1]                                # the most recent stays verbatim
 
 
-async def test_ohne_aux_wird_trotzdem_gekuerzt_aber_ehrlich(db, monkeypatch):
+async def test_without_aux_it_still_shortens_but_says_so(db, monkeypatch):
     """An aborted run is worse than one with a gap in its memory, but the agent has to KNOW
     about the gap; otherwise it takes it for completeness."""
     async def fake_aux(*a, **kw):
@@ -87,12 +87,12 @@ async def test_ohne_aux_wird_trotzdem_gekuerzt_aber_ehrlich(db, monkeypatch):
     assert "nicht möglich" in new[2]["content"] and "verloren" in new[2]["content"]
 
 
-async def test_nichts_zu_tun_gibt_none(db):
+async def test_nothing_to_do_returns_none(db):
     assert await kompaktiere(db, messages=_lauf(3), limit_tokens=100_000, gemessen=10,
                              owner_id=1, agent=None, tokens={}, base_urls={}) is None
 
 
-def test_anthropic_blockformat_wird_lesbar_zusammengefuehrt():
+def test_the_anthropic_block_format_is_merged_readably():
     """Anthropic delivers content as a list of blocks, and the template for the aux model has
     to make text of it regardless; otherwise it summarises empty messages."""
     text = compaction._as_text([
@@ -103,7 +103,7 @@ def test_anthropic_blockformat_wird_lesbar_zusammengefuehrt():
     assert "Ich prüfe das." in text and "datei_lesen" in text
 
 
-async def test_grosser_verlauf_wird_haeppchenweise_gefasst(db, monkeypatch):
+async def test_a_large_history_is_summarised_in_chunks(db, monkeypatch):
     """The aux model is deliberately small (local, 32k). If it gets the whole history of a
     200k model it refuses, and the agent would stand there without a summary. So: cut into
     pieces and catch them piece by piece, each of them small enough on its own."""
@@ -132,7 +132,7 @@ async def test_grosser_verlauf_wird_haeppchenweise_gefasst(db, monkeypatch):
     assert len(new) > compaction.BEHALTEN
 
 
-async def test_reiner_werkzeugverlauf_behaelt_header_und_juengstes(db, monkeypatch):
+async def test_a_pure_tool_history_keeps_the_header_and_the_newest(db, monkeypatch):
     """The UNI-4 case: 60 rounds of nothing but tool calls, without a single user or system
     message in between. Formerly the truncation only knew "everything" here: the history down
     to three messages, the agent without memory, starting from the front and writing not a line of code in two runs."""
@@ -162,7 +162,7 @@ async def test_reiner_werkzeugverlauf_behaelt_header_und_juengstes(db, monkeypat
             assert new[i - 1].get("tool_calls"), "a tool answer without its call"
 
 
-async def test_handover_traegt_den_faden_weiter(db, monkeypatch):
+async def test_the_handover_carries_the_thread_on(db, monkeypatch):
     """The continuation gets insights, what is done and the next step, not the last sentence.
     UNI-12 began three runs in a row with the same search query on 2026-08-07, because the
     handover consisted of "time limit reached … (no text)"."""
@@ -188,7 +188,7 @@ async def test_handover_traegt_den_faden_weiter(db, monkeypatch):
     assert any("Übergabe" in g or "Erkenntnisse" in g for g in seen)
 
 
-async def test_handover_faellt_ehrlich_zurueck(db, monkeypatch):
+async def test_the_handover_falls_back_honestly(db, monkeypatch):
     """Without an aux model, better the old, meagre stopgap than nothing at all."""
     async def fake_aux(*a, **kw):
         return None
@@ -206,7 +206,7 @@ async def test_handover_faellt_ehrlich_zurueck(db, monkeypatch):
     assert "war gerade bei X" in text or "nicht möglich" in text
 
 
-async def test_handover_bei_kurzem_lauf_bleibt_schlicht(db, monkeypatch):
+async def test_a_handover_on_a_short_run_stays_plain(db, monkeypatch):
     """A run with two turns needs no aux round: the stopgap already says everything."""
     async def fake_aux(*a, **kw):
         raise AssertionError("aux must not even be asked here")

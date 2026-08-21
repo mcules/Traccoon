@@ -77,13 +77,13 @@ async def owner(db):
     return u
 
 
-async def test_erledigtes_ohne_handlungsbedarf_bleibt_still(db, owner, monkeypatch):
+async def test_finished_work_without_action_needed_stays_quiet(db, owner, monkeypatch):
     """The case from practice: filed, nothing to do, so no message."""
     await _lauf(db, monkeypatch, owner=owner)
     assert await _messages(db) == []
 
 
-async def test_ausdrueckliche_notice_kommt_an_und_zwar_einmal(db, owner, monkeypatch):
+async def test_an_explicit_notice_arrives_and_only_once(db, owner, monkeypatch):
     """If the assistant reports itself, EXACTLY its message goes out, not the closing report
     in addition (because otherwise the same thing would come twice)."""
     await _lauf(db, monkeypatch, owner=owner, meldet=True)
@@ -92,13 +92,13 @@ async def test_ausdrueckliche_notice_kommt_an_und_zwar_einmal(db, owner, monkeyp
     assert n[0].title == "Frist am Freitag"
 
 
-async def test_panne_meldet_sich_immer(db, owner, monkeypatch):
+async def test_a_breakdown_always_reports_itself(db, owner, monkeypatch):
     await _lauf(db, monkeypatch, owner=owner, status="error")
     n = await _messages(db)
     assert len(n) == 1 and "Fehler" in n[0].title
 
 
-async def test_chat_wird_immer_beantwortet(db, owner, monkeypatch):
+async def test_chat_is_always_answered(db, owner, monkeypatch):
     """A question asked is a question one wants answered, even with "not at all"."""
     owner.assistant_notify = "never"
     await db.commit()
@@ -107,21 +107,21 @@ async def test_chat_wird_immer_beantwortet(db, owner, monkeypatch):
     assert len(n) == 1 and n[0].title.startswith("🤖 Assistent")
 
 
-async def test_modus_immer_meldet_auch_erledigtes(db, owner, monkeypatch):
+async def test_mode_always_also_reports_finished_work(db, owner, monkeypatch):
     owner.assistant_notify = "always"
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner)
     assert len(await _messages(db)) == 1
 
 
-async def test_modus_gar_nicht_schweigt_auch_bei_pannen(db, owner, monkeypatch):
+async def test_mode_never_stays_quiet_even_on_breakdowns(db, owner, monkeypatch):
     owner.assistant_notify = "never"
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner, status="error")
     assert await _messages(db) == []
 
 
-async def test_callback_im_chat_kommt_an(db, owner, monkeypatch):
+async def test_callback_in_the_chat_arrives(db, owner, monkeypatch):
     """The occasion: `ask_human` ended as 'blocked' and was misread as a tool gate; the
     question disappeared silently and the human saw only an eternal 'running'."""
     t = await _lauf(db, monkeypatch, owner=owner, kind="chat", status="blocked",
@@ -133,7 +133,7 @@ async def test_callback_im_chat_kommt_an(db, owner, monkeypatch):
     assert t.status == "done" and t.result == "Ticket oder API-Freigabe?"
 
 
-async def test_callback_ohne_chat_meldet_trotz_modus_bedarf(db, owner, monkeypatch):
+async def test_callback_without_chat_reports_despite_the_mode(db, owner, monkeypatch):
     """Outside the chat as well (mail inbox): a question without a recipient is pointless."""
     owner.assistant_notify = "needed"
     await db.commit()
@@ -142,7 +142,7 @@ async def test_callback_ohne_chat_meldet_trotz_modus_bedarf(db, owner, monkeypat
     assert len(n) == 1 and "Rückfrage" in n[0].title
 
 
-async def test_tool_grant_bleibt_still_und_open(db, owner, monkeypatch):
+async def test_tool_grant_stays_quiet_and_open(db, owner, monkeypatch):
     """The counterpart: with the tool gate the item waits for the approval card; it must be
     neither finalised nor reported twice."""
     t = await _lauf(db, monkeypatch, owner=owner, status="blocked",
@@ -152,7 +152,7 @@ async def test_tool_grant_bleibt_still_und_open(db, owner, monkeypatch):
     assert t.status == "running"
 
 
-async def test_meldewerkzeug_braucht_keine_grant(db, owner):
+async def test_the_notify_tool_needs_no_grant(db, owner):
     """Without this exception a missing allowlist approval would mean "never reports", and
     then important things would stay mute as well."""
     from app.worker.runtime import _ALWAYS_ALLOWED

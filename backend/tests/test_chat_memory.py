@@ -58,7 +58,7 @@ def _mock_aux(monkeypatch, text):
     return fake_aux
 
 
-async def test_kurzes_gespraech_bleibt_woertlich(db, anna, monkeypatch):
+async def test_a_short_conversation_stays_verbatim(db, anna, monkeypatch):
     """Little said means nothing to summarise, no aux call, no cost."""
     aux = _mock_aux(monkeypatch, "sollte nicht gerufen werden")
     for i in range(3):
@@ -70,7 +70,7 @@ async def test_kurzes_gespraech_bleibt_woertlich(db, anna, monkeypatch):
     assert (await db.execute(select(ChatSummary))).scalars().first() is None
 
 
-async def test_aelteres_wandert_in_die_zusammenfassung(db, anna, monkeypatch):
+async def test_older_parts_move_into_the_summary(db, anna, monkeypatch):
     _mock_aux(monkeypatch, "- Mensch mag knappe Antworten\n- Umzug des News-Jobs offen")
     for i in range(16):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
@@ -87,7 +87,7 @@ async def test_aelteres_wandert_in_die_zusammenfassung(db, anna, monkeypatch):
     assert s.agent == "assistent" and s.bis_task_id > 0
 
 
-async def test_zusammenfassung_wird_fortgeschrieben_nicht_ersetzt(db, anna, monkeypatch):
+async def test_the_summary_is_extended_not_replaced(db, anna, monkeypatch):
     """The second time, the existing memory has to go into the assignment as well; otherwise
     the assistant loses everything summarised before on every shift."""
     _mock_aux(monkeypatch, "- Runde eins")
@@ -104,7 +104,7 @@ async def test_zusammenfassung_wird_fortgeschrieben_nicht_ersetzt(db, anna, monk
     assert (await db.execute(select(ChatSummary))).scalars().one().text == "- Runde eins\n- Runde zwei"
 
 
-async def test_nur_neues_wird_gefasst(db, anna, monkeypatch):
+async def test_only_new_material_is_summarised(db, anna, monkeypatch):
     """What already stands in the summary must not go through the model again; otherwise every
     message costs the whole history."""
     _mock_aux(monkeypatch, "- alles bekannt")
@@ -117,7 +117,7 @@ async def test_nur_neues_wird_gefasst(db, anna, monkeypatch):
     assert not hasattr(aux2, "seen")     # nothing shifted, so no call
 
 
-async def test_ohne_aux_bleibt_das_alte_gedaechtnis(db, anna, monkeypatch):
+async def test_without_aux_the_old_memory_remains(db, anna, monkeypatch):
     """Aux unreachable: better a slightly outdated memory than a torn thread."""
     _mock_aux(monkeypatch, "- Stand von gestern")
     for i in range(16):
@@ -133,7 +133,7 @@ async def test_ohne_aux_bleibt_das_alte_gedaechtnis(db, anna, monkeypatch):
     assert "Stand von gestern" in verlauf[0]["body"]
 
 
-async def test_fachagent_hat_ein_eigenes_gespraech(db, anna, monkeypatch):
+async def test_a_specialist_agent_has_its_own_conversation(db, anna, monkeypatch):
     _mock_aux(monkeypatch, "- egal")
     await _chat(db, anna, "Assistenten-Sache", "ok")
     await _chat(db, anna, "UniWar-Sache", "ok", agent="uniwar-operator")
@@ -142,7 +142,7 @@ async def test_fachagent_hat_ein_eigenes_gespraech(db, anna, monkeypatch):
     assert [w["body"] for w in verlauf if w["role"] == "user"] == ["UniWar-Sache"]
 
 
-async def test_sehr_alte_gespraeche_count_nicht_mehr(db, anna, monkeypatch):
+async def test_very_old_conversations_no_longer_count(db, anna, monkeypatch):
     _mock_aux(monkeypatch, "- egal")
     await _chat(db, anna, "Uralt", "ok", days_alt=30)
     await _chat(db, anna, "Neulich", "ok")

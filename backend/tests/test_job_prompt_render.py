@@ -48,7 +48,7 @@ async def _lauf(db, monkeypatch, job: Job) -> str:
     return next(a["prompt"] for a in tasks if a.get("kind") == "agent_frei")
 
 
-async def test_prompt_wird_mit_parametern_gefuellt(db, anna, monkeypatch, redis_stub):
+async def test_the_prompt_is_filled_with_parameters(db, anna, monkeypatch, redis_stub):
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news",
             prompt="Berichte über {{thema}} aus {{quellen}} auf {{sprache}}.",
             args={"thema": "Funk", "quellen": ["ARRL", "DARC"], "sprache": "Deutsch"})
@@ -59,7 +59,7 @@ async def test_prompt_wird_mit_parametern_gefuellt(db, anna, monkeypatch, redis_
     assert await _lauf(db, monkeypatch, j) == "Berichte über Funk aus ARRL, DARC auf Deutsch."
 
 
-async def test_script_argumente_machen_keinen_parametersatz_auf(db, anna, redis_stub):
+async def test_script_arguments_do_not_open_a_parameter_set(db, anna, redis_stub):
     """Eine `args`-Liste war ein Skript-Argument und darf im Auftrag nichts ersetzen."""
     from app.models.workflow import WorkflowDefinition, WorkflowVersion
 
@@ -76,7 +76,7 @@ async def test_script_argumente_machen_keinen_parametersatz_auf(db, anna, redis_
     assert arbeit["data"]["config"]["action"]["params"]["task"] == "Unverändert {{thema}}"
 
 
-async def test_zeitfenster_ueberspringt_kaputte_runs(db, anna, monkeypatch, redis_stub):
+async def test_the_time_window_skips_broken_runs(db, anna, monkeypatch, redis_stub):
     """War der Job gestern kaputt, muss das Fenster bis zum letzten ERFOLG zurückreichen;
     sonst fällt der Tag des Ausfalls lautlos aus dem Rückblick."""
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news",
@@ -89,7 +89,7 @@ async def test_zeitfenster_ueberspringt_kaputte_runs(db, anna, monkeypatch, redi
     assert await _lauf(db, monkeypatch, j) == "2026-07-27 08:00"    # Europe/Berlin
 
 
-async def test_der_lauf_bleibt_open_bis_das_result_da_ist(db, anna, monkeypatch, redis_stub):
+async def test_the_run_stays_open_until_the_result_is_there(db, anna, monkeypatch, redis_stub):
     """Der Job stößt an, der Agent arbeitet — das Ergebnis trägt die Engine nach."""
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news", prompt="x", args={})
     db.add(j)

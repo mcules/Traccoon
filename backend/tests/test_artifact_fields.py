@@ -51,7 +51,7 @@ async def _field(db, type_key: str, key: str, *, kind="text", multi=False, requi
 
 # ── Kern: Feld anlegen, Werte zuordnen ───────────────────────────────────────
 
-async def test_ticket_traegt_mehrere_values_eines_feldes(client, db, register):
+async def test_ticket_carries_several_values_of_one_field(client, db, register):
     """The core case: a choice field with multiple selection on a real ticket."""
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
@@ -75,7 +75,7 @@ async def test_ticket_traegt_mehrere_values_eines_feldes(client, db, register):
     assert "komponente" in keys and "status" in keys and "prioritaet" in keys
 
 
-async def test_einzelwert_field_lehnt_zwei_values_ab(client, db, register):
+async def test_single_value_field_rejects_two_values(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -94,7 +94,7 @@ async def test_einzelwert_field_lehnt_zwei_values_ab(client, db, register):
     assert "prio" not in leer.json()["values"]
 
 
-async def test_value_ausserhalb_der_listing_wird_abgelehnt(client, db, register):
+async def test_value_outside_the_list_is_rejected(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -111,7 +111,7 @@ async def test_value_ausserhalb_der_listing_wird_abgelehnt(client, db, register)
     assert "Backend" in r.json()["detail"]
 
 
-async def test_field_may_jederzeit_dazukommen(client, db, register):
+async def test_field_may_be_added_at_any_time(client, db, register):
     """The "at any time" case: a new field does not break existing artifacts."""
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
@@ -137,7 +137,7 @@ async def test_field_may_jederzeit_dazukommen(client, db, register):
 
 # ── Typen ────────────────────────────────────────────────────────────────────
 
-async def test_zahl_und_datum_werden_geprueft(client, db, register):
+async def test_number_and_date_are_checked(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -163,7 +163,7 @@ async def test_zahl_und_datum_werden_geprueft(client, db, register):
 
 # ── Nichts verschwindet still ────────────────────────────────────────────────
 
-async def test_benutzter_listenwert_laesst_sich_nicht_delete(client, db, register):
+async def test_used_list_value_cannot_be_deleted(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -182,7 +182,7 @@ async def test_benutzter_listenwert_laesst_sich_nicht_delete(client, db, registe
     assert "1 artifact(s)" in r.json()["detail"]
 
 
-async def test_benutztes_field_braucht_force(client, db, register):
+async def test_used_field_needs_force(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -199,7 +199,7 @@ async def test_benutztes_field_braucht_force(client, db, register):
                                 headers=auth(user))).status_code == 204
 
 
-async def test_mehrfach_zurueckstellen_nur_wenn_es_passt(client, db, register):
+async def test_switching_to_multi_only_when_it_fits(client, db, register):
     """Going from "several" to "one" must not throw values away silently."""
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
@@ -225,7 +225,7 @@ async def test_mehrfach_zurueckstellen_nur_wenn_es_passt(client, db, register):
 
 # ── Rechte ───────────────────────────────────────────────────────────────────
 
-async def test_fremdes_projekt_bleibt_verschlossen(client, db, register):
+async def test_foreign_project_stays_closed(client, db, register):
     owner = await make_user(db, "eigner", admin=True)
     fremder = await make_user(db, "fremd")
     proj = await make_project(db, "GEH", "Geheim", inherit_members=False)
@@ -242,7 +242,7 @@ async def test_fremdes_projekt_bleibt_verschlossen(client, db, register):
                              json={"values": {"kunde": ["X"]}})).status_code in (403, 404)
 
 
-async def test_nur_admin_pflegt_das_register(client, db, register):
+async def test_only_an_admin_curates_the_registry(client, db, register):
     niemand = await make_user(db, "gast")
     kind = await svc.type_by_key(db, "ticket")
     r = await client.post(f"/artifact-types/{kind.id}/fields", headers=auth(niemand),
@@ -252,7 +252,7 @@ async def test_nur_admin_pflegt_das_register(client, db, register):
 
 # ── Hardware carries fields the same way ─────────────────────────────────────
 
-async def test_hardware_traegt_fields_genauso(client, db, register):
+async def test_hardware_carries_fields_the_same_way(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "HWF", "HW-Felder")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -270,7 +270,7 @@ async def test_hardware_traegt_fields_genauso(client, db, register):
 
 # ── Dienst-Ebene ─────────────────────────────────────────────────────────────
 
-async def test_sammelabfrage_liefert_je_artefakt(db, register):
+async def test_bulk_query_delivers_per_artifact(db, register):
     """`values_for` is the shortcut for lists: one query instead of one per row."""
     proj = await make_project(db, "SAM", "Sammel")
     a1 = await _ticket(db, proj, 1)
@@ -315,7 +315,7 @@ def _node(**params):
             "data": {"config": {"action": {"action": "set_field", "params": params}}}}
 
 
-async def test_prozess_setzt_ergaenzt_und_entfernt(db, register):
+async def test_flow_sets_adds_and_removes(db, register):
     """The flow should be able to maintain fields: replace, add, remove."""
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
@@ -337,7 +337,7 @@ async def test_prozess_setzt_ergaenzt_und_entfernt(db, register):
     assert r["values"] == ["DB"]
 
 
-async def test_prozess_versteht_komma_und_templates(db, register):
+async def test_flow_understands_commas_and_templates(db, register):
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
     issue = await _ticket(db, proj)
@@ -351,7 +351,7 @@ async def test_prozess_versteht_komma_und_templates(db, register):
     assert r["values"] == ["Backend", "DB"]
 
 
-async def test_prozess_meldet_unbekanntes_field(db, register):
+async def test_flow_reports_an_unknown_field(db, register):
     """A typo in the graph must not quietly run into nothing."""
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
@@ -366,7 +366,7 @@ async def test_prozess_meldet_unbekanntes_field(db, register):
 
 # ── Built-in fields: the register shows what a ticket really has ────────────
 
-async def test_ticket_hat_seine_echten_fields(db, register):
+async def test_ticket_has_its_real_fields(db, register):
     """Priority, issue type, sprint and company are no second truth any more."""
     kind = await svc.type_by_key(db, "ticket")
     keys = {f.key: f for f in await fields.fields_of(db, kind.id)}
@@ -378,7 +378,7 @@ async def test_ticket_hat_seine_echten_fields(db, register):
     assert keys["status"].source == "agent_status"
 
 
-async def test_state_ist_nur_ein_field(db, register):
+async def test_state_is_just_a_field(db, register):
     """The state has no model of its own any more: it is the value list of `status`."""
     kind = await svc.type_by_key(db, "ticket")
     field = await fields.status_field(db, kind.id)
@@ -390,7 +390,7 @@ async def test_state_ist_nur_ein_field(db, register):
     assert "plan_review" in wartend and "done" not in wartend
 
 
-async def test_eingebautes_field_schreibt_in_die_echte_spalte(client, db, register):
+async def test_builtin_field_writes_to_the_real_column(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "SPA", "Spalten")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -411,7 +411,7 @@ async def test_eingebautes_field_schreibt_in_die_echte_spalte(client, db, regist
     assert gelesen.json()["values"]["prioritaet"] == ["high"]
 
 
-async def test_state_ueber_das_field_zieht_die_board_spalte_nach(client, db, register):
+async def test_state_via_the_field_pulls_the_board_column_along(client, db, register):
     """The state field has to have the same consequences as the earlier special path."""
     from app.models.enums import StatusCategory
     user = await make_user(db, "chef", admin=True)
@@ -434,7 +434,7 @@ async def test_state_ueber_das_field_zieht_die_board_spalte_nach(client, db, reg
     assert spalte.name == "Warten"        # the board came along
 
 
-async def test_projektabhaengige_selection_wird_geprueft(client, db, register):
+async def test_project_specific_selection_is_checked(client, db, register):
     """Issue type and sprint take their values from the project; nonsense flies out."""
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "DYN", "Dynamisch")
@@ -454,7 +454,7 @@ async def test_projektabhaengige_selection_wird_geprueft(client, db, register):
     assert schlecht.status_code == 400
 
 
-async def test_prozess_setzt_auch_eingebaute_fields(db, register):
+async def test_flow_also_sets_builtin_fields(db, register):
     """"Set a field" must not stop at the free fields."""
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
@@ -473,7 +473,7 @@ async def test_prozess_setzt_auch_eingebaute_fields(db, register):
 
 # ── A project extends its artifacts itself ───────────────────────────────────
 
-async def test_projekt_field_gilt_nur_dort(client, db, register):
+async def test_project_field_applies_only_there(client, db, register):
     """The core: the owner extends THEIR tickets, not those of everybody else."""
     chef = await make_user(db, "chef", admin=True)
     meins = await make_project(db, "MEI", "Meins", inherit_members=False)
@@ -498,7 +498,7 @@ async def test_projekt_field_gilt_nur_dort(client, db, register):
     assert "status" in meine and "prioritaet" in meine
 
 
-async def test_projekt_field_erscheint_am_ticket(client, db, register):
+async def test_project_field_appears_on_the_ticket(client, db, register):
     """Extended fields have to appear in the ticket view."""
     chef = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "TKT", "Ticketansicht")
@@ -519,7 +519,7 @@ async def test_projekt_field_erscheint_am_ticket(client, db, register):
     assert r.json()["values"]["kunde"] == ["Vostura"]
 
 
-async def test_fremder_may_kein_field_create(client, db, register):
+async def test_a_stranger_may_not_create_a_field(client, db, register):
     chef = await make_user(db, "chef", admin=True)
     fremder = await make_user(db, "fremd")
     proj = await make_project(db, "ZU", "Zu", inherit_members=False)
@@ -532,7 +532,7 @@ async def test_fremder_may_kein_field_create(client, db, register):
     assert r.status_code in (403, 404)
 
 
-async def test_ohne_projekt_bleibt_es_admin_sache(client, db, register):
+async def test_without_a_project_it_stays_an_admin_matter(client, db, register):
     """A field without a project applies everywhere; only an admin changes that."""
     owner = await make_user(db, "owner")
     proj = await make_project(db, "OW", "Owner")
@@ -545,7 +545,7 @@ async def test_ohne_projekt_bleibt_es_admin_sache(client, db, register):
     assert r.status_code == 403
 
 
-async def test_ausgeliefertes_field_laesst_sich_nicht_entfernen(client, db, register):
+async def test_shipped_field_cannot_be_removed(client, db, register):
     """The fields needed so far cannot be removed."""
     chef = await make_user(db, "chef", admin=True)
     kind = await svc.type_by_key(db, "ticket")
@@ -559,7 +559,7 @@ async def test_ausgeliefertes_field_laesst_sich_nicht_entfernen(client, db, regi
                              json={"enabled": False})).status_code == 200
 
 
-async def test_projekt_field_may_ausgeliefertes_nicht_verdecken(client, db, register):
+async def test_project_field_may_not_shadow_a_shipped_one(client, db, register):
     """Two fields with the same key: nobody would know which one is meant any more."""
     chef = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "VD", "Verdecken")
