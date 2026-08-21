@@ -62,7 +62,7 @@ async def test_creating_reports_open_placeholders(db, anna):
 
 
 async def test_creating_without_a_prompt_and_a_template(db, anna):
-    assert "Ohne Prompt" in await _tool(db, anna, "traccoon_create_job", name="Leer")
+    assert "No job without a prompt" in await _tool(db, anna, "traccoon_create_job", name="Leer")
     assert (await db.execute(select(Job))).scalars().first() is None
 
 
@@ -99,7 +99,7 @@ async def test_the_agent_receives_the_result_of_the_run(db, anna, redis_stub):
     j = (await db.execute(select(Job))).scalars().one()
 
     out = await _tool(db, anna, "traccoon_run_job", job_id=j.id)
-    assert "ausgeführt" in out
+    assert "ran:" in out
     run = (await db.execute(select(JobRun).order_by(JobRun.id.desc()))).scalars().first()
     assert run.workflow_instance_id is not None
 

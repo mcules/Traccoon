@@ -41,7 +41,7 @@ async def _exec(program: str, *args: str, cwd: str, timeout: float) -> tuple[int
         out, _ = await asyncio.wait_for(proc.communicate(), timeout)
     except asyncio.TimeoutError:
         proc.kill()
-        return 124, f"{program}: Zeitüberschreitung ({timeout:.0f}s)"
+        return 124, f"{program}: timed out ({timeout:.0f}s)"
     return proc.returncode or 0, out.decode("utf-8", "replace")
 
 
@@ -100,16 +100,16 @@ async def ensure_indexed(root: str) -> None:
 async def query(root: str | None, command: str, arg: str) -> str:
     """Run one codegraph query in the worktree and deliver the (truncated) output."""
     if not root:
-        return "ERROR: kein Workspace für dieses Projekt."
+        return "ERROR: no workspace for this project."
     if not await available():
-        return "ERROR: codegraph ist nicht verfügbar."
+        return "ERROR: codegraph is not available."
     if command not in QUERY_COMMANDS:
-        return (f"ERROR: unbekanntes command '{command}'. "
+        return (f"ERROR: unknown command '{command}'. "
                 f"Erlaubt: {', '.join(sorted(QUERY_COMMANDS))}.")
     await ensure_indexed(root)
     args = [command] + ([arg] if arg else [])
     rc, out = await _exec(_BIN, *args, cwd=root, timeout=_TIMEOUT)
     out = out.strip()
     if len(out) > _MAX_OUT:
-        out = out[:_MAX_OUT] + "\n…(gekürzt — gezielter fragen oder impact/node für Details)"
+        out = out[:_MAX_OUT] + "\n…(shortened — ask more precisely, or impact/node for the details)"
     return out or "(keine Treffer)"

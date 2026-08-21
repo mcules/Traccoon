@@ -95,7 +95,7 @@ def _note_target(path: str) -> dict:
 
 def _safe(part: str) -> str:
     """Role or project key as part of a file name: no path changes, no separators."""
-    keep = [c for c in (part or "").strip() if c.isalnum() or c in "-_ äöüÄÖÜß"]
+    keep = [c for c in (part or "").strip() if c.isalnum() or c in "-_ \u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df"]
     return "".join(keep).strip() or "unbenannt"
 
 
