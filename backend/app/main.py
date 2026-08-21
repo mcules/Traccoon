@@ -192,6 +192,33 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE workflow_instances ADD COLUMN IF NOT EXISTS parent_instance_id INTEGER "
                 "REFERENCES workflow_instances(id) ON DELETE SET NULL",
                 "ALTER TABLE workflow_instances ADD COLUMN IF NOT EXISTS parent_node_id VARCHAR(80)",
+                # Renames first: an `ADD COLUMN IF NOT EXISTS` further down would
+                # otherwise recreate the German column, and the rename would never fire
+                # again — the data would stay in a column nothing reads.
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='spam_verdicts' AND column_name='befunde') "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='spam_verdicts' AND column_name='findings') THEN "
+                "ALTER TABLE spam_verdicts RENAME COLUMN befunde TO findings; END IF; END $$;",
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='chat_summaries' AND column_name='bis_task_id') "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='chat_summaries' AND column_name='to_task_id') THEN "
+                "ALTER TABLE chat_summaries RENAME COLUMN bis_task_id TO to_task_id; END IF; END $$;",
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='notifications' AND column_name='drossel_key') "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='notifications' AND column_name='throttle_key') THEN "
+                "ALTER TABLE notifications RENAME COLUMN drossel_key TO throttle_key; END IF; END $$;",
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='spam_verdicts' AND column_name='art') "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='spam_verdicts' AND column_name='kind') THEN "
+                "ALTER TABLE spam_verdicts RENAME COLUMN art TO kind; END IF; END $$;",
                 "ALTER TABLE workflow_step_runs ADD COLUMN IF NOT EXISTS routed_at TIMESTAMPTZ",
                 "UPDATE workflow_step_runs SET routed_at = completed_at "
                 "WHERE completed_at IS NOT NULL AND routed_at IS NULL",
@@ -381,10 +408,14 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_default VARCHAR(20) "
                 "DEFAULT 'telegram' NOT NULL",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email VARCHAR(255)",
-                # Drossel je Nachrichten-Art: „höchstens alle N Minuten dasselbe".
-                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS drossel_key VARCHAR(160)",
+                # Throttle per message kind: "the same thing every N minutes at most".
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS throttle_key VARCHAR(160)",
                 "CREATE INDEX IF NOT EXISTS ix_notifications_drossel "
-                "ON notifications (drossel_key, created_at)",
+                "ON notifications (throttle_key, created_at)",
+                # The German column from before the rename. It is empty in every case the
+                # rename below has already handled; leaving it would make `ADD COLUMN` recreate
+                # it on every start and the rename would never fire again.
+                "ALTER TABLE notifications DROP COLUMN IF EXISTS drossel_key",
                 # Stille-Marke einer Messreihe (einmal je Stille-Phase melden).
                 "ALTER TABLE metric_series ADD COLUMN IF NOT EXISTS still_at "
                 "TIMESTAMP WITH TIME ZONE",
@@ -405,27 +436,10 @@ async def lifespan(app: FastAPI):
                 # from; both used to exist only inside one log line.
                 # Drei weitere Attribute wurden englisch — dieselbe Regel wie oben:
                 # Attribut umbenannt heisst Spalte umbenannt, und nur Postgres sieht es.
-                "DO $$ BEGIN "
-                "IF EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='spam_verdicts' AND column_name='befunde') "
-                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='spam_verdicts' AND column_name='findings') THEN "
-                "ALTER TABLE spam_verdicts RENAME COLUMN befunde TO findings; END IF; END $$;",
-                "DO $$ BEGIN "
-                "IF EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='chat_summaries' AND column_name='bis_task_id') "
-                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='chat_summaries' AND column_name='to_task_id') THEN "
-                "ALTER TABLE chat_summaries RENAME COLUMN bis_task_id TO to_task_id; END IF; END $$;",
-                "DO $$ BEGIN "
-                "IF EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='notifications' AND column_name='drossel_key') "
-                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='notifications' AND column_name='throttle_key') THEN "
-                "ALTER TABLE notifications RENAME COLUMN drossel_key TO throttle_key; END IF; END $$;",
-                "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS art VARCHAR(40) "
+                "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS kind VARCHAR(40) "
                 "DEFAULT '' NOT NULL",
-                "CREATE INDEX IF NOT EXISTS ix_spam_verdicts_art ON spam_verdicts (art)",
+                "CREATE INDEX IF NOT EXISTS ix_spam_verdicts_art ON spam_verdicts (kind)",
+                "ALTER TABLE spam_verdicts DROP COLUMN IF EXISTS art",
                 "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS findings JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_assistant_tasks_archived_at "
@@ -436,12 +450,6 @@ async def lifespan(app: FastAPI):
                 # Ein umbenanntes Modell-Attribut ist eine umbenannte Spalte. Die Tests
                 # laufen gegen SQLite und legen die Tabelle jedesmal frisch aus dem Modell
                 # an — sie koennen diesen Bruch gar nicht sehen. Postgres schon.
-                "DO $$ BEGIN "
-                "IF EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='spam_verdicts' AND column_name='art') "
-                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name='spam_verdicts' AND column_name='kind') THEN "
-                "ALTER TABLE spam_verdicts RENAME COLUMN art TO kind; END IF; END $$;",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads_granted JSON "

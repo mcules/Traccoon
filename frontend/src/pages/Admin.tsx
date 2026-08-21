@@ -5,10 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, workflowApi } from "../api";
 import { usePageChrome } from "../pageChrome";
 import ArtifactTypesPanel from "../components/ArtifactTypesPanel";
-import { SystemSchalterPanel } from "../components/KontoPanels";
+import { SystemSwitchPanel } from "../components/KontoPanels";
 import {
-  Actions, Area, ConfirmDialog, Dialog, DialogFuss, INPUT_VALUE, Etikett, Field,
-  Fehlerzeile, ICON, IconButton, Listing, ListingLeer, ListenLine, BUTTON } from "../components/ui";
+  Actions, Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field,
+  Errorrow, ICON, IconButton, Listing, ListingEmpty, ListenLine, BUTTON } from "../components/ui";
 import ProviderModelsPanel from "../components/ProviderModelsPanel";
 import TranslationsPanel from "../components/TranslationsPanel";
 
@@ -90,7 +90,7 @@ function MailConfig() {
           onChange={(e) => setForm({ ...form, smtp_use_tls: e.target.checked })} />
         STARTTLS verwenden
       </label>
-      <button onClick={() => save.mutate()} className={BUTTON.haupt}>{tr("admin.speichern")}</button>
+      <button onClick={() => save.mutate()} className={BUTTON.primary}>{tr("admin.speichern")}</button>
       {msg && <span className="ml-3 text-sm text-green-400">{msg}</span>}
     </Area></div>
   );
@@ -135,7 +135,7 @@ function Maintenance() {
       <TestenvConfig />
       {/* System wide switches: they belong to the installation, not between the settings of
           one person, where they used to stand. */}
-      <SystemSchalterPanel />
+      <SystemSwitchPanel />
     </Area></div>
   );
 }
@@ -166,7 +166,7 @@ function WorkflowLayout() {
           onChange={(e) => setGap(Number(e.target.value))}
           className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <span className="text-xs text-muted">px</span>
-        <button onClick={() => save.mutate()} className={BUTTON.haupt}>
+        <button onClick={() => save.mutate()} className={BUTTON.primary}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
       </div>
@@ -218,7 +218,7 @@ function TestenvConfig() {
         {field("testenv_max_builds", "admin.feld_testenv_max_builds")}
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <button onClick={() => save.mutate()} className={BUTTON.haupt}>
+        <button onClick={() => save.mutate()} className={BUTTON.primary}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
         {save.error && (
@@ -258,7 +258,7 @@ function RunRetention() {
           onChange={(e) => setDays(Number(e.target.value))}
           className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <span className="text-xs text-muted">{tr("admin.tage")}</span>
-        <button onClick={() => save.mutate()} className={BUTTON.haupt}>
+        <button onClick={() => save.mutate()} className={BUTTON.primary}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
       </div>
@@ -282,7 +282,7 @@ function Users() {
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
   const act = useMutation({
     mutationFn: (v: { id: number; path: string }) => api.post(`/users/${v.id}/${v.path}`),
-    onSuccess: () => { setErr(""); setSperren(null); inv(); }, onError: fail,
+    onSuccess: () => { setErr(""); setLock(null); inv(); }, onError: fail,
   });
   const role = useMutation({
     mutationFn: (v: { id: number; role: string }) => api.post(`/users/${v.id}/role?role=${v.role}`),
@@ -291,11 +291,11 @@ function Users() {
   const [mcpUser, setMcpUser] = useState<any | null>(null);
   const [editUser, setEditUser] = useState<any | null>(null);
   const [newOpen, setNewOpen] = useState(false);
-  const [sperren, setSperren] = useState<any | null>(null);
+  const [lock, setLock] = useState<any | null>(null);
 
   return (
     <>
-    <Fehlerzeile text={err} />
+    <Errorrow text={err} />
     {/* Keine Tabelle: vier Spalten auf 390 px hießen ein Wort je Zeile, und die drei
         Knöpfe stapelten sich rechts übereinander. Eine Zeile je Nutzer bricht sauber um
         und liest sich auf jeder Breite gleich. */}
@@ -307,8 +307,8 @@ function Users() {
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="font-medium">{u.display_name}</span>
               {u.email && <span className="text-xs text-muted">{u.email}</span>}
-              <Etikett farbe={u.status === "active" ? "gruen"
-                : u.status === "pending" ? "gelb" : "neutral"}>{u.status}</Etikett>
+              <Tag color={u.status === "active" ? "green"
+                : u.status === "pending" ? "yellow" : "neutral"}>{u.status}</Tag>
               <select value={u.global_role} onChange={(e) => role.mutate({ id: u.id, role: e.target.value })}
                 className="rounded border border-line bg-surface px-1 py-0.5 text-xs text-ink">
                 <option value="user">user</option>
@@ -316,17 +316,17 @@ function Users() {
               </select>
             </div>
             <Actions>
-              <IconButton icon="🧩" titel={tr("admin.mcp_server_zuweisen")} onClick={() => setMcpUser(u)} />
-              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setEditUser(u)} />
+              <IconButton icon="🧩" title={tr("admin.mcp_server_zuweisen")} onClick={() => setMcpUser(u)} />
+              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setEditUser(u)} />
               {u.status === "pending" && (
-                <IconButton icon="✅" titel={tr("admin.freischalten")}
+                <IconButton icon="✅" title={tr("admin.freischalten")}
                   onClick={() => act.mutate({ id: u.id, path: "approve" })} />
               )}
               {u.status === "active" && (
-                <IconButton icon="🔒" titel={tr("admin.sperren")} gefahr onClick={() => setSperren(u)} />
+                <IconButton icon="🔒" title={tr("admin.sperren")} danger onClick={() => setLock(u)} />
               )}
               {u.status === "disabled" && (
-                <IconButton icon="🔓" titel={tr("admin.entsperren")}
+                <IconButton icon="🔓" title={tr("admin.entsperren")}
                   onClick={() => act.mutate({ id: u.id, path: "approve" })} />
               )}
             </Actions>
@@ -335,8 +335,8 @@ function Users() {
       ))}
     </Listing>
     <button onClick={() => { setErr(""); setNewOpen(true); }}
-      className={BUTTON.haupt}>
-      {ICON.neu} {tr("admin.nutzer_anlegen")}
+      className={BUTTON.primary}>
+      {ICON.fresh} {tr("admin.nutzer_anlegen")}
     </button>
 
     {newOpen && (
@@ -346,17 +346,17 @@ function Users() {
     {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)}
       onSaved={() => { setEditUser(null); inv(); }} />}
     {mcpUser && (
-      <Dialog titel={tr("admin.mcp_fuer", { name: mcpUser.display_name || mcpUser.username })}
+      <Dialog title={tr("admin.mcp_fuer", { name: mcpUser.display_name || mcpUser.username })}
         onClose={() => setMcpUser(null)}>
         <McpAssign userId={mcpUser.id} />
       </Dialog>
     )}
-    {sperren && (
-      <ConfirmDialog titel={tr("admin.sperren")} laeuft={act.isPending}
-        text={tr("admin.sperren_frage", { name: sperren.display_name || sperren.username })}
-        hinweis={tr("admin.sperren_hinweis")} bestaetigenText={tr("admin.sperren")}
-        onClose={() => setSperren(null)}
-        onBestaetigen={() => act.mutate({ id: sperren.id, path: "disable" })} />
+    {lock && (
+      <ConfirmDialog title={tr("admin.sperren")} runs={act.isPending}
+        text={tr("admin.sperren_frage", { name: lock.display_name || lock.username })}
+        hint={tr("admin.sperren_hinweis")} confirmText={tr("admin.sperren")}
+        onClose={() => setLock(null)}
+        onConfirm={() => act.mutate({ id: lock.id, path: "disable" })} />
     )}
     </Area>
     </>
@@ -401,10 +401,10 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   };
 
   return (
-    <Dialog titel={tr("admin.nutzer_anlegen")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={submit} laeuft={running}
-        deaktiviert={!username.trim()} speichernText={tr("common.anlegen")} />}>
-      <Fehlerzeile text={err} />
+    <Dialog title={tr("admin.nutzer_anlegen")} onClose={onClose}
+      foot={<DialogFoot onCancel={onClose} onSave={submit} runs={running}
+        disabled={!username.trim()} saveText={tr("common.anlegen")} />}>
+      <Errorrow text={err} />
       <div className="space-y-3">
         <Field label={tr("admin.benutzername")}>
           <input value={username} autoFocus onChange={(e) => setUsername(e.target.value)} className={INPUT_VALUE} />
@@ -425,7 +425,7 @@ function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreat
               <option value="admin">admin</option>
             </select>
           </Field>
-          <Field label={tr("admin.status")} hinweis={tr("admin.aktive_nutzer_koennen_sich_sofort_anmeld")}>
+          <Field label={tr("admin.status")} hint={tr("admin.aktive_nutzer_koennen_sich_sofort_anmeld")}>
             <select value={statusVal} onChange={(e) => setStatusVal(e.target.value)} className={INPUT_VALUE}>
               <option value="active">{tr("admin.aktiv")}</option>
               <option value="pending">{tr("admin.wartend")}</option>
@@ -458,7 +458,7 @@ function McpAssign({ userId }: { userId: number }) {
       <div className="flex gap-2">
         <input value={val} onChange={(e) => setText(e.target.value)}
           className="flex-1 rounded border border-line bg-surface px-2 py-1" />
-        <button onClick={save} className={BUTTON.haupt}>{tr("admin.speichern")}</button>
+        <button onClick={save} className={BUTTON.primary}>{tr("admin.speichern")}</button>
       </div>
       <div className="mt-1 text-muted">{tr("admin.mcp_provisionieren_hinweis")}</div>
     </div>
@@ -468,7 +468,7 @@ function McpAssign({ userId }: { userId: number }) {
 function Cost() {
   const { data } = useQuery({ queryKey: ["cost-global"], queryFn: () => api.get<any>("/costs/global") });
   return (
-    <Area hinweis={<>Summe aller Läufe: <span className="text-xl font-semibold text-ink">
+    <Area hint={<>Summe aller Läufe: <span className="text-xl font-semibold text-ink">
       ${data?.total_usd?.toFixed(4) ?? "0"}</span></>}>
       {/* Modellnamen sind lang und Zahlen kurz: als Tabelle quetschte das auf dem Handy den
           Namen auf ein Wort je Zeile. Eine Zeile je Modell, Zahlen rechts. */}
@@ -478,12 +478,12 @@ function Cost() {
             <div className="flex flex-wrap items-baseline gap-x-3">
               <span className="min-w-0 flex-1 break-all text-ink">{m.model}</span>
               <span className="tabular-nums text-ink">${m.usd}</span>
-              <span className="tabular-nums text-xs text-muted">{tr("admin.calls_n", { anzahl: m.calls })}</span>
+              <span className="tabular-nums text-xs text-muted">{tr("admin.calls_n", { count: m.calls })}</span>
             </div>
           </ListenLine>
         ))}
         {(!data?.by_model || data.by_model.length === 0) && (
-          <ListingLeer>{tr("admin.noch_keine_kosten")}</ListingLeer>
+          <ListingEmpty>{tr("admin.noch_keine_kosten")}</ListingEmpty>
         )}
       </Listing>
     </Area>
@@ -526,10 +526,10 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
   };
 
   return (
-    <Dialog titel={tr("admin.nutzer_bearbeiten")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={save} laeuft={running}
-        deaktiviert={!username.trim()} />}>
-      <Fehlerzeile text={err} />
+    <Dialog title={tr("admin.nutzer_bearbeiten")} onClose={onClose}
+      foot={<DialogFoot onCancel={onClose} onSave={save} runs={running}
+        disabled={!username.trim()} />}>
+      <Errorrow text={err} />
       <div className="space-y-3">
         <Field label={tr("admin.anzeigename")}>
           <input value={displayName} autoFocus onChange={(e) => setDisplayName(e.target.value)} className={INPUT_VALUE} />
@@ -550,7 +550,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                 placeholder={tr("admin.mind_8_zeichen")} className={INPUT_VALUE} />
               <button onClick={resetPw} disabled={!newPassword}
-                className={BUTTON.neben}>
+                className={BUTTON.secondary}>
                 {tr("admin.setzen")}
               </button>
             </div>

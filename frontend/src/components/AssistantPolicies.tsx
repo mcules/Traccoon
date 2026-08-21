@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Actions, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, LoeschDialog, Area, Etikett, Listing, ListingLeer, ListenLine, BUTTON, BUTTON_TEXT} from "./ui";
+  Actions, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, DeleteDialog, Area, Tag, Listing, ListingEmpty, ListenLine, BUTTON, BUTTON_TEXT} from "./ui";
 
 interface Policy {
   id: number; match_kind: string; match_value: string;
@@ -17,7 +17,7 @@ export default function AssistantPolicies() {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
   const [dialog, setDialog] = useState<Policy | {} | null>(null);   // {} = neue Regel
-  const [loeschRule, setLoeschRule] = useState<Policy | null>(null);
+  const [deleteRule, setDeleteRule] = useState<Policy | null>(null);
   const { data = [], isLoading } = useQuery({
     queryKey: ["policies"], queryFn: () => api.get<Policy[]>("/assistant/policies"),
   });
@@ -31,22 +31,22 @@ export default function AssistantPolicies() {
   });
   const del = useMutation({
     mutationFn: (id: number) => api.del(`/assistant/policies/${id}`),
-    onSuccess: () => { setLoeschRule(null); inv(); }, onError: guard,
+    onSuccess: () => { setDeleteRule(null); inv(); }, onError: guard,
   });
 
   return (
     <div className="space-y-4">
       <ToolPermissions />
-      <Area titel="📥 Eingangs-Regeln (Mail)" hinweis={tr("assistant_policies.einleitung")}>
-      <Fehlerzeile text={err} />
+      <Area title="📥 Eingangs-Regeln (Mail)" hint={tr("assistant_policies.einleitung")}>
+      <Errorrow text={err} />
 
       {isLoading && <div className="text-sm text-muted">{tr("assistant_policies.laedt")}</div>}
 
       <Listing>
         {data.map((p) => (
-          <ListenLine key={p.id} gedimmt={!p.enabled}>
+          <ListenLine key={p.id} dimmed={!p.enabled}>
             <div className="flex flex-wrap items-center gap-1.5">
-              <Etikett>{KIND_LABEL[p.match_kind] || p.match_kind}</Etikett>
+              <Tag>{KIND_LABEL[p.match_kind] || p.match_kind}</Tag>
               <span className="font-medium text-ink">{p.match_value}</span>
               <span className={`rounded px-1.5 text-xs ${p.auto_approve ? "bg-green-600/15 text-green-400" : "bg-surface text-muted"}`}>
                 {tr(p.auto_approve ? "assistant_policies.auto_freigabe" : "assistant_policies.nur_vorgabe")}</span>
@@ -59,30 +59,30 @@ export default function AssistantPolicies() {
               <div className="flex-1" />
               <Actions>
                 <IconButton icon={p.enabled ? "⏸" : "⏵"} onClick={() => save.mutate({ ...p, enabled: !p.enabled })}
-                  titel={tr(p.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
-                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(p)} />
-                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschRule(p)} />
+                  title={tr(p.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
+                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setDialog(p)} />
+                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteRule(p)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
         {!isLoading && data.length === 0 && (
-          <ListingLeer>{tr("assistant_policies.keine_regeln")}</ListingLeer>
+          <ListingEmpty>{tr("assistant_policies.keine_regeln")}</ListingEmpty>
         )}
       </Listing>
 
-      <button onClick={() => setDialog({})} className={BUTTON.haupt}>
-        {ICON.neu} {tr("assistant_policies.regel_anlegen")}
+      <button onClick={() => setDialog({})} className={BUTTON.primary}>
+        {ICON.fresh} {tr("assistant_policies.regel_anlegen")}
       </button>
       </Area>
 
       {dialog && (
-        <RuleDialog regel={"id" in dialog ? (dialog as Policy) : null} laeuft={save.isPending}
-          onClose={() => setDialog(null)} onSpeichern={(values) => save.mutate(values)} />
+        <RuleDialog rule={"id" in dialog ? (dialog as Policy) : null} runs={save.isPending}
+          onClose={() => setDialog(null)} onSave={(values) => save.mutate(values)} />
       )}
-      {loeschRule && (
-        <LoeschDialog was={loeschRule.match_value} laeuft={del.isPending}
-          onClose={() => setLoeschRule(null)} onLoeschen={() => del.mutate(loeschRule.id)} />
+      {deleteRule && (
+        <DeleteDialog was={deleteRule.match_value} runs={del.isPending}
+          onClose={() => setDeleteRule(null)} onDelete={() => del.mutate(deleteRule.id)} />
       )}
     </div>
   );
@@ -98,25 +98,25 @@ function ToolPermissions() {
   const inv = () => qc.invalidateQueries({ queryKey: ["tool-perms"] });
   const save = useMutation({ mutationFn: (p: { tool: string; resource?: string; action: string }) => api.post("/assistant/tool-permissions", p), onSuccess: inv });
   const del = useMutation({ mutationFn: (id: number) => api.del(`/assistant/tool-permissions/${id}`), onSuccess: inv });
-  const A: Record<string, "gruen" | "rot" | "neutral"> = { allow: "gruen", deny: "rot", ask: "neutral" };
+  const A: Record<string, "green" | "red" | "neutral"> = { allow: "green", deny: "red", ask: "neutral" };
 
   return (
-    <Area titel="🔐 Tool-Freigaben" hinweis={tr("assistant_policies.rechte_hinweis")}>
+    <Area title="🔐 Tool-Freigaben" hint={tr("assistant_policies.rechte_hinweis")}>
       <Listing>
         {data.map((p) => (
           <ListenLine key={p.id}>
             <div className="flex items-center gap-2">
             <code className="text-ink">{p.tool}</code>
             {p.resource !== "*" && <code className="text-xs text-muted">{p.resource}</code>}
-            <Etikett farbe={A[p.action] || A.ask}>{p.action}</Etikett>
+            <Tag color={A[p.action] || A.ask}>{p.action}</Tag>
             <div className="flex-1" />
-            {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className={BUTTON_TEXT.neben}>→ allow</button>}
-            {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className={BUTTON_TEXT.gefahr}>→ deny</button>}
-            <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => del.mutate(p.id)} />
+            {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className={BUTTON_TEXT.secondary}>→ allow</button>}
+            {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className={BUTTON_TEXT.danger}>→ deny</button>}
+            <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => del.mutate(p.id)} />
             </div>
           </ListenLine>
         ))}
-        {data.length === 0 && <ListingLeer>{tr("assistant_policies.keine_der_assistent_fragt_bei_jeder_heik")}</ListingLeer>}
+        {data.length === 0 && <ListingEmpty>{tr("assistant_policies.keine_der_assistent_fragt_bei_jeder_heik")}</ListingEmpty>}
       </Listing>
       <div className="flex gap-2">
         <input value={tool} onChange={(e) => setTool(e.target.value)} placeholder={tr("assistant_policies.tool_glob_z_b_obsidian")}
@@ -125,7 +125,7 @@ function ToolPermissions() {
           <option value="allow">allow</option><option value="deny">deny</option><option value="ask">ask</option>
         </select>
         <button onClick={() => { if (tool.trim()) { save.mutate({ tool: tool.trim(), action }); setTool(""); } }}
-          className={BUTTON.haupt}>+ Regel</button>
+          className={BUTTON.primary}>+ Regel</button>
       </div>
     </Area>
   );
@@ -138,9 +138,9 @@ function ToolPermissions() {
  * each wrote one field on click. Which of them belonged together only became clear by
  * trying, and undoing meant clicking back through them.
  */
-function RuleDialog({ regel: rule, laeuft: running, onClose, onSpeichern }: {
-  regel: Policy | null; laeuft: boolean;
-  onClose: () => void; onSpeichern: (p: Partial<Policy> & { id?: number }) => void;
+function RuleDialog({ rule: rule, runs: running, onClose, onSave }: {
+  rule: Policy | null; runs: boolean;
+  onClose: () => void; onSave: (p: Partial<Policy> & { id?: number }) => void;
 }) {
   const [kind, setKind] = useState(rule?.match_kind || "sender");
   const [value, setValue] = useState(rule?.match_value || "");
@@ -150,11 +150,11 @@ function RuleDialog({ regel: rule, laeuft: running, onClose, onSpeichern }: {
   const [enabled, setEnabled] = useState(rule ? rule.enabled : true);
 
   return (
-    <Dialog titel={tr(rule ? "assistant_policies.regel_bearbeiten" : "assistant_policies.regel_anlegen")}
+    <Dialog title={tr(rule ? "assistant_policies.regel_bearbeiten" : "assistant_policies.regel_anlegen")}
       onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!value.trim()} laeuft={running}
-        speichernText={rule ? undefined : tr("common.anlegen")}
-        onSpeichern={() => onSpeichern({
+      foot={<DialogFoot onCancel={onClose} disabled={!value.trim()} runs={running}
+        saveText={rule ? undefined : tr("common.anlegen")}
+        onSave={() => onSave({
           ...(rule ? { id: rule.id } : {}),
           match_kind: kind, match_value: value.trim(), redaction, action_hint: hint,
           auto_approve: autoApprove, enabled,

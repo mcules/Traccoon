@@ -26,30 +26,30 @@ export function agentOptions(
   agents: AgentLite[] | undefined,
   opts: { empty?: string } = {},
 ): [string, string][] {
-  const proRolle = new Map<string, AgentLite[]>();
+  const perRole = new Map<string, AgentLite[]>();
   for (const a of agents || []) {
     if (a.active === false) continue;
-    proRolle.set(a.role, [...(proRolle.get(a.role) || []), a]);
+    perRole.set(a.role, [...(perRole.get(a.role) || []), a]);
   }
 
   // A smaller number means higher precedence.
-  const rang = (a: AgentLite) =>
+  const rank = (a: AgentLite) =>
     (a.user_id == null ? 2 : 0) + (a.project_id == null ? 1 : 0);
 
   const lines: [string, string][] = [];
-  for (const [rolle, listing] of [...proRolle.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const [gewinner] = [...listing].sort((a, b) => rang(a) - rang(b));
-    const herkunft =
-      gewinner.project_id != null ? "Projekt"
-        : gewinner.user_id != null ? tr("agent_options.persoenlich")
+  for (const [role, listing] of [...perRole.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const [winner] = [...listing].sort((a, b) => rank(a) - rank(b));
+    const origin =
+      winner.project_id != null ? "Projekt"
+        : winner.user_id != null ? tr("agent_options.persoenlich")
           : "Ausgeliefert";
     const extra = [
-      herkunft,
-      gewinner.customized ? "angepasst" : "",
+      origin,
+      winner.customized ? "angepasst" : "",
       listing.length > 1 ? `${listing.length} Definitionen` : "",
     ].filter(Boolean).join(" · ");
-    const name = gewinner.display_name || rolle;
-    lines.push([rolle, `${name} (${rolle}) — ${extra}`]);
+    const name = winner.display_name || role;
+    lines.push([role, `${name} (${role}) — ${extra}`]);
   }
   return opts.empty ? [["", opts.empty], ...lines] : lines;
 }

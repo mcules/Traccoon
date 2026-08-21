@@ -60,7 +60,7 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
 
 /** Retrying and the error branch apply to EVERY action, which is why they stand below the
  *  selection and not in the fields of an individual one. */
-function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (c: NodeConfig) => void }) {
+function Errorbehaviour({ config, onChange }: { config: NodeConfig; onChange: (c: NodeConfig) => void }) {
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
   return (
     <div className="space-y-2 rounded border border-line bg-surface p-2">
@@ -70,9 +70,9 @@ function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (
           Wiederholungen
           <input
             type="number" min={0} max={10}
-            value={(config.wiederholungen as number) ?? ""}
+            value={(config.retries as number) ?? ""}
             onChange={(e) => onChange({ ...config,
-              wiederholungen: e.target.value ? Number(e.target.value) : undefined })}
+              retries: e.target.value ? Number(e.target.value) : undefined })}
             placeholder="0"
             className={`mt-0.5 ${inp}`}
           />
@@ -81,9 +81,9 @@ function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (
           Abstand (Sekunden)
           <input
             type="number" min={1}
-            value={(config.warte_sek as number) ?? ""}
+            value={(config.retry_wait_sec as number) ?? ""}
             onChange={(e) => onChange({ ...config,
-              warte_sek: e.target.value ? Number(e.target.value) : undefined })}
+              retry_wait_sec: e.target.value ? Number(e.target.value) : undefined })}
             placeholder="30"
             className={`mt-0.5 ${inp}`}
           />
@@ -113,12 +113,12 @@ export default function AutoActionConfig({
   // Show only what fits the subject of the flow: a hardware process needs no "merge branch",
   // and a ticket process no procurement status. The currently chosen action always stays
   // visible, even when it does not (yet) fit.
-  const passt = (name: AutoActionName) => {
+  const fits = (name: AutoActionName) => {
     const s = ACTION_SPECS[name]?.subjects;
     return !s || !subjectKind || s.includes(subjectKind as any);
   };
   const groups = GROUPS
-    .map(([g, items]) => [g, items.filter(([k]) => passt(k) || k === action.action)] as const)
+    .map(([g, items]) => [g, items.filter(([k]) => fits(k) || k === action.action)] as const)
     .filter(([, items]) => items.length);
   // Action changed: do not carry the parameters of the old one along.
   const setAction = (name: AutoActionName) =>
@@ -165,7 +165,7 @@ export default function AutoActionConfig({
         />
       )}
 
-      <Fehlerverhalten config={config} onChange={onChange} />
+      <Errorbehaviour config={config} onChange={onChange} />
     </div>
   );
 }

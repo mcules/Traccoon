@@ -36,11 +36,11 @@ import type {
 import { ART, ART_SCALE, LINK_MS, PIX, POS_SCALE, SCENE } from "../const.ts";
 import { fillA } from "./art.ts";
 import type { Pal } from "./palette.ts";
-import { GRADES, lookOf, palFor, rollenSeed } from "./palette.ts";
+import { GRADES, lookOf, palFor, rolesSeed } from "./palette.ts";
 import {
   SIZE, WALL_H, WINDOW_STEP, drawBoard, drawCabinet, drawChair, drawClock, drawCoffee,
   drawDesk, drawDoor, drawFloor, drawMonitor, drawPlant, drawMeetingTable, drawRack, drawRug,
-  drawLicht, drawTableChair, drawWall, drawWindow, drawWindowLight,
+  drawLight, drawTableChair, drawWall, drawWindow, drawWindowLight,
 } from "./furniture.ts";
 import { FIG_H, FIG_W, actorBox, drawActor, drawGhost } from "./person.ts";
 import {
@@ -92,7 +92,7 @@ function camFit(cam: Cam): CamFit {
  * Kontexts.
  */
 function viewOf(base: Ctx, fit: CamFit): Ctx {
-  return skaliert(base, fit.z, fit.ox, fit.oy);
+  return scaled(base, fit.z, fit.ox, fit.oy);
 }
 
 /**
@@ -102,10 +102,10 @@ function viewOf(base: Ctx, fit: CamFit): Ctx {
  * are doubled accordingly.
  */
 function viewHiOf(base: Ctx, fit: CamFit): Ctx {
-  return skaliert(base, fit.hz, fit.ox, fit.oy);
+  return scaled(base, fit.hz, fit.ox, fit.oy);
 }
 
-function skaliert(base: Ctx, z: number, ox: number, oy: number): Ctx {
+function scaled(base: Ctx, z: number, ox: number, oy: number): Ctx {
   if (z === 1 && ox === 0 && oy === 0) return base;
   return {
     get fillStyle(): string | object { return base.fillStyle; },
@@ -289,7 +289,7 @@ const SCREEN_BY_ACT: Record<ToolAct, ScreenKind> = {
 };
 
 const SCREEN_BY_TOOL: Record<string, ScreenKind> = {
-  codegraph: "search", gedaechtnis_suchen: "search", fs_list: "search",
+  codegraph: "search", memory_search: "search", fs_list: "search",
   screenshot: "page", read_attachment: "page",
 };
 
@@ -368,7 +368,7 @@ export function renderFrame(
   drawFloor(vh, env);
   // Light comes after the floor and before the furniture: it lies on the planks but under
   // everything standing on them, otherwise desks would glow from the inside.
-  drawLicht(vh, env, WIN_XS, day);
+  drawLight(vh, env, WIN_XS, day);
   drawCabinet(v, CABINET_X, CABINET_Y, env);
   drawPlant(v, CABINET_X, CABINET_Y - SIZE.cabinet.h, env, { small: true });
   // The rack is the only piece of scenery that tells something: on `idle` it draws unchanged,
@@ -501,11 +501,11 @@ function buildActors(
 ): void {
   const sel = opts?.selected;
   const hov = opts?.hover;
-  const blassSet = opts?.dimmed;
-  const blassV = blassSet !== undefined ? dimOf(v, DIM_ALPHA) : v;
+  const paleSet = opts?.dimmed;
+  const paleV = paleSet !== undefined ? dimOf(v, DIM_ALPHA) : v;
   // The same paleness once more for the fine view: the character is drawn over it,
   // ihr Markierungsring darunter in Kunsteinheiten.
-  const blassVh = blassSet !== undefined ? dimOf(vh, DIM_ALPHA) : vh;
+  const paleVh = paleSet !== undefined ? dimOf(vh, DIM_ALPHA) : vh;
   for (const a of frame.actors) {
     if (a.retired === true) continue;
     const cx = px(a.x);
@@ -517,11 +517,11 @@ function buildActors(
 
     // Shirt, hair and shoulders come from the **role**, everything else from the run seed:
     // `a.role` is already in the `Frame`, so no new field is needed in layer 0.
-    const look = lookOf(a.seed, rollenSeed(a.role, a.seed));
+    const look = lookOf(a.seed, rolesSeed(a.role, a.seed));
     const pal = palFor(grade, look);
     const ring = a.id === sel ? "acc" : a.id === hov ? "wallHi" : undefined;
     const ghost = a.deskIndex === -2;
-    const blass = blassSet !== undefined && blassSet.has(a.id);
+    const pale = paleSet !== undefined && paleSet.has(a.id);
     world.push({
       y: yBase,
       draw(): void {
@@ -537,11 +537,11 @@ function buildActors(
         // The pale wrapper is armed **after** the ring: `fillA` sets the opacity back to 1 at
         // the end and would otherwise erase the wrapper right away. The ring stays bright: that
         // something is selected holds even when the filter dims it.
-        const c = blass ? blassVh : vh;
-        if (blass) c.globalAlpha = 1;
+        const c = pale ? paleVh : vh;
+        if (pale) c.globalAlpha = 1;
         if (ghost) drawGhost(c, cx * 2, yBase * 2, pal, frame.t, a.seed, look);
         else drawActor(c, a, frame.t, pal);
-        if (blass) c.globalAlpha = 1;
+        if (pale) c.globalAlpha = 1;
       },
     });
   }
@@ -605,8 +605,8 @@ function drawOverlays(
   const t = frame.t;
   const sel = opts?.selected;
   const hov = opts?.hover;
-  const blassSet = opts?.dimmed;
-  const blassV = blassSet !== undefined ? dimOf(v, DIM_ALPHA) : v;
+  const paleSet = opts?.dimmed;
+  const paleV = paleSet !== undefined ? dimOf(v, DIM_ALPHA) : v;
 
   for (const a of frame.actors) {
     if (a.retired === true) continue;
@@ -619,9 +619,9 @@ function drawOverlays(
     // Plate and bubble share the fate of the character: if it does not belong to the session
     // tab, its label goes pale as well. A bright plate over a pale character would read as
     // Zeichenfehler.
-    const blass = blassSet !== undefined && blassSet.has(a.id);
-    const c = blass ? blassV : v;
-    if (blass) c.globalAlpha = 1;
+    const pale = paleSet !== undefined && paleSet.has(a.id);
+    const c = pale ? paleV : v;
+    if (pale) c.globalAlpha = 1;
 
     // Plates for everybody, but pale: a room with twelve equally bright labels reads as a
     // table, not as a room. Only what was asked for becomes bright.
@@ -640,7 +640,7 @@ function drawOverlays(
     } else if (a.think !== undefined) {
       thoughtBubble(c, cx, top, env, a.think, t);
     }
-    if (blass) v.globalAlpha = 1;
+    if (pale) v.globalAlpha = 1;
   }
 
   // Emotes last: they are the short signal and must not be covered by anything.

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Project } from "../api";
 import { useAuth } from "../auth";
 import { useChrome, type ChromeTab } from "../pageChrome";
-import { hauptNavigation, istArea, SCHIENE_BREITE, type NavEntry } from "../nav";
+import { primaryNavigation, isArea, RAIL_WIDTH, type NavEntry } from "../nav";
 import { pluginNav, usePlugins } from "../plugins";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
@@ -97,15 +97,15 @@ function useMailPush(): void {
   useEffect(() => {
     const token = getToken();
     if (!token) return;
-    const adresse = `${location.origin.replace(/^http/, "ws")}/api/ws/me`
+    const address = `${location.origin.replace(/^http/, "ws")}/api/ws/me`
       + `?token=${encodeURIComponent(token)}`;
     let ws: WebSocket | null = null;
     let retry: number | undefined;
-    let zu = false;
+    let to = false;
 
-    const verbinden = () => {
-      if (zu) return;
-      ws = new WebSocket(adresse);
+    const join = () => {
+      if (to) return;
+      ws = new WebSocket(address);
       ws.onmessage = (e) => {
         try {
           if (JSON.parse(e.data)?.type !== "mail") return;
@@ -117,12 +117,12 @@ function useMailPush(): void {
       // Ein abgerissener Kanal ist der Normalfall (Schlaf, Netzwechsel, Neustart des
       // Backends). Ohne Wiederaufbau wäre die Oberfläche danach still und niemand wüsste,
       // warum nichts mehr kommt.
-      ws.onclose = () => { if (!zu) retry = window.setTimeout(verbinden, 5000); };
+      ws.onclose = () => { if (!to) retry = window.setTimeout(join, 5000); };
     };
-    verbinden();
+    join();
 
     return () => {
-      zu = true;
+      to = true;
       window.clearTimeout(retry);
       ws?.close();
     };
@@ -155,34 +155,34 @@ function useMailCounter(): number {
  * thing to be squeezed out. On the left it keeps its place at every width, and above all it
  * is *visible*, which the old list behind the avatar was not.
  */
-function BereichsSchiene() {
+function AreaRail() {
   const { user } = useAuth();
   const loc = useLocation();
-  const wartend = useInboxCounter();
+  const waiting = useInboxCounter();
   const newMails = useMailCounter();
   useMailPush();
-  const entries = hauptNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
+  const entries = primaryNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
 
   return (
-    <nav className={`sticky top-0 hidden h-screen ${SCHIENE_BREITE} shrink-0 flex-col items-center gap-1 border-r border-line bg-card py-3 md:flex`}>
+    <nav className={`sticky top-0 hidden h-screen ${RAIL_WIDTH} shrink-0 flex-col items-center gap-1 border-r border-line bg-card py-3 md:flex`}>
       <Link to="/" title={tr("layout.traccoon_start")} className="mb-2 text-2xl">🦝</Link>
       {entries.map((e) => (
-        <SchienenButton key={e.key} eintrag={e} aktiv={istArea(loc.pathname + loc.hash, e.to)}
-          zaehler={e.zaehler === "inbox" ? wartend : e.zaehler === "mail" ? newMails : 0} />
+        <RailsButton key={e.key} entry={e} active={isArea(loc.pathname + loc.hash, e.to)}
+          counter={e.counter === "inbox" ? waiting : e.counter === "mail" ? newMails : 0} />
       ))}
     </nav>
   );
 }
 
-function SchienenButton({ eintrag: entry, aktiv, zaehler: counter }: {
-  eintrag: NavEntry; aktiv: boolean; zaehler: number;
+function RailsButton({ entry: entry, active, counter: counter }: {
+  entry: NavEntry; active: boolean; counter: number;
 }) {
   return (
     <Link
       to={entry.to}
       title={entry.label}
       className={`relative flex w-[60px] flex-col items-center gap-0.5 rounded-lg px-1 py-2 ${
-        aktiv ? "bg-surface text-ink" : "text-muted hover:bg-surface hover:text-ink"
+        active ? "bg-surface text-ink" : "text-muted hover:bg-surface hover:text-ink"
       }`}
     >
       <span className="text-lg leading-none">{entry.icon}</span>
@@ -206,9 +206,9 @@ function MobileMenu() {
   const [open, setOpen] = useState(false);
   const { user } = useAuth();
   const loc = useLocation();
-  const wartend = useInboxCounter();
+  const waiting = useInboxCounter();
   const newMails = useMailCounter();
-  const entries = hauptNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
+  const entries = primaryNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
   const close = () => setOpen(false);
 
   return (
@@ -216,7 +216,7 @@ function MobileMenu() {
       <button onClick={() => setOpen((v) => !v)} aria-label={tr("layout.menue")} title={tr("layout.menue")}
         className="relative flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface text-lg leading-none text-ink hover:bg-card">
         ☰
-        {wartend > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand" />}
+        {waiting > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand" />}
       </button>
       {open && (
         <>
@@ -225,13 +225,13 @@ function MobileMenu() {
             {entries.map((e) => (
               <Link key={e.key} to={e.to} onClick={close}
                 className={`flex items-center gap-2 rounded px-2 py-2 text-sm ${
-                  istArea(loc.pathname + loc.hash, e.to) ? "bg-surface text-ink" : "text-ink hover:bg-surface"
+                  isArea(loc.pathname + loc.hash, e.to) ? "bg-surface text-ink" : "text-ink hover:bg-surface"
                 }`}>
                 <span>{e.icon}</span>
                 <span className="flex-1">{e.label}</span>
-                {((e.zaehler === "inbox" && wartend > 0) || (e.zaehler === "mail" && newMails > 0)) && (
+                {((e.counter === "inbox" && waiting > 0) || (e.counter === "mail" && newMails > 0)) && (
                   <span className="rounded-full bg-brand px-1.5 text-xs text-white tabular-nums">
-                    {e.zaehler === "inbox" ? wartend : newMails}
+                    {e.counter === "inbox" ? waiting : newMails}
                   </span>
                 )}
               </Link>
@@ -283,11 +283,11 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isActive = (t: ChromeTab) => chrome.active ? t.key === chrome.active
     : (loc.pathname === t.to || current === t.to);
   const onProjectPage = /^\/projects\//.test(loc.pathname);
-  const seitlich = chrome.layout === "seite" && chrome.tabs.length > 0;
+  const sideways = chrome.layout === "seite" && chrome.tabs.length > 0;
 
   return (
     <div className="flex min-h-full">
-      <BereichsSchiene />
+      <AreaRail />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
           {/* Links: Menü (mobil) + Projekt-Titel/Switcher bzw. Seitentitel */}
@@ -313,14 +313,14 @@ export default function Layout({ children }: { children: ReactNode }) {
         </header>
         {/* [&>*]:mx-auto zentriert begrenzte Seiten-Spalten; volle Breite bleibt unberührt. */}
         <main className="mx-auto w-full max-w-[1400px] flex-1 p-3 [&>*]:mx-auto sm:p-5">
-          {seitlich ? (
+          {sideways ? (
             <div className="flex flex-col gap-4 md:flex-row md:gap-6">
-              <PagesNavigation tabs={chrome.tabs} aktiv={isActive} seitlich />
+              <PagesNavigation tabs={chrome.tabs} active={isActive} sideways />
               <div className="min-w-0 flex-1">{children}</div>
             </div>
           ) : (
             <>
-              <PagesNavigation tabs={chrome.tabs} aktiv={isActive} />
+              <PagesNavigation tabs={chrome.tabs} active={isActive} />
               {children}
             </>
           )}
@@ -344,24 +344,24 @@ export default function Layout({ children }: { children: ReactNode }) {
  * for five, but at nine the bar takes two lines and reads like a word cloud. Below `md`
  * both look the same, because there is no room for a column beside the content.
  */
-function PagesNavigation({ tabs, aktiv, seitlich = false }: {
-  tabs: ChromeTab[]; aktiv: (t: ChromeTab) => boolean; seitlich?: boolean;
+function PagesNavigation({ tabs, active, sideways = false }: {
+  tabs: ChromeTab[]; active: (t: ChromeTab) => boolean; sideways?: boolean;
 }) {
   if (tabs.length === 0) return null;
   // No card of its own: below stand cards, and a navigation in the same frame as the content
   // reads as one more box instead of as the way between them. What carries it is a line — to
   // the side one on the right, above one below.
-  const behaelter = seitlich
+  const container = sideways
     ? "flex shrink-0 flex-wrap gap-1 md:w-52 md:flex-col md:flex-nowrap md:border-r md:border-line md:pr-3"
     : "mb-4 flex flex-wrap gap-1 border-b border-line pb-2";
   return (
-    <nav className={behaelter}>
+    <nav className={container}>
       {tabs.map((tab) => (
         <Link
           key={tab.key}
           to={tab.to}
           className={`flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors md:min-h-0 ${
-            aktiv(tab)
+            active(tab)
               ? "bg-brand/15 font-medium text-brand ring-1 ring-inset ring-brand/30"
               : "text-muted hover:bg-card hover:text-ink"
           }`}

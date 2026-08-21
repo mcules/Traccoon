@@ -26,28 +26,28 @@ export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
   const fields = PHASES.flatMap(([key, label, rgb]) => {
     const parts = nodes.filter((n) => n.data.config.group === key);
     if (!parts.length) return [];
-    const hoehe = (n: FlowNode) => n.measured?.height ?? 88;
-    const sortiert = [...parts].sort((a, b) => a.position.y - b.position.y);
-    const bloecke: FlowNode[][] = [];
-    for (const n of sortiert) {
-      const last = bloecke[bloecke.length - 1];
-      const vorheriges = last?.[last.length - 1];
+    const height = (n: FlowNode) => n.measured?.height ?? 88;
+    const sorted = [...parts].sort((a, b) => a.position.y - b.position.y);
+    const blocks: FlowNode[][] = [];
+    for (const n of sorted) {
+      const last = blocks[blocks.length - 1];
+      const previous = last?.[last.length - 1];
       // Connect when the next node follows immediately (at most one line of distance).
-      const anschluss = vorheriges
-        && n.position.y - (vorheriges.position.y + hoehe(vorheriges)) < hoehe(n) + 80;
-      if (anschluss) last.push(n);
-      else bloecke.push([n]);
+      const connection = previous
+        && n.position.y - (previous.position.y + height(previous)) < height(n) + 80;
+      if (connection) last.push(n);
+      else blocks.push([n]);
     }
-    const luft = 26;
-    return bloecke.map((block, i) => {
+    const air = 26;
+    return blocks.map((block, i) => {
       const xs = block.map((n) => n.position.x);
-      const rechts = Math.max(...block.map((n) => n.position.x + (n.measured?.width ?? 220)));
-      const unten = Math.max(...block.map((n) => n.position.y + hoehe(n)));
-      const oben = Math.min(...block.map((n) => n.position.y));
+      const right = Math.max(...block.map((n) => n.position.x + (n.measured?.width ?? 220)));
+      const below = Math.max(...block.map((n) => n.position.y + height(n)));
+      const above = Math.min(...block.map((n) => n.position.y));
       return {
-        key: `${key}-${i}`, label, rgb, zeigLabel: i === 0,
-        x: Math.min(...xs) - luft, y: oben - luft - 20,
-        w: rechts - Math.min(...xs) + luft * 2, h: unten - oben + luft * 2 + 20,
+        key: `${key}-${i}`, label, rgb, showLabel: i === 0,
+        x: Math.min(...xs) - air, y: above - air - 20,
+        w: right - Math.min(...xs) + air * 2, h: below - above + air * 2 + 20,
       };
     });
   });
@@ -70,7 +70,7 @@ export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
             zIndex: -1,
           }}
         >
-          {f.zeigLabel && <span
+          {f.showLabel && <span
             style={{
               position: "absolute", top: 6, left: 12,
               fontSize: 13, letterSpacing: "0.04em", textTransform: "uppercase",

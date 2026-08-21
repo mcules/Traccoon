@@ -19,9 +19,9 @@ export interface ContextField {
   source: string;
 }
 
-export interface ContextFilter { name: string; hilfe: string }
+export interface ContextFilter { name: string; help: string }
 
-export interface ContextKatalog {
+export interface ContextCatalog {
   /** Filter for templates: {{ path | filter:argument }} */
   filter?: ContextFilter[];
   base: Omit<ContextField, "source">[];
@@ -33,21 +33,21 @@ export interface ContextKatalog {
 const cfgOf = (n: FlowNode) => (n.data?.config || {}) as Record<string, any>;
 
 /** Aktionsname eines auto_action-Knotens (beide Config-Formen). */
-function aktionsName(n: FlowNode): string | null {
+function actionName(n: FlowNode): string | null {
   if (n.type !== "auto_action") return null;
   const a = cfgOf(n).action;
   if (a && typeof a === "object") return String(a.action || a.kind || "");
   return a ? String(a) : null;
 }
 
-export function verfuegbareFields(
+export function availableFields(
   nodes: FlowNode[],
-  katalog: ContextKatalog | undefined,
+  catalog: ContextCatalog | undefined,
 ): ContextField[] {
-  if (!katalog) return [];
+  if (!catalog) return [];
   const out: ContextField[] = [];
   const seen = new Set<string>();
-  const nimm = (fields: Omit<ContextField, "source">[] | undefined, source: string) => {
+  const take = (fields: Omit<ContextField, "source">[] | undefined, source: string) => {
     for (const f of fields || []) {
       if (seen.has(f.path)) continue;
       seen.add(f.path);
@@ -55,7 +55,7 @@ export function verfuegbareFields(
     }
   };
 
-  nimm(katalog.base, "immer da");
+  take(catalog.base, "immer da");
 
   // Trigger: the event on the start node. Without a trigger the flow can be started by a
   // webhook or a job, whose payload stands as an entry of its own in the catalog.
@@ -66,40 +66,40 @@ export function verfuegbareFields(
   // inserted, the editor knows the fields, nested ones included.
   const probe = start ? cfgOf(start).trigger?.sample : undefined;
   if (probe && typeof probe === "object") {
-    const walk = (value: any, path: string, tiefe: number) => {
-      if (tiefe > 4 || value === null || value === undefined) return;
+    const walk = (value: any, path: string, depth: number) => {
+      if (depth > 4 || value === null || value === undefined) return;
       if (Array.isArray(value)) {
-        nimm([{ path: path, type: "list",
-                description: tr("context_fields.eintraege_im_beispiel", { anzahl: value.length }) }],
+        take([{ path: path, type: "list",
+                description: tr("context_fields.eintraege_im_beispiel", { count: value.length }) }],
              "Beispiel-Nutzlast");
-        if (value.length) walk(value[0], `${path}.0`, tiefe + 1);
+        if (value.length) walk(value[0], `${path}.0`, depth + 1);
         return;
       }
       if (typeof value === "object") {
-        for (const [k, v] of Object.entries(value)) walk(v, path ? `${path}.${k}` : k, tiefe + 1);
+        for (const [k, v] of Object.entries(value)) walk(v, path ? `${path}.${k}` : k, depth + 1);
         return;
       }
       const kind = typeof value === "number" ? "number"
         : typeof value === "boolean" ? "boolean" : "text";
-      nimm([{ path: path, type: kind, description: `Beispiel: ${String(value).slice(0, 40)}` }],
+      take([{ path: path, type: kind, description: `Beispiel: ${String(value).slice(0, 40)}` }],
            "Beispiel-Nutzlast");
     };
     walk(probe, "", 0);
   }
-  if (ev && katalog.triggers[ev]) nimm(katalog.triggers[ev], tr("context_fields.ausloeser", { name: ev }));
-  if (!ev && katalog.triggers["(Webhook/Job)"]) {
-    nimm(katalog.triggers["(Webhook/Job)"], tr("context_fields.ausloeser", { name: "Webhook/Job" }));
+  if (ev && catalog.triggers[ev]) take(catalog.triggers[ev], tr("context_fields.ausloeser", { name: ev }));
+  if (!ev && catalog.triggers["(Webhook/Job)"]) {
+    take(catalog.triggers["(Webhook/Job)"], tr("context_fields.ausloeser", { name: "Webhook/Job" }));
   }
 
   for (const n of nodes) {
-    const action = aktionsName(n);
-    if (action && katalog.actions[action]) nimm(katalog.actions[action], `Schritt „${action}“`);
-    if (n.type && katalog.nodes[n.type]) nimm(katalog.nodes[n.type], `Knoten ${n.type}`);
+    const action = actionName(n);
+    if (action && catalog.actions[action]) take(catalog.actions[action], `Schritt „${action}“`);
+    if (n.type && catalog.nodes[n.type]) take(catalog.nodes[n.type], `Knoten ${n.type}`);
     // Keys put down by the flow itself: only this graph knows those.
     if (action === "set_context") {
-      const roh = cfgOf(n).action?.params ?? cfgOf(n);
-      const zuweisungen = (roh?.set && typeof roh.set === "object" ? roh.set : roh) || {};
-      for (const k of Object.keys(zuweisungen)) {
+      const raw = cfgOf(n).action?.params ?? cfgOf(n);
+      const assignments = (raw?.set && typeof raw.set === "object" ? raw.set : raw) || {};
+      for (const k of Object.keys(assignments)) {
         if (["action", "kind", "label", "set", "group"].includes(k) || seen.has(k)) continue;
         seen.add(k);
         out.push({ path: k, type: "text", description: "selbst gesetzt",

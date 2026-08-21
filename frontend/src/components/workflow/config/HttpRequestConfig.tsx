@@ -25,7 +25,7 @@ export default function HttpRequestConfig({
   });
   const set = (k: string, v: any) => onChange({ ...params, [k]: v });
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
-  const gewaehlt = targets?.find((d) => d.name === params.destination);
+  const chosen = targets?.find((d) => d.name === params.destination);
 
   return (
     <div className="space-y-3">
@@ -46,8 +46,8 @@ export default function HttpRequestConfig({
           ))}
         </datalist>
         <span className="mt-1 block text-[11px] text-muted">
-          {gewaehlt
-            ? `${gewaehlt.base_url} · ${gewaehlt.auth_type === "none" ? tr("http_request.ohne_anmeldung") : gewaehlt.auth_type}`
+          {chosen
+            ? `${chosen.base_url} · ${chosen.auth_type === "none" ? tr("http_request.ohne_anmeldung") : chosen.auth_type}`
             : tr("http_request.ziele_pflegen")}
         </span>
       </label>
@@ -83,11 +83,11 @@ export default function HttpRequestConfig({
           rows={4}
           value={typeof params.body === "string" ? params.body : JSON.stringify(params.body ?? "", null, 2)}
           onChange={(e) => {
-            const roh = e.target.value;
+            const raw = e.target.value;
             try {
-              set("body", JSON.parse(roh));
+              set("body", JSON.parse(raw));
             } catch {
-              set("body", roh);
+              set("body", raw);
             }
           }}
           placeholder='{"ticket": "{{issue_key}}"}'

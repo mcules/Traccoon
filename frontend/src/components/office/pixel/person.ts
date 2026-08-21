@@ -31,9 +31,9 @@ import type { ActorState, Ctx, Gait, Look, Pose } from "../types.ts";
 import { GATE_PULSE_MS, POS_SCALE } from "../const.ts";
 import { mix } from "../ids.ts";
 import type { Art } from "./art.ts";
-import { defineArt, drawArt, fill, fillA, verdoppelt } from "./art.ts";
+import { defineArt, drawArt, fill, fillA, doubled } from "./art.ts";
 import type { Pal } from "./palette.ts";
-import { gaitOf, lookOf, rollenSeed } from "./palette.ts";
+import { gaitOf, lookOf, rolesSeed } from "./palette.ts";
 
 // ═══ Dimensions ══════════════════════════════════════════════════════════════
 
@@ -146,7 +146,7 @@ const HEAD_FRONT_HD = defineArt([
 
 // Front by hand and fine, side and back doubled for now: the front view is the one seen almost
 // always (standing, typing, speaking), and only the boss seat shows a back.
-const HEADS: readonly Art[] = [HEAD_FRONT_HD, verdoppelt(HEAD_SIDE), verdoppelt(HEAD_BACK)];
+const HEADS: readonly Art[] = [HEAD_FRONT_HD, doubled(HEAD_SIDE), doubled(HEAD_BACK)];
 
 /** Head direction. Numbers instead of strings, because they index into `HEADS` directly. */
 const DIR_FRONT = 0;
@@ -242,10 +242,10 @@ const HAIR_CURL = defineArt([
 // 24 wide against 20 of the head (hair may stick out, column n is head column n-2), 22 high.
 
 /** A row without hair: the lower rows are empty or nearly empty in every hairstyle. */
-const H_LEER = "........................";
+const H_EMPTY = "........................";
 
 /** The curve every hairstyle shares: it follows the skull of HEAD_FRONT_HD. */
-const H_KAPPE: readonly string[] = [
+const H_CAP: readonly string[] = [
   "........HHHHHHHH........",
   "......HHHHHHHHHHHH......",
   ".....HHHHHHHHHHHHHH.....",
@@ -255,31 +255,31 @@ const H_KAPPE: readonly string[] = [
   "...HHHHHHHHHHHHHHHHHH...",
 ];
 
-const HAAR_MAP = { H: "H", h: "h" } as const;
+const HAIR_MAP = { H: "H", h: "h" } as const;
 
 const HAIR_SHORT_HD = defineArt([
-  ...H_KAPPE,
+  ...H_CAP,
   "...HHhhhhhhhhhhhhhhHH...",
   "...HH..............HH...",
   "...HH..............HH...",
   "...H................H...",
-  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
-], HAAR_MAP);
+  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
+], HAIR_MAP);
 
 /** Parting: a groove of shadow on the left, and on the right the top hair falls lower. */
 const HAIR_PART_HD = defineArt([
-  ...H_KAPPE.map((r, i) => (i >= 2 ? r.slice(0, 7) + "h" + r.slice(8) : r)),
+  ...H_CAP.map((r, i) => (i >= 2 ? r.slice(0, 7) + "h" + r.slice(8) : r)),
   "...HHhhhhhhhhhhhhhhHH...",
   "...HH.............HHH...",
   "...HH..............HH...",
   "...H................HH..",
   "....................H...",
-  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
-], HAAR_MAP);
+  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
+], HAIR_MAP);
 
 /** Long: falls to the shoulders on both sides. */
 const HAIR_LONG_HD = defineArt([
-  ...H_KAPPE,
+  ...H_CAP,
   "...HHhhhhhhhhhhhhhhHH...",
   "..HHH..............HHH..",
   "..HHH..............HHH..",
@@ -288,20 +288,20 @@ const HAIR_LONG_HD = defineArt([
   "..HHh..............hHH..",
   "...Hh..............hH...",
   "...h................h...",
-  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
-], HAAR_MAP);
+  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
+], HAIR_MAP);
 
 /** Ponytail: short at the sides, a bundle at the back that falls over the shoulder. */
 const HAIR_TAIL_HD = defineArt([
-  ...H_KAPPE,
+  ...H_CAP,
   "...HHhhhhhhhhhhhhhhHH...",
   "...HH..............HHHH.",
   "...HH...............HHHH",
   "...H.................HHH",
   "......................HH",
   ".......................h",
-  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
-], HAAR_MAP);
+  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
+], HAIR_MAP);
 
 /** Curls: the edge frays instead of running smooth. */
 const HAIR_CURL_HD = defineArt([
@@ -316,8 +316,8 @@ const HAIR_CURL_HD = defineArt([
   "..HHH..............HHH..",
   "..HHh..............hHH..",
   "...H................H...",
-  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
-], HAAR_MAP);
+  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
+], HAIR_MAP);
 
 const HAIRS: readonly Art[] = [
   HAIR_SHORT_HD, HAIR_PART_HD, HAIR_LONG_HD, HAIR_TAIL_HD, HAIR_CURL_HD,
@@ -635,7 +635,7 @@ const LEGS_WALK_B = defineArt([
   ".ii...ii",
 ], { P: "P", i: "ink" });
 
-const LEGS: readonly Art[] = [LEGS_SIT, LEGS_STATE, LEGS_WALK_A, LEGS_WALK_B].map(verdoppelt);
+const LEGS: readonly Art[] = [LEGS_SIT, LEGS_STATE, LEGS_WALK_A, LEGS_WALK_B].map(doubled);
 
 const LEGS_SIT_I = 0;
 const LEGS_STATE_I = 1;
@@ -976,7 +976,7 @@ export function drawActor(ctx: Ctx, a: ActorState, t: number, pal: Pal): void {
   // finely, the same movement with steps half as coarse.
   const cx = Math.round(a.x * POS_SCALE * HD);
   const yBase = Math.round(a.y * POS_SCALE * HD);
-  const look = lookOf(a.seed, rollenSeed(a.role, a.seed));
+  const look = lookOf(a.seed, rolesSeed(a.role, a.seed));
   // The gait stays **entirely** with the walk seed: it is what keeps twelve colleagues of one
   // role apart in the picture when shirt and hair are grouping them together (rule 3.2).
   const gait = gaitOf(a.seed);

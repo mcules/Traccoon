@@ -22,8 +22,8 @@ function get(obj: Record<string, any>, path: string): any {
 }
 function set(obj: Record<string, any>, path: string, value: any): Record<string, any> {
   const parts = path.split(".");
-  const kopie = { ...obj };
-  let cur: any = kopie;
+  const copy = { ...obj };
+  let cur: any = copy;
   for (let i = 0; i < parts.length - 1; i++) {
     cur[parts[i]] = { ...(cur[parts[i]] || {}) };
     cur = cur[parts[i]];
@@ -31,7 +31,7 @@ function set(obj: Record<string, any>, path: string, value: any): Record<string,
   const last = parts[parts.length - 1];
   if (value === "" || value === undefined) delete cur[last];
   else cur[last] = value;
-  return kopie;
+  return copy;
 }
 
 /**
@@ -56,28 +56,28 @@ export default function ActionParams({
   subjectKind?: string;
 }) {
   const spec = ACTION_SPECS[action] || FALLBACK_SPEC;
-  const braucht = (q: string) => spec.fields.some((f) => f.source === q);
+  const needs = (q: string) => spec.fields.some((f) => f.source === q);
 
   const { data: agents } = useQuery({
     queryKey: ["agents", projectId ?? null],
     queryFn: () => api.get<AgentLite[]>(`/agents${projectId ? `?project_id=${projectId}` : ""}`),
-    enabled: braucht("agent_role"),
+    enabled: needs("agent_role"),
     staleTime: 5 * 60_000,
   });
   // Recipients: all people this human may see (their own projects, placeholders, themselves)
   // including the ways they are reachable on.
-  const { data: personen } = useQuery({
+  const { data: persons } = useQuery({
     queryKey: ["users-visible"],
     queryFn: () => api.get<{ id: number; display_name: string; notify_default: string;
-                             kanaele: string[] }[]>("/users/visible"),
-    enabled: braucht("person"),
+                             channels: string[] }[]>("/users/visible"),
+    enabled: needs("person"),
     staleTime: 5 * 60_000,
   });
   // States of the artifact the flow hangs off (Administration → Artifacts).
-  const { data: typen } = useQuery({
+  const { data: types } = useQuery({
     queryKey: ["artifact-types", subjectKind],
     queryFn: () => api.get<ArtifactKind[]>(`/artifact-types?subject=${subjectKind}`),
-    enabled: (braucht("artifact_status") || braucht("artifact_field")) && !!subjectKind,
+    enabled: (needs("artifact_status") || needs("artifact_field")) && !!subjectKind,
     staleTime: 5 * 60_000,
   });
 
@@ -86,23 +86,23 @@ export default function ActionParams({
   // anybody having to program an action.
   const { data: tools } = useQuery({
     queryKey: ["workflow-tools"],
-    queryFn: () => api.get<{ name: string; server: string; beschreibung: string;
-                             pflicht: string[] }[]>("/workflow-tools"),
-    enabled: braucht("mcp_tool"),
+    queryFn: () => api.get<{ name: string; server: string; description: string;
+                             required: string[] }[]>("/workflow-tools"),
+    enabled: needs("mcp_tool"),
     staleTime: 10 * 60_000,
   });
 
   const { data: meta } = useQuery({
     queryKey: ["meta", projectId],
     queryFn: () => api.get<{ statuses: StatusLite[] }>(`/projects/${projectId}/meta`),
-    enabled: braucht("board_status") && !!projectId,
+    enabled: needs("board_status") && !!projectId,
     staleTime: 5 * 60_000,
   });
 
   /** If the value contains a template ({{…}}), a text field is needed: a selection list would
    *  swallow it silently on the first opening of the node. The shipped lifecycle uses exactly
    *  that (hold_reason: {{agent.hold_hint}}). */
-  const istTemplate = (v: any) => typeof v === "string" && v.includes("{{");
+  const isTemplate = (v: any) => typeof v === "string" && v.includes("{{");
 
   const selection = (f: FieldSpec): [string, string][] => {
     if (f.source === "agent_role") {
@@ -113,13 +113,13 @@ export default function ActionParams({
       return [["", "—"], ...(meta?.statuses || []).map((s) => [s.name, s.name] as [string, string])];
     }
     if (f.source === "artifact_field") {
-      const fields = (typen?.[0]?.fields || []).filter((x) => x.enabled);
+      const fields = (types?.[0]?.fields || []).filter((x) => x.enabled);
       return fields.length
         ? fields.map((x) => [x.key, `${x.label}${x.multi ? " (mehrere)" : ""}`] as [string, string])
         : [["", tr("action_params.keine_felder")]];
     }
     if (f.source === "artifact_status") {
-      const st = typen?.[0]?.statuses || [];
+      const st = types?.[0]?.statuses || [];
       return st.length
         ? st.map((s) => [s.key, s.label] as [string, string])
         : [["", tr("action_params.kein_artefakt")]];
@@ -129,7 +129,7 @@ export default function ActionParams({
       return listing.length
         ? [["", tr("action_params.waehlen")] as [string, string],
            ...listing.map((w) => [w.name,
-             `${w.name}${w.pflicht?.length ? ` (${w.pflicht.join(", ")})` : ""}`] as [string, string])]
+             `${w.name}${w.required?.length ? ` (${w.required.join(", ")})` : ""}`] as [string, string])]
         : [["", tr("action_params.keine_mcp_server")]];
     }
     if (f.source === "member") {
@@ -139,10 +139,10 @@ export default function ActionParams({
     if (f.source === "person") {
       // Project members are not enough here: an own, project-less flow has none, so the
       // selection stayed empty and nobody could be named.
-      const listing = personen || [];
+      const listing = persons || [];
       return [["", "— Betreiber —"],
               ...listing.map((u) => [String(u.id),
-                `${u.display_name}${u.kanaele.length ? "" : ` (${tr("action_params.kein_weg")})`}`] as
+                `${u.display_name}${u.channels.length ? "" : ` (${tr("action_params.kein_weg")})`}`] as
                 [string, string])];
     }
     return f.options || [];
@@ -160,7 +160,7 @@ export default function ActionParams({
   const known = new Set(spec.fields.map((f) => f.key.split(".")[0]).filter(Boolean));
   const remainder = Object.fromEntries(
     Object.entries(params).filter(([k]) => !known.has(k)));
-  const nurKv = spec.fields.length === 1 && spec.fields[0].type === "kv" && !spec.fields[0].key;
+  const onlyKv = spec.fields.length === 1 && spec.fields[0].type === "kv" && !spec.fields[0].key;
 
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
@@ -187,7 +187,7 @@ export default function ActionParams({
           <label key={f.key} className="block text-xs font-medium text-muted">
             {tr(f.label)}
             {f.required && <span className="text-red-400"> *</span>}
-            {f.type === "select" && !istTemplate(value) && (
+            {f.type === "select" && !isTemplate(value) && (
               <select value={value ?? ""} onChange={(e) => update(e.target.value)}
                 className={`mt-1 ${inp}`}>
                 {/* Ohne Vorbelegung zuerst einen leeren Eintrag, sonst zeigt das Feld einen
@@ -198,7 +198,7 @@ export default function ActionParams({
                 {selection(f).map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
               </select>
             )}
-            {f.type === "select" && istTemplate(value) && (
+            {f.type === "select" && isTemplate(value) && (
               <>
                 <input value={value} onChange={(e) => update(e.target.value)}
                   className={`mt-1 ${inp} font-mono`} />
@@ -248,7 +248,7 @@ export default function ActionParams({
         <div className="text-[11px] text-muted">{tr("action_params.diese_aktion_braucht_keine_einstellungen")}</div>
       )}
 
-      {!nurKv && Object.keys(remainder).length > 0 && (
+      {!onlyKv && Object.keys(remainder).length > 0 && (
         <details className="rounded border border-line p-2">
           <summary className="cursor-pointer text-xs text-muted">
             Weitere Parameter ({Object.keys(remainder).length})

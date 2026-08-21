@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, pluginApi, type PluginVerwaltung } from "../api";
+import { ApiError, pluginApi, type PluginAdmin } from "../api";
 import { tr } from "../i18n";
 import {
-  Actions, Area, Etikett, Fehlerzeile, ICON, IconButton, Button, Listing, ListingLeer,
-  ListenLine, LoeschDialog } from "./ui";
+  Actions, Area, Tag, Errorrow, ICON, IconButton, Button, Listing, ListingEmpty,
+  ListenLine, DeleteDialog } from "./ui";
 
 /**
  * Plugins verwalten: einspielen, freigeben, abschalten.
@@ -17,7 +17,7 @@ import {
 
 /** Wofür ein Recht steht, in einem Satz. Unbekannte zeigt die Liste roh — besser der nackte
  *  Bezeichner als eine erfundene Beschreibung. */
-const RECHT_TEXT: Record<string, string> = {
+const RIGHT_TEXT: Record<string, string> = {
   "series:number": "plugins.recht_series_number",
   "series:location": "plugins.recht_series_location",
   "series:text": "plugins.recht_series_text",
@@ -26,66 +26,66 @@ const RECHT_TEXT: Record<string, string> = {
 export default function PluginsPanel() {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
-  const [loeschTarget, setLoeschTarget] = useState<PluginVerwaltung | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PluginAdmin | null>(null);
   const fileField = useRef<HTMLInputElement>(null);
 
   const { data: plugins } = useQuery({
-    queryKey: ["plugins", "alle"], queryFn: () => pluginApi.alle(),
+    queryKey: ["plugins", "alle"], queryFn: () => pluginApi.all(),
   });
   // Beide Listen erneuern: Die Verwaltung sieht alles, die Bereichsschiene nur das
   // Freigegebene — nach einem Häkchen muss auch sie sich rühren.
   const inv = () => qc.invalidateQueries({ queryKey: ["plugins"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
 
-  const hochladen = useMutation({
-    mutationFn: (file: File) => pluginApi.hochladen(file),
+  const upload = useMutation({
+    mutationFn: (file: File) => pluginApi.upload(file),
     onSuccess: () => { setErr(""); inv(); }, onError: fail,
   });
-  const rechte = useMutation({
-    mutationFn: ({ slug, body }: { slug: string; body: any }) => pluginApi.rechte(slug, body),
+  const rights = useMutation({
+    mutationFn: ({ slug, body }: { slug: string; body: any }) => pluginApi.rights(slug, body),
     onSuccess: () => { setErr(""); inv(); }, onError: fail,
   });
   const remove = useMutation({
     mutationFn: (slug: string) => pluginApi.del(slug),
-    onSuccess: () => { setLoeschTarget(null); inv(); }, onError: fail,
+    onSuccess: () => { setDeleteTarget(null); inv(); }, onError: fail,
   });
 
   return (
-    <Area titel={tr("plugins.titel")} hinweis={tr("plugins.einleitung")} werkzeuge={
+    <Area title={tr("plugins.titel")} hint={tr("plugins.einleitung")} tools={
       <>
         <input ref={fileField} type="file" accept=".zip" className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) hochladen.mutate(f);
+            if (f) upload.mutate(f);
             e.target.value = "";
           }} />
-        <Button art="haupt" laeuft={hochladen.isPending}
+        <Button variant="primary" runs={upload.isPending}
           onClick={() => fileField.current?.click()}>{tr("plugins.hochladen")}</Button>
       </>
     }>
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
       <Listing>
         {(plugins || []).map((p) => (
-          <ListenLine key={p.slug} gedimmt={!p.enabled}>
+          <ListenLine key={p.slug} dimmed={!p.enabled}>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-lg leading-none">{p.icon || "\u{1F9E9}"}</span>
                 <span className="font-medium text-ink">{p.name}</span>
                 <code className="font-mono text-xs text-muted">{p.slug} · {p.version}</code>
-                {!p.enabled && <Etikett farbe="neutral">{tr("plugins.aus")}</Etikett>}
+                {!p.enabled && <Tag color="neutral">{tr("plugins.aus")}</Tag>}
                 <div className="flex-1" />
                 <Actions>
-                  <Button klein art={p.enabled ? "neben" : "zusage"}
-                    onClick={() => rechte.mutate({ slug: p.slug, body: { enabled: !p.enabled } })}>
+                  <Button small variant={p.enabled ? "secondary" : "confirm"}
+                    onClick={() => rights.mutate({ slug: p.slug, body: { enabled: !p.enabled } })}>
                     {p.enabled ? tr("plugins.abschalten") : tr("plugins.einschalten")}
                   </Button>
-                  <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                    onClick={() => setLoeschTarget(p)} />
+                  <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                    onClick={() => setDeleteTarget(p)} />
                 </Actions>
               </div>
               {p.description && <div className="text-xs text-muted">{p.description}</div>}
-              <Rechte plugin={p} onSetzen={(listing) =>
-                rechte.mutate({ slug: p.slug, body: { reads_granted: listing } })} />
+              <Rights plugin={p} onSet={(listing) =>
+                rights.mutate({ slug: p.slug, body: { reads_granted: listing } })} />
               {(p.allowed_hosts || []).length > 0 && (
                 <div className="text-xs text-muted">
                   {tr("plugins.fremde_quellen")}: {p.allowed_hosts.join(", ")}
@@ -94,41 +94,41 @@ export default function PluginsPanel() {
             </div>
           </ListenLine>
         ))}
-        {plugins?.length === 0 && <ListingLeer>{tr("plugins.keine")}</ListingLeer>}
+        {plugins?.length === 0 && <ListingEmpty>{tr("plugins.keine")}</ListingEmpty>}
       </Listing>
 
-      {loeschTarget && (
-        <LoeschDialog was={loeschTarget.name} hinweis={tr("plugins.loeschen_hinweis")}
-          laeuft={remove.isPending}
-          onClose={() => setLoeschTarget(null)}
-          onLoeschen={() => remove.mutate(loeschTarget.slug)} />
+      {deleteTarget && (
+        <DeleteDialog was={deleteTarget.name} hint={tr("plugins.loeschen_hinweis")}
+          runs={remove.isPending}
+          onClose={() => setDeleteTarget(null)}
+          onDelete={() => remove.mutate(deleteTarget.slug)} />
       )}
     </Area>
   );
 }
 
 /** Die Haken: was das Manifest fordert, und was davon gilt. */
-function Rechte({ plugin, onSetzen: onSet }: {
-  plugin: PluginVerwaltung; onSetzen: (listing: string[]) => void;
+function Rights({ plugin, onSet: onSet }: {
+  plugin: PluginAdmin; onSet: (listing: string[]) => void;
 }) {
-  const gefordert = plugin.reads || [];
-  if (gefordert.length === 0) {
+  const requested = plugin.reads || [];
+  if (requested.length === 0) {
     return <div className="text-xs text-muted">{tr("plugins.keine_rechte")}</div>;
   }
   const allowed = plugin.reads_granted || [];
-  const umschalten = (recht: string) =>
-    onSet(allowed.includes(recht) ? allowed.filter((r) => r !== recht) : [...allowed, recht]);
+  const toggle = (right: string) =>
+    onSet(allowed.includes(right) ? allowed.filter((r) => r !== right) : [...allowed, right]);
 
   return (
     <div className="space-y-1">
       <div className="text-xs text-muted">{tr("plugins.rechte")}</div>
-      {gefordert.map((recht) => (
-        <label key={recht} className="flex cursor-pointer items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={allowed.includes(recht)}
-            onChange={() => umschalten(recht)} />
-          <code className="font-mono text-xs text-brand">{recht}</code>
+      {requested.map((right) => (
+        <label key={right} className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={allowed.includes(right)}
+            onChange={() => toggle(right)} />
+          <code className="font-mono text-xs text-brand">{right}</code>
           <span className="text-xs text-muted">
-            {RECHT_TEXT[recht] ? tr(RECHT_TEXT[recht]) : ""}
+            {RIGHT_TEXT[right] ? tr(RIGHT_TEXT[right]) : ""}
           </span>
         </label>
       ))}

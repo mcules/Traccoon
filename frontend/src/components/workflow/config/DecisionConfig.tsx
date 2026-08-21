@@ -1,7 +1,7 @@
 import type { NodeConfig, DecisionBranch, JsonLogic } from "../types";
 import { tr } from "../../../i18n";
 import type { ContextField, ContextFilter } from "../contextFields";
-import { BUTTON_KLEIN, BUTTON_TEXT} from "../../ui";
+import { BUTTON_SMALL, BUTTON_TEXT} from "../../ui";
 
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 
@@ -31,7 +31,7 @@ let handleSeq = 0;
 export default function DecisionConfig({
   config,
   onChange,
-  felder: fields = [],
+  fields: fields = [],
   filter = [],
 }: {
   config: NodeConfig;
@@ -40,7 +40,7 @@ export default function DecisionConfig({
   filter?: ContextFilter[];
   /** Context fields this flow really has: from the trigger, the steps and keys set by
    *  itself (see `contextFields.ts`). */
-  felder?: ContextField[];
+  fields?: ContextField[];
 }) {
   const branches = config.branches || [];
   const setBranches = (b: DecisionBranch[]) => onChange({ ...config, branches: b });
@@ -71,7 +71,7 @@ export default function DecisionConfig({
                   placeholder={tr("decision_config.beschriftung")}
                   className={`flex-1 ${inp}`}
                 />
-                <button onClick={() => remove(i)} className={BUTTON_TEXT.gefahr} title={tr("decision_config.zweig_entfernen")}>
+                <button onClick={() => remove(i)} className={BUTTON_TEXT.danger} title={tr("decision_config.zweig_entfernen")}>
                   ✕
                 </button>
               </div>
@@ -115,7 +115,7 @@ export default function DecisionConfig({
         </datalist>
       )}
 
-      <button onClick={add} className={BUTTON_KLEIN.neben}>
+      <button onClick={add} className={BUTTON_SMALL.secondary}>
         + Zweig
       </button>
 
@@ -134,7 +134,7 @@ export default function DecisionConfig({
               {filter.map((f) => (
                 <tr key={f.name} className="align-top">
                   <td className="pr-2 font-mono text-ink">{f.name}</td>
-                  <td>{f.hilfe}</td>
+                  <td>{f.help}</td>
                 </tr>
               ))}
             </tbody>

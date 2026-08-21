@@ -3,7 +3,7 @@ import { tr } from "../../../i18n";
 import { api, workflowApi } from "../../../api";
 import type { NodeConfig } from "../types";
 
-interface ProjektLite { id: number; key: string; name: string }
+interface ProjectLite { id: number; key: string; name: string }
 
 /**
  * Trigger of a flow.
@@ -39,7 +39,7 @@ export default function StartConfig({
     queryFn: () => workflowApi.webhookGet(defId as number),
     enabled: !!defId,
   });
-  const adresseCreate = useMutation({
+  const addressCreate = useMutation({
     mutationFn: () => workflowApi.webhookCreate(defId as number),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflow-webhook", defId] }),
   });
@@ -48,9 +48,9 @@ export default function StartConfig({
     queryFn: () => api.get<{ event: string; label: string }[]>("/workflow-events"),
     staleTime: 10 * 60_000,
   });
-  const { data: projekte } = useQuery({
+  const { data: projects } = useQuery({
     queryKey: ["projects"],
-    queryFn: () => api.get<ProjektLite[]>("/projects"),
+    queryFn: () => api.get<ProjectLite[]>("/projects"),
     staleTime: 5 * 60_000,
   });
 
@@ -78,19 +78,19 @@ export default function StartConfig({
     });
   };
   const setT = (next: Record<string, any>) => {
-    const zusammen: Record<string, any> = { ...t, ...next };
+    const together: Record<string, any> = { ...t, ...next };
     // Do not carry empty entries along: a trigger without an event is none.
-    for (const k of Object.keys(zusammen)) {
-      if (zusammen[k] === "" || zusammen[k] === undefined || zusammen[k] === null) {
-        delete zusammen[k];
+    for (const k of Object.keys(together)) {
+      if (together[k] === "" || together[k] === undefined || together[k] === null) {
+        delete together[k];
       }
     }
     // A trigger without an event is not an event trigger, but the example payload of a
     // webhook lives here as well and must not disappear with it.
-    const leer = !zusammen.event && !zusammen.sample;
+    const empty = !together.event && !together.sample;
     onChange({
       ...config,
-      trigger: leer ? undefined : (zusammen as NodeConfig["trigger"]),
+      trigger: empty ? undefined : (together as NodeConfig["trigger"]),
     });
   };
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
@@ -164,11 +164,11 @@ export default function StartConfig({
           </div>
         ) : (
           <button
-            onClick={() => adresseCreate.mutate()}
-            disabled={!defId || adresseCreate.isPending}
+            onClick={() => addressCreate.mutate()}
+            disabled={!defId || addressCreate.isPending}
             className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
           >
-            {adresseCreate.isPending ? "…" : "+ Adresse erzeugen"}
+            {addressCreate.isPending ? "…" : "+ Adresse erzeugen"}
           </button>
         )}
 
@@ -176,8 +176,8 @@ export default function StartConfig({
           <label className="mt-2 block text-[11px] text-muted">
             {tr("start_config.artefakt_feld")}
             <input
-              value={t.subjekt_feld || ""}
-              onChange={(e) => setT({ subjekt_feld: e.target.value.trim() })}
+              value={t.subject_field || ""}
+              onChange={(e) => setT({ subject_field: e.target.value.trim() })}
               placeholder={subjectKind === "issue" ? "vorgang.ticket" : "geraet.id"}
               className={`mt-1 font-mono ${inp}`}
             />
@@ -198,9 +198,9 @@ export default function StartConfig({
           rows={4}
           value={t.sample ? JSON.stringify(t.sample, null, 1) : ""}
           onChange={(e) => {
-            const roh = e.target.value.trim();
-            if (!roh) return setT({ sample: "" });
-            try { setT({ sample: JSON.parse(roh) }); } catch { /* Tippen abwarten */ }
+            const raw = e.target.value.trim();
+            if (!raw) return setT({ sample: "" });
+            try { setT({ sample: JSON.parse(raw) }); } catch { /* Tippen abwarten */ }
           }}
           placeholder={'{"vorgang": {"id": 42, "titel": "Störung"}, "quelle": "Zabbix"}'}
           className={`mt-1 ${inp} font-mono`}
@@ -221,7 +221,7 @@ export default function StartConfig({
               className={`mt-1 ${inp}`}
             >
               <option value="">{tr("start_config.jedes_projekt")}</option>
-              {projekte?.map((p) => (
+              {projects?.map((p) => (
                 <option key={p.id} value={p.id}>{p.key} · {p.name}</option>
               ))}
             </select>
@@ -236,9 +236,9 @@ export default function StartConfig({
               rows={3}
               value={t.filter ? JSON.stringify(t.filter, null, 1) : ""}
               onChange={(e) => {
-                const roh = e.target.value.trim();
-                if (!roh) return setT({ filter: "" });
-                try { setT({ filter: JSON.parse(roh) }); } catch { /* Tippen abwarten */ }
+                const raw = e.target.value.trim();
+                if (!raw) return setT({ filter: "" });
+                try { setT({ filter: JSON.parse(raw) }); } catch { /* Tippen abwarten */ }
               }}
               placeholder={'{"==": [{"var": "issue.priority"}, "highest"]}'}
               className={`mt-1 ${inp} font-mono`}

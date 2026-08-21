@@ -6,7 +6,7 @@ import {
   ApiError, DeploymentListing, DeploymentRow, DeploymentStatusFilter, deploymentApi,
 } from "../api";
 import { formatTime } from "../lib/formatTime";
-import { BUTTON, BUTTON_KLEIN } from "./ui";
+import { BUTTON, BUTTON_SMALL } from "./ui";
 
 // One component for both places (dashboard card and Settings → Deployment), so that there
 // are no two truths about status, durations and log head. The shell (card, section) is
@@ -56,7 +56,7 @@ const WINDOW_STANDARD = 720;
 /** `LIMIT_MAX` of the API. Loading more beyond that would bring nothing but the same excerpt. */
 const LIMIT_MAX = 200;
 
-export type DeploymentVariante = "kompakt" | "voll";
+export type DeploymentVariant = "kompakt" | "voll";
 
 export interface DeploymentsPanelProps {
   /** Project bound list. Without it the global one is read (maintenance updates without a project). */
@@ -64,7 +64,7 @@ export interface DeploymentsPanelProps {
   /** Only deployments of this ticket (by contract effective only project bound). */
   issueId?: number;
   /** `kompakt` = card on the dashboard (few rows, no filters), `voll` = settings. */
-  variante?: DeploymentVariante;
+  variant?: DeploymentVariant;
   /** Anfangs-Obergrenze; Standard 5 (kompakt) bzw. 50 (voll). */
   limit?: number;
   /** The button "deploy now", only in the full list and only project bound.
@@ -74,22 +74,22 @@ export interface DeploymentsPanelProps {
    *  accessory: it stands in the confirmation, and without it "this stack is rebuilt" would
    *  be a claim nobody can check. If the property is missing entirely there is no button
    *  (dashboard card, ticket view). */
-  ausloesen?: { stackDir?: string | null; erlaubt: boolean };
+  fire?: { stackDir?: string | null; allowed: boolean };
 }
 
 export default function DeploymentsPanel(
-  { projectId, issueId, variante = "voll", limit, ausloesen }: DeploymentsPanelProps,
+  { projectId, issueId, variant = "voll", limit, fire }: DeploymentsPanelProps,
 ) {
-  const kompakt = variante === "kompakt";
+  const compact = variant === "kompakt";
   const [status, setStatus] = useState<DeploymentStatusFilter>("all");
-  const [seit, setSeit] = useState(WINDOW_STANDARD);   // Stunden, immer explizit
-  const [max, setMax] = useState(limit ?? (kompakt ? 5 : 50));
+  const [since, setSince] = useState(WINDOW_STANDARD);   // Stunden, immer explizit
+  const [max, setMax] = useState(limit ?? (compact ? 5 : 50));
   const [open, setOpen] = useState<number | null>(null);
   const qc = useQueryClient();
 
   const { data, error, isLoading } = useQuery<DeploymentListing>({
-    queryKey: ["deployments", projectId ?? null, issueId ?? null, status, seit, max],
-    queryFn: () => deploymentApi.list({ projectId, issueId, limit: max, sinceHours: seit, status }),
+    queryKey: ["deployments", projectId ?? null, issueId ?? null, status, since, max],
+    queryFn: () => deploymentApi.list({ projectId, issueId, limit: max, sinceHours: since, status }),
     // Deployments are rare; a running one should still count on by itself.
     refetchInterval: 15000,
     retry: false,
@@ -112,15 +112,15 @@ export default function DeploymentsPanel(
   // count goes against the time window, the list on the other hand through the status filter.
   // With "successful" no open deploy would stand in `items`, and the button would be free
   // although the server answers with 409.
-  const laufend = ["pending", "pending-check", "building"]
+  const running = ["pending", "pending-check", "building"]
     .reduce((n, s) => n + ((data.by_status || {})[s] || 0), 0);
 
   return (
     <div className="space-y-3">
-      {!kompakt && projectId != null && ausloesen && (
+      {!compact && projectId != null && fire && (
         <Trigger projectId={projectId} issueId={issueId}
-          stackDir={ausloesen.stackDir} erlaubt={ausloesen.erlaubt} laufend={laufend > 0}
-          nachziehen={() => {
+          stackDir={fire.stackDir} allowed={fire.allowed} running={running > 0}
+          catchup={() => {
             // The fresh deploy is `pending`; with a narrower filter it would fall out of the
             // list and the button would look without consequence. "All" shows it anyway.
             if (status !== "all") setStatus("running");
@@ -128,7 +128,7 @@ export default function DeploymentsPanel(
           }} />
       )}
 
-      {!kompakt && (
+      {!compact && (
         <div className="flex flex-wrap items-center gap-2">
           {FILTER.map(([f, label]) => (
             <button key={f} onClick={() => setStatus(f)}
@@ -137,7 +137,7 @@ export default function DeploymentsPanel(
               {tr(label)}
             </button>
           ))}
-          <select value={seit} onChange={(e) => setSeit(+e.target.value)}
+          <select value={since} onChange={(e) => setSince(+e.target.value)}
             className="ml-auto rounded border border-line bg-surface px-2 py-1 text-xs text-ink">
             {WINDOW.map(([h, label]) => <option key={h} value={h}>{tr(label)}</option>)}
           </select>
@@ -145,27 +145,27 @@ export default function DeploymentsPanel(
       )}
 
       <Header by={data.by_status} count={data.count} truncated={data.truncated}
-        kompakt={kompakt} fenster={seit} />
+        compact={compact} window={since} />
 
       {items.length === 0 ? (
         // Empty because of the filter or empty because there is nothing: not the same message.
         <div className="text-xs text-muted">
           {Object.values(data.by_status || {}).some((n) => n > 0)
             ? tr("deploy.kein_treffer_filter")
-            : tr("deployments_panel.nichts_deployt", { fenster: tr(windowText(seit)) })}
+            : tr("deployments_panel.nichts_deployt", { window: tr(windowText(since)) })}
         </div>
       ) : (
         <div className="divide-y divide-line">
           {items.map((d) => (
-            <Line key={d.id} d={d} kompakt={kompakt}
-              auf={open === d.id} toggle={() => setOpen(open === d.id ? null : d.id)} />
+            <Line key={d.id} d={d} compact={compact}
+              on={open === d.id} toggle={() => setOpen(open === d.id ? null : d.id)} />
           ))}
         </div>
       )}
 
-      {!kompakt && data.truncated && max < LIMIT_MAX && (
+      {!compact && data.truncated && max < LIMIT_MAX && (
         <button onClick={() => setMax(Math.min(LIMIT_MAX, max + 50))}
-          className={BUTTON_KLEIN.neben}>
+          className={BUTTON_SMALL.secondary}>
           Mehr laden
         </button>
       )}
@@ -184,14 +184,14 @@ export default function DeploymentsPanel(
  *  server answers with 409 respectively 403 in both cases anyway, but a button that is
  *  certain to fail should not be offered. The reason stands as text beside it, not only as a
  *  `title`, because otherwise it is a grey area without an explanation. */
-function Trigger({ projectId, issueId, stackDir, erlaubt: allowed, laufend, nachziehen }: {
+function Trigger({ projectId, issueId, stackDir, allowed: allowed, running, catchup }: {
   projectId: number; issueId?: number; stackDir?: string | null;
-  erlaubt: boolean; laufend: boolean; nachziehen: () => void;
+  allowed: boolean; running: boolean; catchup: () => void;
 }) {
   const [question, setQuestion] = useState(false);
   const [sendet, setSendet] = useState(false);
   const [error, setError] = useState("");
-  const [eingereiht, setEingereiht] = useState<number | null>(null);
+  const [queued, setQueued] = useState<number | null>(null);
 
   const folder = (stackDir || "").trim();
   // Order = urgency: no permission beats everything, then the missing target, then the
@@ -201,17 +201,17 @@ function Trigger({ projectId, issueId, stackDir, erlaubt: allowed, laufend, nach
     : !folder
       ? tr("deploy.kein_arbeitsverzeichnis")
 
-      : laufend
+      : running
         ? tr("deploy.laeuft_bereits")
         : "";
 
-  const ausloesen = async () => {
+  const fire = async () => {
     setSendet(true); setError("");
     try {
       const d = await deploymentApi.create(projectId, issueId ? { issue_id: issueId } : {});
-      setEingereiht(d.id);
+      setQueued(d.id);
       setQuestion(false);
-      nachziehen();
+      catchup();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : tr("deploy.einreihen_fehlgeschlagen"));
     } finally {
@@ -222,13 +222,13 @@ function Trigger({ projectId, issueId, stackDir, erlaubt: allowed, laufend, nach
   return (
     <div className="rounded border border-line p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => { setQuestion(true); setError(""); setEingereiht(null); }}
+        <button onClick={() => { setQuestion(true); setError(""); setQueued(null); }}
           disabled={!!reason || question || sendet}
-          className={BUTTON.haupt}>
+          className={BUTTON.primary}>
           Jetzt deployen
         </button>
         <span className="text-xs text-muted">
-          {reason || tr("deploy.baut_neu", { ordner: folder })}
+          {reason || tr("deploy.baut_neu", { folder: folder })}
         </span>
       </div>
 
@@ -236,7 +236,7 @@ function Trigger({ projectId, issueId, stackDir, erlaubt: allowed, laufend, nach
         <div className="mt-3 space-y-2 rounded border border-yellow-400/40 bg-surface p-3">
           <div className="text-sm text-ink">{tr("deployments_panel.diesen_stand_wirklich_ausrollen")}</div>
           <div className="text-xs text-muted">
-            {tr("deployments_panel.was_passiert", { ordner: folder })}
+            {tr("deployments_panel.was_passiert", { folder: folder })}
           </div>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
             <li>{tr("deployments_panel.warnung_ausfall")}</li>
@@ -244,21 +244,21 @@ function Trigger({ projectId, issueId, stackDir, erlaubt: allowed, laufend, nach
             <li>{tr("deployments_panel.warnung_welcher_stand")}</li>
           </ul>
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button onClick={ausloesen} disabled={sendet}
-              className={BUTTON.haupt}>
+            <button onClick={fire} disabled={sendet}
+              className={BUTTON.primary}>
               {tr(sendet ? "deployments_panel.wird_eingereiht" : "deployments_panel.ja_deployen")}
             </button>
             <button onClick={() => setQuestion(false)} disabled={sendet}
-              className={BUTTON.neben}>
+              className={BUTTON.secondary}>
               Abbrechen
             </button>
           </div>
         </div>
       )}
 
-      {eingereiht !== null && (
+      {queued !== null && (
         <div className="mt-2 text-xs text-green-400">
-          {tr("deployments_panel.eingereiht_als", { nummer: eingereiht })}
+          {tr("deployments_panel.eingereiht_als", { number: queued })}
         </div>
       )}
       {error && <div className="mt-2 text-xs text-red-400">{error}</div>}
@@ -273,14 +273,14 @@ function Trigger({ projectId, issueId, stackDir, erlaubt: allowed, laufend, nach
  *  way in `_payload`), which is why it says "in the window" here and, separately, how many
  *  rows the list below is showing right now. Merging the two would be the number nobody can
  *  recompute. */
-function Header({ by, count, truncated, kompakt, fenster: window }: {
+function Header({ by, count, truncated, compact, window: window }: {
   by?: Record<string, number>; count: number; truncated?: boolean;
-  kompakt: boolean; fenster: number;
+  compact: boolean; window: number;
 }) {
   const entries = Object.entries(by || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
   const sum_total = entries.reduce((s, [, n]) => s + n, 0);
   if (!sum_total) return null;
-  const abgebrochen = (by || {}).cancelled || 0;
+  const aborted = (by || {}).cancelled || 0;
   return (
     <div>
       <div className="flex h-2 overflow-hidden rounded">
@@ -297,16 +297,16 @@ function Header({ by, count, truncated, kompakt, fenster: window }: {
           </span>
         ))}
         <span className="ml-auto">
-          {tr("deployments_panel.zusammenfassung", { summe: sum_total, fenster: tr(windowText(window)), count })}
+          {tr("deployments_panel.zusammenfassung", { sum: sum_total, window: tr(windowText(window)), count })}
           {truncated ? ` ${tr("deployments_panel.gekuerzt")}` : ""}
         </span>
       </div>
-      {abgebrochen > 0 && !kompakt && (
+      {aborted > 0 && !compact && (
         <div className="mt-1.5 text-xs text-muted">
-          {tr("deployments_panel.abgebrochen_erklaerung", { anzahl: abgebrochen })}
+          {tr("deployments_panel.abgebrochen_erklaerung", { count: aborted })}
         </div>
       )}
-      {abgebrochen > 0 && kompakt && (
+      {aborted > 0 && compact && (
         <div className="mt-1.5 text-xs text-muted">
           {tr("deployments_panel.abgebrochen_kurz")}
         </div>
@@ -315,19 +315,19 @@ function Header({ by, count, truncated, kompakt, fenster: window }: {
   );
 }
 
-function Line({ d, kompakt, auf, toggle }: {
-  d: DeploymentRow; kompakt: boolean; auf: boolean; toggle: () => void;
+function Line({ d, compact, on, toggle }: {
+  d: DeploymentRow; compact: boolean; on: boolean; toggle: () => void;
 }) {
   const running = d.phase === "running";
   // The log head is the reason "failed" becomes understandable at all: always in the full
   // list, and in the card where it did not obviously end well.
-  const zeigeHeader = !!d.log_head && (!kompakt || d.ok !== true);
+  const showHeader = !!d.log_head && (!compact || d.ok !== true);
   return (
     <div>
       <div role="button" tabIndex={0} onClick={toggle}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
         className="flex cursor-pointer items-start gap-2 py-2 text-left hover:bg-surface/50">
-        <OkChars ok={d.ok} laeuft={running} />
+        <OkChars ok={d.ok} runs={running} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
             <span className={ST_TEXT[d.status] || "text-muted"}>{ST_LABEL[d.status] || d.status}</span>
@@ -348,27 +348,27 @@ function Line({ d, kompakt, auf, toggle }: {
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
             <span>{tr("deployments_panel.warteschlange")}: {durationText(d.wait_ms)}</span>
             <span>{tr("deployments_panel.arbeit")}: {durationText(d.duration_ms)}</span>
-            {!kompakt && <span>{tr("deployments_panel.ausloeser")}: {tr(sourceText(d.source))}</span>}
-            {!kompakt && d.stack_dir && (
+            {!compact && <span>{tr("deployments_panel.ausloeser")}: {tr(sourceText(d.source))}</span>}
+            {!compact && d.stack_dir && (
               <span className="truncate font-mono" title={d.stack_dir}>{d.stack_dir}</span>
             )}
           </div>
-          {zeigeHeader && (
+          {showHeader && (
             <div className="mt-1 truncate font-mono text-[11px] text-muted" title={d.log_head || ""}>
-              {einzeilig(d.log_head)}
+              {singleline(d.log_head)}
             </div>
           )}
         </div>
-        <span className="shrink-0 text-muted">{auf ? "▾" : "▸"}</span>
+        <span className="shrink-0 text-muted">{on ? "▾" : "▸"}</span>
       </div>
-      {auf && <LogAusklapper id={d.id} bytes={d.log_bytes} />}
+      {on && <LogExpander id={d.id} bytes={d.log_bytes} />}
     </div>
   );
 }
 
 /** Three valued `ok`. `null` means **unknown**, which is why it gets a sign and a colour of
  *  its own, not the green tick. If it is running, the running mark wins. */
-function OkChars({ ok, laeuft: running }: { ok?: boolean | null; laeuft: boolean }) {
+function OkChars({ ok, runs: running }: { ok?: boolean | null; runs: boolean }) {
   if (running) {
     return <span className="mt-0.5 animate-pulse text-yellow-400" title={tr("deployments_panel.laeuft_gerade")}>◐</span>;
   }
@@ -378,7 +378,7 @@ function OkChars({ ok, laeuft: running }: { ok?: boolean | null; laeuft: boolean
 }
 
 /** Full text log, fetched only on expanding (up to about 20 000 characters per row). */
-function LogAusklapper({ id, bytes }: { id: number; bytes?: number | null }) {
+function LogExpander({ id, bytes }: { id: number; bytes?: number | null }) {
   const { data, error, isLoading } = useQuery({
     queryKey: ["deployment", id],
     queryFn: () => deploymentApi.get(id),
@@ -389,7 +389,7 @@ function LogAusklapper({ id, bytes }: { id: number; bytes?: number | null }) {
   if (error) {
     return <div className="pb-2 pl-6 text-xs text-muted">
       {tr("deployments_panel.log_nicht_abrufbar", {
-        grund: error instanceof ApiError ? String(error.status) : tr("common.fehler") })}
+        reason: error instanceof ApiError ? String(error.status) : tr("common.fehler") })}
     </div>;
   }
   const log = data?.log || "";
@@ -434,11 +434,11 @@ function windowText(hours: number): string {
   if (hours === 720) return "deployments_panel.fenster_30t";
   if (hours === 8760) return "deployments_panel.fenster_1j";
   return hours % 24 === 0
-    ? tr("deployments_panel.fenster_tage", { anzahl: hours / 24 })
-    : tr("deployments_panel.fenster_stunden", { anzahl: hours });
+    ? tr("deployments_panel.fenster_tage", { count: hours / 24 })
+    : tr("deployments_panel.fenster_stunden", { count: hours });
 }
 
 /** The log head contains line breaks; in a table row those are only a nuisance. */
-function einzeilig(s?: string | null): string {
+function singleline(s?: string | null): string {
   return (s || "").replace(/\s+/g, " ").trim();
 }

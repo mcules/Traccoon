@@ -175,7 +175,7 @@ export default function Board({
       {moveErr && (
         <div className="mb-3 flex items-center justify-between rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
           <span>{moveErr}</span>
-          <button onClick={() => setMoveErr(null)} className={BUTTON_TEXT.gefahr}>✕</button>
+          <button onClick={() => setMoveErr(null)} className={BUTTON_TEXT.danger}>✕</button>
         </div>
       )}
 
@@ -199,7 +199,7 @@ export default function Board({
         <div className="space-y-2">
           {activeItems.length === 0 && (
             <div className="rounded border border-line bg-surface px-3 py-6 text-center text-sm text-muted">
-              {tr("board.keine_tickets_in", { spalte: activeName })}
+              {tr("board.keine_tickets_in", { column: activeName })}
             </div>
           )}
           {activeItems.map((i) => (

@@ -28,7 +28,7 @@ export default function SubflowConfig({
   const { data: all } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
   // Callable is what is published: a draft has no version a child instance could point at.
   // And the own flow drops out (an endless loop).
-  const abläufe = (all || []).filter(
+  const flows = (all || []).filter(
     (d) => d.current_version_id && !d.archived_at && d.id !== defId && !d.slot);
 
   const value = config.definition_id ? `def:${config.definition_id}`
@@ -53,9 +53,9 @@ export default function SubflowConfig({
               <option key={s} value={`slot:${s}`}>{tr(SLOT_LABELS[s])}</option>
             ))}
           </optgroup>
-          {abläufe.length > 0 && (
+          {flows.length > 0 && (
             <optgroup label={tr("subflow_config.eigene_ablaeufe_veroeffentlicht")}>
-              {abläufe.map((d) => (
+              {flows.map((d) => (
                 <option key={d.id} value={`def:${d.id}`}>{d.name}</option>
               ))}
             </optgroup>

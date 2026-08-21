@@ -11,15 +11,15 @@
  */
 let zone: string | undefined;
 
-export function setzeZeitzone(name: string | undefined | null): void {
+export function setTimezone(name: string | undefined | null): void {
   zone = name || undefined;
 }
 
-export function zeitzone(): string {
+export function timezone(): string {
   return zone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-function mitZone(opt: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions {
+function withZone(opt: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions {
   return zone ? { ...opt, timeZone: zone } : opt;
 }
 
@@ -28,7 +28,7 @@ export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString("de-DE", mitZone({
+  return d.toLocaleString("de-DE", withZone({
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
   }));
 }
@@ -38,7 +38,7 @@ export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString("de-DE", mitZone({
+  return d.toLocaleString("de-DE", withZone({
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   }));
@@ -49,7 +49,7 @@ export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("de-DE", mitZone({
+  return d.toLocaleDateString("de-DE", withZone({
     day: "2-digit", month: "2-digit", year: "numeric",
   }));
 }

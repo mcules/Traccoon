@@ -70,12 +70,12 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Project } from "../api";
 import OfficeView from "../components/office/OfficeView.tsx";
-import ErrorBoundary, { sicheresNeuladen } from "../components/ErrorBoundary.tsx";
+import ErrorBoundary, { safeReload } from "../components/ErrorBoundary.tsx";
 import type { Scope } from "../components/office/api.ts";
 import { useWakeLock } from "../hooks/useWakeLock.ts";
 import { useTokenKeepalive } from "../hooks/useTokenKeepalive.ts";
-import { projektPath } from "../projectTabs";
-import { SCHIENE_FREILASSEN } from "../nav";
+import { projectPath } from "../projectTabs";
+import { RAIL_LEAVEBLANK } from "../nav";
 import { BUTTON } from "../components/ui";
 
 // ── Adjustable settings of the watchdog ─────────────────────────────────────────────────────
@@ -83,14 +83,14 @@ import { BUTTON } from "../components/ui";
 /** This long an error may stand before a reload happens. Two minutes are longer than any
  *  backend restart and than the full reconnect staircase of the feed; what stays that long
  *  does not go away by itself any more. */
-const WACHHUND_ERROR_MS = 120_000;
+const WATCHDOG_ERROR_MS = 120_000;
 
 /** Authentication error of the socket (4401/4403). Shorter, because here a fresh page load
  *  with a renewed token can actually change something. */
-const WACHHUND_AUTH_MS = 60_000;
+const WATCHDOG_AUTH_MS = 60_000;
 
 /** Mindestabstand zweier automatischer Neuladeversuche desselben Grundes. */
-const NEULADEN_DISTANCE_MS = 10 * 60_000;
+const RELOAD_DISTANCE_MS = 10 * 60_000;
 
 /** Render exception: wait briefly (perhaps it was an event that is over in a moment), then
  *  rebuild. */
@@ -98,7 +98,7 @@ const BOUNDARY_RELOAD_MS = 10_000;
 
 /** The nightly cut, local time. 4 o'clock: after the 19:00 peak and before everything that
  *  starts up in the morning. */
-const NACHT_STUNDE = 4;
+const NIGHT_HOUR = 4;
 
 /**
  * How long this error may stand. `0` means immediately.
@@ -107,23 +107,23 @@ const NACHT_STUNDE = 4;
  * `onclose` respectively `hello` handling). If the wording changes there, the long deadline
  * silently takes hold here: worse, but never wrong.
  */
-function frist(notice: string): number {
+function deadline(notice: string): number {
   if (notice.includes("Vertragsversion")) return 0;
-  if (notice.includes("Keine Berechtigung")) return WACHHUND_AUTH_MS;
-  return WACHHUND_ERROR_MS;
+  if (notice.includes("Keine Berechtigung")) return WATCHDOG_AUTH_MS;
+  return WATCHDOG_ERROR_MS;
 }
 
-function reasonVon(notice: string): string {
+function reasonFrom(notice: string): string {
   if (notice.includes("Vertragsversion")) return "vertragsbruch";
   if (notice.includes("Keine Berechtigung")) return "socket-auth";
   return "dauerfehler";
 }
 
 /** Milliseconds until the next full `stunde` in local time. */
-function bisZurStunde(stunde: number): number {
+function toHour(hour: number): number {
   const now = new Date();
   const target = new Date(now);
-  target.setHours(stunde, 0, 0, 0);
+  target.setHours(hour, 0, 0, 0);
   if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
   return target.getTime() - now.getTime();
 }
@@ -132,8 +132,8 @@ export default function Office(): JSX.Element {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const projectKey = params.get("project");
-  const kioskRoh = params.get("kiosk");
-  const kiosk = kioskRoh === "1" || kioskRoh === "true";
+  const kioskRaw = params.get("kiosk");
+  const kiosk = kioskRaw === "1" || kioskRaw === "true";
 
   // The same query as in the header (`ProjectSwitcher`), from the cache, not fresh.
   const { data: projects, isLoading } = useQuery({
@@ -146,8 +146,8 @@ export default function Office(): JSX.Element {
   // reading back from the URL would turn every write into a circle.
   const start = useRef<{ at: number | null; sid: string | null }>({
     at: (() => {
-      const roh = params.get("at");
-      const n = roh === null ? NaN : Number(roh);
+      const raw = params.get("at");
+      const n = raw === null ? NaN : Number(raw);
       return Number.isFinite(n) && n > 0 ? n : null;
     })(),
     sid: params.get("sid"),
@@ -161,9 +161,9 @@ export default function Office(): JSX.Element {
   );
 
   /** One writer for both parameters: they never change independently of each other. */
-  const schreibe = useCallback((field: "at" | "sid", value: string | null) => {
-    setParams((vorher) => {
-      const next = new URLSearchParams(vorher);
+  const write = useCallback((field: "at" | "sid", value: string | null) => {
+    setParams((before) => {
+      const next = new URLSearchParams(before);
       if (value === null) next.delete(field);
       else next.set(field, value);
       return next;
@@ -171,23 +171,23 @@ export default function Office(): JSX.Element {
   }, [setParams]);
 
   const onAtChange = useCallback(
-    (ts: number | null) => schreibe("at", ts === null ? null : String(ts)),
-    [schreibe],
+    (ts: number | null) => write("at", ts === null ? null : String(ts)),
+    [write],
   );
   const onSidChange = useCallback(
-    (sid: string | null) => schreibe("sid", sid),
-    [schreibe],
+    (sid: string | null) => write("sid", sid),
+    [write],
   );
 
   // Back to where the office came from: into the project tab when a project is involved,
   // otherwise to the project list.
-  const back = () => navigate(projectKey ? projektPath(projectKey, "operations", "office") : "/");
+  const back = () => navigate(projectKey ? projectPath(projectKey, "operations", "office") : "/");
 
   /** Esc in the kiosk: one level back into the operable full screen page, not out of the
    *  office; room and jump point stay, because usually you want to intervene right here. */
-  const kioskVerlassen = useCallback(() => {
-    setParams((vorher) => {
-      const next = new URLSearchParams(vorher);
+  const kioskLeave = useCallback(() => {
+    setParams((before) => {
+      const next = new URLSearchParams(before);
       next.delete("kiosk");
       return next;
     }, { replace: true });
@@ -205,15 +205,15 @@ export default function Office(): JSX.Element {
   // error that comes and goes is not a permanent error, and another error is another case.
   useEffect(() => {
     if (!kiosk || !error) return;
-    const wartezeit = frist(error);
-    const reason = reasonVon(error);
-    if (wartezeit === 0) {
+    const waittime = deadline(error);
+    const reason = reasonFrom(error);
+    if (waittime === 0) {
       // Contract breach: a new frontend lies on the server, this one here is from yesterday.
-      sicheresNeuladen(reason, NEULADEN_DISTANCE_MS);
+      safeReload(reason, RELOAD_DISTANCE_MS);
       return;
     }
     const timer = window.setTimeout(
-      () => sicheresNeuladen(reason, NEULADEN_DISTANCE_MS), wartezeit);
+      () => safeReload(reason, RELOAD_DISTANCE_MS), waittime);
     return () => window.clearTimeout(timer);
   }, [kiosk, error]);
 
@@ -222,18 +222,18 @@ export default function Office(): JSX.Element {
   useEffect(() => {
     if (!kiosk) return;
     const timer = window.setTimeout(
-      () => sicheresNeuladen("nacht", NEULADEN_DISTANCE_MS), bisZurStunde(NACHT_STUNDE));
+      () => safeReload("nacht", RELOAD_DISTANCE_MS), toHour(NIGHT_HOUR));
     return () => window.clearTimeout(timer);
   }, [kiosk]);
 
   // If `?project=` is in the URL but the project list is still on its way, the scope would be
   // "global" for the blink of an eye, and the feed would build its socket twice.
-  const wartet = !!projectKey && isLoading;
+  const waits = !!projectKey && isLoading;
 
   return (
     // Die Bereichsschiene bleibt frei: das Büro deckt die Seite zu, nicht den Weg hinaus.
     // Im Kiosk gibt es keinen Weg hinaus (Wandschirm), dort deckt es wirklich alles.
-    <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${kiosk ? "" : SCHIENE_FREILASSEN}`}>
+    <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${kiosk ? "" : RAIL_LEAVEBLANK}`}>
       {/* Die Kopfzeile dieser Seite (Zurück-Knopf) ist Bedienung — im Kiosk fällt sie weg.
           Was der Wandschirm an Beschriftung braucht, steht in der Kopfzeile der Ansicht. */}
       {!kiosk && (
@@ -244,7 +244,7 @@ export default function Office(): JSX.Element {
           {projectKey && (
             <button
               onClick={back}
-              className={BUTTON.neben}
+              className={BUTTON.secondary}
             >
               ← {tr("office.zurueck_projekt")}
             </button>
@@ -262,13 +262,13 @@ export default function Office(): JSX.Element {
         </div>
       )}
 
-      {wartet ? (
+      {waits ? (
         <div className="p-4 text-sm text-muted">{tr("office.buero_laedt")}</div>
       ) : (
         <ErrorBoundary
           label="buero"
           reloadAfterMs={kiosk ? BOUNDARY_RELOAD_MS : undefined}
-          reloadMinGapMs={NEULADEN_DISTANCE_MS}
+          reloadMinGapMs={RELOAD_DISTANCE_MS}
         >
           <OfficeView
             scope={scope}
@@ -278,7 +278,7 @@ export default function Office(): JSX.Element {
             initialSid={start.current.sid}
             onSidChange={onSidChange}
             onErrorChange={setError}
-            onClose={kiosk ? kioskVerlassen : back}
+            onClose={kiosk ? kioskLeave : back}
             className="min-h-0 flex-1 p-3"
           />
         </ErrorBoundary>

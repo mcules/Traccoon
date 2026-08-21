@@ -32,17 +32,17 @@ const KIND_META: Record<WaitKind, { icon: string; title: string }> = {
   external: { icon: "⏳", title: "wait.wartet_extern" },
 };
 
-const uebersetzt = (m: { icon: string; title: string }) => ({ icon: m.icon, title: tr(m.title) });
+const translated = (m: { icon: string; title: string }) => ({ icon: m.icon, title: tr(m.title) });
 
 /** Icon and reason for a waiting or blocked ticket, otherwise null. */
 export function waitInfo(issue: Pick<Issue, "agent_status" | "hold_reason">): WaitInfo | null {
   if (issue.agent_status === "failed") {
-    return { kind: "error", ...uebersetzt(KIND_META.error), label: tr("common.fehler") };
+    return { kind: "error", ...translated(KIND_META.error), label: tr("common.fehler") };
   }
   const reason = issue.hold_reason;
   if (!reason) return null;
   const label = HOLD_LABEL[reason] ? tr(HOLD_LABEL[reason]) : reason;
-  if (ERROR_REASONS.has(reason)) return { kind: "error", ...uebersetzt(KIND_META.error), label };
-  if (QUESTION_REASONS.has(reason)) return { kind: "question", ...uebersetzt(KIND_META.question), label };
-  return { kind: "external", ...uebersetzt(KIND_META.external), label };
+  if (ERROR_REASONS.has(reason)) return { kind: "error", ...translated(KIND_META.error), label };
+  if (QUESTION_REASONS.has(reason)) return { kind: "question", ...translated(KIND_META.question), label };
+  return { kind: "external", ...translated(KIND_META.external), label };
 }

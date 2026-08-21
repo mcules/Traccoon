@@ -4,8 +4,8 @@ import { api, Project, ProjectCosts } from "../api";
 import { Area } from "./ui";
 import DeploymentsPanel from "./DeploymentsPanel";
 
-const KAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
-const KAT_FARBE: Record<string, string> = { todo: "bg-slate-400", in_progress: "bg-sky-400", done: "bg-green-400" };
+const CAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
+const CAT_COLOR: Record<string, string> = { todo: "bg-slate-400", in_progress: "bg-sky-400", done: "bg-green-400" };
 
 export default function Dashboard({ project }: { project: Project }) {
   const { data } = useQuery({
@@ -21,62 +21,62 @@ export default function Dashboard({ project }: { project: Project }) {
   if (!data) return <div className="text-muted">{tr("dashboard.laedt")}</div>;
 
   const t = data.tickets, r = data.runs;
-  const kats: [string, number][] = Object.entries(t.by_category);
+  const cats: [string, number][] = Object.entries(t.by_category);
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Kachel label={tr("dashboard.tickets")} wert={t.total} />
-        <Kachel label={tr("dashboard.wartet_auf_dich")} wert={t.waiting_for_human}
-          farbe={t.waiting_for_human ? "text-yellow-400" : undefined} />
-        <Kachel label={tr("dashboard.laeuft_gerade")} wert={t.working}
-          farbe={t.working ? "text-sky-400" : undefined} />
-        <Kachel label={tr("dashboard.erledigt_im_fenster", { tage: data.window_days })} wert={data.throughput.done_in_window}
-          farbe="text-green-400" />
+        <Tile label={tr("dashboard.tickets")} value={t.total} />
+        <Tile label={tr("dashboard.wartet_auf_dich")} value={t.waiting_for_human}
+          color={t.waiting_for_human ? "text-yellow-400" : undefined} />
+        <Tile label={tr("dashboard.laeuft_gerade")} value={t.working}
+          color={t.working ? "text-sky-400" : undefined} />
+        <Tile label={tr("dashboard.erledigt_im_fenster", { days: data.window_days })} value={data.throughput.done_in_window}
+          color="text-green-400" />
       </div>
 
-      <Karte titel={tr("dashboard.tickets_nach_status")}>
+      <Karte title={tr("dashboard.tickets_nach_status")}>
         {t.total > 0 ? (
           <>
             <div className="flex h-3 overflow-hidden rounded">
-              {kats.map(([k, n]) => (
-                <div key={k} className={KAT_FARBE[k] || "bg-slate-500"}
-                  style={{ width: `${(n / t.total) * 100}%` }} title={`${KAT_LABEL[k] || k}: ${n}`} />
+              {cats.map(([k, n]) => (
+                <div key={k} className={CAT_COLOR[k] || "bg-slate-500"}
+                  style={{ width: `${(n / t.total) * 100}%` }} title={`${CAT_LABEL[k] || k}: ${n}`} />
               ))}
             </div>
             <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted">
-              {kats.map(([k, n]) => (
+              {cats.map(([k, n]) => (
                 <span key={k} className="flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${KAT_FARBE[k] || "bg-slate-500"}`} />
-                  {KAT_LABEL[k] || k}: <b className="text-ink">{n}</b>
+                  <span className={`h-2 w-2 rounded-full ${CAT_COLOR[k] || "bg-slate-500"}`} />
+                  {CAT_LABEL[k] || k}: <b className="text-ink">{n}</b>
                 </span>
               ))}
               {t.failed_state > 0 && <span className="text-red-400">Fehlgeschlagen: {t.failed_state}</span>}
             </div>
           </>
-        ) : <Leer />}
+        ) : <Empty />}
       </Karte>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Karte titel={tr("dashboard.agentenlaeufe", { tage: data.window_days })}>
+        <Karte title={tr("dashboard.agentenlaeufe", { days: data.window_days })}>
           {r.total > 0 ? (
             <div className="space-y-2 text-sm">
-              <Line label={tr("dashboard.laeufe_gesamt")} wert={r.total} />
+              <Line label={tr("dashboard.laeufe_gesamt")} value={r.total} />
               <Line label={tr("dashboard.erfolgsquote")}
-                wert={r.success_rate === null ? "—" : `${r.success_rate}%`}
-                farbe={r.success_rate === null ? "" : r.success_rate >= 66 ? "text-green-400"
+                value={r.success_rate === null ? "—" : `${r.success_rate}%`}
+                color={r.success_rate === null ? "" : r.success_rate >= 66 ? "text-green-400"
                   : r.success_rate >= 33 ? "text-yellow-400" : "text-red-400"} />
-              <Line label={tr("dashboard.kosten")} wert={`$${r.cost_usd.toFixed(4)}`} />
+              <Line label={tr("dashboard.kosten")} value={`$${r.cost_usd.toFixed(4)}`} />
               <div className="border-t border-line pt-2 text-xs text-muted">
                 {Object.entries(r.by_status).map(([s, v]: any) => (
                   <span key={s} className="mr-3">{s}: <b className="text-ink">{v.count}</b></span>
                 ))}
               </div>
             </div>
-          ) : <Leer text={tr("dashboard.keine_laeufe")} />}
+          ) : <Empty text={tr("dashboard.keine_laeufe")} />}
         </Karte>
 
-        <Karte titel={tr("dashboard.agenten_auslastung")}>
+        <Karte title={tr("dashboard.agenten_auslastung")}>
           {data.agents.length ? (
             <div className="space-y-2">
               {data.agents.map((a: any) => (
@@ -90,18 +90,18 @@ export default function Dashboard({ project }: { project: Project }) {
                 </div>
               ))}
             </div>
-          ) : <Leer text={tr("dashboard.keine_offenen_tickets")} />}
+          ) : <Empty text={tr("dashboard.keine_offenen_tickets")} />}
         </Karte>
       </div>
 
       {/* Ungegatet: wer ein Ticket gemergt hat, will wissen, ob es draußen ist — und ist nicht
           zwangsläufig Maintainer. Die volle Liste steht unter Einstellungen → Deployment. */}
-      <Karte titel={tr("dashboard.letzte_deployments")}>
-        <DeploymentsPanel projectId={project.id} variante="kompakt" limit={5} />
+      <Karte title={tr("dashboard.letzte_deployments")}>
+        <DeploymentsPanel projectId={project.id} variant="kompakt" limit={5} />
       </Karte>
 
       {costs && costs.by_model.length > 0 && (
-        <Karte titel={tr("dashboard.kosten_nach_modell", { summe: costs.total_usd.toFixed(2) })}>
+        <Karte title={tr("dashboard.kosten_nach_modell", { sum: costs.total_usd.toFixed(2) })}>
           <div className="overflow-x-auto">
             <table className="hidden w-full text-sm sm:table">
               <thead>
@@ -145,28 +145,28 @@ export default function Dashboard({ project }: { project: Project }) {
   );
 }
 
-function Kachel({ label, wert: value, farbe }: { label: string; wert: number; farbe?: string }) {
+function Tile({ label, value: value, color }: { label: string; value: number; color?: string }) {
   return (
     <div className="rounded-lg border border-line bg-card p-3">
-      <div className={`text-2xl font-semibold ${farbe || "text-ink"}`}>{value}</div>
+      <div className={`text-2xl font-semibold ${color || "text-ink"}`}>{value}</div>
       <div className="text-xs text-muted">{label}</div>
     </div>
   );
 }
 
-function Karte({ titel: title, children }: { titel: string; children: React.ReactNode }) {
-  return <Area titel={title}>{children}</Area>;
+function Karte({ title: title, children }: { title: string; children: React.ReactNode }) {
+  return <Area title={title}>{children}</Area>;
 }
 
-function Line({ label, wert: value, farbe }: { label: string; wert: string | number; farbe?: string }) {
+function Line({ label, value: value, color }: { label: string; value: string | number; color?: string }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-muted">{label}</span>
-      <span className={farbe || "text-ink"}>{value}</span>
+      <span className={color || "text-ink"}>{value}</span>
     </div>
   );
 }
 
-function Leer({ text }: { text?: string }) {
+function Empty({ text }: { text?: string }) {
   return <div className="text-xs text-muted">{text || tr("dashboard.keine_daten")}</div>;
 }

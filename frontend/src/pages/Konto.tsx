@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { tr, setzeLanguage } from "../i18n";
+import { tr, setLanguage } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
-import MailKontenPanel from "../components/MailKontenPanel";
+import MailAccountsPanel from "../components/MailKontenPanel";
 import {
-  AgentenBetriebPanel, AssistantNoticesPanel, GedaechtnisPanel, MeineSchalterPanel, ZeitzonePanel,
-  NachtWindowPanel,
+  AgentsOperationPanel, AssistantNoticesPanel, MemoryPanel, MySwitchPanel, TimezonePanel,
+  NightWindowPanel,
 } from "../components/KontoPanels";
 import { BUTTON } from "../components/ui";
 
@@ -32,7 +32,7 @@ const TABS: [Tab, string, string][] = [
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
-export default function Konto() {
+export default function Account() {
   const { tab: tabParam } = useParams();
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "person") as Tab;
   // Beside the content, like the settings and the administration: the account is one of the
@@ -45,12 +45,12 @@ export default function Konto() {
     <div className="max-w-2xl space-y-4">
       {/* Die Zeitzone gehört zur Person, nicht zu den Agenten: sie entscheidet, was auf
           dieser Oberfläche „8 Uhr" heißt — und damit auch im Nachtfenster und im Zeitplan. */}
-      {tab === "person" && <><LanguagePanel /><ZeitzonePanel /><EmailPanel /><PasswordPanel /></>}
+      {tab === "person" && <><LanguagePanel /><TimezonePanel /><EmailPanel /><PasswordPanel /></>}
       {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
-      {tab === "notifications" && <><BenachrichtigungenPanel /><AssistantNoticesPanel /></>}
-      {tab === "mail" && <MailKontenPanel />}
+      {tab === "notifications" && <><NotificationsPanel /><AssistantNoticesPanel /></>}
+      {tab === "mail" && <MailAccountsPanel />}
       {tab === "agents" && (
-        <><AgentenBetriebPanel /><NachtWindowPanel /><GedaechtnisPanel /><MeineSchalterPanel /></>
+        <><AgentsOperationPanel /><NightWindowPanel /><MemoryPanel /><MySwitchPanel /></>
       )}
     </div>
   );
@@ -144,7 +144,7 @@ function LanguagePanel() {
   const [locale, setLocale] = useState(user?.locale || "de");
   const [ok, setOk] = useState("");
   const [err, setErr] = useState("");
-  const { data: sprachen } = useQuery({
+  const { data: languages } = useQuery({
     queryKey: ["i18n-locales"],
     queryFn: () => api.get<{ locale: string; name: string; enabled: boolean }[]>("/i18n/locales"),
   });
@@ -153,7 +153,7 @@ function LanguagePanel() {
     setErr(""); setOk("");
     try {
       await api.put("/me/locale", { value: locale });
-      await setzeLanguage(locale);
+      await setLanguage(locale);
       await refresh();
       setOk(tr("profile.gespeichert"));
     } catch (e) {
@@ -168,12 +168,12 @@ function LanguagePanel() {
       <div className="flex flex-wrap items-center gap-2">
         <select value={locale} onChange={(e) => setLocale(e.target.value)}
           className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
-          {(sprachen || [{ locale: "de", name: "Deutsch", enabled: true },
+          {(languages || [{ locale: "de", name: "Deutsch", enabled: true },
                          { locale: "en", name: "English", enabled: true }])
             .filter((s) => s.enabled)
             .map((s) => <option key={s.locale} value={s.locale}>{s.name}</option>)}
         </select>
-        <button onClick={save} className={BUTTON.haupt}>
+        <button onClick={save} className={BUTTON.primary}>
           {tr("profile.speichern")}
         </button>
       </div>
@@ -208,7 +208,7 @@ function EmailPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className={BUTTON.haupt}>{tr("profile.speichern")}</button>
+        <button onClick={save} className={BUTTON.primary}>{tr("profile.speichern")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
@@ -224,7 +224,7 @@ function EmailPanel() {
  * That is why the default stands here, and only whoever knows better overrides it in the
  * action.
  */
-function BenachrichtigungenPanel() {
+function NotificationsPanel() {
   const { user, refresh } = useAuth();
   const [standard, setStandard] = useState(user?.notify_default ?? "telegram");
   const [chat, setChat] = useState(user?.telegram_chat_id ?? "");
@@ -305,7 +305,7 @@ function BenachrichtigungenPanel() {
           {tr("profile.kein_weg_hinterlegt")}
         </div>
       )}
-      <button onClick={save} className={BUTTON.haupt}>{tr("profile.speichern")}</button>
+      <button onClick={save} className={BUTTON.primary}>{tr("profile.speichern")}</button>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
     </section>
@@ -338,7 +338,7 @@ function PasswordPanel() {
         <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
           placeholder={tr("profile.neues_passwort_8_zeichen")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className={BUTTON.haupt}>{tr("profile.aendern")}</button>
+        <button onClick={save} className={BUTTON.primary}>{tr("profile.aendern")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}

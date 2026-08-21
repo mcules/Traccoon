@@ -41,28 +41,28 @@ interface WakeLockLike {
  * an exception into the console because of that is still a working wall screen; a wall screen
  * turning white because of it is not.
  */
-export function useWakeLock(aktiv: boolean): void {
+export function useWakeLock(active: boolean): void {
   useEffect(() => {
-    if (!aktiv) return;
+    if (!active) return;
     const wl = (navigator as unknown as { wakeLock?: WakeLockLike }).wakeLock;
     if (!wl) return;                              // Merkmalsprüfung: Firefox/Safari-Altstand
 
-    let entlassen = false;
+    let release = false;
     let block: WakeLockSentinelLike | null = null;
 
     const anfordern = async () => {
-      if (entlassen || block !== null || document.visibilityState !== "visible") return;
+      if (release || block !== null || document.visibilityState !== "visible") return;
       try {
         block = await wl.request("screen");
         // The effect can have been cleaned up during the `await`, and then the freshly
         // fetched lock belongs to nobody and is released again immediately.
-        if (entlassen) { void block.release().catch(() => {}); block = null; }
+        if (release) { void block.release().catch(() => {}); block = null; }
       } catch {
         block = null;
       }
     };
 
-    const beiSichtbarkeit = () => {
+    const onVisibility = () => {
       if (document.visibilityState === "visible") {
         block = null;                            // beim Verstecken hat der Browser sie gelöst
         void anfordern();
@@ -70,12 +70,12 @@ export function useWakeLock(aktiv: boolean): void {
     };
 
     void anfordern();
-    document.addEventListener("visibilitychange", beiSichtbarkeit);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      entlassen = true;
-      document.removeEventListener("visibilitychange", beiSichtbarkeit);
+      release = true;
+      document.removeEventListener("visibilitychange", onVisibility);
       void block?.release().catch(() => {});
       block = null;
     };
-  }, [aktiv]);
+  }, [active]);
 }

@@ -4,8 +4,8 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, Listing,
-  ListingLeer, ListenLine, LoeschDialog, BUTTON } from "./ui";
+  Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
+  ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "./ui";
 
 const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "workflow",
                 agent: "", prompt: "", command: "", notify_mode: "on_output", notify_chat: "",
@@ -25,12 +25,12 @@ export default function JobsPanel() {
   const qc = useQueryClient();
   const { data: jobs } = useQuery({ queryKey: ["jobs"], queryFn: () => api.get<any[]>("/jobs") });
   const [dialog, setDialog] = useState<any | null>(null);      // {} = neuer Job
-  const [loeschJob, setLoeschJob] = useState<any | null>(null);
+  const [deleteJob, setDeleteJob] = useState<any | null>(null);
   const [err, setErr] = useState("");
 
   const inv = () => qc.invalidateQueries({ queryKey: ["jobs"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
-  const speichern = useMutation({
+  const save = useMutation({
     mutationFn: ({ id, body }: { id: number | null; body: any }) =>
       id ? api.put(`/jobs/${id}`, body) : api.post("/jobs", body),
     onSuccess: () => { setDialog(null); setErr(""); inv(); }, onError: fail,
@@ -41,14 +41,14 @@ export default function JobsPanel() {
     onSuccess: inv, onError: fail });
   const del = useMutation({
     mutationFn: (id: number) => api.del(`/jobs/${id}`),
-    onSuccess: () => { setLoeschJob(null); inv(); }, onError: fail });
+    onSuccess: () => { setDeleteJob(null); inv(); }, onError: fail });
 
   return (
-    <Area hinweis={tr("jobs_panel.einleitung")}>
-      <Fehlerzeile text={err} />
+    <Area hint={tr("jobs_panel.einleitung")}>
+      <Errorrow text={err} />
       <Listing className="mb-4">
         {jobs?.map((j) => (
-          <ListenLine key={j.id} gedimmt={!j.enabled}>
+          <ListenLine key={j.id} dimmed={!j.enabled}>
             <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -63,38 +63,38 @@ export default function JobsPanel() {
             </div>
             <Actions>
               <IconButton icon={j.enabled ? "⏸" : "⏵"} onClick={() => toggle.mutate(j)}
-                titel={tr(j.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
-              <IconButton icon={ICON.starten} titel={tr("jobs_panel.jetzt_ausfuehren")}
+                title={tr(j.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
+              <IconButton icon={ICON.start} title={tr("jobs_panel.jetzt_ausfuehren")}
                 onClick={() => run.mutate(j.id)} disabled={run.isPending} />
-              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => { setErr(""); setDialog(j); }} />
-              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschJob(j)} />
+              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => { setErr(""); setDialog(j); }} />
+              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteJob(j)} />
             </Actions>
             </div>
           </ListenLine>
         ))}
-        {jobs?.length === 0 && <ListingLeer>{tr("jobs_panel.keine_jobs")}</ListingLeer>}
+        {jobs?.length === 0 && <ListingEmpty>{tr("jobs_panel.keine_jobs")}</ListingEmpty>}
       </Listing>
       <button onClick={() => { setErr(""); setDialog({}); }}
-        className={BUTTON.haupt}>
-        {ICON.neu} {tr("jobs_panel.job_anlegen")}
+        className={BUTTON.primary}>
+        {ICON.fresh} {tr("jobs_panel.job_anlegen")}
       </button>
 
       {dialog && (
-        <JobDialog job={dialog.id ? dialog : null} fehler={err} laeuft={speichern.isPending}
+        <JobDialog job={dialog.id ? dialog : null} error={err} runs={save.isPending}
           onClose={() => { setDialog(null); setErr(""); }}
-          onSpeichern={(body, id) => speichern.mutate({ id, body })} />
+          onSave={(body, id) => save.mutate({ id, body })} />
       )}
-      {loeschJob && (
-        <LoeschDialog was={loeschJob.name} laeuft={del.isPending}
-          onClose={() => setLoeschJob(null)} onLoeschen={() => del.mutate(loeschJob.id)} />
+      {deleteJob && (
+        <DeleteDialog was={deleteJob.name} runs={del.isPending}
+          onClose={() => setDeleteJob(null)} onDelete={() => del.mutate(deleteJob.id)} />
       )}
     </Area>
   );
 }
 
-function JobDialog({ job, fehler: error, laeuft: running, onClose, onSpeichern }: {
-  job: any | null; fehler: string; laeuft: boolean;
-  onClose: () => void; onSpeichern: (body: any, id: number | null) => void;
+function JobDialog({ job, error: error, runs: running, onClose, onSave }: {
+  job: any | null; error: string; runs: boolean;
+  onClose: () => void; onSave: (body: any, id: number | null) => void;
 }) {
   // For kind=workflow: published definitions to choose from.
   const { data: defs } = useQuery({
@@ -104,8 +104,8 @@ function JobDialog({ job, fehler: error, laeuft: running, onClose, onSpeichern }
   // Templates only prefill the form; the job carries its own fields afterwards.
   const { data: templates } = useQuery({
     queryKey: ["job-templates"],
-    queryFn: () => api.get<{ key: string; label: string; beschreibung: string;
-                             params: Record<string, any>; felder: Record<string, any> }[]>("/jobs/templates"),
+    queryFn: () => api.get<{ key: string; label: string; description: string;
+                             params: Record<string, any>; fields: Record<string, any> }[]>("/jobs/templates"),
   });
 
   const [f, setF] = useState<any>(job ? {
@@ -138,23 +138,23 @@ function JobDialog({ job, fehler: error, laeuft: running, onClose, onSpeichern }
   const useTemplate = (key: string) => {
     const t = templates?.find((x) => x.key === key);
     if (!t) return;
-    setF((p: any) => ({ ...p, ...t.felder, args: t.params }));
+    setF((p: any) => ({ ...p, ...t.fields, args: t.params }));
     setParamText(JSON.stringify(t.params, null, 2));
   };
 
   return (
-    <Dialog breit titel={job ? tr("jobs_panel.job_bearbeiten") : tr("jobs_panel.job_anlegen")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!f.name.trim()} laeuft={running}
-        onSpeichern={() => onSpeichern(f, job ? job.id : null)}
-        speichernText={job ? undefined : tr("common.anlegen")} />}>
-      <Fehlerzeile text={error} />
+    <Dialog wide title={job ? tr("jobs_panel.job_bearbeiten") : tr("jobs_panel.job_anlegen")} onClose={onClose}
+      foot={<DialogFoot onCancel={onClose} disabled={!f.name.trim()} runs={running}
+        onSave={() => onSave(f, job ? job.id : null)}
+        saveText={job ? undefined : tr("common.anlegen")} />}>
+      <Errorrow text={error} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {!job && !!templates?.length && (
           <div className="sm:col-span-2">
-            <Field label={tr("jobs_panel.aus_vorlage")} hinweis={tr("jobs_panel.fuellt_das_formular_vor")}>
+            <Field label={tr("jobs_panel.aus_vorlage")} hint={tr("jobs_panel.fuellt_das_formular_vor")}>
               <select value="" onChange={(e) => e.target.value && useTemplate(e.target.value)} className={INPUT_VALUE}>
                 <option value="">—</option>
-                {templates.map((t) => <option key={t.key} value={t.key}>{t.label}: {t.beschreibung}</option>)}
+                {templates.map((t) => <option key={t.key} value={t.key}>{t.label}: {t.description}</option>)}
               </select>
             </Field>
           </div>

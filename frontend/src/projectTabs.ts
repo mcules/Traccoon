@@ -18,16 +18,16 @@ import type { ChromeTab } from "./pageChrome";
  * without a level of their own.
  */
 export type ProjectTab = "pm" | "work" | "code" | "operations" | "dashboard" | "settings";
-export type ArbeitAnsicht = "board" | "list" | "backlog" | "archive";
-export type BetriebAnsicht = "monitor" | "office" | "testenvs" | "hardware";
+export type WorkView = "board" | "list" | "backlog" | "archive";
+export type OperationView = "monitor" | "office" | "testenvs" | "hardware";
 
 export const TAB_ICONS: Record<ProjectTab, string> = {
   pm: "💬", work: "🗂️", code: "📁", operations: "⚡", dashboard: "📊", settings: "⚙️",
 };
 
 /** Path of a project view. One place, so that no caller has to know the shape. */
-export function projektPath(key: string, tab: ProjectTab, unter?: string): string {
-  return `/projects/${key}/${tab}` + (unter ? `/${unter}` : "");
+export function projectPath(key: string, tab: ProjectTab, sub?: string): string {
+  return `/projects/${key}/${tab}` + (sub ? `/${sub}` : "");
 }
 
 export function canManage(project: Project | undefined): boolean {
@@ -39,7 +39,7 @@ export function canWrite(project: Project | undefined): boolean {
 }
 
 /** The four ticket views of "Arbeit". */
-export function arbeitAnsichten(): [ArbeitAnsicht, string][] {
+export function workViews(): [WorkView, string][] {
   return [
     ["board", tr("projekt.ansicht_board")], ["list", tr("projekt.ansicht_liste")],
     ["backlog", tr("projekt.ansicht_backlog")], ["archive", tr("projekt.ansicht_archiv")],
@@ -52,14 +52,14 @@ export function arbeitAnsichten(): [ArbeitAnsicht, string][] {
  * Monitor and office show the same runs, once as a list and once as a room, which is why
  * they were never two tabs but two views of one.
  */
-export function betriebAnsichten(project: Project | undefined): [BetriebAnsicht, string][] {
+export function operationViews(project: Project | undefined): [OperationView, string][] {
   if (!project) return [];
   return [
     ...(project.my_ai_assign ? ([["monitor", tr("projekt.ansicht_monitor")],
-                                 ["office", tr("projekt.ansicht_buero")]] as [BetriebAnsicht, string][]) : []),
+                                 ["office", tr("projekt.ansicht_buero")]] as [OperationView, string][]) : []),
     ...(project.testenv_enabled !== false && canWrite(project)
-      ? ([["testenvs", tr("projekt.ansicht_testenvs")]] as [BetriebAnsicht, string][]) : []),
-    ...(project.has_hardware ? ([["hardware", tr("projekt.ansicht_hardware")]] as [BetriebAnsicht, string][]) : []),
+      ? ([["testenvs", tr("projekt.ansicht_testenvs")]] as [OperationView, string][]) : []),
+    ...(project.has_hardware ? ([["hardware", tr("projekt.ansicht_hardware")]] as [OperationView, string][]) : []),
   ];
 }
 
@@ -73,7 +73,7 @@ export function projectTabs(project: Project | undefined): [ProjectTab, string][
     ["work", tr("projekt.tab_arbeit")],
     ...(canManage(project) && project.git_enabled
       ? ([["code", tr("projekt.tab_code")]] as [ProjectTab, string][]) : []),
-    ...(betriebAnsichten(project).length
+    ...(operationViews(project).length
       ? ([["operations", tr("projekt.tab_betrieb")]] as [ProjectTab, string][]) : []),
     ["dashboard", tr("projekt.tab_dashboard")],
     ...(canManage(project) ? ([["settings", tr("projekt.tab_einstellungen")]] as [ProjectTab, string][]) : []),
@@ -88,14 +88,14 @@ export function projectTabs(project: Project | undefined): [ProjectTab, string][
  */
 export function projectChromeTabs(
   project: Project | undefined,
-  current?: { tab: ProjectTab; unter?: string },
+  current?: { tab: ProjectTab; sub?: string },
 ): ChromeTab[] {
   if (!project) return [];
   return projectTabs(project).map(([key, label]) => ({
     key,
     label,
     icon: TAB_ICONS[key],
-    to: projektPath(project.key, key, current && current.tab === key ? current.unter : undefined),
+    to: projectPath(project.key, key, current && current.tab === key ? current.sub : undefined),
   }));
 }
 
@@ -105,7 +105,7 @@ export function projectChromeTabs(
  * Links to them stand in tickets, in notes and in the vault, and a dead link is worse than
  * a redirect nobody notices.
  */
-const ALT: Record<string, [ProjectTab, string?]> = {
+const OLD: Record<string, [ProjectTab, string?]> = {
   board: ["work", "board"], list: ["work", "list"], liste: ["work", "list"],
   backlog: ["work", "backlog"], archiv: ["work", "archive"], archive: ["work", "archive"],
   pm: ["pm"], code: ["code"], dashboard: ["dashboard"],
@@ -120,19 +120,19 @@ const ALT: Record<string, [ProjectTab, string?]> = {
 };
 
 /** Abschnitte im PFAD (`/projects/X/arbeit`), nicht in der Query. */
-export const ALT_SECTION: Record<string, string> = {
+export const OLD_SECTION: Record<string, string> = {
   arbeit: "work", betrieb: "operations", einstellungen: "settings",
 };
 
 /** Unteransichten im Pfad (`/projects/X/work/liste`). */
-export const ALT_UNTER: Record<string, string> = {
+export const OLD_SUBVIEW: Record<string, string> = {
   liste: "list", archiv: "archive", buero: "office",
   mitglieder: "members", agenten: "agents", prozesse: "processes",
   allgemein: "general", felder: "fields", ziele: "destinations",
   testumgebung: "testenv",
 };
 
-export function altenTabUmleiten(key: string, alt: string): string | null {
-  const target = ALT[alt];
-  return target ? projektPath(key, target[0], target[1]) : null;
+export function redirectOldTab(key: string, old: string): string | null {
+  const target = OLD[old];
+  return target ? projectPath(key, target[0], target[1]) : null;
 }

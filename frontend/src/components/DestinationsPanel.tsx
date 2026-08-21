@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, destinationApi, type Destination, type DestinationScope } from "../api";
 import { KeyValueEditor } from "./workflow/kv";
 import {
-  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, Listing,
-  ListingLeer, ListenLine, LoeschDialog, BUTTON } from "./ui";
+  Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
+  ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "./ui";
 import { useAuth } from "../auth";
 
 // Keys instead of texts: the list comes into being while the module loads, and a tr() here
@@ -28,7 +28,7 @@ const SECRET_FIELD: Record<string, [string, string]> = {
   oauth2_cc: ["client_secret", "destinations_panel.geheimnis_client_secret"],
 };
 
-const LEER = {
+const EMPTY = {
   name: "", label: "", base_url: "", auth_type: "none", username: "",
   api_key_name: "X-API-Key", api_key_in: "header",
   hmac_header: "X-Webhook-Signature", hmac_algo: "sha256", hmac_prefix: "",
@@ -57,7 +57,7 @@ export default function DestinationsPanel({
 }) {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<Destination | {} | null>(null);   // {} = neues Ziel
-  const [loeschTarget, setLoeschTarget] = useState<Destination | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Destination | null>(null);
   const [err, setErr] = useState("");
   const [probe, setProbe] = useState<Record<number, string>>({});
 
@@ -73,7 +73,7 @@ export default function DestinationsPanel({
   const inv = () => qc.invalidateQueries({ queryKey: ["destinations"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
 
-  const speichern = useMutation({
+  const save = useMutation({
     mutationFn: ({ id, body }: { id: number | null; body: Record<string, any> }) =>
       id ? destinationApi.update(id, body)
          : destinationApi.create({
@@ -86,9 +86,9 @@ export default function DestinationsPanel({
   });
   const remove = useMutation({
     mutationFn: (id: number) => destinationApi.del(id),
-    onSuccess: () => { setLoeschTarget(null); inv(); }, onError: fail,
+    onSuccess: () => { setDeleteTarget(null); inv(); }, onError: fail,
   });
-  const testen = useMutation({
+  const testing = useMutation({
     mutationFn: (id: number) => destinationApi.test(id, { method: "GET", path: "" }),
     onSuccess: (r, id) =>
       setProbe((p) => ({ ...p, [id]: `HTTP ${r.status_code}${r.ok ? " ✓" : " ✗"}` })),
@@ -97,16 +97,16 @@ export default function DestinationsPanel({
   });
 
   return (
-    <Area hinweis={<>
+    <Area hint={<>
       {tr("destinations_panel.einleitung")}
       {scope === "user" && ` ${tr("destinations_panel.einleitung_user")}`}
       {scope === "project" && ` ${tr("destinations_panel.einleitung_projekt")}`}
     </>}>
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
 
       <Listing>
         {targets?.map((d) => (
-          <ListenLine key={d.id} gedimmt={!d.enabled}>
+          <ListenLine key={d.id} dimmed={!d.enabled}>
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -126,33 +126,33 @@ export default function DestinationsPanel({
                 <div className="mt-0.5 truncate text-xs text-muted">{d.base_url}</div>
               </div>
               <Actions>
-                <IconButton icon={ICON.testen} titel={tr("destinations_panel.probeaufruf_get_auf_die_basis_url")}
-                  onClick={() => testen.mutate(d.id)} disabled={testen.isPending} />
-                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(d)} />
-                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschTarget(d)} />
+                <IconButton icon={ICON.testing} title={tr("destinations_panel.probeaufruf_get_auf_die_basis_url")}
+                  onClick={() => testing.mutate(d.id)} disabled={testing.isPending} />
+                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setDialog(d)} />
+                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteTarget(d)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
-        {targets?.length === 0 && <ListingLeer>{tr("destinations_panel.noch_keine_ziele")}</ListingLeer>}
+        {targets?.length === 0 && <ListingEmpty>{tr("destinations_panel.noch_keine_ziele")}</ListingEmpty>}
       </Listing>
 
       <button onClick={() => { setErr(""); setDialog({}); }}
-        className={BUTTON.haupt}>
-        {ICON.neu} {tr("destinations_panel.neues_ziel")}
+        className={BUTTON.primary}>
+        {ICON.fresh} {tr("destinations_panel.neues_ziel")}
       </button>
 
       {dialog && (
-        <TargetDialog ziel={"id" in dialog ? (dialog as Destination) : null}
-          fehler={err}
-          laeuft={speichern.isPending}
+        <TargetDialog target={"id" in dialog ? (dialog as Destination) : null}
+          error={err}
+          runs={save.isPending}
           onClose={() => { setDialog(null); setErr(""); }}
-          onSpeichern={(body, id) => speichern.mutate({ id, body })} />
+          onSave={(body, id) => save.mutate({ id, body })} />
       )}
-      {loeschTarget && (
-        <LoeschDialog was={loeschTarget.name} hinweis={tr("destinations_panel.loeschen_hinweis")}
-          laeuft={remove.isPending}
-          onClose={() => setLoeschTarget(null)} onLoeschen={() => remove.mutate(loeschTarget.id)} />
+      {deleteTarget && (
+        <DeleteDialog was={deleteTarget.name} hint={tr("destinations_panel.loeschen_hinweis")}
+          runs={remove.isPending}
+          onClose={() => setDeleteTarget(null)} onDelete={() => remove.mutate(deleteTarget.id)} />
       )}
     </Area>
   );
@@ -164,35 +164,35 @@ export default function DestinationsPanel({
  * The name stays fixed once it exists: flows, jobs and agents address the destination by
  * exactly that name, and renaming it here would break them silently.
  */
-function TargetDialog({ ziel: target, fehler: error, laeuft: running, onClose, onSpeichern }: {
-  ziel: Destination | null;
-  fehler: string;
-  laeuft: boolean;
+function TargetDialog({ target: target, error: error, runs: running, onClose, onSave }: {
+  target: Destination | null;
+  error: string;
+  runs: boolean;
   onClose: () => void;
-  onSpeichern: (body: Record<string, any>, id: number | null) => void;
+  onSave: (body: Record<string, any>, id: number | null) => void;
 }) {
-  const [f, setF] = useState<Record<string, any>>(target ? { ...LEER, ...target, secret: "" } : LEER);
+  const [f, setF] = useState<Record<string, any>>(target ? { ...EMPTY, ...target, secret: "" } : EMPTY);
   const [header, setHeader] = useState<Record<string, any>>(target?.default_headers || {});
   const [secretField, secretLabel] = SECRET_FIELD[f.auth_type] || ["", ""];
-  const kann = !!f.name.trim() && !!f.base_url.trim();
+  const can = !!f.name.trim() && !!f.base_url.trim();
 
-  const speichern = () => {
+  const save = () => {
     const body: Record<string, any> = { ...f, default_headers: header };
     delete body.secret;
     if (secretField && f.secret) body[secretField] = f.secret;
     // The name belongs to the entry, not to the change: an update must not carry it.
     if (target) delete body.name;
-    onSpeichern(body, target ? target.id : null);
+    onSave(body, target ? target.id : null);
   };
 
   return (
-    <Dialog breit titel={target ? tr("destinations_panel.ziel_bearbeiten") : tr("destinations_panel.neues_ziel")}
+    <Dialog wide title={target ? tr("destinations_panel.ziel_bearbeiten") : tr("destinations_panel.neues_ziel")}
       onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={speichern} deaktiviert={!kann} laeuft={running}
-        speichernText={target ? undefined : tr("common.anlegen")} />}>
-      <Fehlerzeile text={error} />
+      foot={<DialogFoot onCancel={onClose} onSave={save} disabled={!can} runs={running}
+        saveText={target ? undefined : tr("common.anlegen")} />}>
+      <Errorrow text={error} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label={tr("destinations_panel.name_z_b_crm")} hinweis={target ? tr("destinations_panel.name_fest") : undefined}>
+        <Field label={tr("destinations_panel.name_z_b_crm")} hint={target ? tr("destinations_panel.name_fest") : undefined}>
           <input value={f.name} disabled={!!target} autoFocus={!target}
             onChange={(e) => setF({ ...f, name: e.target.value })}
             className={`${INPUT_VALUE} font-mono disabled:opacity-60`} />
@@ -216,7 +216,7 @@ function TargetDialog({ ziel: target, fehler: error, laeuft: running, onClose, o
             onChange={(e) => setF({ ...f, timeout_sec: Number(e.target.value) })} className={INPUT_VALUE} />
         </Field>
         <Field label={tr("destinations_panel.antwort_max_zeichen")}
-          hinweis={tr("destinations_panel.wie_viel_der_antwort_der_aufrufer_hoechs")}>
+          hint={tr("destinations_panel.wie_viel_der_antwort_der_aufrufer_hoechs")}>
           <input type="number" min={500} max={60000} step={500} value={f.max_response_chars}
             onChange={(e) => setF({ ...f, max_response_chars: Number(e.target.value) })} className={INPUT_VALUE} />
         </Field>
@@ -267,7 +267,7 @@ function TargetDialog({ ziel: target, fehler: error, laeuft: running, onClose, o
         {secretField && (
           <div className="sm:col-span-2">
             <Field label={tr(secretLabel)}
-              hinweis={target ? tr("destinations_panel.geheimnis_unveraendert", { feld: tr(secretLabel) }) : undefined}>
+              hint={target ? tr("destinations_panel.geheimnis_unveraendert", { field: tr(secretLabel) }) : undefined}>
               <input type="password" value={f.secret}
                 onChange={(e) => setF({ ...f, secret: e.target.value })} className={INPUT_VALUE} />
             </Field>
@@ -305,18 +305,18 @@ function TargetDialog({ ziel: target, fehler: error, laeuft: running, onClose, o
  */
 export function DestinationsArea({ projectId }: { projectId?: number }) {
   const { user } = useAuth();
-  const istAdmin = user?.global_role === "admin";
-  const bereiche: [DestinationScope, string][] = [
+  const isAdmin = user?.global_role === "admin";
+  const areas: [DestinationScope, string][] = [
     ...(projectId ? ([["project", tr("destinations_panel.bereich_projekt")]] as [DestinationScope, string][]) : []),
     ["user", tr("destinations_panel.bereich_ich")],
-    ...(istAdmin ? ([["global", tr("destinations_panel.bereich_global")]] as [DestinationScope, string][]) : []),
+    ...(isAdmin ? ([["global", tr("destinations_panel.bereich_global")]] as [DestinationScope, string][]) : []),
   ];
-  const [scope, setScope] = useState<DestinationScope>(bereiche[0][0]);
+  const [scope, setScope] = useState<DestinationScope>(areas[0][0]);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1.5">
-        {bereiche.map(([k, label]) => (
+        {areas.map(([k, label]) => (
           <button key={k} onClick={() => setScope(k)}
             className={`rounded-md border px-3 py-1 text-sm ${
               scope === k ? "border-brand bg-brand text-white"

@@ -6,7 +6,7 @@ import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
 import AssistantChat from "../components/AssistantChat";
 import {
-  Area, Etikett, Fehlerzeile, Listing, ListingLeer, ListenLine, Reiter, BUTTON } from "../components/ui";
+  Area, Tag, Errorrow, Listing, ListingEmpty, ListenLine, Tab, BUTTON } from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 interface InboxItem {
@@ -25,19 +25,19 @@ const OPEN = ["new", "approved", "running"];
 
 // The tables hold keys: they come into being while the module loads, and a tr() at this
 // place would keep the old label on a language change.
-type EtikettFarbe = "neutral" | "gruen" | "gelb" | "rot" | "blau" | "violett" | "brand";
-const PRIO: Record<string, { label: string; farbe: EtikettFarbe }> = {
-  urgent: { label: "inbox.prio_urgent", farbe: "rot" },
-  high: { label: "inbox.prio_high", farbe: "gelb" },
-  normal: { label: "inbox.prio_normal", farbe: "neutral" },
-  low: { label: "inbox.prio_low", farbe: "neutral" },
+type TagColor = "neutral" | "green" | "yellow" | "red" | "blue" | "violet" | "brand";
+const PRIO: Record<string, { label: string; color: TagColor }> = {
+  urgent: { label: "inbox.prio_urgent", color: "red" },
+  high: { label: "inbox.prio_high", color: "yellow" },
+  normal: { label: "inbox.prio_normal", color: "neutral" },
+  low: { label: "inbox.prio_low", color: "neutral" },
 };
-const STATUS: Record<string, { label: string; farbe: EtikettFarbe }> = {
-  new: { label: "inbox.status_new", farbe: "brand" },
-  approved: { label: "inbox.status_approved", farbe: "gelb" },
-  running: { label: "inbox.status_running", farbe: "blau" },
-  done: { label: "inbox.status_done", farbe: "gruen" },
-  error: { label: "inbox.status_error", farbe: "rot" },
+const STATUS: Record<string, { label: string; color: TagColor }> = {
+  new: { label: "inbox.status_new", color: "brand" },
+  approved: { label: "inbox.status_approved", color: "yellow" },
+  running: { label: "inbox.status_running", color: "blue" },
+  done: { label: "inbox.status_done", color: "green" },
+  error: { label: "inbox.status_error", color: "red" },
 };
 
 // Pull the local part out of "Name <mail>", for the "always from …" label.
@@ -55,7 +55,7 @@ export default function Inbox() {
       <h1 className="mb-1 text-lg font-semibold">{tr("inbox.persoenlicher_assistent")}</h1>
       <p className="mb-4 text-sm text-muted">{tr("inbox.einleitung")}</p>
       <div className="mb-4">
-        <Reiter aktiv={tab} onWaehlen={setTab} auswahl={[
+        <Tab active={tab} onChoose={setTab} selection={[
           ["chat", tr("inbox.reiter_chat")],
           ["inbox", tr("inbox.reiter_eingaenge")],
           ["rules", tr("inbox.reiter_regeln")],
@@ -64,17 +64,17 @@ export default function Inbox() {
       </div>
       {tab === "chat" ? <AssistantChat />
         : tab === "inbox" ? <InboxList />
-        : tab === "statistik" ? <Statistik />
+        : tab === "statistik" ? <Stats />
         : <AssistantPolicies />}
     </div>
   );
 }
 
-type Einstufung = { gesamt: number; aussortiert: number; durchgelassen: number; offen: number };
-type StatistikDaten = {
-  tage: number;
-  arten: Record<string, Einstufung>;
-  modell: { entschieden: number; treffer: number; quote: number | null };
+type Classification = { total: number; sortedout: number; passed: number; open: number };
+type StatsData = {
+  days: number;
+  kinds: Record<string, Classification>;
+  model: { decided: number; treffer: number; quote: number | null };
 };
 
 /**
@@ -84,20 +84,20 @@ type StatistikDaten = {
  * stock from the first opening instead of starting at zero. The bars are plain div widths:
  * a chart library for six numbers would be a dependency nobody can read afterwards.
  */
-function Statistik() {
+function Stats() {
   const [days, setDays] = useState(30);
   const { data } = useQuery({
     queryKey: ["assistant-statistik", days],
-    queryFn: () => api.get<StatistikDaten>(`/assistant/stats?days=${days}`),
+    queryFn: () => api.get<StatsData>(`/assistant/stats?days=${days}`),
   });
-  const kinds = Object.entries(data?.arten || {});
-  const groesste = Math.max(1, ...kinds.map(([, w]) => w.gesamt));
+  const kinds = Object.entries(data?.kinds || {});
+  const largest = Math.max(1, ...kinds.map(([, w]) => w.total));
 
   return (
     <div className="space-y-4">
       <Area
-        hinweis={tr("inbox.statistik_hinweis")}
-        werkzeuge={<Reiter aktiv={String(days)} onWaehlen={(w) => setDays(Number(w))} auswahl={[
+        hint={tr("inbox.statistik_hinweis")}
+        tools={<Tab active={String(days)} onChoose={(w) => setDays(Number(w))} selection={[
           ["7", "7 Tage"], ["30", "30 Tage"], ["90", "90 Tage"], ["365", "1 Jahr"],
         ]} />}
       >
@@ -108,32 +108,32 @@ function Statistik() {
               <div className="mb-0.5 flex items-baseline gap-2 text-sm">
                 <span className="font-medium text-ink">{art}</span>
                 <span className="text-xs text-muted">
-                  {w.gesamt}× · {tr("inbox.statistik_aussortiert", { anzahl: w.aussortiert })}
-                  {w.offen > 0 && ` · ${tr("inbox.statistik_offen", { anzahl: w.offen })}`}
+                  {w.total}× · {tr("inbox.statistik_aussortiert", { count: w.sortedout })}
+                  {w.open > 0 && ` · ${tr("inbox.statistik_offen", { count: w.open })}`}
                 </span>
               </div>
               {/* Zwei Abschnitte auf einem Balken: was weggeräumt wurde, was blieb. */}
               <div className="flex h-2.5 overflow-hidden rounded bg-surface"
-                style={{ width: `${Math.round((w.gesamt / groesste) * 100)}%`, minWidth: "6%" }}>
-                <div className="bg-red-500/60" style={{ flexGrow: w.aussortiert || 0 }} />
-                <div className="bg-brand/50" style={{ flexGrow: (w.gesamt - w.aussortiert) || 0 }} />
+                style={{ width: `${Math.round((w.total / largest) * 100)}%`, minWidth: "6%" }}>
+                <div className="bg-red-500/60" style={{ flexGrow: w.sortedout || 0 }} />
+                <div className="bg-brand/50" style={{ flexGrow: (w.total - w.sortedout) || 0 }} />
               </div>
             </div>
           ))}
         </div>
       </Area>
 
-      <Area titel={tr("inbox.statistik_modell")} hinweis={tr("inbox.statistik_modell_hinweis")}>
-        {data?.modell.quote === null || data?.modell.entschieden === 0 ? (
+      <Area title={tr("inbox.statistik_modell")} hint={tr("inbox.statistik_modell_hinweis")}>
+        {data?.model.quote === null || data?.model.decided === 0 ? (
           <p className="text-sm text-muted">{tr("inbox.statistik_modell_leer")}</p>
         ) : (
           <p className="text-sm text-ink">
             <span className="text-2xl font-semibold">
-              {Math.round((data?.modell.quote ?? 0) * 100)}%
+              {Math.round((data?.model.quote ?? 0) * 100)}%
             </span>{" "}
             <span className="text-muted">
               {tr("inbox.statistik_modell_zahlen", {
-                treffer: data?.modell.treffer ?? 0, gesamt: data?.modell.entschieden ?? 0,
+                treffer: data?.model.treffer ?? 0, total: data?.model.decided ?? 0,
               })}
             </span>
           </p>
@@ -168,26 +168,26 @@ function InboxList() {
       <div className="mb-4 flex gap-1 border-b border-line">
       </div>
       <Area
-        werkzeuge={<Reiter aktiv={filter} onWaehlen={setFilter} auswahl={[
+        tools={<Tab active={filter} onChoose={setFilter} selection={[
           ["offen", "Offen"], ["erledigt", "Erledigt"], ["alle", "Alle"],
         ]} />}
       >
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
       {isLoading && <div className="text-sm text-muted">{tr("inbox.laedt")}</div>}
       <Listing>
         {items.map((entry) => {
           const prio = PRIO[entry.priority] || PRIO.normal;
-          const st = STATUS[entry.status] || { label: entry.status, farbe: "neutral" as const };
+          const st = STATUS[entry.status] || { label: entry.status, color: "neutral" as const };
           const expanded = openId === entry.id;
           return (
             <ListenLine key={entry.id}>
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                <Etikett farbe={st.farbe}>{tr(st.label)}</Etikett>
-                <Etikett farbe={prio.farbe}>{tr(prio.label)}</Etikett>
-                {entry.category && <Etikett>{entry.category}</Etikett>}
+                <Tag color={st.color}>{tr(st.label)}</Tag>
+                <Tag color={prio.color}>{tr(prio.label)}</Tag>
+                {entry.category && <Tag>{entry.category}</Tag>}
                 {entry.sensitive && <span title="sensibel — vertraulich behandeln">🔒</span>}
                 {entry.redaction === "unredacted" && (
-                  <Etikett farbe="gelb" titel={tr("inbox.volltext_freigegeben")}>ungeschwärzt</Etikett>
+                  <Tag color="yellow" title={tr("inbox.volltext_freigegeben")}>ungeschwärzt</Tag>
                 )}
                 <span className="ml-auto text-xs text-muted">{formatTime(entry.created_at)}</span>
               </div>
@@ -202,11 +202,11 @@ function InboxList() {
                 {(entry.status === "new" || entry.status === "error") && (
                   <>
                     <button onClick={() => { setErr(""); setApproveId(approveId === entry.id ? null : entry.id); }}
-                      className={BUTTON.haupt}>
+                      className={BUTTON.primary}>
                       {entry.status === "error" ? "Erneut freigeben" : "Freigeben…"}
                     </button>
                     <button onClick={() => { setErr(""); reject.mutate(entry.id); }} disabled={reject.isPending}
-                      className={BUTTON.neben}>
+                      className={BUTTON.secondary}>
                       Verwerfen
                     </button>
                   </>
@@ -236,7 +236,7 @@ function InboxList() {
           );
         })}
         {!isLoading && items.length === 0 && (
-          <ListingLeer>Nichts hier. Eingehende Mails erscheinen automatisch.</ListingLeer>
+          <ListingEmpty>Nichts hier. Eingehende Mails erscheinen automatisch.</ListingEmpty>
         )}
       </Listing>
       </Area>
@@ -264,8 +264,8 @@ function ApprovePanel({ item, onDone, onError }:
         <div className="flex flex-wrap gap-1">
           {([
             ["once", tr("inbox.umfang_einmal")],
-            ["sender", tr("inbox.umfang_absender", { absender: mail || tr("inbox.absender") })],
-            ["category", tr("inbox.umfang_kategorie", { kategorie: item.category || "?" })],
+            ["sender", tr("inbox.umfang_absender", { sender: mail || tr("inbox.absender") })],
+            ["category", tr("inbox.umfang_kategorie", { category: item.category || "?" })],
           ] as ["once" | "sender" | "category", string][]).map(([s, l]) => (
             <button key={s} onClick={() => setScope(s)}
               className={`rounded border px-2 py-1 text-xs ${scope === s ? "border-brand bg-brand/15 text-brand" : "border-line text-muted hover:text-ink"}`}>
@@ -294,7 +294,7 @@ function ApprovePanel({ item, onDone, onError }:
       </div>
       <div className="flex items-center gap-2">
         <button onClick={() => approve.mutate()} disabled={approve.isPending}
-          className={BUTTON.haupt}>
+          className={BUTTON.primary}>
           {tr(scope === "once" ? "inbox.freigeben" : "inbox.freigeben_merken")}
         </button>
         {scope !== "once" && <span className="text-xs text-muted">{tr("inbox.legt_regel_an")}</span>}

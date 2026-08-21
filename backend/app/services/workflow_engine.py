@@ -329,14 +329,17 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
     # (`ueberspringen`), and in an emergency you pull the handbrake on a flow that must not
     # reach its next step at all (`abbrechen`). Silently skipping in the second case would
     # be the dangerous one, so the mode is explicit and there is no default guessing.
-    if cfg.get("deaktiviert") and ntype not in ("start", "end"):
-        mode = str(cfg.get("deaktiviert_modus") or "ueberspringen")
+    # The keys are English; the German ones stay readable because they stand in published
+    # versions (`services/workflow_terms.py` rewrites them, but an instance can hang on an
+    # old one). Same for the mode values: `skip`/`abort` next to `ueberspringen`/`abbrechen`.
+    if (cfg.get("disabled") or cfg.get("deaktiviert")) and ntype not in ("start", "end"):
+        mode = str(cfg.get("disabled_mode") or cfg.get("deaktiviert_modus") or "skip")
         label = cfg.get("label") or node["id"]
         db.add(WorkflowStepRun(
             instance_id=inst.id, token_id=token.id, node_id=node["id"],
             node_type=NType(ntype), status=SStatus.skipped, completed_at=_now(),
-            result={"deaktiviert": True, "modus": mode}))
-        if mode == "abbrechen":
+            result={"disabled": True, "mode": mode}))
+        if mode in ("abort", "abbrechen"):
             log.info("Instance %s: switched off step %s ends the run",
                      inst.id, node["id"])
             return Outcome(terminal=True, instance_status="cancelled",

@@ -49,11 +49,11 @@ export default function Login() {
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         {info && <div className="mt-3 text-sm text-green-400">{info}</div>}
-        <button className={`mt-4 w-full ${BUTTON.haupt}`}>
+        <button className={`mt-4 w-full ${BUTTON.primary}`}>
           {mode === "login" ? "Anmelden" : "Registrieren"}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className={BUTTON_TEXT.neben}>
+          className={BUTTON_TEXT.secondary}>
           {tr(mode === "login" ? "login.neu_hier" : "login.zurueck_zum_login")}
         </button>
       </form>

@@ -25,7 +25,7 @@ export default function AgentTaskConfig({
   // selbst auf die freie Eingabe, statt den Wert stillschweigend zu verwerfen.
   const known = new Set(["plan_agent", "exec_agent", "review_agent", "assigned",
                            ...agentOptions(agents).map(([w]) => w)]);
-  const [eigeneRolle, setEigeneRolle] = useState(
+  const [ownRole, setOwnRole] = useState(
     !!config.agent_role && !known.has(config.agent_role));
 
   return (
@@ -36,12 +36,12 @@ export default function AgentTaskConfig({
       <label className="block text-xs font-medium text-muted">
         Wer arbeitet
         <select
-          value={eigeneRolle ? "__frei__" : (config.agent_role || "exec_agent")}
+          value={ownRole ? "__frei__" : (config.agent_role || "exec_agent")}
           onChange={(e) => {
             const value = e.target.value;
             // „Andere Rolle" schaltet auf ein Textfeld um, statt sofort etwas zu setzen:
             // sonst stünde beim Umschalten kurz ein Rollenname da, den niemand gewählt hat.
-            setEigeneRolle(value === "__frei__");
+            setOwnRole(value === "__frei__");
             if (value !== "__frei__") onChange({ ...config, agent_role: value });
           }}
           className={`mt-1 ${inp}`}
@@ -54,13 +54,13 @@ export default function AgentTaskConfig({
           </optgroup>
           <optgroup label="Fester Agent">
             {/* Konkrete Rollen mit Herkunft der Definition, die tatsächlich greift. */}
-            {agentOptions(agents).filter(([value]) => value).map(([value, beschriftung]) => (
-              <option key={value} value={value}>{beschriftung}</option>
+            {agentOptions(agents).filter(([value]) => value).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
             ))}
           </optgroup>
           <option value="__frei__">Andere Rolle (eintippen)…</option>
         </select>
-        {eigeneRolle && (
+        {ownRole && (
           <input
             value={config.agent_role || ""}
             onChange={(e) => onChange({ ...config, agent_role: e.target.value })}

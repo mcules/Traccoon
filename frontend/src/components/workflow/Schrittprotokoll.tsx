@@ -10,7 +10,7 @@
  * than a run in which every action only says what it would do.
  */
 import { tr } from "../../i18n";
-import { zeitzone } from "../../lib/formatTime";
+import { timezone } from "../../lib/formatTime";
 export interface Step {
   node_id: string;
   node_type: string;
@@ -22,7 +22,7 @@ export interface Step {
   completed_at?: string | null;
 }
 
-const STATUS_FARBE: Record<string, string> = {
+const STATUS_COLOR: Record<string, string> = {
   done: "text-green-400",
   failed: "text-red-400",
   waiting: "text-yellow-400",
@@ -31,7 +31,7 @@ const STATUS_FARBE: Record<string, string> = {
 };
 
 /** The essentials of a result in one line; the rest stands in the expander. */
-function kurzfassung(s: Step): string {
+function shortform(s: Step): string {
   if (s.error) return s.error;
   const r = s.result || {};
   if (r.probe) return String(r.probe);
@@ -43,44 +43,44 @@ function kurzfassung(s: Step): string {
   return [header, parts.join(" · ")].filter(Boolean).join(" — ").slice(0, 300);
 }
 
-function uhrzeit(iso?: string | null): string {
+function time(iso?: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
   return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("de-DE",
-    { hour: "2-digit", minute: "2-digit", timeZone: zeitzone() });
+    { hour: "2-digit", minute: "2-digit", timeZone: timezone() });
 }
 
-export default function Schrittprotokoll({
-  schritte: steps,
-  leerText = tr("instanz.kein_schritt"),
-  maxHoehe = "18rem",
+export default function Steplog({
+  steps: steps,
+  emptyText = tr("instanz.kein_schritt"),
+  maxHeight = "18rem",
 }: {
-  schritte: Step[];
-  leerText?: string;
-  maxHoehe?: string;
+  steps: Step[];
+  emptyText?: string;
+  maxHeight?: string;
 }) {
   if (!steps.length) {
-    return <div className="text-[11px] text-muted">{leerText}</div>;
+    return <div className="text-[11px] text-muted">{emptyText}</div>;
   }
   return (
     <ul className="overflow-auto rounded border border-line bg-surface p-2 text-xs text-muted"
-        style={{ maxHeight: maxHoehe }}>
+        style={{ maxHeight: maxHeight }}>
       {steps.map((s, i) => {
-        const text = kurzfassung(s);
-        const voll = s.result && Object.keys(s.result).length > 1;
+        const text = shortform(s);
+        const full = s.result && Object.keys(s.result).length > 1;
         return (
           <li key={`${s.node_id}-${i}`} className="border-b border-line/60 py-1 last:border-0">
             <div className="flex items-baseline gap-1.5">
               <code className="font-mono text-ink">{s.node_id}</code>
               <span className="text-[11px] opacity-70">{s.node_type}</span>
               {s.status && (
-                <span className={`text-[11px] ${STATUS_FARBE[s.status] || "opacity-70"}`}>
+                <span className={`text-[11px] ${STATUS_COLOR[s.status] || "opacity-70"}`}>
                   {s.status}
                 </span>
               )}
               {s.decision && <span className="text-[11px] text-brand">→ {s.decision}</span>}
               <span className="ml-auto shrink-0 text-[11px] opacity-50">
-                {uhrzeit(s.completed_at || s.entered_at)}
+                {time(s.completed_at || s.entered_at)}
               </span>
             </div>
             {text && (
@@ -89,7 +89,7 @@ export default function Schrittprotokoll({
                 {text}
               </div>
             )}
-            {voll && (
+            {full && (
               <details className="mt-0.5">
                 <summary className="cursor-pointer text-[11px] opacity-60">{tr("schrittprotokoll.rohdaten")}</summary>
                 <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all

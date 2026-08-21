@@ -82,7 +82,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
               <td>{g.level}</td>
               <td>{g.resource_type === "location" ? (g.recursive ? "ja" : "nein") : "—"}</td>
               <td className="text-right">
-                <IconButton icon={ICON.loeschen} titel={tr("resource_grants.entziehen")} gefahr
+                <IconButton icon={ICON.remove} title={tr("resource_grants.entziehen")} danger
                   onClick={() => remove.mutate(g.id)} />
               </td>
             </tr>
@@ -141,7 +141,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
             {tr("resource_grants.auch_kind_orte")}
           </label>
         )}
-        <button onClick={() => uid && rid && add.mutate()} className={BUTTON.haupt}>
+        <button onClick={() => uid && rid && add.mutate()} className={BUTTON.primary}>
           Freigeben
         </button>
         {err && <span className="text-sm text-red-400">{err}</span>}

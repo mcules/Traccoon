@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { tr } from "../i18n";
 import {
-  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Etikett, Field, Fehlerzeile, ICON, IconButton,
-  Listing, ListingLeer, ListenLine, LoeschDialog, Zeilenknopf, State, Reiter, BUTTON } from "./ui";
+  Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow, ICON, IconButton,
+  Listing, ListingEmpty, ListenLine, DeleteDialog, Rowbutton, State, Tab, BUTTON } from "./ui";
 
 /**
  * Mail-Konten und ihre Identitäten.
@@ -13,7 +13,7 @@ import {
  * Ressource, mit der Agenten arbeiten, sondern die Post einer Person. Kennwörter kommen vom
  * Server nie zurück — ein leeres Feld heißt deshalb „unverändert" und nicht „löschen".
  */
-export interface MailKonto {
+export interface MailAccount {
   id: number; name: string; enabled: boolean;
   imap_host: string; imap_port: number; imap_ssl: boolean; imap_user: string;
   smtp_host: string; smtp_port: number; smtp_security: string; smtp_user: string;
@@ -29,7 +29,7 @@ export interface MailIdentity {
   reply_to: string; signature: string; is_default: boolean;
 }
 
-const LEER = {
+const EMPTY = {
   name: "", enabled: true,
   imap_host: "", imap_port: 993, imap_ssl: true, imap_user: "", imap_password: "",
   smtp_host: "", smtp_port: 587, smtp_security: "starttls", smtp_user: "", smtp_password: "",
@@ -39,90 +39,90 @@ const LEER = {
   mcp_instructions: "",
 };
 
-export default function MailKontenPanel() {
+export default function MailAccountsPanel() {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
-  const [dialog, setDialog] = useState<(typeof LEER & { id?: number }) | null>(null);
-  const [loeschKonto, setLoeschKonto] = useState<MailKonto | null>(null);
+  const [dialog, setDialog] = useState<(typeof EMPTY & { id?: number }) | null>(null);
+  const [deleteAccount, setDeleteAccount] = useState<MailAccount | null>(null);
 
-  const { data: konten } = useQuery({
-    queryKey: ["mail-accounts"], queryFn: () => api.get<MailKonto[]>("/mailbox/accounts") });
+  const { data: accounts } = useQuery({
+    queryKey: ["mail-accounts"], queryFn: () => api.get<MailAccount[]>("/mailbox/accounts") });
   const inv = () => qc.invalidateQueries({ queryKey: ["mail-accounts"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
-  const speichern = useMutation({
-    mutationFn: (f: typeof LEER & { id?: number }) =>
+  const save = useMutation({
+    mutationFn: (f: typeof EMPTY & { id?: number }) =>
       f.id ? api.put(`/mailbox/accounts/${f.id}`, f) : api.post("/mailbox/accounts", f),
     onSuccess: () => { setErr(""); setDialog(null); inv(); }, onError: fail,
   });
   const remove = useMutation({
     mutationFn: (id: number) => api.del(`/mailbox/accounts/${id}`),
-    onSuccess: () => { setLoeschKonto(null); inv(); }, onError: fail,
+    onSuccess: () => { setDeleteAccount(null); inv(); }, onError: fail,
   });
 
   return (
-    <Area hinweis="Postfächer, die du hier liest und aus denen du schreibst. Zugang, Ordner, Identitäten und der Verbindungstest stehen im Dialog hinter dem Stift; das Kennwort wird verschlüsselt abgelegt und nie wieder angezeigt.">
-      <Fehlerzeile text={err} />
+    <Area hint="Postfächer, die du hier liest und aus denen du schreibst. Zugang, Ordner, Identitäten und der Verbindungstest stehen im Dialog hinter dem Stift; das Kennwort wird verschlüsselt abgelegt und nie wieder angezeigt.">
+      <Errorrow text={err} />
 
       <Listing>
-        {konten?.map((k) => (
-          <ListenLine key={k.id} gedimmt={!k.enabled}>
+        {accounts?.map((k) => (
+          <ListenLine key={k.id} dimmed={!k.enabled}>
             <div className="flex flex-wrap items-center gap-2">
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium text-ink">{k.name}</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
                   <span className="truncate font-mono">{k.imap_user || k.imap_host}</span>
-                  {!k.smtp_host && <Etikett farbe="gelb">nur lesen</Etikett>}
-                  {!k.imap_password_set && <Etikett farbe="rot">kein Kennwort</Etikett>}
+                  {!k.smtp_host && <Tag color="yellow">nur lesen</Tag>}
+                  {!k.imap_password_set && <Tag color="red">kein Kennwort</Tag>}
                 </div>
               </div>
               {k.enabled
-                ? <State farbe="gruen" text="aktiv" />
-                : <State farbe="grau" text="aus" />}
+                ? <State color="green" text="aktiv" />
+                : <State color="grey" text="aus" />}
               <Actions>
-                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
-                  onClick={() => { setErr(""); setDialog({ ...LEER, ...k, imap_password: "", smtp_password: "" }); }} />
-                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                  onClick={() => setLoeschKonto(k)} />
+                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+                  onClick={() => { setErr(""); setDialog({ ...EMPTY, ...k, imap_password: "", smtp_password: "" }); }} />
+                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                  onClick={() => setDeleteAccount(k)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
-        {konten?.length === 0 && <ListingLeer>Noch kein Postfach hinterlegt.</ListingLeer>}
+        {accounts?.length === 0 && <ListingEmpty>Noch kein Postfach hinterlegt.</ListingEmpty>}
       </Listing>
 
-      <button onClick={() => { setErr(""); setDialog({ ...LEER }); }}
-        className={BUTTON.haupt}>
-        {ICON.neu} Postfach hinzufügen
+      <button onClick={() => { setErr(""); setDialog({ ...EMPTY }); }}
+        className={BUTTON.primary}>
+        {ICON.fresh} Postfach hinzufügen
       </button>
 
-      <McpAccess onFehler={fail} />
+      <McpAccess onError={fail} />
 
       {dialog && (
-        <KontoDialog start={dialog} laeuft={speichern.isPending} fehler={err}
-          onClose={() => setDialog(null)} onSpeichern={(f) => speichern.mutate(f)} />
+        <AccountDialog start={dialog} runs={save.isPending} error={err}
+          onClose={() => setDialog(null)} onSave={(f) => save.mutate(f)} />
       )}
-      {loeschKonto && (
-        <LoeschDialog was={loeschKonto.name} laeuft={remove.isPending}
-          hinweis="Das Postfach selbst bleibt unberührt — nur der Zugang hier verschwindet."
-          onClose={() => setLoeschKonto(null)}
-          onLoeschen={() => remove.mutate(loeschKonto.id)} />
+      {deleteAccount && (
+        <DeleteDialog was={deleteAccount.name} runs={remove.isPending}
+          hint="Das Postfach selbst bleibt unberührt — nur der Zugang hier verschwindet."
+          onClose={() => setDeleteAccount(null)}
+          onDelete={() => remove.mutate(deleteAccount.id)} />
       )}
     </Area>
   );
 }
 
-export function KontoDialog({ start, fehler: error, laeuft: running, onClose, onSpeichern }: {
-  start: typeof LEER & { id?: number }; fehler: string; laeuft: boolean;
-  onClose: () => void; onSpeichern: (f: typeof LEER & { id?: number }) => void;
+export function AccountDialog({ start, error: error, runs: running, onClose, onSave }: {
+  start: typeof EMPTY & { id?: number }; error: string; runs: boolean;
+  onClose: () => void; onSave: (f: typeof EMPTY & { id?: number }) => void;
 }) {
   const [f, setF] = useState(start);
   const [check, setCheck] = useState("");
   const [err, setErr] = useState("");
   const [part, setPart] = useState<"empfang" | "senden" | "ordner" | "identitaeten"
     | "agenten">("empfang");
-  const set = (part: Partial<typeof LEER>) => setF({ ...f, ...part });
-  const testen = useMutation({
+  const set = (part: Partial<typeof EMPTY>) => setF({ ...f, ...part });
+  const testing = useMutation({
     mutationFn: () => api.post<{ imap: string; smtp: string }>(
       `/mailbox/accounts/${start.id}/test`, {}),
     onSuccess: (r) => setCheck(`IMAP: ${r.imap || "—"} · SMTP: ${r.smtp || "—"}`),
@@ -139,17 +139,17 @@ export function KontoDialog({ start, fehler: error, laeuft: running, onClose, on
     retry: false,
   });
   return (
-    <Dialog breit titel={f.id ? `Postfach ${f.name}` : "Postfach hinzufügen"} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} laeuft={running}
-        deaktiviert={!f.name.trim() || !f.imap_host.trim()}
-        onSpeichern={() => onSpeichern(f)} />}>
-      <Fehlerzeile text={error || err} />
+    <Dialog wide title={f.id ? `Postfach ${f.name}` : "Postfach hinzufügen"} onClose={onClose}
+      foot={<DialogFoot onCancel={onClose} runs={running}
+        disabled={!f.name.trim() || !f.imap_host.trim()}
+        onSave={() => onSave(f)} />}>
+      <Errorrow text={error || err} />
       <div className="space-y-4">
         {/* Name und Schalter stehen über dem Menü: sie gehören zu keinem der vier Teile,
             sondern zum Postfach als Ganzem. */}
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-48 flex-1">
-            <Field label="Name" hinweis="Kurzname in der Oberfläche und in Abläufen (privat, vorstand).">
+            <Field label="Name" hint="Kurzname in der Oberfläche und in Abläufen (privat, vorstand).">
               <input value={f.name} onChange={(e) => set({ name: e.target.value })}
                 placeholder="privat" className={INPUT_VALUE} />
             </Field>
@@ -162,7 +162,7 @@ export function KontoDialog({ start, fehler: error, laeuft: running, onClose, on
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row">
-          <Reiter senkrecht aktiv={part} onWaehlen={setPart} auswahl={[
+          <Tab vertical active={part} onChoose={setPart} selection={[
             ["empfang", "📥 Empfang"],
             ["senden", "📤 Senden"],
             ["ordner", "📁 Ordner"],
@@ -179,7 +179,7 @@ export function KontoDialog({ start, fehler: error, laeuft: running, onClose, on
             onChange={(e) => set({ imap_port: Number(e.target.value) })} /></Field>
           <Field label="Benutzer"><input value={f.imap_user} className={INPUT_VALUE}
             onChange={(e) => set({ imap_user: e.target.value })} /></Field>
-          <Field label="Kennwort" hinweis={start.id ? "Leer lassen heißt: unverändert." : ""}>
+          <Field label="Kennwort" hint={start.id ? "Leer lassen heißt: unverändert." : ""}>
             <input type="password" value={f.imap_password} className={INPUT_VALUE}
               onChange={(e) => set({ imap_password: e.target.value })} /></Field>
           <label className="flex items-center gap-2 text-sm text-muted">
@@ -198,11 +198,11 @@ export function KontoDialog({ start, fehler: error, laeuft: running, onClose, on
             onChange={(e) => set({ smtp_port: Number(e.target.value) })} /></Field>
           <Field label="Benutzer"><input value={f.smtp_user} className={INPUT_VALUE}
             onChange={(e) => set({ smtp_user: e.target.value })} /></Field>
-          <Field label="Kennwort" hinweis={start.id ? "Leer lassen heißt: unverändert." : ""}>
+          <Field label="Kennwort" hint={start.id ? "Leer lassen heißt: unverändert." : ""}>
             <input type="password" value={f.smtp_password} className={INPUT_VALUE}
               onChange={(e) => set({ smtp_password: e.target.value })} /></Field>
           <Field label="Verschlüsselung"
-            hinweis={'587 rüstet auf (STARTTLS), 465 ist von Anfang an verschlüsselt. '
+            hint={'587 rüstet auf (STARTTLS), 465 ist von Anfang an verschlüsselt. '
               + 'Passt beides nicht zusammen, meldet der Server „wrong version number".'}>
             <select value={f.smtp_security} className={INPUT_VALUE}
               onChange={(e) => {
@@ -232,20 +232,20 @@ export function KontoDialog({ start, fehler: error, laeuft: running, onClose, on
           </p>
         )}
         <div className="grid gap-2 sm:grid-cols-2">
-          <FolderField label="Gesendet" wert={f.folder_sent} ordner={folder}
-            onWaehlen={(v) => set({ folder_sent: v })} />
-          <FolderField label="Entwürfe" wert={f.folder_drafts} ordner={folder}
-            onWaehlen={(v) => set({ folder_drafts: v })} />
-          <FolderField label="Papierkorb" wert={f.folder_trash} ordner={folder}
-            onWaehlen={(v) => set({ folder_trash: v })} />
-          <FolderField label="Spam" wert={f.folder_junk} ordner={folder}
-            hinweis={'Ziel des Knopfes „Spam" — ohne Ordner erscheint der Knopf nicht.'}
-            onWaehlen={(v) => set({ folder_junk: v })} />
+          <FolderField label="Gesendet" value={f.folder_sent} folder={folder}
+            onChoose={(v) => set({ folder_sent: v })} />
+          <FolderField label="Entwürfe" value={f.folder_drafts} folder={folder}
+            onChoose={(v) => set({ folder_drafts: v })} />
+          <FolderField label="Papierkorb" value={f.folder_trash} folder={folder}
+            onChoose={(v) => set({ folder_trash: v })} />
+          <FolderField label="Spam" value={f.folder_junk} folder={folder}
+            hint={'Ziel des Knopfes „Spam" — ohne Ordner erscheint der Knopf nicht.'}
+            onChoose={(v) => set({ folder_junk: v })} />
         </div>
 
         <div className="text-xs font-medium uppercase tracking-wider text-muted/70">Archiv</div>
         <Field label="Aufteilung"
-          hinweis={'Ziel des Knopfes „Archivieren" — ohne Ziel erscheint der Knopf nicht.'}>
+          hint={'Ziel des Knopfes „Archivieren" — ohne Ziel erscheint der Knopf nicht.'}>
           <select value={f.archive_mode} className={INPUT_VALUE}
             onChange={(e) => set({ archive_mode: e.target.value })}>
             <option value="folder">Ein Ordner für alles</option>
@@ -253,23 +253,23 @@ export function KontoDialog({ start, fehler: error, laeuft: running, onClose, on
           </select>
         </Field>
         {f.archive_mode === "folder" ? (
-          <FolderField label="Archiv-Ordner" wert={f.folder_archive} ordner={folder}
-            onWaehlen={(v) => set({ folder_archive: v })} />
+          <FolderField label="Archiv-Ordner" value={f.folder_archive} folder={folder}
+            onChoose={(v) => set({ folder_archive: v })} />
         ) : (
-          <PatternField kontoId={start.id} wert={f.archive_pattern}
-            onAendern={(v) => set({ archive_pattern: v })} />
+          <PatternField accountId={start.id} value={f.archive_pattern}
+            onChange={(v) => set({ archive_pattern: v })} />
         )}
 
         </>)}
 
         {part === "agenten" && (
-          <AgentenGrant f={f} setzen={set} ordner={folder} />
+          <AgentsGrant f={f} set={set} folder={folder} />
         )}
 
         {part === "identitaeten" && (
           start.id ? (
-            <Identitaeten kontoId={start.id}
-              onFehler={(e) => setErr(e instanceof ApiError ? e.message : "Fehler")} />
+            <Identities accountId={start.id}
+              onError={(e) => setErr(e instanceof ApiError ? e.message : "Fehler")} />
           ) : (
             <p className="text-sm text-muted">
               Identitäten gibt es, sobald das Postfach gespeichert ist — sie hängen daran.
@@ -281,9 +281,9 @@ export function KontoDialog({ start, fehler: error, laeuft: running, onClose, on
 
         {start.id && (
           <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
-            <Zeilenknopf onClick={() => { setErr(""); testen.mutate(); }}>
-              {testen.isPending ? "prüft…" : "🔌 IMAP und SMTP prüfen"}
-            </Zeilenknopf>
+            <Rowbutton onClick={() => { setErr(""); testing.mutate(); }}>
+              {testing.isPending ? "prüft…" : "🔌 IMAP und SMTP prüfen"}
+            </Rowbutton>
             {/* Der Test benutzt, was gespeichert ist — nicht, was gerade im Formular steht.
                 Anders ginge es nicht, ohne halbfertige Zugangsdaten zum Server zu schicken. */}
             <span className="text-xs text-muted">
@@ -304,23 +304,23 @@ export function KontoDialog({ start, fehler: error, laeuft: running, onClose, on
  * genau einmal; ein zweites Mal könnte es nur, wer es speichert, und dann wäre es kein
  * Geheimnis mehr, sondern eine Kopie.
  */
-function McpAccess({ onFehler: onError }: { onFehler: (e: unknown) => void }) {
+function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
   const qc = useQueryClient();
-  const [frisch, setFrisch] = useState("");
+  const [fresh, setFresh] = useState("");
   const { data: state } = useQuery({
     queryKey: ["mcp-status"],
     queryFn: () => api.get<{ token_set: boolean; fingerprint: string }>("/mailbox/mcp-status"),
   });
   const inv = () => qc.invalidateQueries({ queryKey: ["mcp-status"] });
-  const erzeugen = useMutation({
+  const create = useMutation({
     mutationFn: () => api.post<{ token: string }>("/mailbox/mcp-token", {}),
-    onSuccess: (r) => { setFrisch(r.token); inv(); }, onError: onError,
+    onSuccess: (r) => { setFresh(r.token); inv(); }, onError: onError,
   });
   const remove = useMutation({
     mutationFn: () => api.del("/mailbox/mcp-token"),
-    onSuccess: () => { setFrisch(""); inv(); }, onError: onError,
+    onSuccess: () => { setFresh(""); inv(); }, onError: onError,
   });
-  const adresse = `${location.origin}/api/mcp/mail`;
+  const address = `${location.origin}/api/mcp/mail`;
 
   return (
     <div className="mt-4 space-y-2 border-t border-line pt-4">
@@ -332,31 +332,31 @@ function McpAccess({ onFehler: onError }: { onFehler: (e: unknown) => void }) {
       </p>
       <div className="flex items-center gap-2">
         <code className="min-w-0 flex-1 truncate rounded bg-surface px-1.5 py-0.5 text-xs">
-          {adresse}
+          {address}
         </code>
-        <IconButton icon={ICON.kopieren} titel="Adresse kopieren"
-          onClick={() => navigator.clipboard?.writeText(adresse)} />
+        <IconButton icon={ICON.copy} title="Adresse kopieren"
+          onClick={() => navigator.clipboard?.writeText(address)} />
       </div>
-      {frisch ? (
+      {fresh ? (
         <div className="space-y-1 rounded border border-amber-500/30 bg-amber-500/10 p-2">
           <div className="text-xs text-amber-300">
             Einmalig sichtbar — jetzt kopieren, danach nur noch neu erzeugbar.
           </div>
           <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate text-xs text-ink">{frisch}</code>
-            <IconButton icon={ICON.kopieren} titel="Token kopieren"
-              onClick={() => navigator.clipboard?.writeText(frisch)} />
+            <code className="min-w-0 flex-1 truncate text-xs text-ink">{fresh}</code>
+            <IconButton icon={ICON.copy} title="Token kopieren"
+              onClick={() => navigator.clipboard?.writeText(fresh)} />
           </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Zeilenknopf onClick={() => erzeugen.mutate()}>
+          <Rowbutton onClick={() => create.mutate()}>
             {state?.token_set ? "Neues Token erzeugen" : "Token erzeugen"}
-          </Zeilenknopf>
+          </Rowbutton>
           {state?.token_set && (
             <>
-              <Etikett farbe="gruen">Token gesetzt · {state.fingerprint}</Etikett>
-              <Zeilenknopf gefahr onClick={() => remove.mutate()}>Zugang sperren</Zeilenknopf>
+              <Tag color="green">Token gesetzt · {state.fingerprint}</Tag>
+              <Rowbutton danger onClick={() => remove.mutate()}>Zugang sperren</Rowbutton>
             </>
           )}
           {state?.token_set && (
@@ -378,13 +378,13 @@ function McpAccess({ onFehler: onError }: { onFehler: (e: unknown) => void }) {
  * Lesen, Umsortieren und Senden stehen als drei getrennte Gruppen da und nicht als Stufen
  * einer Leiter.
  */
-function AgentenGrant({ f, setzen: set, ordner: folder }: {
-  f: typeof LEER & { id?: number };
-  setzen: (part: Partial<typeof LEER>) => void;
-  ordner: { name: string; display: string; level: number }[] | undefined;
+function AgentsGrant({ f, set: set, folder: folder }: {
+  f: typeof EMPTY & { id?: number };
+  set: (part: Partial<typeof EMPTY>) => void;
+  folder: { name: string; display: string; level: number }[] | undefined;
 }) {
-  const [neuesPattern, setNeuesPattern] = useState("");
-  const { data: katalog } = useQuery({
+  const [newPattern, setNewPattern] = useState("");
+  const { data: catalog } = useQuery({
     queryKey: ["mcp-tools"],
     queryFn: () => api.get<{ name: string; kind: string; description: string; always: boolean }[]>(
       "/mailbox/mcp-tools"),
@@ -392,21 +392,21 @@ function AgentenGrant({ f, setzen: set, ordner: folder }: {
   });
 
   const GROUP: Record<string, string> = {
-    lesen: "Lesen", aendern: "Umsortieren", senden: "Senden",
+    lesen: "Lesen", change: "Umsortieren", send: "Senden",
   };
-  const umschalten = (name: string) => {
-    const drin = f.mcp_tools.includes(name);
-    set({ mcp_tools: drin ? f.mcp_tools.filter((t) => t !== name)
+  const toggle = (name: string) => {
+    const inside = f.mcp_tools.includes(name);
+    set({ mcp_tools: inside ? f.mcp_tools.filter((t) => t !== name)
                              : [...f.mcp_tools, name] });
   };
-  const patternWeg = (m: string) =>
+  const patternPath = (m: string) =>
     set({ mcp_ignore_folders: f.mcp_ignore_folders.filter((x) => x !== m) });
-  const patternDazu = (m: string) => {
+  const patternHint = (m: string) => {
     const value = m.trim();
     if (value && !f.mcp_ignore_folders.includes(value)) {
       set({ mcp_ignore_folders: [...f.mcp_ignore_folders, value] });
     }
-    setNeuesPattern("");
+    setNewPattern("");
   };
 
   return (
@@ -426,7 +426,7 @@ function AgentenGrant({ f, setzen: set, ordner: folder }: {
           Anweisungen
         </div>
         <Field label="Was ein Agent über dieses Postfach wissen muss"
-          hinweis="Wird beim Verbinden gelesen, also bevor das erste Werkzeug läuft — und steht zusätzlich an jedem Postfach in der Übersicht.">
+          hint="Wird beim Verbinden gelesen, also bevor das erste Werkzeug läuft — und steht zusätzlich an jedem Postfach in der Übersicht.">
           <textarea value={f.mcp_instructions} rows={5} className={`${INPUT_VALUE} text-xs`}
             placeholder={"Vereinspostfach des Vorstands. Sachlich und in Sie-Form antworten.\n"
               + "Nichts ohne Rückfrage senden. Rechnungen gehören ins Archiv, nicht in den Papierkorb."}
@@ -436,14 +436,14 @@ function AgentenGrant({ f, setzen: set, ordner: folder }: {
         <div className="text-xs font-medium uppercase tracking-wider text-muted/70">
           Werkzeuge
         </div>
-        {["lesen", "aendern", "senden"].map((art) => (
-          <div key={art} className="space-y-1">
-            <div className="text-xs font-medium text-ink">{GROUP[art]}</div>
-            {(katalog || []).filter((w) => w.kind === art && !w.always).map((w) => (
+        {["lesen", "aendern", "senden"].map((group) => (
+          <div key={group} className="space-y-1">
+            <div className="text-xs font-medium text-ink">{GROUP[group]}</div>
+            {(catalog || []).filter((w) => w.kind === group && !w.always).map((w) => (
               <label key={w.name} className="flex items-start gap-2 text-sm text-muted">
                 <input type="checkbox" className="mt-1"
                   checked={f.mcp_tools.includes(w.name)}
-                  onChange={() => umschalten(w.name)} />
+                  onChange={() => toggle(w.name)} />
                 <span>
                   <code className="text-ink">{w.name}</code>
                   <span className="ml-2 text-xs">{w.description}</span>
@@ -463,18 +463,18 @@ function AgentenGrant({ f, setzen: set, ordner: folder }: {
         </p>
         <Listing>
           {f.mcp_ignore_folders.map((m) => (
-            <ListenLine key={m} dicht>
+            <ListenLine key={m} dense>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 truncate">{m}</code>
-                <Zeilenknopf gefahr onClick={() => patternWeg(m)}>Entfernen</Zeilenknopf>
+                <Rowbutton danger onClick={() => patternPath(m)}>Entfernen</Rowbutton>
               </div>
             </ListenLine>
           ))}
-          {!f.mcp_ignore_folders.length && <ListingLeer>Nichts ausgeblendet.</ListingLeer>}
+          {!f.mcp_ignore_folders.length && <ListingEmpty>Nichts ausgeblendet.</ListingEmpty>}
         </Listing>
         <div className="flex flex-wrap items-center gap-2">
           <select value="" className={`${INPUT_VALUE} max-w-xs`}
-            onChange={(e) => e.target.value && patternDazu(e.target.value)}>
+            onChange={(e) => e.target.value && patternHint(e.target.value)}>
             <option value="">Ordner wählen…</option>
             {(folder || []).map((o) => (
               <option key={o.name} value={o.name}>
@@ -482,11 +482,11 @@ function AgentenGrant({ f, setzen: set, ordner: folder }: {
               </option>
             ))}
           </select>
-          <input value={neuesPattern} placeholder="oder Muster: Privat*"
+          <input value={newPattern} placeholder="oder Muster: Privat*"
             className={`${INPUT_VALUE} max-w-xs font-mono`}
-            onChange={(e) => setNeuesPattern(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); patternDazu(neuesPattern); } }} />
-          <Zeilenknopf onClick={() => patternDazu(neuesPattern)}>Hinzufügen</Zeilenknopf>
+            onChange={(e) => setNewPattern(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); patternHint(newPattern); } }} />
+          <Rowbutton onClick={() => patternHint(newPattern)}>Hinzufügen</Rowbutton>
         </div>
       </>)}
     </div>
@@ -500,31 +500,31 @@ function AgentenGrant({ f, setzen: set, ordner: folder }: {
  * gehört auch 2026 noch ins Jahr 2023. Der Schrägstrich trennt die Ebenen, egal wie der
  * Server das intern macht — das rechnet der Server um.
  */
-function PatternField({ kontoId, wert: value, onAendern: onUpdate }: {
-  kontoId?: number; wert: string; onAendern: (v: string) => void;
+function PatternField({ accountId, value: value, onChange: onUpdate }: {
+  accountId?: number; value: string; onChange: (v: string) => void;
 }) {
-  const [vorschau, setVorschau] = useState("");
+  const [preview, setPreview] = useState("");
   useEffect(() => {
-    if (!kontoId || !value) { setVorschau(""); return; }
-    let abgebrochen = false;
+    if (!accountId || !value) { setPreview(""); return; }
+    let aborted = false;
     const id = setTimeout(() => {
-      api.post<{ folder: string }>(`/mailbox/accounts/${kontoId}/archive-preview`,
+      api.post<{ folder: string }>(`/mailbox/accounts/${accountId}/archive-preview`,
                                    { archive_pattern: value })
-        .then((r) => { if (!abgebrochen) setVorschau(r.folder); })
-        .catch(() => { if (!abgebrochen) setVorschau(""); });
+        .then((r) => { if (!aborted) setPreview(r.folder); })
+        .catch(() => { if (!aborted) setPreview(""); });
     }, 300);
-    return () => { abgebrochen = true; clearTimeout(id); };
-  }, [kontoId, value]);
+    return () => { aborted = true; clearTimeout(id); };
+  }, [accountId, value]);
 
   return (
     <div className="space-y-2">
-      <Field label="Muster" hinweis="Schrägstrich trennt Ebenen. Beispiel: Archive/{jahr}/{monat}">
+      <Field label="Muster" hint="Schrägstrich trennt Ebenen. Beispiel: Archive/{jahr}/{monat}">
         <input value={value} className={`${INPUT_VALUE} font-mono`}
           onChange={(e) => onUpdate(e.target.value)} placeholder="Archive/{jahr}" />
       </Field>
-      {vorschau && (
+      {preview && (
         <p className="text-xs text-muted">
-          Eine Mail von heute landet in <code className="text-brand">{vorschau}</code>.
+          Eine Mail von heute landet in <code className="text-brand">{preview}</code>.
           Fehlende Ordner werden angelegt.
         </p>
       )}
@@ -546,26 +546,26 @@ function PatternField({ kontoId, wert: value, onAendern: onUpdate }: {
  * eigenen Postfach auftaucht. Steht die Verbindung noch nicht (neues Konto, falsches
  * Kennwort), bleibt das Textfeld — besser als ein leeres Auswahlfeld.
  */
-function FolderField({ label, hinweis: hint, wert: value, ordner: folder, onWaehlen }: {
-  label: string; hinweis?: string; wert: string;
-  ordner: { name: string; display: string; level: number }[] | undefined;
-  onWaehlen: (v: string) => void;
+function FolderField({ label, hint: hint, value: value, folder: folder, onChoose }: {
+  label: string; hint?: string; value: string;
+  folder: { name: string; display: string; level: number }[] | undefined;
+  onChoose: (v: string) => void;
 }) {
   if (!folder?.length) {
     return (
-      <Field label={label} hinweis={hint}>
-        <input value={value} className={INPUT_VALUE} onChange={(e) => onWaehlen(e.target.value)} />
+      <Field label={label} hint={hint}>
+        <input value={value} className={INPUT_VALUE} onChange={(e) => onChoose(e.target.value)} />
       </Field>
     );
   }
   // Ein eingetragener Ordner, den es (nicht mehr) gibt, bleibt sichtbar statt still
   // verlorenzugehen — sonst ändert schon das Öffnen des Dialogs die Einstellung.
-  const unbekannt = value && !folder.some((o) => o.name === value);
+  const unknown = value && !folder.some((o) => o.name === value);
   return (
-    <Field label={label} hinweis={hint}>
-      <select value={value} className={INPUT_VALUE} onChange={(e) => onWaehlen(e.target.value)}>
+    <Field label={label} hint={hint}>
+      <select value={value} className={INPUT_VALUE} onChange={(e) => onChoose(e.target.value)}>
         <option value="">— keiner —</option>
-        {unbekannt && <option value={value}>{value} (nicht gefunden)</option>}
+        {unknown && <option value={value}>{value} (nicht gefunden)</option>}
         {folder.map((o) => (
           <option key={o.name} value={o.name}>
             {"\u00a0".repeat(o.level * 2)}{o.display}
@@ -577,18 +577,18 @@ function FolderField({ label, hinweis: hint, wert: value, ordner: folder, onWaeh
 }
 
 /** Identitäten eines Kontos: wer als Absender auftritt. */
-function Identitaeten({ kontoId, onFehler: onError }: { kontoId: number; onFehler: (e: unknown) => void }) {
+function Identities({ accountId, onError: onError }: { accountId: number; onError: (e: unknown) => void }) {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<Partial<MailIdentity> | null>(null);
   const { data } = useQuery({
-    queryKey: ["mail-identities", kontoId],
-    queryFn: () => api.get<MailIdentity[]>(`/mailbox/accounts/${kontoId}/identities`),
+    queryKey: ["mail-identities", accountId],
+    queryFn: () => api.get<MailIdentity[]>(`/mailbox/accounts/${accountId}/identities`),
   });
-  const inv = () => qc.invalidateQueries({ queryKey: ["mail-identities", kontoId] });
-  const speichern = useMutation({
+  const inv = () => qc.invalidateQueries({ queryKey: ["mail-identities", accountId] });
+  const save = useMutation({
     mutationFn: (i: Partial<MailIdentity>) => i.id
       ? api.put(`/mailbox/identities/${i.id}`, i)
-      : api.post(`/mailbox/accounts/${kontoId}/identities`, i),
+      : api.post(`/mailbox/accounts/${accountId}/identities`, i),
     onSuccess: () => { setDialog(null); inv(); }, onError: onError,
   });
   const remove = useMutation({
@@ -606,17 +606,17 @@ function Identitaeten({ kontoId, onFehler: onError }: { kontoId: number; onFehle
                 <span className="text-ink">{i.display_name || i.email}</span>
                 {i.display_name && <span className="ml-2 text-xs text-muted">{i.email}</span>}
               </span>
-              {i.is_default && <Etikett farbe="brand">Vorgabe</Etikett>}
+              {i.is_default && <Tag color="brand">Vorgabe</Tag>}
               <Actions>
-                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
+                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
                   onClick={() => setDialog(i)} />
-                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
                   onClick={() => remove.mutate(i.id)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
-        {data?.length === 0 && <ListingLeer>Noch keine Identität — ohne sie kannst du nicht senden.</ListingLeer>}
+        {data?.length === 0 && <ListingEmpty>Noch keine Identität — ohne sie kannst du nicht senden.</ListingEmpty>}
       </Listing>
       <button onClick={() => setDialog({ email: "", display_name: "", is_default: !data?.length })}
         className="mt-2 rounded border border-line px-2 py-1 text-xs text-muted hover:border-brand hover:text-ink">
@@ -624,15 +624,15 @@ function Identitaeten({ kontoId, onFehler: onError }: { kontoId: number; onFehle
       </button>
 
       {dialog && (
-        <Dialog titel={dialog.id ? "Identität" : "Identität anlegen"} onClose={() => setDialog(null)}
-          fuss={<DialogFuss onAbbrechen={() => setDialog(null)} laeuft={speichern.isPending}
-            deaktiviert={!dialog.email?.trim()} onSpeichern={() => speichern.mutate(dialog)} />}>
+        <Dialog title={dialog.id ? "Identität" : "Identität anlegen"} onClose={() => setDialog(null)}
+          foot={<DialogFoot onCancel={() => setDialog(null)} runs={save.isPending}
+            disabled={!dialog.email?.trim()} onSave={() => save.mutate(dialog)} />}>
           <div className="space-y-3">
             <Field label="Absender-Adresse"><input value={dialog.email || ""} className={INPUT_VALUE}
               onChange={(e) => setDialog({ ...dialog, email: e.target.value })} /></Field>
             <Field label="Angezeigter Name"><input value={dialog.display_name || ""} className={INPUT_VALUE}
               onChange={(e) => setDialog({ ...dialog, display_name: e.target.value })} /></Field>
-            <Field label="Antwort an" hinweis="Leer lassen, wenn Antworten an die Absender-Adresse gehen sollen.">
+            <Field label="Antwort an" hint="Leer lassen, wenn Antworten an die Absender-Adresse gehen sollen.">
               <input value={dialog.reply_to || ""} className={INPUT_VALUE}
                 onChange={(e) => setDialog({ ...dialog, reply_to: e.target.value })} /></Field>
             <Field label="Signatur">

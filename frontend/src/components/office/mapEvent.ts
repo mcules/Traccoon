@@ -196,7 +196,7 @@ function isDeployState(s: string): s is "start" | "ok" | "fail" | "back" {
  *  `recorder.push` puts that into the log as `cmds` unchecked, and the room dies on the next
  *  `advance` with `for (const c of undefined)`. An unknown event should be silent, not
  *  lethal. */
-function unbekannt(_ev: never): Cmd[] {
+function unknown(_ev: never): Cmd[] {
   return [];
 }
 
@@ -363,6 +363,6 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
     }
 
     default:
-      return unbekannt(ev);
+      return unknown(ev);
   }
 }

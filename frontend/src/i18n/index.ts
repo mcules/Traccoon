@@ -14,19 +14,19 @@ import en from "./en.json";
  * runtime lives in the database, because nobody should need a deployment for a typo in a
  * label.
  */
-type Katalog = Record<string, string>;
+type Catalog = Record<string, string>;
 
-const AUSGELIEFERT: Record<string, Katalog> = { de: de as Katalog, en: en as Katalog };
-export const QUELLSPRACHE = "de";
+const SHIPPED: Record<string, Catalog> = { de: de as Catalog, en: en as Catalog };
+export const SOURCELANGUAGE = "de";
 
-let current = QUELLSPRACHE;
-let overrides: Katalog = {};
-const horcher = new Set<() => void>();
+let current = SOURCELANGUAGE;
+let overrides: Catalog = {};
+const listener = new Set<() => void>();
 
 /** Whoever shows a text has to redraw when the language changes. */
-export function beiSprachwechsel(fn: () => void): () => void {
-  horcher.add(fn);
-  return () => horcher.delete(fn);
+export function atLanguageswitch(fn: () => void): () => void {
+  listener.add(fn);
+  return () => listener.delete(fn);
 }
 
 export function language(): string {
@@ -41,12 +41,12 @@ export function language(): string {
  */
 export function tr(key: string, vars?: Record<string, string | number>): string {
   const text = overrides[key]
-    ?? AUSGELIEFERT[current]?.[key]
-    ?? AUSGELIEFERT[QUELLSPRACHE]?.[key]
+    ?? SHIPPED[current]?.[key]
+    ?? SHIPPED[SOURCELANGUAGE]?.[key]
     ?? key;
   if (!vars) return text;
-  return text.replace(/\{(\w+)\}/g, (ganz, name) =>
-    vars[name] !== undefined ? String(vars[name]) : ganz);
+  return text.replace(/\{(\w+)\}/g, (whole, name) =>
+    vars[name] !== undefined ? String(vars[name]) : whole);
 }
 
 /**
@@ -59,36 +59,36 @@ export function tr(key: string, vars?: Record<string, string | number>): string 
  * language, otherwise nothing, and the caller keeps what the server wrote.
  */
 export function trKnown(key: string, vars?: Record<string, string | number>): string | null {
-  const text = overrides[key] ?? AUSGELIEFERT[current]?.[key];
+  const text = overrides[key] ?? SHIPPED[current]?.[key];
   if (text === undefined) return null;
   if (!vars) return text;
-  return text.replace(/\{(\w+)\}/g, (ganz, name) =>
-    vars[name] !== undefined ? String(vars[name]) : ganz);
+  return text.replace(/\{(\w+)\}/g, (whole, name) =>
+    vars[name] !== undefined ? String(vars[name]) : whole);
 }
 
 /** Set the language and pull in what the admin changed. */
-export async function setzeLanguage(locale: string): Promise<void> {
-  current = locale && locale in AUSGELIEFERT ? locale : (locale || QUELLSPRACHE);
+export async function setLanguage(locale: string): Promise<void> {
+  current = locale && locale in SHIPPED ? locale : (locale || SOURCELANGUAGE);
   overrides = {};
   try {
-    const answer = await api.get<{ locale: string; texte: Katalog }>(
+    const answer = await api.get<{ locale: string; texts: Catalog }>(
       `/i18n/${encodeURIComponent(current)}`);
-    overrides = answer.texte || {};
+    overrides = answer.texts || {};
   } catch {
     // Without a connection the shipped catalog remains, so the interface keeps working.
   }
-  horcher.forEach((fn) => fn());
+  listener.forEach((fn) => fn());
 }
 
 /** Every key with its German text, the basis of the admin translation view. */
-export function allKey(): Katalog {
-  return AUSGELIEFERT[QUELLSPRACHE];
+export function allKey(): Catalog {
+  return SHIPPED[SOURCELANGUAGE];
 }
 
-export function ausgeliefert(locale: string): Katalog {
-  return AUSGELIEFERT[locale] || {};
+export function shipped(locale: string): Catalog {
+  return SHIPPED[locale] || {};
 }
 
-export function eingebauteSprachen(): string[] {
-  return Object.keys(AUSGELIEFERT);
+export function builtinLanguages(): string[] {
+  return Object.keys(SHIPPED);
 }

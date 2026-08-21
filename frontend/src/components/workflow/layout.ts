@@ -36,35 +36,35 @@ export function feedbackEdges(graph: WorkflowGraph): Set<string> {
   }
   const start = graph.nodes.find((n) => n.type === "start")?.id
     ?? graph.nodes[0]?.id;
-  const rueck = new Set<string>();
+  const back = new Set<string>();
   const OPEN = 1, DONE = 2;
   const state = new Map<string, number>();
 
   // Depth first search with colours: an edge onto a node that is still OPEN closes a cycle.
-  const lauf = (startId: string) => {
-    const stapel: { id: string; i: number }[] = [{ id: startId, i: 0 }];
+  const run = (startId: string) => {
+    const batch: { id: string; i: number }[] = [{ id: startId, i: 0 }];
     state.set(startId, OPEN);
-    while (stapel.length) {
-      const oben = stapel[stapel.length - 1];
-      const edges = out.get(oben.id) || [];
-      if (oben.i >= edges.length) {
-        state.set(oben.id, DONE);
-        stapel.pop();
+    while (batch.length) {
+      const above = batch[batch.length - 1];
+      const edges = out.get(above.id) || [];
+      if (above.i >= edges.length) {
+        state.set(above.id, DONE);
+        batch.pop();
         continue;
       }
-      const k = edges[oben.i++];
+      const k = edges[above.i++];
       const z = state.get(k.target);
-      if (z === OPEN) rueck.add(k.id);          // zurück auf einen Knoten im aktuellen Pfad
+      if (z === OPEN) back.add(k.id);          // zurück auf einen Knoten im aktuellen Pfad
       else if (z === undefined) {
         state.set(k.target, OPEN);
-        stapel.push({ id: k.target, i: 0 });
+        batch.push({ id: k.target, i: 0 });
       }
     }
   };
-  if (start) lauf(start);
+  if (start) run(start);
   // Sort in nodes that are not reachable from the start as well.
-  for (const n of graph.nodes) if (!state.has(n.id)) lauf(n.id);
-  return rueck;
+  for (const n of graph.nodes) if (!state.has(n.id)) run(n.id);
+  return back;
 }
 
 /** Checks whether all positions are missing or 0 (then an auto layout is needed). */
@@ -98,9 +98,9 @@ export function layoutGraph(graph: WorkflowGraph, opts: LayoutOptions = {}): Wor
   // anyway and would otherwise pull the nodes towards their loop partners, which is exactly
   // where the back and forth in the ticket lifecycle came from. Measured (forward edges
   // only): lateral offset 9010px to 5020px, width 1780px to 1270px, crossings unchanged.
-  const rueck = feedbackEdges(graph);
-  const vorwaerts = graph.edges.filter((e) => !rueck.has(e.id));
-  for (const e of vorwaerts) g.setEdge(e.source, e.target);
+  const back = feedbackEdges(graph);
+  const forward = graph.edges.filter((e) => !back.has(e.id));
+  for (const e of forward) g.setEdge(e.source, e.target);
   dagre.layout(g);
 
   // Nodes with an almost identical centre line form a row (dagre rank).
@@ -123,7 +123,7 @@ export function layoutGraph(graph: WorkflowGraph, opts: LayoutOptions = {}): Wor
     cursor += height + gap;
   }
 
-  const mitte = ausrichten(rows, vorwaerts, gap);
+  const middle = align(rows, forward, gap);
 
   return {
     ...graph,
@@ -134,7 +134,7 @@ export function layoutGraph(graph: WorkflowGraph, opts: LayoutOptions = {}): Wor
       return {
         ...n,
         position: {
-          x: (mitte.get(n.id) ?? p.x) - s.width / 2,
+          x: (middle.get(n.id) ?? p.x) - s.width / 2,
           y: top.get(n.id) ?? p.y - s.height / 2,
         },
       };
@@ -154,24 +154,24 @@ export function layoutGraph(graph: WorkflowGraph, opts: LayoutOptions = {}): Wor
  * the wishes AND stay sorted. Exactly that is solved precisely by an isotonic regression
  * (pool adjacent violators); merely "pushing to the right" distorts the whole row instead.
  */
-function ausrichten(
+function align(
   rows: { items: { node: { id: string }; p: { x: number }; s: NodeSize }[] }[],
-  vorwaerts: WorkflowGraph["edges"],
+  forward: WorkflowGraph["edges"],
   gap: number,
 ): Map<string, number> {
   const x = new Map<string, number>();
-  const breite = new Map<string, number>();
+  const width = new Map<string, number>();
   rows.forEach((row) => row.items.forEach((it) => {
     x.set(it.node.id, it.p.x);
-    breite.set(it.node.id, it.s.width);
+    width.set(it.node.id, it.s.width);
   }));
 
-  const hoch = new Map<string, string[]>();   // Vorgänger
-  const runter = new Map<string, string[]>(); // Nachfolger
-  for (const e of vorwaerts) {
+  const high = new Map<string, string[]>();   // Vorgänger
+  const down = new Map<string, string[]>(); // Nachfolger
+  for (const e of forward) {
     if (!x.has(e.source) || !x.has(e.target)) continue;
-    hoch.set(e.target, [...(hoch.get(e.target) || []), e.source]);
-    runter.set(e.source, [...(runter.get(e.source) || []), e.target]);
+    high.set(e.target, [...(high.get(e.target) || []), e.source]);
+    down.set(e.source, [...(down.get(e.source) || []), e.target]);
   }
   const median = (values: number[]) => {
     if (!values.length) return undefined;
@@ -184,16 +184,16 @@ function ausrichten(
   const series = rows.map((row) =>
     [...row.items].sort((a, b) => a.p.x - b.p.x).map((it) => it.node.id));
 
-  for (let runde = 0; runde < 12; runde++) {
-    const abwaerts = runde % 2 === 0;
-    const sequence = abwaerts ? series : [...series].reverse();
+  for (let round = 0; round < 12; round++) {
+    const downward = round % 2 === 0;
+    const sequence = downward ? series : [...series].reverse();
     for (const line of sequence) {
-      const wunsch = line.map((id) => {
-        const nachbarn = (abwaerts ? hoch : runter).get(id) || [];
-        return median(nachbarn.map((n) => x.get(n)!)) ?? x.get(id)!;
+      const wish = line.map((id) => {
+        const neighbours = (downward ? high : down).get(id) || [];
+        return median(neighbours.map((n) => x.get(n)!)) ?? x.get(id)!;
       });
-      const platziert = isoton(wunsch, line.map((id) => breite.get(id)!), gap);
-      line.forEach((id, i) => x.set(id, platziert[i]));
+      const placed = isoton(wish, line.map((id) => width.get(id)!), gap);
+      line.forEach((id, i) => x.set(id, placed[i]));
     }
   }
   return x;
@@ -205,27 +205,27 @@ function ausrichten(
  * combined into one block and set together on their average, which repeats until everything
  * fits.
  */
-function isoton(wunsch: number[], breiten: number[], gap: number): number[] {
-  if (!wunsch.length) return [];
+function isoton(wish: number[], widths: number[], gap: number): number[] {
+  if (!wish.length) return [];
   // Factor out the minimum distance: afterwards the values only have to be ascending.
-  const versatz: number[] = [0];
-  for (let i = 1; i < wunsch.length; i++) {
-    versatz[i] = versatz[i - 1] + breiten[i - 1] / 2 + gap + breiten[i] / 2;
+  const offset: number[] = [0];
+  for (let i = 1; i < wish.length; i++) {
+    offset[i] = offset[i - 1] + widths[i - 1] / 2 + gap + widths[i] / 2;
   }
-  const z = wunsch.map((w, i) => w - versatz[i]);
+  const z = wish.map((w, i) => w - offset[i]);
 
-  const bloecke: { summe: number; anzahl: number; wert: number }[] = [];
+  const blocks: { sum: number; count: number; value: number }[] = [];
   for (const value of z) {
-    bloecke.push({ summe: value, anzahl: 1, wert: value });
-    while (bloecke.length > 1 && bloecke[bloecke.length - 2].wert > bloecke[bloecke.length - 1].wert) {
-      const b = bloecke.pop()!;
-      const a = bloecke.pop()!;
-      const sum_total = a.summe + b.summe;
-      const count = a.anzahl + b.anzahl;
-      bloecke.push({ summe: sum_total, anzahl: count, wert: sum_total / count });
+    blocks.push({ sum: value, count: 1, value: value });
+    while (blocks.length > 1 && blocks[blocks.length - 2].value > blocks[blocks.length - 1].value) {
+      const b = blocks.pop()!;
+      const a = blocks.pop()!;
+      const sum_total = a.sum + b.sum;
+      const count = a.count + b.count;
+      blocks.push({ sum: sum_total, count: count, value: sum_total / count });
     }
   }
   const out: number[] = [];
-  for (const b of bloecke) for (let i = 0; i < b.anzahl; i++) out.push(b.wert);
-  return out.map((v, i) => v + versatz[i]);
+  for (const b of blocks) for (let i = 0; i < b.count; i++) out.push(b.value);
+  return out.map((v, i) => v + offset[i]);
 }

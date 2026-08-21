@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import Markdown from "./Markdown";
-import { BUTTON_KLEIN, BUTTON} from "./ui";
+import { BUTTON_SMALL, BUTTON} from "./ui";
 
 interface ChatMsg {
   id: number; text: string; status: string; result: string; error: string;
@@ -31,32 +31,32 @@ export default function AssistantChat() {
   const qc = useQueryClient();
   const [input, setInput] = useState("");
   const [err, setErr] = useState("");
-  const [archiv, setArchiv] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   // Older pages, fetched on demand. They stand before the live page and do not refresh
   // themselves: what is past does not change.
   const [aeltere, setAeltere] = useState<ChatMsg[]>([]);
-  const [nochMehr, setNochMehr] = useState(false);
+  const [stillMore, setStillMore] = useState(false);
   const listingRef = useRef<HTMLDivElement>(null);
-  const erstesBild = useRef(true);
+  const firstImage = useRef(true);
   // Height before older messages were prepended, so that the view can stay where it stood.
-  const hoeheVorher = useRef<number | null>(null);
+  const heightBefore = useRef<number | null>(null);
 
   const { data } = useQuery({
-    queryKey: ["assistant-chat", archiv],
-    queryFn: () => api.get<Page>(`/assistant/chat?limit=20${archiv ? "&archiv=1" : ""}`),
-    refetchInterval: archiv ? false : 3000,
+    queryKey: ["assistant-chat", showArchive],
+    queryFn: () => api.get<Page>(`/assistant/chat?limit=20${showArchive ? "&archive=1" : ""}`),
+    refetchInterval: showArchive ? false : 3000,
   });
   const inv = () => qc.invalidateQueries({ queryKey: ["assistant-chat"] });
   const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
 
   const messages = [...aeltere, ...(data?.messages || [])];
-  const mehr = aeltere.length ? nochMehr : !!data?.more;
+  const more = aeltere.length ? stillMore : !!data?.more;
 
   // Switching between conversation and archive starts over; the pages of the one have
   // nothing to do with the other.
   useEffect(() => {
-    setAeltere([]); setNochMehr(false); erstesBild.current = true;
-  }, [archiv]);
+    setAeltere([]); setStillMore(false); firstImage.current = true;
+  }, [showArchive]);
 
   const send = useMutation({
     mutationFn: (text: string) => api.post("/assistant/chat", { text }),
@@ -68,67 +68,67 @@ export default function AssistantChat() {
       api.post(`/assistant/chat/${id}/decide`, { decision }),
     onSuccess: inv, onError: error,
   });
-  const archivieren = useMutation({
-    mutationFn: (id: number) => api.post(`/assistant/chat/${id}/${archiv ? "unarchive" : "archive"}`),
+  const archive = useMutation({
+    mutationFn: (id: number) => api.post(`/assistant/chat/${id}/${showArchive ? "unarchive" : "archive"}`),
     // The id comes back as the second argument, so the loaded older pages can drop that one
     // row instead of being thrown away and reloaded.
     onSuccess: (_answer, id) => { setAeltere((v) => v.filter((m) => m.id !== id)); inv(); },
     onError: error,
   });
-  const allArchivieren = useMutation({
+  const allArchive = useMutation({
     mutationFn: () => api.post("/assistant/chat/archive-all"),
-    onSuccess: () => { setAeltere([]); setNochMehr(false); erstesBild.current = true; inv(); },
+    onSuccess: () => { setAeltere([]); setStillMore(false); firstImage.current = true; inv(); },
     onError: error,
   });
 
-  async function aeltereLaden() {
-    const aelteste = messages[0]?.id;
-    if (!aelteste) return;
-    hoeheVorher.current = listingRef.current?.scrollHeight ?? null;
+  async function loadOlder() {
+    const oldest = messages[0]?.id;
+    if (!oldest) return;
+    heightBefore.current = listingRef.current?.scrollHeight ?? null;
     try {
       const page = await api.get<Page>(
-        `/assistant/chat?limit=20&vor=${aelteste}${archiv ? "&archiv=1" : ""}`);
+        `/assistant/chat?limit=20&before=${oldest}${showArchive ? "&archive=1" : ""}`);
       setAeltere((v) => [...page.messages, ...v]);
-      setNochMehr(page.more);
+      setStillMore(page.more);
     } catch (e) { error(e); }
   }
 
   const lastId = messages[messages.length - 1]?.id;
-  const zustaende = messages.map((m) => m.status).join();
+  const states = messages.map((m) => m.status).join();
 
   useLayoutEffect(() => {
     const el = listingRef.current;
     if (!el) return;
     // Older ones were prepended: keep the reading position instead of jumping.
-    if (hoeheVorher.current !== null) {
-      el.scrollTop += el.scrollHeight - hoeheVorher.current;
-      hoeheVorher.current = null;
+    if (heightBefore.current !== null) {
+      el.scrollTop += el.scrollHeight - heightBefore.current;
+      heightBefore.current = null;
       return;
     }
-    if (erstesBild.current) {
+    if (firstImage.current) {
       // Standing at the bottom, not travelling there: an animation over fifty messages is
       // exactly the scrolling nobody asked for.
       el.scrollTop = el.scrollHeight;
-      erstesBild.current = false;
+      firstImage.current = false;
       return;
     }
     // Later only when one is standing down there anyway; otherwise reading further up
     // would be torn away by every answer.
-    const untenNah = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (untenNah) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [lastId, zustaende, aeltere.length]);
+    const belowNear = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (belowNear) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [lastId, states, aeltere.length]);
 
   return (
     <div className="flex h-[calc(100vh-16rem)] flex-col">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <p className="flex-1 text-sm text-muted">{tr("assistant_chat.einleitung")}</p>
-        <button onClick={() => setArchiv((v) => !v)}
-          className={BUTTON_KLEIN.neben}>
-          {archiv ? tr("assistant_chat.zurueck_zum_verlauf") : tr("assistant_chat.archiv_zeigen")}
+        <button onClick={() => setShowArchive((v) => !v)}
+          className={BUTTON_SMALL.secondary}>
+          {showArchive ? tr("assistant_chat.zurueck_zum_verlauf") : tr("assistant_chat.archiv_zeigen")}
         </button>
-        {!archiv && messages.length > 0 && (
-          <button onClick={() => allArchivieren.mutate()} disabled={allArchivieren.isPending}
-            className={BUTTON_KLEIN.neben}>
+        {!showArchive && messages.length > 0 && (
+          <button onClick={() => allArchive.mutate()} disabled={allArchive.isPending}
+            className={BUTTON_SMALL.secondary}>
             {tr("assistant_chat.verlauf_archivieren")}
           </button>
         )}
@@ -136,17 +136,17 @@ export default function AssistantChat() {
       {err && <div className="mb-2 rounded bg-red-500/10 px-3 py-2 text-sm text-red-400">{err}</div>}
 
       <div ref={listingRef} className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-line bg-surface p-3">
-        {mehr && (
+        {more && (
           <div className="flex justify-center">
-            <button onClick={aeltereLaden}
-              className={BUTTON_KLEIN.neben}>
+            <button onClick={loadOlder}
+              className={BUTTON_SMALL.secondary}>
               {tr("assistant_chat.aeltere_laden")}
             </button>
           </div>
         )}
         {messages.length === 0 && (
           <div className="p-6 text-center text-sm text-muted">
-            {archiv ? tr("assistant_chat.archiv_leer") : tr("assistant_chat.leer")}
+            {showArchive ? tr("assistant_chat.archiv_leer") : tr("assistant_chat.leer")}
           </div>
         )}
         {messages.map((m) => (
@@ -155,10 +155,10 @@ export default function AssistantChat() {
               {/* Archiving hangs off the message, because that is what one is looking at. */}
               {!RUNNING.includes(m.status) && (
                 <button
-                  onClick={() => archivieren.mutate(m.id)}
-                  title={archiv ? tr("assistant_chat.zurueckholen") : tr("assistant_chat.archivieren")}
+                  onClick={() => archive.mutate(m.id)}
+                  title={showArchive ? tr("assistant_chat.zurueckholen") : tr("assistant_chat.archivieren")}
                   className="mt-1 text-xs text-muted opacity-0 transition-opacity hover:text-ink group-hover:opacity-100">
-                  {archiv ? "↩" : "🗄"}
+                  {showArchive ? "↩" : "🗄"}
                 </button>
               )}
               <div className="max-w-[80%] rounded-lg rounded-br-sm bg-brand px-3 py-2 text-sm text-white whitespace-pre-wrap">
@@ -173,7 +173,7 @@ export default function AssistantChat() {
                     <div className="flex gap-1">
                       {(["once", "always", "never"] as const).map((d) => (
                         <button key={d} onClick={() => decide.mutate({ id: m.id, decision: d })}
-                          className={BUTTON_KLEIN.neben}>
+                          className={BUTTON_SMALL.secondary}>
                           {d === "once" ? "Einmal" : d === "always" ? "Immer" : "Nie"}</button>
                       ))}
                     </div>
@@ -197,7 +197,7 @@ export default function AssistantChat() {
           placeholder={tr("assistant_chat.nachricht_an_den_assistenten")}
           className="flex-1 rounded border border-line bg-card px-3 py-2 text-ink outline-none" />
         <button type="submit" disabled={send.isPending || !input.trim()}
-          className={BUTTON.haupt}>{tr("assistant_chat.senden")}</button>
+          className={BUTTON.primary}>{tr("assistant_chat.senden")}</button>
       </form>
     </div>
   );

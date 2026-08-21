@@ -216,7 +216,7 @@ const HAIR_COLORS = 8;
 
 // ── The appearance seed: what the role determines ────────────────────────────
 
-const SALT_ROLLE = 0x524f4c4c;  // "ROLL"
+const SALT_ROLE = 0x524f4c4c;  // "ROLL"
 
 /**
  * The seed the **appearance** comes from, not to be confused with `ActorState.seed`, which
@@ -235,8 +235,8 @@ const SALT_ROLLE = 0x524f4c4c;  // "ROLL"
  * alike; and because `role === seed` hits exactly the old salts again, the role-less case is
  * bit identical to the previous behaviour.
  */
-export function rollenSeed(role: string, seed: number): number {
-  return role ? mix(hash32(role), SALT_ROLLE) : seed;
+export function rolesSeed(role: string, seed: number): number {
+  return role ? mix(hash32(role), SALT_ROLE) : seed;
 }
 
 /**
@@ -264,16 +264,16 @@ export function rollenSeed(role: string, seed: number): number {
  * linearly, so twelve `developer` would otherwise get twelve **consecutive** seats and the left
  * bench would be a monoculture.
  */
-export function lookOf(seed: number, rolle: number): Look {
+export function lookOf(seed: number, role: number): Look {
   return {
     head: mix(seed, SALT_HEAD) % 3,
     hair: mix(seed, SALT_HAIR) % HAIR_SHAPES,
-    torso: mix(rolle, SALT_TORSO) % 3,
+    torso: mix(role, SALT_TORSO) % 3,
     arms: mix(seed, SALT_ARMS) % 4,
     legs: mix(seed, SALT_LEGS) % 4,
     skin: "skin" + (mix(seed, SALT_SKIN) % 6),
-    hairCol: "hair" + (mix(rolle, SALT_HAIRC) % HAIR_COLORS),
-    shirtCol: "shirt" + (mix(rolle, SALT_SHIRT) % 8),
+    hairCol: "hair" + (mix(role, SALT_HAIRC) % HAIR_COLORS),
+    shirtCol: "shirt" + (mix(role, SALT_SHIRT) % 8),
     pantsCol: "pants" + (mix(seed, SALT_PANTS) % 5),
   };
 }

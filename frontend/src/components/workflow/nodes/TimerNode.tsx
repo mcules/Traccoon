@@ -9,10 +9,10 @@ import { BaseNode, type FlowNodeProps } from "./shared";
  */
 export default function TimerNode({ id, data, selected }: FlowNodeProps) {
   const cfg = data.config;
-  const text = cfg.bis
-    ? `bis ${cfg.bis}`
-    : `${cfg.dauer ?? "?"} ${{ s: "Sek.", m: "Min.", h: "Std.", t: "Tage" }[
-        (cfg.einheit as string) || "m"
+  const text = cfg.to
+    ? `bis ${cfg.to}`
+    : `${cfg.duration ?? "?"} ${{ s: "Sek.", m: "Min.", h: "Std.", t: "Tage" }[
+        (cfg.unit as string) || "m"
       ] || "Min."}`;
   return (
     <BaseNode
@@ -22,7 +22,7 @@ export default function TimerNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-amber-400"
       selected={selected}
       runtimeState={data.runtimeState}
-      aus={!!data.config.deaktiviert}
+      from={!!data.config.disabled}
       sources={[{ id: "out" }]}
     >
       <div>{text}</div>

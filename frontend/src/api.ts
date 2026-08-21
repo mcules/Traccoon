@@ -29,7 +29,7 @@ export class ApiError extends Error {
  * im Speicher der Anwendung. Genau deshalb kam beim Klick auf einen Anhang „Not
  * authenticated" statt der Datei.
  */
-export async function holeFile(path: string): Promise<{ blob: Blob; typ: string }> {
+export async function fetchFile(path: string): Promise<{ blob: Blob; kind: string }> {
   const token = getToken();
   const res = await fetch(`/api${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -40,7 +40,7 @@ export async function holeFile(path: string): Promise<{ blob: Blob; typ: string 
   }
   if (!res.ok) throw new ApiError(res.status, res.statusText);
   const blob = await res.blob();
-  return { blob, typ: res.headers.get("Content-Type") || blob.type || "application/octet-stream" };
+  return { blob, kind: res.headers.get("Content-Type") || blob.type || "application/octet-stream" };
 }
 
 export async function request<T = any>(
@@ -69,7 +69,7 @@ export async function request<T = any>(
       // a key this language does not carry.
       if (typeof j.key === "string") {
         key = j.key;
-        detail = trKnown(j.key, j.werte) ?? detail;
+        detail = trKnown(j.key, j.values) ?? detail;
       }
     } catch {
       /* ignore */
@@ -88,7 +88,7 @@ async function upload<T = any>(path: string, file: File): Promise<T> {
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`/api${path}`, { method: "POST", headers, body: fd });
-  if (!res.ok) throw await errorAus(res);
+  if (!res.ok) throw await errorFrom(res);
   return res.json();
 }
 
@@ -98,7 +98,7 @@ async function upload<T = any>(path: string, file: File): Promise<T> {
  * Ohne das stand beim Hochladen nur "Bad Request" — die Auskunft, welche Datei im Zip fehlt,
  * blieb im Rumpf liegen.
  */
-async function errorAus(res: Response): Promise<ApiError> {
+async function errorFrom(res: Response): Promise<ApiError> {
   let detail = res.statusText;
   let key: string | undefined;
   try {
@@ -106,7 +106,7 @@ async function errorAus(res: Response): Promise<ApiError> {
     if (typeof j.detail === "string") detail = j.detail;
     if (typeof j.key === "string") {
       key = j.key;
-      detail = trKnown(j.key, j.werte) ?? detail;
+      detail = trKnown(j.key, j.values) ?? detail;
     }
   } catch {
     /* keine JSON-Antwort */
@@ -298,7 +298,7 @@ export interface Series {
   has_token: boolean;
 }
 
-export interface Ort {
+export interface Place {
   id: number;
   key: string;
   name: string;
@@ -327,7 +327,7 @@ export const seriesApi = {
   points: (key: string, q = "") =>
     api.get<{ series: Series; points: any[] }>(`/series/${encodeURIComponent(key)}/points${q}`),
   /** Ein frisches Token — das alte gilt danach nicht mehr. */
-  neuesToken: (key: string) =>
+  newToken: (key: string) =>
     api.post<{ token: string; path: string }>(`/series/${encodeURIComponent(key)}/token`, {}),
   token: (key: string) =>
     api.get<{ token: string; path: string }>(`/series/${encodeURIComponent(key)}/token`),
@@ -336,18 +336,18 @@ export const seriesApi = {
     api.post<Grant>(`/series/${encodeURIComponent(key)}/shares`, body),
   unshare: (key: string, id: number) =>
     api.del(`/series/${encodeURIComponent(key)}/shares/${id}`),
-  orte: () => api.get<Ort[]>("/places"),
-  ortAnlegen: (body: Record<string, any>) => api.post<Ort>("/places", body),
-  ortAendern: (id: number, body: Record<string, any>) => api.put<Ort>(`/places/${id}`, body),
-  ortLoeschen: (id: number) => api.del(`/places/${id}`),
+  places: () => api.get<Place[]>("/places"),
+  placeCreate: (body: Record<string, any>) => api.post<Place>("/places", body),
+  placeChange: (id: number, body: Record<string, any>) => api.put<Place>(`/places/${id}`, body),
+  placeDelete: (id: number) => api.del(`/places/${id}`),
 };
 
 // ---------- Plugins ----------
 
 /** Was ein Plugin beitraegt: bisher nur Seiten, mehr braucht es noch nicht. */
-export interface PluginBeitrag {
-  typ: "seite";
-  pfad: string;
+export interface PluginContribution {
+  kind: "seite";
+  path: string;
   label: string;
   icon?: string;
 }
@@ -358,13 +358,13 @@ export interface PluginInfo {
   version: string;
   icon: string;
   entry: string;
-  contributions: PluginBeitrag[];
+  contributions: PluginContribution[];
   /** Rights the manifest declares — and those a human has granted of them. */
   reads: string[];
   reads_granted: string[];
 }
 
-export interface PluginVerwaltung extends PluginInfo {
+export interface PluginAdmin extends PluginInfo {
   description: string;
   enabled: boolean;
   all_users: boolean;
@@ -375,16 +375,16 @@ export interface PluginVerwaltung extends PluginInfo {
 
 export const pluginApi = {
   /** Was dieser Mensch sehen darf (eingeschaltet und fuer ihn freigegeben). */
-  meine: () => api.get<PluginInfo[]>("/plugins"),
+  my: () => api.get<PluginInfo[]>("/plugins"),
   /** Alles, auch Abgeschaltetes — die Sicht der Verwaltung. */
-  alle: () => api.get<PluginVerwaltung[]>("/plugins/alle"),
-  rechte: (slug: string, body: {
+  all: () => api.get<PluginAdmin[]>("/plugins/alle"),
+  rights: (slug: string, body: {
     reads_granted?: string[]; enabled?: boolean;
     all_users?: boolean; allowed_user_ids?: number[];
-  }) => api.put<PluginVerwaltung>(`/plugins/${slug}/rechte`, body),
+  }) => api.put<PluginAdmin>(`/plugins/${slug}/rechte`, body),
   del: (slug: string) => api.del(`/plugins/${slug}`),
   /** Zip hochladen; Manifest und Dateien wertet der Server aus. */
-  hochladen: (file: File) => upload<{ slug: string; files: number }>("/plugins", file),
+  upload: (file: File) => upload<{ slug: string; files: number }>("/plugins", file),
 };
 
 // ---------- Deployments ----------
@@ -395,7 +395,7 @@ export const pluginApi = {
 /** Filter of the read API. `other` = everything that neither runs nor is ok/failed (above all `cancelled`). */
 export type GraphSave = {
   result: "layout" | "entwurf" | "neuer_entwurf";
-  hinweis: string;
+  hint: string;
   version: WfVer;
 };
 
@@ -487,21 +487,21 @@ export const workflowApi = {
   webhookGet: (id: number) => api.get<WfWebhook | null>(`/workflows/${id}/webhook`),
   webhookCreate: (id: number) => api.post<WfWebhook>(`/workflows/${id}/webhook`, {}),
   /** Play the flow through without anything happening (draft version). */
-  probelauf: (id: number, context: Record<string, unknown>, graph?: unknown) =>
+  dryrun: (id: number, context: Record<string, unknown>, graph?: unknown) =>
     api.post<{ status: string; error?: string | null;
                steps: { node_id: string; node_type: string; status: string;
                         decision?: string | null; result?: Record<string, any> | null;
                         error?: string | null }[] }>(`/workflows/${id}/dry-run`, { context, graph }),
   /** Have a flow drawn from a description (saves nothing). */
-  entwurf: (id: number, description: string, graph?: unknown) =>
-    api.post<{ graph: { nodes: any[]; edges: any[] }; fehler: string[]; erklaerung: string }>(
-      `/workflows/${id}/draft`, { beschreibung: description, graph }),
+  draft: (id: number, description: string, graph?: unknown) =>
+    api.post<{ graph: { nodes: any[]; edges: any[] }; error: string[]; explanation: string }>(
+      `/workflows/${id}/draft`, { description: description, graph }),
   /** Which context fields exist, per trigger, action and node type (for the editor). */
-  contextFields: () => api.get<import("./components/workflow/contextFields").ContextKatalog>(
+  contextFields: () => api.get<import("./components/workflow/contextFields").ContextCatalog>(
     "/workflow-context-fields"),
   /** Finished flows to copy (the description, not the graph). */
   templates: () => api.get<{ key: string; name: string; description: string;
-                             subject_kind: WfSubject; hinweis: string }[]>("/workflow-templates"),
+                             subject_kind: WfSubject; hint: string }[]>("/workflow-templates"),
   create: (body: {
     project_id?: number | null; key: string; name: string;
     description?: string; subject_kind: WfSubject; template?: string;
@@ -520,8 +520,8 @@ export const workflowApi = {
   saveGraph: (id: number, body: { graph: WfGraph; notes?: string }) =>
     api.put<GraphSave>(`/workflows/${id}/graph`, body),
   discardDraft: (id: number) => api.del(`/workflows/${id}/draft`),
-  diff: (id: number, vid: number, gegen?: number) =>
-    api.get<WfDiff>(`/workflows/${id}/versions/${vid}/diff${gegen ? `?against=${gegen}` : ""}`),
+  diff: (id: number, vid: number, against?: number) =>
+    api.get<WfDiff>(`/workflows/${id}/versions/${vid}/diff${against ? `?against=${against}` : ""}`),
   validate: (id: number, vid: number) =>
     api.post<{ ok: boolean; errors: string[] }>(`/workflows/${id}/versions/${vid}/validate`),
   publish: (id: number, vid: number) => api.post<WfVer>(`/workflows/${id}/versions/${vid}/publish`),
@@ -578,16 +578,16 @@ export interface ProcSlot {
   slot: string; name: string; description: string; subject_kind: WfSubject;
   definition_id: number | null; definition_name: string | null;
   version: number | null; published: boolean; updated_at: string | null;
-  abweichungen: ProcDeviation[];
+  deviations: ProcDeviation[];
 }
 
-export interface ProcLauf {
+export interface ProcRun {
   id: number; definition_id: number; definition_name: string; slot: string | null;
   project_id: number | null; project_key: string | null;
   subject_kind: WfSubject; subject_ref: string | null;
   status: "running" | "waiting" | "completed" | "failed" | "cancelled";
   node_label: string | null; waiting_for: string | null;
-  seit: string | null; stunden: number | null; haengt: boolean;
+  since: string | null; hours: number | null; hangs: boolean;
   error: string | null; started_at: string;
 }
 
@@ -598,7 +598,7 @@ export interface ProcTrigger {
   source: string; label: string; only_project_id: number | null; enabled: boolean;
 }
 
-export interface ProcEreignis { event: string; label: string; listeners: number }
+export interface ProcEvent { event: string; label: string; listeners: number }
 
 export const processApi = {
   slots: (setId?: number) =>
@@ -608,8 +608,8 @@ export const processApi = {
     if (opts?.includeDone) q.set("include_done", "true");
     if (opts?.onlyStuck) q.set("only_stuck", "true");
     const s = q.toString();
-    return api.get<ProcLauf[]>(`/processes/running${s ? `?${s}` : ""}`);
+    return api.get<ProcRun[]>(`/processes/running${s ? `?${s}` : ""}`);
   },
   triggers: () => api.get<ProcTrigger[]>("/processes/triggers"),
-  events: () => api.get<ProcEreignis[]>("/processes/events"),
+  events: () => api.get<ProcEvent[]>("/processes/events"),
 };

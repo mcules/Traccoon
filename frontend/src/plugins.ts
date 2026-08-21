@@ -13,7 +13,7 @@ import type { NavEntry } from "./nav";
 export function usePlugins(): PluginInfo[] {
   const { data } = useQuery({
     queryKey: ["plugins", "meine"],
-    queryFn: () => pluginApi.meine(),
+    queryFn: () => pluginApi.my(),
     staleTime: 60_000,
   });
   return data ?? [];
@@ -24,15 +24,15 @@ export function pluginNav(plugins: PluginInfo[]): NavEntry[] {
   const out: NavEntry[] = [];
   for (const p of plugins) {
     for (const b of p.contributions || []) {
-      if (b.typ !== "seite") continue;
+      if (b.kind !== "seite") continue;
       // Mehrere Seiten eines Plugins landen als Anker hinter derselben Adresse: Der Wirt
       // reicht ihn an das iframe weiter, und das Plugin entscheidet selbst, was es zeigt.
-      const anker = (b.pfad || "").replace(/^\//, "");
+      const anchor = (b.path || "").replace(/^\//, "");
       out.push({
-        key: `plugin:${p.slug}:${anker}`,
+        key: `plugin:${p.slug}:${anchor}`,
         label: b.label || p.name,
         icon: b.icon || p.icon || "\u{1F9E9}",
-        to: anker ? `/p/${p.slug}#${anker}` : `/p/${p.slug}`,
+        to: anchor ? `/p/${p.slug}#${anchor}` : `/p/${p.slug}`,
       });
     }
   }

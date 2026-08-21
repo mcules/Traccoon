@@ -1,14 +1,14 @@
 import { tr } from "../i18n";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, holeFile } from "../api";
+import { api, ApiError, fetchFile } from "../api";
 import { usePageChrome } from "../pageChrome";
 import { useAuth } from "../auth";
 import { formatDateTime } from "../lib/formatTime";
-import { KontoDialog, type MailKonto, type MailIdentity } from "../components/MailKontenPanel";
+import { AccountDialog, type MailAccount, type MailIdentity } from "../components/MailKontenPanel";
 import {
-  Area, ConfirmDialog, Dialog, DialogFuss, INPUT_VALUE, Etikett, Field, Fehlerzeile,
-  IconButton, Button, BUTTON, Listing, ListingLeer, ListenLine, Reiter, Zeilenknopf, BUTTON_TEXT} from "../components/ui";
+  Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
+  IconButton, Button, BUTTON, Listing, ListingEmpty, ListenLine, Tab, Rowbutton, BUTTON_TEXT} from "../components/ui";
 
 /**
  * Das Postfach.
@@ -23,11 +23,11 @@ interface Header {
   uid: number; subject: string; from: string; date: string; size: number;
   seen: boolean; flagged: boolean; answered: boolean; has_attachment: boolean;
 }
-interface Adresse { name: string; addr: string }
+interface Address { name: string; addr: string }
 interface Attachment { index: number; filename: string; content_type: string; size: number }
 interface Message {
-  uid: number; folder: string; subject: string; from: Adresse[]; to: Adresse[]; cc: Adresse[];
-  reply_to: Adresse[];
+  uid: number; folder: string; subject: string; from: Address[]; to: Address[]; cc: Address[];
+  reply_to: Address[];
   date: string; message_id: string; text: string; html: string; remote_images: boolean;
   attachments: Attachment[]; seen: boolean; flagged: boolean;
 }
@@ -37,7 +37,7 @@ interface Folder {
 }
 interface Action { definition_id: number; key: string; name: string; description: string; scope: string }
 
-const SONDER: Record<string, string> = {
+const SPECIAL: Record<string, string> = {
   sent: "📤", drafts: "📝", trash: "🗑", junk: "🚫", archive: "📦",
 };
 
@@ -45,20 +45,20 @@ export default function Mail() {
   usePageChrome("Mail", []);
   const qc = useQueryClient();
   const { user } = useAuth();
-  const [kontoId, setKontoId] = useState<number | null>(null);
+  const [accountId, setAccountId] = useState<number | null>(null);
   const [folder, setFolder] = useState("INBOX");
   const [uid, setUid] = useState<number | null>(null);
-  const [suche, setSuche] = useState("");
+  const [search, setSearch] = useState("");
   const [question, setQuestion] = useState("");
   const [err, setErr] = useState("");
-  const [verfassen, setVerfassen] = useState<null | Record<string, string>>(null);
-  const [settings, setSettings] = useState<MailKonto | null>(null);
+  const [compose, setCompose] = useState<null | Record<string, string>>(null);
+  const [settings, setSettings] = useState<MailAccount | null>(null);
 
-  const { data: konten } = useQuery({
-    queryKey: ["mail-accounts"], queryFn: () => api.get<MailKonto[]>("/mailbox/accounts") });
+  const { data: accounts } = useQuery({
+    queryKey: ["mail-accounts"], queryFn: () => api.get<MailAccount[]>("/mailbox/accounts") });
   // So one can see where mail waits without going in. Asked rarely: behind it sits one
   // Postfach eine IMAP-Verbindung.
-  const { data: ungelesen } = useQuery({
+  const { data: unread } = useQuery({
     queryKey: ["mail-unread"],
     queryFn: () => api.get<{ accounts: { account_id: number; unseen: number | null }[] }>(
       "/mailbox/unread"),
@@ -67,29 +67,29 @@ export default function Mail() {
     refetchInterval: 60_000, refetchOnWindowFocus: true, retry: false,
   });
   useEffect(() => {
-    if (kontoId !== null || !konten?.length) return;
+    if (accountId !== null || !accounts?.length) return;
     // The mailbox opened last comes first — it is stored on the person and therefore applies
     // after a new login and on another machine as well.
-    const gemerkt = konten.find((k) => k.id === user?.mail_last_account_id);
-    setKontoId((gemerkt || konten.find((k) => k.enabled) || konten[0]).id);
-  }, [konten, kontoId, user]);
+    const noted = accounts.find((k) => k.id === user?.mail_last_account_id);
+    setAccountId((noted || accounts.find((k) => k.enabled) || accounts[0]).id);
+  }, [accounts, accountId, user]);
 
-  const kontoWechseln = (id: number) => {
-    setKontoId(id);
+  const accountSwitch = (id: number) => {
+    setAccountId(id);
     setFolder("INBOX");
     setUid(null);
     api.post(`/mailbox/accounts/${id}/last`, {}).catch(() => {/* Merken ist kein Muss */});
   };
 
   const { data: folderListing } = useQuery({
-    queryKey: ["mail-folders", kontoId], enabled: !!kontoId,
-    queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${kontoId}/folders?counts=true`),
+    queryKey: ["mail-folders", accountId], enabled: !!accountId,
+    queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${accountId}/folders?counts=true`),
     refetchInterval: 60_000, refetchOnWindowFocus: true,
   });
 
-  if (!konten?.length) {
+  if (!accounts?.length) {
     return (
-      <Area hinweis="Noch kein Postfach hinterlegt.">
+      <Area hint="Noch kein Postfach hinterlegt.">
         <p className="text-sm text-muted">
           Konten und Identitäten stehen im Konto unter <b>Mail-Konten</b>.
         </p>
@@ -99,15 +99,15 @@ export default function Mail() {
 
   return (
     <div className="space-y-3">
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
       {/* Eine Zeile für alles, was zum Postfach gehört: welches, seine Einstellungen, und
           die einzige Handlung, die nicht von einer Nachricht ausgeht. */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted">Postfach</span>
-        <select value={kontoId ?? ""} onChange={(e) => kontoWechseln(Number(e.target.value))}
+        <select value={accountId ?? ""} onChange={(e) => accountSwitch(Number(e.target.value))}
           className={`${INPUT_VALUE} max-w-[16rem]`}>
-          {konten.map((k) => {
-            const open = ungelesen?.accounts.find((a) => a.account_id === k.id)?.unseen;
+          {accounts.map((k) => {
+            const open = unread?.accounts.find((a) => a.account_id === k.id)?.unseen;
             return (
               <option key={k.id} value={k.id}>
                 {k.name}{k.enabled ? "" : " (aus)"}{open ? ` — ${open} neu` : ""}
@@ -115,44 +115,44 @@ export default function Mail() {
             );
           })}
         </select>
-        <IconButton icon="⟳" titel="Jetzt nachsehen"
+        <IconButton icon="⟳" title="Jetzt nachsehen"
           onClick={() => {
             qc.invalidateQueries({ queryKey: ["mail-unread"] });
             qc.invalidateQueries({ queryKey: ["mail-folders"] });
             qc.invalidateQueries({ queryKey: ["mail-list"] });
           }} />
-        <IconButton icon="⚙" titel="Einstellungen dieses Postfachs"
-          onClick={() => setSettings(konten.find((k) => k.id === kontoId) || null)} />
+        <IconButton icon="⚙" title="Einstellungen dieses Postfachs"
+          onClick={() => setSettings(accounts.find((k) => k.id === accountId) || null)} />
         {/* Die anderen Postfächer mit neuer Post — sichtbar, ohne das Auswahlfeld zu öffnen,
             und ein Klick springt hin. Wer nichts liegen hat, taucht hier nicht auf: eine
             Reihe von Nullen wäre keine Auskunft, sondern Tapete. */}
-        {konten.filter((k) => {
-          const open = ungelesen?.accounts.find((a) => a.account_id === k.id)?.unseen;
-          return k.id !== kontoId && !!open;
+        {accounts.filter((k) => {
+          const open = unread?.accounts.find((a) => a.account_id === k.id)?.unseen;
+          return k.id !== accountId && !!open;
         }).map((k) => (
-          <button key={k.id} onClick={() => kontoWechseln(k.id)}
+          <button key={k.id} onClick={() => accountSwitch(k.id)}
             title={`Zu „${k.name}" wechseln`}
             className="flex shrink-0 items-center gap-1.5 rounded border border-brand/40 bg-brand/15 px-2 py-1 text-xs text-brand transition-colors hover:bg-brand/25">
             {k.name}
             <span className="rounded-full bg-brand px-1.5 text-[11px] text-white tabular-nums">
-              {ungelesen?.accounts.find((a) => a.account_id === k.id)?.unseen}
+              {unread?.accounts.find((a) => a.account_id === k.id)?.unseen}
             </span>
           </button>
         ))}
         {/* Die Suche gehört zum Postfach, nicht zur Liste darunter: sie gilt für den ganzen
             Ordner und bleibt auch dann sichtbar, wenn rechts eine Nachricht offen ist. */}
-        <form onSubmit={(e) => { e.preventDefault(); setSuche(question); setUid(null); }}
+        <form onSubmit={(e) => { e.preventDefault(); setSearch(question); setUid(null); }}
               className="flex min-w-0 flex-1 items-center gap-2">
           <input value={question} onChange={(e) => setQuestion(e.target.value)}
             placeholder="Suchen (Volltext)" className={`${INPUT_VALUE} min-w-0 max-w-md flex-1`} />
-          {suche && (
-            <Zeilenknopf onClick={() => { setQuestion(""); setSuche(""); }}>
+          {search && (
+            <Rowbutton onClick={() => { setQuestion(""); setSearch(""); }}>
               zurücksetzen
-            </Zeilenknopf>
+            </Rowbutton>
           )}
         </form>
-        <button onClick={() => setVerfassen({})}
-          className={BUTTON.haupt}>
+        <button onClick={() => setCompose({})}
+          className={BUTTON.primary}>
           ✉️ Verfassen
         </button>
       </div>
@@ -168,43 +168,43 @@ export default function Mail() {
         <div className={`sm:shrink-0 ${uid === null ? "sm:w-48 lg:w-56" : "sm:w-72 lg:w-80"}`}>
           <div className="space-y-3">
             <Area>
-              <FolderBaum ordner={folderListing} aktiv={folder}
-                onWaehlen={(n) => { setFolder(n); setUid(null); setSuche(""); setQuestion(""); }} />
+              <FolderTree folder={folderListing} active={folder}
+                onChoose={(n) => { setFolder(n); setUid(null); setSearch(""); setQuestion(""); }} />
               {/* Handgriffe am GEWÄHLTEN Ordner. Sie stehen unter dem Baum und nicht in
                   jeder Zeile: gebraucht werden sie selten, und ein Löschknopf neben jedem
                   Ordner ist ein Löschknopf zu viel. */}
-              {kontoId && (
-                <FolderHandgriffe kontoId={kontoId} ordner={folder}
-                  onGeloescht={() => { setFolder("INBOX"); setUid(null); }}
-                  onFehler={setErr} />
+              {accountId && (
+                <FolderHandgrips accountId={accountId} folder={folder}
+                  onDeleted={() => { setFolder("INBOX"); setUid(null); }}
+                  onError={setErr} />
               )}
             </Area>
             {uid !== null && (
-              <MessagesListing kontoId={kontoId!} ordner={folder} suche={suche}
-                onOeffnen={setUid} onFehler={setErr} offen={uid} schmal />
+              <MessagesListing accountId={accountId!} folder={folder} search={search}
+                onOpen={setUid} onError={setErr} open={uid} narrow />
             )}
           </div>
         </div>
 
         <div className="min-w-0 flex-1 space-y-3">
           {uid === null ? (
-            <MessagesListing kontoId={kontoId!} ordner={folder} suche={suche}
-              onOeffnen={setUid} onFehler={setErr} />
+            <MessagesListing accountId={accountId!} folder={folder} search={search}
+              onOpen={setUid} onError={setErr} />
           ) : (
-            <Leseansicht kontoId={kontoId!} konto={konten.find((k) => k.id === kontoId)}
-              ordner={folder} uid={uid} onZurueck={() => setUid(null)}
-              onAntworten={(f) => setVerfassen(f)} onFehler={setErr} />
+            <Readview accountId={accountId!} account={accounts.find((k) => k.id === accountId)}
+              folder={folder} uid={uid} onBack={() => setUid(null)}
+              onReplies={(f) => setCompose(f)} onError={setErr} />
           )}
         </div>
       </div>
 
-      {verfassen && kontoId && (
-        <VerfassenDialog kontoId={kontoId} start={verfassen} onClose={() => setVerfassen(null)}
-          onFehler={setErr} />
+      {compose && accountId && (
+        <ComposeDialog accountId={accountId} start={compose} onClose={() => setCompose(null)}
+          onError={setErr} />
       )}
       {settings && (
-        <KontoSettings konto={settings} onClose={() => setSettings(null)}
-          onFehler={setErr} />
+        <AccountSettings account={settings} onClose={() => setSettings(null)}
+          onError={setErr} />
       )}
     </div>
   );
@@ -216,12 +216,12 @@ export default function Mail() {
  * Building it twice would mean maintaining it twice: folders, passwords and the archive
  * pattern belong together, no matter from which side one opens them.
  */
-function KontoSettings({ konto, onClose, onFehler: onError }: {
-  konto: MailKonto; onClose: () => void; onFehler: (m: string) => void;
+function AccountSettings({ account, onClose, onError: onError }: {
+  account: MailAccount; onClose: () => void; onError: (m: string) => void;
 }) {
   const qc = useQueryClient();
-  const speichern = useMutation({
-    mutationFn: (f: any) => api.put(`/mailbox/accounts/${konto.id}`, f),
+  const save = useMutation({
+    mutationFn: (f: any) => api.put(`/mailbox/accounts/${account.id}`, f),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["mail-accounts"] });
       qc.invalidateQueries({ queryKey: ["mail-folders"] });
@@ -230,9 +230,9 @@ function KontoSettings({ konto, onClose, onFehler: onError }: {
     onError: (e) => onError(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen"),
   });
   return (
-    <KontoDialog start={{ ...konto, imap_password: "", smtp_password: "" } as any}
-      fehler="" laeuft={speichern.isPending} onClose={onClose}
-      onSpeichern={(f) => speichern.mutate(f)} />
+    <AccountDialog start={{ ...account, imap_password: "", smtp_password: "" } as any}
+      error="" runs={save.isPending} onClose={onClose}
+      onSave={(f) => save.mutate(f)} />
   );
 }
 
@@ -245,16 +245,16 @@ function KontoSettings({ konto, onClose, onFehler: onError }: {
  * is the branch, not the access — a click on the parent folder opens it
  * trotzdem.
  */
-function FolderBaum({ ordner: folder, aktiv, onWaehlen }: {
-  ordner: Folder[] | undefined; aktiv: string; onWaehlen: (name: string) => void;
+function FolderTree({ folder: folder, active, onChoose }: {
+  folder: Folder[] | undefined; active: string; onChoose: (name: string) => void;
 }) {
   // Start collapsed: a grown mailbox has archives by year and mailing lists by sender, and one
   // does not want to see all of those when opening it. What one needs daily are the six
   // special folders — the rest is one click away.
-  const [auf, setAuf] = useState<Set<string>>(new Set());
-  if (!folder) return <Listing><ListingLeer>Ordner werden geladen…</ListingLeer></Listing>;
+  const [on, setOn] = useState<Set<string>>(new Set());
+  if (!folder) return <Listing><ListingEmpty>Ordner werden geladen…</ListingEmpty></Listing>;
 
-  const hatKinder = (o: Folder) => folder.some((k) => k.parent === o.name);
+  const hasChildren = (o: Folder) => folder.some((k) => k.parent === o.name);
   /**
    * Unread of a branch: the folder itself and everything below it.
    *
@@ -265,57 +265,57 @@ function FolderBaum({ ordner: folder, aktiv, onWaehlen }: {
    */
   const sum_total = (o: Folder): number => folder
     .filter((k) => k.parent === o.name)
-    .reduce((zahl, k) => zahl + sum_total(k), o.unseen || 0);
+    .reduce((number, k) => number + sum_total(k), o.unseen || 0);
   // Visible is whatever has all its ancestors expanded. The active folder always stays so —
   // otherwise what one is currently reading in would vanish from under one's feet.
   const visible = (o: Folder) => {
-    if (o.name === aktiv || !o.parent) return true;
-    let eltern = o.parent;
-    while (eltern) {
-      if (!auf.has(eltern)) return false;
-      eltern = folder.find((k) => k.name === eltern)?.parent || "";
+    if (o.name === active || !o.parent) return true;
+    let parent = o.parent;
+    while (parent) {
+      if (!on.has(parent)) return false;
+      parent = folder.find((k) => k.name === parent)?.parent || "";
     }
     return true;
   };
-  const umschalten = (name: string) => {
-    const fresh = new Set(auf);
+  const toggle = (name: string) => {
+    const fresh = new Set(on);
     fresh.has(name) ? fresh.delete(name) : fresh.add(name);
-    setAuf(fresh);
+    setOn(fresh);
   };
 
   return (
     <Listing>
       {folder.filter(visible).map((o) => (
-        <ListenLine key={o.name} dicht onClick={() => onWaehlen(o.name)}>
+        <ListenLine key={o.name} dense onClick={() => onChoose(o.name)}>
           {/* Feste Spalten statt Flex mit Platzhaltern: nur so steht das Ordnersymbol jeder
               Zeile an derselben Stelle, egal ob davor ein Klapp-Pfeil sitzt oder nicht. */}
           <div className="grid grid-cols-[0.75rem_1.25rem_minmax(0,1fr)_auto] items-center gap-1.5"
                style={{ paddingLeft: `${o.level * 0.85}rem` }}>
-            {hatKinder(o) ? (
-              <button onClick={(e) => { e.stopPropagation(); umschalten(o.name); }}
-                className={BUTTON_TEXT.neben}
-                title={auf.has(o.name) ? "zuklappen" : "aufklappen"}>
-                {auf.has(o.name) ? "▼" : "▶"}
+            {hasChildren(o) ? (
+              <button onClick={(e) => { e.stopPropagation(); toggle(o.name); }}
+                className={BUTTON_TEXT.secondary}
+                title={on.has(o.name) ? "zuklappen" : "aufklappen"}>
+                {on.has(o.name) ? "▼" : "▶"}
               </button>
             ) : <span />}
-            <span className="text-center leading-none">{SONDER[o.special] || "📁"}</span>
+            <span className="text-center leading-none">{SPECIAL[o.special] || "📁"}</span>
             <span className={`min-w-0 truncate ${
-              o.name === aktiv ? "font-medium text-brand"
+              o.name === active ? "font-medium text-brand"
                 : sum_total(o) ? "font-medium text-ink" : ""}`}>
               {o.display}
             </span>
             {(() => {
-              const zu = hatKinder(o) && !auf.has(o.name);
-              const zahl = zu ? sum_total(o) : o.unseen;
-              if (!zahl) return <span />;
+              const to = hasChildren(o) && !on.has(o.name);
+              const number = to ? sum_total(o) : o.unseen;
+              if (!number) return <span />;
               // Collapsed and something only in the children: the count belongs to the branch,
               // not to the folder — shown more quietly so one sees the difference.
-              const nurKinder = zu && !o.unseen;
+              const onlyChildren = to && !o.unseen;
               return (
-                <Etikett farbe={nurKinder ? "neutral" : "brand"}
-                  titel={nurKinder ? "in Unterordnern" : "ungelesen"}>
-                  {zahl}
-                </Etikett>
+                <Tag color={onlyChildren ? "neutral" : "brand"}
+                  title={onlyChildren ? "in Unterordnern" : "ungelesen"}>
+                  {number}
+                </Tag>
               );
             })()}
           </div>
@@ -326,58 +326,58 @@ function FolderBaum({ ordner: folder, aktiv, onWaehlen }: {
 }
 
 /** What one can do with a whole folder — both with a confirmation, both rare. */
-function FolderHandgriffe({ kontoId, ordner: folder, onGeloescht, onFehler: onError }: {
-  kontoId: number; ordner: string; onGeloescht: () => void; onFehler: (m: string) => void;
+function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onError }: {
+  accountId: number; folder: string; onDeleted: () => void; onError: (m: string) => void;
 }) {
   const qc = useQueryClient();
   const [question, setQuestion] = useState<"gelesen" | "loeschen" | null>(null);
   const [notice, setNotice] = useState("");
-  const schiefgelaufen = (was: string) => (e: unknown) =>
+  const gonewrong = (was: string) => (e: unknown) =>
     onError(e instanceof ApiError ? e.message : `${was} fehlgeschlagen`);
-  const auffrischen = () => {
+  const refresh = () => {
     qc.invalidateQueries({ queryKey: ["mail-folders"] });
     qc.invalidateQueries({ queryKey: ["mail-list"] });
   };
 
-  const gelesen = useMutation({
+  const read = useMutation({
     mutationFn: () => api.post<{ marked: number }>(
-      `/mailbox/accounts/${kontoId}/folders/read-all`, { folder: folder }),
+      `/mailbox/accounts/${accountId}/folders/read-all`, { folder: folder }),
     onSuccess: (r) => {
       setQuestion(null);
       setNotice(r.marked ? `${r.marked} Nachrichten als gelesen markiert` : "Nichts war ungelesen");
-      auffrischen();
+      refresh();
     },
-    onError: (e) => { setQuestion(null); schiefgelaufen("Markieren")(e); },
+    onError: (e) => { setQuestion(null); gonewrong("Markieren")(e); },
   });
   const remove = useMutation({
-    mutationFn: () => api.post(`/mailbox/accounts/${kontoId}/folders/delete`, { folder: folder }),
-    onSuccess: () => { setQuestion(null); auffrischen(); onGeloescht(); },
-    onError: (e) => { setQuestion(null); schiefgelaufen("Löschen")(e); },
+    mutationFn: () => api.post(`/mailbox/accounts/${accountId}/folders/delete`, { folder: folder }),
+    onSuccess: () => { setQuestion(null); refresh(); onDeleted(); },
+    onError: (e) => { setQuestion(null); gonewrong("Löschen")(e); },
   });
 
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <Zeilenknopf onClick={() => setQuestion("gelesen")}>✓ Alle gelesen</Zeilenknopf>
-        <Zeilenknopf gefahr onClick={() => setQuestion("loeschen")}>🗑 Ordner löschen</Zeilenknopf>
+        <Rowbutton onClick={() => setQuestion("gelesen")}>✓ Alle gelesen</Rowbutton>
+        <Rowbutton danger onClick={() => setQuestion("loeschen")}>🗑 Ordner löschen</Rowbutton>
       </div>
       {notice && <div className="text-xs text-green-400">{notice}</div>}
 
       {question === "gelesen" && (
         <ConfirmDialog
-          titel="Alle als gelesen markieren?"
+          title="Alle als gelesen markieren?"
           text={`Alles Ungelesene in „${folder}" wird auf gelesen gesetzt.`}
-          hinweis="Rückgängig geht das nur Nachricht für Nachricht."
-          gefahr={false} bestaetigenText="Markieren" laeuft={gelesen.isPending}
-          onClose={() => setQuestion(null)} onBestaetigen={() => gelesen.mutate()} />
+          hint="Rückgängig geht das nur Nachricht für Nachricht."
+          danger={false} confirmText="Markieren" runs={read.isPending}
+          onClose={() => setQuestion(null)} onConfirm={() => read.mutate()} />
       )}
       {question === "loeschen" && (
         <ConfirmDialog
-          titel={`Ordner „${folder}" löschen?`}
+          title={`Ordner „${folder}" löschen?`}
           text="Der Ordner und alles darin verschwindet — auf dem Server, nicht nur hier."
-          hinweis="Das ist endgültig. Sonderordner (Posteingang, Gesendet, Entwürfe, Papierkorb, Spam) sind geschützt."
-          bestaetigenText="Endgültig löschen" laeuft={remove.isPending}
-          onClose={() => setQuestion(null)} onBestaetigen={() => remove.mutate()} />
+          hint="Das ist endgültig. Sonderordner (Posteingang, Gesendet, Entwürfe, Papierkorb, Spam) sind geschützt."
+          confirmText="Endgültig löschen" runs={remove.isPending}
+          onClose={() => setQuestion(null)} onConfirm={() => remove.mutate()} />
       )}
     </>
   );
@@ -391,13 +391,13 @@ function FolderHandgriffe({ kontoId, ordner: folder, onGeloescht, onFehler: onEr
  * nothing be loaded. Remote images hang in the mail as `data-fern` and become `src` only on a
  * click — a loaded image is a signal back to the sender that it was read.
  */
-function HtmlAnsicht({ html, fernbilder }: { html: string; fernbilder: boolean }) {
-  const [bilder, setBilder] = useState(false);
-  const inhalt = bilder ? html.replace(/data-fern="/g, 'src="') : html;
-  const richtlinie = "default-src 'none'; style-src 'unsafe-inline'; font-src data:; "
-    + (bilder ? "img-src data: https:;" : "img-src data:;");
-  const dokument = `<!doctype html><html><head>
-      <meta http-equiv="Content-Security-Policy" content="${richtlinie}">
+function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean }) {
+  const [images, setImages] = useState(false);
+  const content = images ? html.replace(/data-fern="/g, 'src="') : html;
+  const policy = "default-src 'none'; style-src 'unsafe-inline'; font-src data:; "
+    + (images ? "img-src data: https:;" : "img-src data:;");
+  const document = `<!doctype html><html><head>
+      <meta http-equiv="Content-Security-Policy" content="${policy}">
       <base target="_blank">
       <style>
         body { font: 14px/1.5 system-ui, sans-serif; color: #c9d1d9; background: #0d1117;
@@ -405,45 +405,45 @@ function HtmlAnsicht({ html, fernbilder }: { html: string; fernbilder: boolean }
         a { color: #58a6ff; } img { max-width: 100%; height: auto; }
         table { max-width: 100%; } blockquote { border-left: 2px solid #30363d;
                margin: 0; padding-left: 12px; color: #8b949e; }
-      </style></head><body>${inhalt}</body></html>`;
+      </style></head><body>${content}</body></html>`;
 
   return (
     <div className="space-y-2">
-      {fernbilder && !bilder && (
+      {remoteimages && !images && (
         <div className="flex flex-wrap items-center gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
           Bilder von fremden Servern wurden nicht geladen — das würde dem Absender verraten,
           dass du die Mail gelesen hast.
-          <Zeilenknopf onClick={() => setBilder(true)}>Bilder laden</Zeilenknopf>
+          <Rowbutton onClick={() => setImages(true)}>Bilder laden</Rowbutton>
         </div>
       )}
       <iframe
         title="Nachricht"
         sandbox="allow-popups allow-popups-to-escape-sandbox"
-        srcDoc={dokument}
+        srcDoc={document}
         className="h-[60vh] w-full rounded border border-line bg-surface"
       />
     </div>
   );
 }
 
-function MessagesListing({ kontoId, ordner: folder, suche, onOeffnen: onOpen_it, onFehler: onError,
-                           offen: open, schmal = false }: {
-  kontoId: number; ordner: string; suche: string;
-  onOeffnen: (uid: number) => void; onFehler: (m: string) => void;
-  offen?: number; schmal?: boolean;
+function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it, onError: onError,
+                           open: open, narrow = false }: {
+  accountId: number; folder: string; search: string;
+  onOpen: (uid: number) => void; onError: (m: string) => void;
+  open?: number; narrow?: boolean;
 }) {
   const [page, setPage] = useState(0);
   const limit = 50;
-  useEffect(() => { setPage(0); }, [folder, suche]);
+  useEffect(() => { setPage(0); }, [folder, search]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["mail-list", kontoId, folder, suche, page],
+    queryKey: ["mail-list", accountId, folder, search, page],
     queryFn: () => api.get<{ total: number; messages: Header[] }>(
-      `/mailbox/accounts/${kontoId}/messages?folder=${encodeURIComponent(folder)}`
-      + `&q=${encodeURIComponent(suche)}&offset=${page * limit}&limit=${limit}`),
+      `/mailbox/accounts/${accountId}/messages?folder=${encodeURIComponent(folder)}`
+      + `&q=${encodeURIComponent(search)}&offset=${page * limit}&limit=${limit}`),
     // Not before an account is picked: `kontoId` is null on the first render, and the
     // request went out as `accounts/null/messages` — a 422 on every visit to the page.
-    enabled: !!kontoId,
+    enabled: !!accountId,
     // New mail should turn up in the list, not only in the counter next to it.
     refetchInterval: 60_000, refetchOnWindowFocus: true,
   });
@@ -453,28 +453,28 @@ function MessagesListing({ kontoId, ordner: folder, suche, onOeffnen: onOpen_it,
 
   return (
     <Area
-      titel={folder}
-      werkzeuge={<>
-        {suche && <Etikett farbe="brand">Suche: {suche}</Etikett>}
+      title={folder}
+      tools={<>
+        {search && <Tag color="brand">Suche: {search}</Tag>}
         <div className="flex-1" />
         <span className="text-xs text-muted">
-          {data?.total ?? 0} {suche ? "Treffer" : "Nachrichten"}
+          {data?.total ?? 0} {search ? "Treffer" : "Nachrichten"}
         </span>
       </>}
     >
       {/* Schmal heißt: die Liste steht neben der geöffneten Mail und scrollt für sich. Ohne
           eigene Höhe würde die Seite so lang wie das Postfach. */}
-      <div className={schmal ? "max-h-[55vh] overflow-y-auto" : ""}>
+      <div className={narrow ? "max-h-[55vh] overflow-y-auto" : ""}>
       <Listing>
         {data?.messages.map((m) => (
-          <ListenLine key={m.uid} dicht={schmal} onClick={() => onOpen_it(m.uid)}>
+          <ListenLine key={m.uid} dense={narrow} onClick={() => onOpen_it(m.uid)}>
             <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 ${
               m.uid === open ? "text-brand" : ""}`}>
               <span className={`min-w-0 flex-1 truncate ${
                 m.uid === open ? "font-medium" : m.seen ? "text-ink" : "font-semibold text-ink"}`}>
                 {m.subject || "(kein Betreff)"}
               </span>
-              {!m.seen && <Etikett farbe="brand">neu</Etikett>}
+              {!m.seen && <Tag color="brand">neu</Tag>}
               {m.has_attachment && <span title="hat einen Anhang">📎</span>}
               {m.flagged && <span title="markiert">⭐</span>}
               {m.answered && <span title="beantwortet">↩</span>}
@@ -483,17 +483,17 @@ function MessagesListing({ kontoId, ordner: folder, suche, onOeffnen: onOpen_it,
             <div className="mt-0.5 truncate text-xs text-muted">{m.from}</div>
           </ListenLine>
         ))}
-        {isLoading && <ListingLeer>Wird geladen…</ListingLeer>}
-        {!isLoading && !data?.messages.length && <ListingLeer>Nichts in diesem Ordner.</ListingLeer>}
+        {isLoading && <ListingEmpty>Wird geladen…</ListingEmpty>}
+        {!isLoading && !data?.messages.length && <ListingEmpty>Nichts in diesem Ordner.</ListingEmpty>}
       </Listing>
       </div>
       {(data?.total ?? 0) > limit && (
         <div className="flex items-center gap-2">
-          <Zeilenknopf onClick={() => setPage(Math.max(0, page - 1))}>← neuer</Zeilenknopf>
+          <Rowbutton onClick={() => setPage(Math.max(0, page - 1))}>← neuer</Rowbutton>
           <span className="text-xs text-muted">
             {page * limit + 1}–{Math.min((page + 1) * limit, data!.total)} von {data!.total}
           </span>
-          <Zeilenknopf onClick={() => setPage(page + 1)}>älter →</Zeilenknopf>
+          <Rowbutton onClick={() => setPage(page + 1)}>älter →</Rowbutton>
         </div>
       )}
     </Area>
@@ -511,8 +511,8 @@ function MessagesListing({ kontoId, ordner: folder, suche, onOeffnen: onOpen_it,
  * The blob address is released again on closing: otherwise every viewed attachment keeps its
  * memory until the page reloads.
  */
-function AttachmentDialog({ pfad: path, anhang: attachment, onClose }: {
-  pfad: string; anhang: Attachment; onClose: () => void;
+function AttachmentDialog({ path: path, attachment: attachment, onClose }: {
+  path: string; attachment: Attachment; onClose: () => void;
 }) {
   const [source, setSource] = useState("");
   const [kind, setKind] = useState("");
@@ -520,42 +520,42 @@ function AttachmentDialog({ pfad: path, anhang: attachment, onClose }: {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    let adresse = "";
-    let lebt = true;
-    holeFile(path)
-      .then(async ({ blob, typ: t }) => {
-        if (!lebt) return;
+    let address = "";
+    let alive = true;
+    fetchFile(path)
+      .then(async ({ blob, kind: t }) => {
+        if (!alive) return;
         setKind(t);
         // Text is read, not embedded: inside a frame it would stand without wrapping and in
         // the font of the page, which is not the one it means.
         if (t.startsWith("text/") || t.includes("json")) setText(await blob.text());
         else {
-          adresse = URL.createObjectURL(blob);
-          setSource(adresse);
+          address = URL.createObjectURL(blob);
+          setSource(address);
         }
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : "Anhang nicht ladbar"));
-    return () => { lebt = false; if (adresse) URL.revokeObjectURL(adresse); };
+    return () => { alive = false; if (address) URL.revokeObjectURL(address); };
   }, [path]);
 
-  const bild = kind.startsWith("image/");
+  const image = kind.startsWith("image/");
   const pdf = kind.includes("pdf");
   return (
-    <Dialog breit titel={`📎 ${attachment.filename}`} onClose={onClose} fuss={
+    <Dialog wide title={`📎 ${attachment.filename}`} onClose={onClose} foot={
       <>
         <Button onClick={onClose}>{tr("common.schliessen")}</Button>
         {source && (
-          <a href={source} download={attachment.filename} className={BUTTON.haupt}>
+          <a href={source} download={attachment.filename} className={BUTTON.primary}>
             {tr("mail.anhang_speichern")}
           </a>
         )}
       </>
     }>
-      <Fehlerzeile text={error} />
+      <Errorrow text={error} />
       {!error && !source && !text && (
         <div className="p-6 text-center text-sm text-muted">{tr("common.laedt")}</div>
       )}
-      {bild && source && (
+      {image && source && (
         <img src={source} alt={attachment.filename} className="mx-auto max-h-[70vh] rounded" />
       )}
       {pdf && source && (
@@ -565,28 +565,28 @@ function AttachmentDialog({ pfad: path, anhang: attachment, onClose }: {
         <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap rounded bg-surface p-3
           text-xs text-ink">{text}</pre>
       )}
-      {source && !bild && !pdf && (
+      {source && !image && !pdf && (
         <div className="p-6 text-center text-sm text-muted">
-          {tr("mail.anhang_keine_vorschau", { typ: kind })}
+          {tr("mail.anhang_keine_vorschau", { kind: kind })}
         </div>
       )}
     </Dialog>
   );
 }
 
-function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, onAntworten, onFehler: onError }: {
-  kontoId: number; konto: MailKonto | undefined; ordner: string; uid: number;
-  onZurueck: () => void; onAntworten: (f: Record<string, string>) => void;
-  onFehler: (m: string) => void;
+function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onReplies, onError: onError }: {
+  accountId: number; account: MailAccount | undefined; folder: string; uid: number;
+  onBack: () => void; onReplies: (f: Record<string, string>) => void;
+  onError: (m: string) => void;
 }) {
   const [moveOpen, setMoveOpen] = useState(false);
-  const [attachmentAuf, setAttachmentAuf] = useState<Attachment | null>(null);
+  const [attachmentOn, setAttachmentOn] = useState<Attachment | null>(null);
   const qc = useQueryClient();
-  const [lauf, setLauf] = useState("");
-  const [ansicht, setAnsicht] = useState<"html" | "text">("html");
-  const basis = `/mailbox/accounts/${kontoId}/messages/${uid}`;
+  const [run, setRun] = useState("");
+  const [view, setView] = useState<"html" | "text">("html");
+  const basis = `/mailbox/accounts/${accountId}/messages/${uid}`;
   const { data: m, error } = useQuery({
-    queryKey: ["mail-message", kontoId, folder, uid],
+    queryKey: ["mail-message", accountId, folder, uid],
     queryFn: () => api.get<Message>(`${basis}?folder=${encodeURIComponent(folder)}`),
   });
   const { data: actions } = useQuery({
@@ -596,12 +596,12 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
   // For "Move to…": the same query as the folder column, so from the cache and without a
   // second trip to the mailbox.
   const { data: allFolder } = useQuery({
-    queryKey: ["mail-folders", kontoId],
-    queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${kontoId}/folders?counts=true`),
+    queryKey: ["mail-folders", accountId],
+    queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${accountId}/folders?counts=true`),
   });
-  const { data: identitaeten } = useQuery({
-    queryKey: ["mail-identities", kontoId],
-    queryFn: () => api.get<MailIdentity[]>(`/mailbox/accounts/${kontoId}/identities`),
+  const { data: identities } = useQuery({
+    queryKey: ["mail-identities", accountId],
+    queryFn: () => api.get<MailIdentity[]>(`/mailbox/accounts/${accountId}/identities`),
   });
 
   /**
@@ -612,33 +612,33 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
    * `Reply-To` stands in the mail it takes precedence over the sender: that is exactly what it
    * is there for.
    */
-  const answerFields = (allen: boolean): Record<string, string> => {
-    const eigene = new Set((identitaeten || []).map((i) => i.email.toLowerCase()));
-    const adressen = (listing: Adresse[] | undefined) =>
-      (listing || []).map((a) => a.addr).filter((a) => a && !eigene.has(a.toLowerCase()));
+  const answerFields = (all: boolean): Record<string, string> => {
+    const own = new Set((identities || []).map((i) => i.email.toLowerCase()));
+    const addresses = (listing: Address[] | undefined) =>
+      (listing || []).map((a) => a.addr).filter((a) => a && !own.has(a.toLowerCase()));
 
-    const answerAn = adressen(m?.reply_to?.length ? m.reply_to : m?.from);
-    const an = allen
-      ? Array.from(new Set([...answerAn, ...adressen(m?.to)]))
+    const answerAn = addresses(m?.reply_to?.length ? m.reply_to : m?.from);
+    const an = all
+      ? Array.from(new Set([...answerAn, ...addresses(m?.to)]))
       : answerAn;
-    const kopie = allen ? Array.from(new Set(adressen(m?.cc))) : [];
+    const copy = all ? Array.from(new Set(addresses(m?.cc))) : [];
     return {
       to: an.join(", "),
-      cc: kopie.join(", "),
+      cc: copy.join(", "),
       subject: `Re: ${m?.subject || ""}`,
       in_reply_to: m?.message_id || "",
       text: `\n\n> ${(m?.text || "").split("\n").join("\n> ")}`,
-      identity: String(passendeIdentity() ?? ""),
+      identity: String(matchingIdentity() ?? ""),
     };
   };
 
   /** Would "Reply all" give more addresses than "Reply"? Only then is the button worth it. */
-  const mehrRecipient = (): boolean => {
-    const eigene = new Set((identitaeten || []).map((i) => i.email.toLowerCase()));
-    const fremde = (listing: Adresse[] | undefined) =>
-      (listing || []).map((a) => a.addr.toLowerCase()).filter((a) => a && !eigene.has(a));
-    const answerAn = new Set(fremde(m?.reply_to?.length ? m.reply_to : m?.from));
-    const all = new Set([...answerAn, ...fremde(m?.to), ...fremde(m?.cc)]);
+  const moreRecipient = (): boolean => {
+    const own = new Set((identities || []).map((i) => i.email.toLowerCase()));
+    const foreign = (listing: Address[] | undefined) =>
+      (listing || []).map((a) => a.addr.toLowerCase()).filter((a) => a && !own.has(a));
+    const answerAn = new Set(foreign(m?.reply_to?.length ? m.reply_to : m?.from));
+    const all = new Set([...answerAn, ...foreign(m?.to), ...foreign(m?.cc)]);
     return all.size > answerAn.size;
   };
 
@@ -650,10 +650,10 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
    * original message; if nothing is found (a mailing list, an alias that does not exist here),
    * the default of the account stands.
    */
-  const passendeIdentity = (): number | undefined => {
+  const matchingIdentity = (): number | undefined => {
     const recipient = [...(m?.to || []), ...(m?.cc || [])]
       .map((a) => a.addr.toLowerCase());
-    const hits = (identitaeten || []).find((i) => recipient.includes(i.email.toLowerCase()));
+    const hits = (identities || []).find((i) => recipient.includes(i.email.toLowerCase()));
     return hits?.id;
   };
   useEffect(() => {
@@ -663,81 +663,81 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
   const start = useMutation({
     mutationFn: (v: { definition_id: number; attachment?: number }) =>
       api.post<{ instance_id: number }>(`${basis}/action`, { ...v, folder: folder }),
-    onSuccess: (r) => setLauf(`Ablauf gestartet (Vorgang ${r.instance_id})`),
+    onSuccess: (r) => setRun(`Ablauf gestartet (Vorgang ${r.instance_id})`),
     onError: (e) => onError(e instanceof ApiError ? e.message : "Aktion fehlgeschlagen"),
   });
   // All handgrips end the same way: the list and the folder counts no longer hold, and the
   // message is no longer where one was just reading it — so back to the list.
-  const danach = () => {
+  const after = () => {
     qc.invalidateQueries({ queryKey: ["mail-list"] });
     qc.invalidateQueries({ queryKey: ["mail-folders"] });
     onBack();
   };
-  const schiefgelaufen = (was: string) => (e: unknown) =>
+  const gonewrong = (was: string) => (e: unknown) =>
     onError(e instanceof ApiError ? e.message : `${was} fehlgeschlagen`);
 
   const move = useMutation({
     mutationFn: (target: string) => api.post(`${basis}/move`, { folder: folder, target }),
-    onSuccess: danach, onError: schiefgelaufen("Verschieben"),
+    onSuccess: after, onError: gonewrong("Verschieben"),
   });
-  const archivieren = useMutation({
+  const archive = useMutation({
     mutationFn: () => api.post<{ folder: string }>(`${basis}/archive`, { folder: folder }),
-    onSuccess: danach, onError: schiefgelaufen("Archivieren"),
+    onSuccess: after, onError: gonewrong("Archivieren"),
   });
   const asSpam = useMutation({
     mutationFn: () => api.post(`${basis}/spam`, { folder: folder }),
-    onSuccess: danach, onError: schiefgelaufen("Als Spam markieren"),
+    onSuccess: after, onError: gonewrong("Als Spam markieren"),
   });
-  const keinSpam = useMutation({
+  const noSpam = useMutation({
     mutationFn: () => api.post(`${basis}/not-spam`, { folder: folder }),
-    onSuccess: danach, onError: schiefgelaufen("Zurückholen"),
+    onSuccess: after, onError: gonewrong("Zurückholen"),
   });
   const remove = useMutation({
     mutationFn: () => api.post(`${basis}/delete`, { folder: folder }),
-    onSuccess: danach, onError: schiefgelaufen("Löschen"),
+    onSuccess: after, onError: gonewrong("Löschen"),
   });
 
-  const fuerMail = (actions || []).filter((a) => a.scope !== "attachment");
-  const fuerAttachment = (actions || []).filter((a) => a.scope === "attachment");
+  const forMail = (actions || []).filter((a) => a.scope !== "attachment");
+  const forAttachment = (actions || []).filter((a) => a.scope === "attachment");
 
   return (
     <Area
-      titel={m?.subject || "…"}
-      werkzeuge={<>
-        <Zeilenknopf onClick={onBack}>← Liste</Zeilenknopf>
-        <Zeilenknopf onClick={() => onAntworten(answerFields(false))}>Antworten</Zeilenknopf>
+      title={m?.subject || "…"}
+      tools={<>
+        <Rowbutton onClick={onBack}>← Liste</Rowbutton>
+        <Rowbutton onClick={() => onReplies(answerFields(false))}>Antworten</Rowbutton>
         {/* Nur wenn er wirklich etwas anderes tut: gezählt wird, was nach Abzug der eigenen
             Adressen übrig bleibt. Sonst stünde bei einer Mail, die an mich und eine zweite
             eigene Adresse ging, ein Knopf, der dasselbe macht wie sein Nachbar. */}
-        {mehrRecipient() && (
-          <Zeilenknopf onClick={() => onAntworten(answerFields(true))}>
+        {moreRecipient() && (
+          <Rowbutton onClick={() => onReplies(answerFields(true))}>
             Allen antworten
-          </Zeilenknopf>
+          </Rowbutton>
         )}
-        <Zeilenknopf onClick={() => onAntworten({
-          identity: String(passendeIdentity() ?? ""),
+        <Rowbutton onClick={() => onReplies({
+          identity: String(matchingIdentity() ?? ""),
           subject: `Fwd: ${m?.subject || ""}`,
           text: `\n\n--- Weitergeleitete Nachricht ---\n`
             + `Von: ${(m?.from || []).map((a) => a.addr).join(", ")}\n`
             + `Datum: ${m?.date || ""}\nBetreff: ${m?.subject || ""}\n\n${m?.text || ""}`,
-        })}>Weiterleiten</Zeilenknopf>
+        })}>Weiterleiten</Rowbutton>
         {/* Archiv und Spam erscheinen nur, wenn am Konto ein Ziel dafür steht — ein Knopf,
             der beim Drücken erklärt, dass er nicht kann, ist keiner. */}
-        {(konto?.archive_mode === "pattern" ? konto?.archive_pattern : konto?.folder_archive) && (
-          <Zeilenknopf onClick={() => archivieren.mutate()}>📦 Archivieren</Zeilenknopf>
+        {(account?.archive_mode === "pattern" ? account?.archive_pattern : account?.folder_archive) && (
+          <Rowbutton onClick={() => archive.mutate()}>📦 Archivieren</Rowbutton>
         )}
         {/* Im Spam-Ordner ist „als Spam markieren" keine Handlung, sondern eine
             Wiederholung. Was dort fehlt, ist der Widerspruch. */}
-        {konto?.folder_junk && (folder === konto.folder_junk ? (
-          <Zeilenknopf onClick={() => keinSpam.mutate()} titel={tr("mail.kein_spam_titel")}>
+        {account?.folder_junk && (folder === account.folder_junk ? (
+          <Rowbutton onClick={() => noSpam.mutate()} title={tr("mail.kein_spam_titel")}>
             ✅ {tr("mail.kein_spam")}
-          </Zeilenknopf>
+          </Rowbutton>
         ) : (
-          <Zeilenknopf onClick={() => asSpam.mutate()}>🚫 Spam</Zeilenknopf>
+          <Rowbutton onClick={() => asSpam.mutate()}>🚫 Spam</Rowbutton>
         ))}
-        <Zeilenknopf onClick={() => setMoveOpen(true)}>📁 Verschieben</Zeilenknopf>
+        <Rowbutton onClick={() => setMoveOpen(true)}>📁 Verschieben</Rowbutton>
         <div className="flex-1" />
-        <Zeilenknopf gefahr onClick={() => remove.mutate()}>🗑 Löschen</Zeilenknopf>
+        <Rowbutton danger onClick={() => remove.mutate()}>🗑 Löschen</Rowbutton>
       </>}
     >
       {m && (
@@ -773,17 +773,17 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
                 <ListenLine key={a.index}>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 flex-1 truncate">📎 {a.filename}</span>
-                    <Etikett>{Math.max(1, Math.round(a.size / 1024))} kB</Etikett>
-                    <Zeilenknopf onClick={() => setAttachmentAuf(a)}
-                      titel={tr("mail.anhang_ansehen")}>
+                    <Tag>{Math.max(1, Math.round(a.size / 1024))} kB</Tag>
+                    <Rowbutton onClick={() => setAttachmentOn(a)}
+                      title={tr("mail.anhang_ansehen")}>
                       {tr("mail.anhang_ansehen")}
-                    </Zeilenknopf>
-                    {fuerAttachment.map((akt) => (
-                      <Zeilenknopf key={akt.definition_id}
-                        onClick={() => start.mutate({ definition_id: akt.definition_id,
+                    </Rowbutton>
+                    {forAttachment.map((act) => (
+                      <Rowbutton key={act.definition_id}
+                        onClick={() => start.mutate({ definition_id: act.definition_id,
                                                         attachment: a.index })}>
-                        {akt.name}
-                      </Zeilenknopf>
+                        {act.name}
+                      </Rowbutton>
                     ))}
                   </div>
                 </ListenLine>
@@ -793,11 +793,11 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
 
           {m.html ? (
             <div className="space-y-2">
-              <Reiter aktiv={ansicht} onWaehlen={setAnsicht} auswahl={[
+              <Tab active={view} onChoose={setView} selection={[
                 ["html", "Formatiert"], ["text", "Nur Text"],
               ]} />
-              {ansicht === "html"
-                ? <HtmlAnsicht html={m.html} fernbilder={m.remote_images} />
+              {view === "html"
+                ? <HtmlView html={m.html} remoteimages={m.remote_images} />
                 : <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded border border-line bg-surface p-3 text-sm text-ink">
                     {m.text || "(kein Text)"}
                   </pre>}
@@ -808,44 +808,44 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
             </pre>
           )}
 
-          {fuerMail.length > 0 && (
+          {forMail.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted">Aktionen:</span>
-              {fuerMail.map((akt) => (
-                <Zeilenknopf key={akt.definition_id} titel={akt.description}
-                  onClick={() => start.mutate({ definition_id: akt.definition_id })}>
-                  {akt.name}
-                </Zeilenknopf>
+              {forMail.map((act) => (
+                <Rowbutton key={act.definition_id} title={act.description}
+                  onClick={() => start.mutate({ definition_id: act.definition_id })}>
+                  {act.name}
+                </Rowbutton>
               ))}
             </div>
           )}
-          {lauf && <div className="text-xs text-green-400">{lauf}</div>}
+          {run && <div className="text-xs text-green-400">{run}</div>}
         </>
       )}
 
-      {attachmentAuf && (
+      {attachmentOn && (
         <AttachmentDialog
-          pfad={`${basis}/attachments/${attachmentAuf.index}?folder=${encodeURIComponent(folder)}`}
-          anhang={attachmentAuf} onClose={() => setAttachmentAuf(null)} />
+          path={`${basis}/attachments/${attachmentOn.index}?folder=${encodeURIComponent(folder)}`}
+          attachment={attachmentOn} onClose={() => setAttachmentOn(null)} />
       )}
 
       {moveOpen && (
-        <Dialog titel="Verschieben nach" onClose={() => setMoveOpen(false)}>
+        <Dialog title="Verschieben nach" onClose={() => setMoveOpen(false)}>
           {/* Der Baum wie in der Ordnerspalte, nur ohne Zähler: hier wird gewählt, nicht
               gestöbert. Ein Klick verschiebt und schließt — ein zweiter Knopf „Übernehmen"
               wäre ein Schritt, den niemand braucht. */}
           <Listing>
             {(allFolder || []).filter((o) => o.name !== folder).map((o) => (
-              <ListenLine key={o.name} dicht
+              <ListenLine key={o.name} dense
                 onClick={() => { setMoveOpen(false); move.mutate(o.name); }}>
                 <div className="flex items-center gap-2"
                      style={{ paddingLeft: `${o.level * 0.85}rem` }}>
-                  <span>{SONDER[o.special] || "📁"}</span>
+                  <span>{SPECIAL[o.special] || "📁"}</span>
                   <span className="min-w-0 flex-1 truncate">{o.display}</span>
                 </div>
               </ListenLine>
             ))}
-            {!allFolder?.length && <ListingLeer>Keine weiteren Ordner.</ListingLeer>}
+            {!allFolder?.length && <ListingEmpty>Keine weiteren Ordner.</ListingEmpty>}
           </Listing>
         </Dialog>
       )}
@@ -853,13 +853,13 @@ function Leseansicht({ kontoId, konto, ordner: folder, uid, onZurueck: onBack, o
   );
 }
 
-function VerfassenDialog({ kontoId, start, onClose, onFehler: onError }: {
-  kontoId: number; start: Record<string, string>; onClose: () => void;
-  onFehler: (m: string) => void;
+function ComposeDialog({ accountId, start, onClose, onError: onError }: {
+  accountId: number; start: Record<string, string>; onClose: () => void;
+  onError: (m: string) => void;
 }) {
-  const { data: identitaeten } = useQuery({
-    queryKey: ["mail-identities", kontoId],
-    queryFn: () => api.get<MailIdentity[]>(`/mailbox/accounts/${kontoId}/identities`),
+  const { data: identities } = useQuery({
+    queryKey: ["mail-identities", accountId],
+    queryFn: () => api.get<MailIdentity[]>(`/mailbox/accounts/${accountId}/identities`),
   });
   const [identity, setIdentity] = useState<number | null>(null);
   const [f, setF] = useState({
@@ -871,21 +871,21 @@ function VerfassenDialog({ kontoId, start, onClose, onFehler: onError }: {
 
   /** Read a file in. Base64 in the browser, because the server builds the message and not the
    *  browser — one place where draft and sending do the same thing. */
-  const fileRead = (file: File) => new Promise<string>((done, schiefgelaufen) => {
-    const leser = new FileReader();
-    leser.onload = () => done(String(leser.result).split(",")[1] || "");
-    leser.onerror = () => schiefgelaufen(leser.error);
-    leser.readAsDataURL(file);
+  const fileRead = (file: File) => new Promise<string>((done, gonewrong) => {
+    const reader = new FileReader();
+    reader.onload = () => done(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => gonewrong(reader.error);
+    reader.readAsDataURL(file);
   });
   useEffect(() => {
-    if (identity !== null || !identitaeten?.length) return;
+    if (identity !== null || !identities?.length) return;
     // Order of the choice: what the caller passes in (the address that was written to),
     // otherwise the default of the account, otherwise the first one.
-    const gewuenscht = identitaeten.find((i) => String(i.id) === (start.identity || ""));
-    setIdentity((gewuenscht || identitaeten.find((i) => i.is_default) || identitaeten[0]).id);
-  }, [identitaeten, identity, start.identity]);
+    const wanted = identities.find((i) => String(i.id) === (start.identity || ""));
+    setIdentity((wanted || identities.find((i) => i.is_default) || identities[0]).id);
+  }, [identities, identity, start.identity]);
 
-  const rumpf = () => ({
+  const base = () => ({
     identity_id: identity,
     to: f.to.split(",").map((s) => s.trim()).filter(Boolean),
     cc: f.cc.split(",").map((s) => s.trim()).filter(Boolean),
@@ -893,13 +893,13 @@ function VerfassenDialog({ kontoId, start, onClose, onFehler: onError }: {
     attachments: attachments.map(({ filename, content_type, data_base64 }) =>
       ({ filename, content_type, data_base64 })),
   });
-  const senden = useMutation({
-    mutationFn: () => api.post(`/mailbox/accounts/${kontoId}/send`, rumpf()),
+  const send = useMutation({
+    mutationFn: () => api.post(`/mailbox/accounts/${accountId}/send`, base()),
     onSuccess: onClose,
     onError: (e) => onError(e instanceof ApiError ? e.message : "Senden fehlgeschlagen"),
   });
-  const entwurf = useMutation({
-    mutationFn: () => api.post(`/mailbox/accounts/${kontoId}/draft`, rumpf()),
+  const draft = useMutation({
+    mutationFn: () => api.post(`/mailbox/accounts/${accountId}/draft`, base()),
     onSuccess: onClose,
     onError: (e) => onError(e instanceof ApiError ? e.message : "Entwurf fehlgeschlagen"),
   });
@@ -907,31 +907,31 @@ function VerfassenDialog({ kontoId, start, onClose, onFehler: onError }: {
   return (
     // Held in place: whoever is writing a mail otherwise loses half the text on a misplaced
     // click. It is closed through ✕, cancel, draft or send.
-    <Dialog breit festhalten titel="Nachricht verfassen" onClose={onClose}
-      fuss={
+    <Dialog wide hold title="Nachricht verfassen" onClose={onClose}
+      foot={
         <div className="flex items-center gap-2">
-          <Zeilenknopf onClick={() => entwurf.mutate()}>Als Entwurf sichern</Zeilenknopf>
+          <Rowbutton onClick={() => draft.mutate()}>Als Entwurf sichern</Rowbutton>
           <div className="flex-1" />
-          <DialogFuss onAbbrechen={onClose} laeuft={senden.isPending}
-            deaktiviert={!identity || !f.to.trim()} speichernText="Senden"
-            onSpeichern={() => senden.mutate()} />
+          <DialogFoot onCancel={onClose} runs={send.isPending}
+            disabled={!identity || !f.to.trim()} saveText="Senden"
+            onSave={() => send.mutate()} />
         </div>
       }>
       <div className="space-y-3">
-        {!identitaeten?.length && (
-          <Fehlerzeile text="Dieses Konto hat noch keine Identität — ohne sie steht kein Absender fest." />
+        {!identities?.length && (
+          <Errorrow text="Dieses Konto hat noch keine Identität — ohne sie steht kein Absender fest." />
         )}
         <Field label="Von">
           <select value={identity ?? ""} className={INPUT_VALUE}
             onChange={(e) => setIdentity(Number(e.target.value))}>
-            {identitaeten?.map((i) => (
+            {identities?.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.display_name ? `${i.display_name} <${i.email}>` : i.email}
               </option>
             ))}
           </select>
         </Field>
-        <Field label="An" hinweis="Mehrere Adressen mit Komma trennen.">
+        <Field label="An" hint="Mehrere Adressen mit Komma trennen.">
           <input value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} className={INPUT_VALUE} />
         </Field>
         <Field label="Kopie">
@@ -953,11 +953,11 @@ function VerfassenDialog({ kontoId, start, onClose, onFehler: onError }: {
                   <ListenLine key={`${a.filename}-${i}`}>
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate">📎 {a.filename}</span>
-                      <Etikett>{Math.max(1, Math.round(a.size / 1024))} kB</Etikett>
-                      <Zeilenknopf gefahr
+                      <Tag>{Math.max(1, Math.round(a.size / 1024))} kB</Tag>
+                      <Rowbutton danger
                         onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}>
                         Entfernen
-                      </Zeilenknopf>
+                      </Rowbutton>
                     </div>
                   </ListenLine>
                 ))}

@@ -8,7 +8,7 @@ import AssetWorkflow from "./AssetWorkflow";
 import ArtifactFields from "./ArtifactFields";
 import { AssigneeEditor } from "./workflow/assignee";
 import type { AssigneeSpec } from "./workflow/types";
-import { ICON, IconButton, LoeschDialog, Area, Etikett, Fehlerzeile, Listing, ListingLeer, ListenLine, BUTTON, BUTTON_KLEIN, BUTTON_TEXT} from "./ui";
+import { ICON, IconButton, DeleteDialog, Area, Tag, Errorrow, Listing, ListingEmpty, ListenLine, BUTTON, BUTTON_SMALL, BUTTON_TEXT} from "./ui";
 
 interface Model { id: number; name: string; category: string | null; manufacturer: string | null; }
 interface Location { id: number; name: string; type: string; parent_id: number | null; full_path: string; }
@@ -22,7 +22,7 @@ const LOC_TYPES = ["room", "rack", "shelf", "slot", "server", "other"];
 
 export default function Hardware({ project }: { project: Project }) {
   const qc = useQueryClient();
-  const kannVerwalten = project.my_role === "maintainer" || project.my_role === "owner";
+  const canManage = project.my_role === "maintainer" || project.my_role === "owner";
   const models = useQuery({ queryKey: ["hw-models"], queryFn: () => api.get<Model[]>("/hardware/models") });
   const locations = useQuery({ queryKey: ["hw-locations"], queryFn: () => api.get<Location[]>("/locations") });
   const assets = useQuery({
@@ -40,10 +40,10 @@ export default function Hardware({ project }: { project: Project }) {
   const [aLoc, setALoc] = useState("");
   const [aStatus, setAStatus] = useState("planned");
   const [open, setOpen] = useState<number | null>(null);
-  const [loeschAsset, setLoeschAsset] = useState<any | null>(null);
-  const [loeschModell, setLoeschModell] = useState<any | null>(null);
-  const [loeschOrt, setLoeschOrt] = useState<any | null>(null);
-  const [ansicht, setAnsicht] = useState<"klassisch" | "workflow">("klassisch");
+  const [deleteAsset, setDeleteAsset] = useState<any | null>(null);
+  const [deleteModel, setDeleteModel] = useState<any | null>(null);
+  const [deletePlace, setDeletePlace] = useState<any | null>(null);
+  const [view, setView] = useState<"klassisch" | "workflow">("klassisch");
   const [err, setErr] = useState("");
   const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
@@ -78,9 +78,9 @@ export default function Hardware({ project }: { project: Project }) {
 
   return (
     <div>
-      <Fehlerzeile text={err} />
+      <Errorrow text={err} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Area titel={tr("hardware.exemplare_dieses_projekt")}>
+        <Area title={tr("hardware.exemplare_dieses_projekt")}>
           <Listing>
             {assets.data?.map((a) => (
               <ListenLine key={a.id}>
@@ -88,34 +88,34 @@ export default function Hardware({ project }: { project: Project }) {
                   <button onClick={() => setOpen(open === a.id ? null : a.id)} className="min-w-0 flex-1 text-left">
                     <div className="truncate font-medium text-ink">{modelName(a.model_id)}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                      <Etikett>{a.purchase_status}</Etikett>
+                      <Tag>{a.purchase_status}</Tag>
                       <span>📍 {locPath(a.location_id)}</span>
                       {a.serial_number && <span>SN {a.serial_number}</span>}
                       <span className="text-brand">{open === a.id ? "▾ Beschaffung" : "▸ Beschaffung"}</span>
                     </div>
                   </button>
-                  {kannVerwalten && (
-                    <IconButton icon={ICON.loeschen} titel={tr("hardware.exemplar_loeschen")} gefahr
-                      onClick={() => setLoeschAsset(a)} />
+                  {canManage && (
+                    <IconButton icon={ICON.remove} title={tr("hardware.exemplar_loeschen")} danger
+                      onClick={() => setDeleteAsset(a)} />
                   )}
                 </div>
                 {open === a.id && (
                   <div className="mt-2 border-t border-line pt-2.5">
                     <div className="mb-2.5 inline-flex rounded border border-line bg-surface p-0.5 text-xs">
                       <button
-                        onClick={() => setAnsicht("klassisch")}
-                        className={`rounded px-2 py-0.5 ${ansicht === "klassisch" ? "bg-brand text-white" : "text-muted hover:text-ink"}`}
+                        onClick={() => setView("klassisch")}
+                        className={`rounded px-2 py-0.5 ${view === "klassisch" ? "bg-brand text-white" : "text-muted hover:text-ink"}`}
                       >
                         Klassische Schritte
                       </button>
                       <button
-                        onClick={() => setAnsicht("workflow")}
-                        className={`rounded px-2 py-0.5 ${ansicht === "workflow" ? "bg-brand text-white" : "text-muted hover:text-ink"}`}
+                        onClick={() => setView("workflow")}
+                        className={`rounded px-2 py-0.5 ${view === "workflow" ? "bg-brand text-white" : "text-muted hover:text-ink"}`}
                       >
                         🧭 Workflow
                       </button>
                     </div>
-                    {ansicht === "klassisch" ? (
+                    {view === "klassisch" ? (
                       <AssetProcurement assetId={a.id} project={project} onChange={invAssets} />
                     ) : (
                       <AssetWorkflow assetId={a.id} projectId={a.project_id} assetLabel={modelName(a.model_id)} />
@@ -131,7 +131,7 @@ export default function Hardware({ project }: { project: Project }) {
                 )}
               </ListenLine>
             ))}
-            {assets.data?.length === 0 && <ListingLeer>{tr("hardware.keine_exemplare")}</ListingLeer>}
+            {assets.data?.length === 0 && <ListingEmpty>{tr("hardware.keine_exemplare")}</ListingEmpty>}
           </Listing>
           <div className="flex flex-wrap items-end gap-2 rounded-lg border border-line bg-surface p-3">
             <select value={aModel} onChange={(e) => setAModel(e.target.value)}
@@ -148,52 +148,52 @@ export default function Hardware({ project }: { project: Project }) {
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
               {STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            <button onClick={() => aModel && addAsset.mutate()} className={BUTTON.haupt}>
+            <button onClick={() => aModel && addAsset.mutate()} className={BUTTON.primary}>
               + Exemplar
             </button>
           </div>
         </Area>
 
         <section className="space-y-4">
-          {kannVerwalten && <WorkflowConfig project={project} />}
+          {canManage && <WorkflowConfig project={project} />}
 
-          <Area titel={tr("hardware.katalog_modelle")}>
+          <Area title={tr("hardware.katalog_modelle")}>
             <Listing>
               {models.data?.map((m) => (
                 <ListenLine key={m.id}>
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-ink">{m.name}</span>
-                    {kannVerwalten && (
-                      <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                        onClick={() => setLoeschModell(m)} />
+                    {canManage && (
+                      <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                        onClick={() => setDeleteModel(m)} />
                     )}
                   </div>
                 </ListenLine>
               ))}
-              {models.data?.length === 0 && <ListingLeer>Noch kein Modell im Katalog.</ListingLeer>}
+              {models.data?.length === 0 && <ListingEmpty>Noch kein Modell im Katalog.</ListingEmpty>}
             </Listing>
             <div className="flex gap-2">
               <input value={mName} onChange={(e) => setMName(e.target.value)} placeholder={tr("hardware.modellname")}
                 className="flex-1 rounded border border-line bg-surface px-2 py-1 text-sm" />
-              <button onClick={() => mName && addModel.mutate()} className={BUTTON.haupt}>+</button>
+              <button onClick={() => mName && addModel.mutate()} className={BUTTON.primary}>+</button>
             </div>
           </Area>
 
-          <Area titel={tr("hardware.lagerorte")}>
+          <Area title={tr("hardware.lagerorte")}>
             <Listing>
               {locations.data?.map((l) => (
                 <ListenLine key={l.id}>
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate">📍 {l.full_path}</span>
-                    <Etikett>{l.type}</Etikett>
-                    {kannVerwalten && (
-                      <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                        onClick={() => setLoeschOrt(l)} />
+                    <Tag>{l.type}</Tag>
+                    {canManage && (
+                      <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                        onClick={() => setDeletePlace(l)} />
                     )}
                   </div>
                 </ListenLine>
               ))}
-              {locations.data?.length === 0 && <ListingLeer>Noch kein Lagerort.</ListingLeer>}
+              {locations.data?.length === 0 && <ListingEmpty>Noch kein Lagerort.</ListingEmpty>}
             </Listing>
             <div className="flex flex-wrap gap-2">
               <input value={lName} onChange={(e) => setLName(e.target.value)} placeholder={tr("hardware.ortname")}
@@ -207,25 +207,25 @@ export default function Hardware({ project }: { project: Project }) {
                 <option value="">{tr("hardware.uebergeordnet")}</option>
                 {locations.data?.map((l) => <option key={l.id} value={l.id}>{l.full_path}</option>)}
               </select>
-              <button onClick={() => lName && addLoc.mutate()} className={BUTTON.haupt}>+</button>
+              <button onClick={() => lName && addLoc.mutate()} className={BUTTON.primary}>+</button>
             </div>
           </Area>
         </section>
       </div>
-      {loeschAsset && (
-        <LoeschDialog was={modelName(loeschAsset.model_id)} hinweis={tr("hardware.exemplar_loeschen")}
-          onClose={() => setLoeschAsset(null)}
-          onLoeschen={() => { delAsset.mutate(loeschAsset.id); setLoeschAsset(null); }} />
+      {deleteAsset && (
+        <DeleteDialog was={modelName(deleteAsset.model_id)} hint={tr("hardware.exemplar_loeschen")}
+          onClose={() => setDeleteAsset(null)}
+          onDelete={() => { delAsset.mutate(deleteAsset.id); setDeleteAsset(null); }} />
       )}
-      {loeschModell && (
-        <LoeschDialog was={loeschModell.name}
-          onClose={() => setLoeschModell(null)}
-          onLoeschen={() => { delModel.mutate(loeschModell.id); setLoeschModell(null); }} />
+      {deleteModel && (
+        <DeleteDialog was={deleteModel.name}
+          onClose={() => setDeleteModel(null)}
+          onDelete={() => { delModel.mutate(deleteModel.id); setDeleteModel(null); }} />
       )}
-      {loeschOrt && (
-        <LoeschDialog was={loeschOrt.full_path}
-          onClose={() => setLoeschOrt(null)}
-          onLoeschen={() => { delLoc.mutate(loeschOrt.id); setLoeschOrt(null); }} />
+      {deletePlace && (
+        <DeleteDialog was={deletePlace.full_path}
+          onClose={() => setDeletePlace(null)}
+          onDelete={() => { delLoc.mutate(deletePlace.id); setDeletePlace(null); }} />
       )}
     </div>
   );
@@ -250,7 +250,7 @@ function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: str
                 className="flex w-full items-center gap-2 text-left text-xs hover:underline">
                 <span className="font-mono text-brand">{i.key}</span>
                 <span className={`flex-1 truncate ${i.archived ? "text-muted line-through" : ""}`}>{i.summary}</span>
-                <Etikett>{i.status}</Etikett>
+                <Tag>{i.status}</Tag>
               </button>
             </li>
           ))}
@@ -277,19 +277,19 @@ function WorkflowConfig({ project }: { project: Project }) {
     queryFn: () => api.get<MemberLite[]>(`/projects/${project.id}/members`),
   });
   // Create the draft only on the first edit; until then the server state applies.
-  const [entwurf, setEntwurf] = useState<WfStep[] | null>(null);
-  const steps: WfStep[] = entwurf ?? data ?? [];
-  const update = (next: WfStep[]) => setEntwurf(next.map((s, i) => ({ ...s, order: i })));
-  const speichern = useMutation({
+  const [draft, setDraft] = useState<WfStep[] | null>(null);
+  const steps: WfStep[] = draft ?? data ?? [];
+  const update = (next: WfStep[]) => setDraft(next.map((s, i) => ({ ...s, order: i })));
+  const save = useMutation({
     mutationFn: () => api.put(`/projects/${project.id}/hardware-workflow`, {
       steps: steps
         .filter((s) => s.name.trim())
         .map((s, order) => ({ name: s.name.trim(), order, assignee: s.assignee || {} })),
     }),
-    onSuccess: () => { setEntwurf(null); qc.invalidateQueries({ queryKey: ["hw-workflow", project.id] }); },
+    onSuccess: () => { setDraft(null); qc.invalidateQueries({ queryKey: ["hw-workflow", project.id] }); },
   });
   // "Edit as a process": creates (idempotently) the workflow definition and opens the editor.
-  const asProzess = useMutation({
+  const asFlow = useMutation({
     mutationFn: () =>
       api.post<{ definition_id: number; current_version_id: number }>(
         `/projects/${project.id}/hardware-workflow/definition`,
@@ -297,7 +297,7 @@ function WorkflowConfig({ project }: { project: Project }) {
     onSuccess: (res) => navigate(`/projects/${project.key}/workflows/${res.definition_id}`),
   });
   return (
-    <Area titel={tr("hardware.beschaffungsprozess")} hinweis={tr("hardware.prozess_hinweis")}>
+    <Area title={tr("hardware.beschaffungsprozess")} hint={tr("hardware.prozess_hinweis")}>
       <Listing>
         {steps.map((s, i) => (
           <ListenLine key={i}>
@@ -309,11 +309,11 @@ function WorkflowConfig({ project }: { project: Project }) {
                 className="flex-1 rounded border border-line bg-card px-2 py-1 text-sm" />
               <button title={tr("hardware.nach_oben")} disabled={i === 0}
                 onClick={() => { const n = [...steps]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; update(n); }}
-                className={BUTTON_TEXT.neben}>↑</button>
+                className={BUTTON_TEXT.secondary}>↑</button>
               <button title={tr("hardware.nach_unten")} disabled={i === steps.length - 1}
                 onClick={() => { const n = [...steps]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; update(n); }}
-                className={BUTTON_TEXT.neben}>↓</button>
-              <IconButton icon={ICON.loeschen} titel={tr("hardware.schritt_entfernen")} gefahr
+                className={BUTTON_TEXT.secondary}>↓</button>
+              <IconButton icon={ICON.remove} title={tr("hardware.schritt_entfernen")} danger
                 onClick={() => update(steps.filter((_, j) => j !== i))} />
             </div>
             <div className="mt-1.5 flex items-center gap-2 pl-7">
@@ -323,27 +323,27 @@ function WorkflowConfig({ project }: { project: Project }) {
                 onChange={(v) => update(steps.map((x, j) => j === i ? { ...x, assignee: v } : x))} />
               {s.assignee?.mode && (
                 <button onClick={() => update(steps.map((x, j) => j === i ? { ...x, assignee: {} as AssigneeSpec } : x))}
-                  className={BUTTON_TEXT.neben}>{tr("hardware.zuruecksetzen")}</button>
+                  className={BUTTON_TEXT.secondary}>{tr("hardware.zuruecksetzen")}</button>
               )}
             </div>
           </ListenLine>
         ))}
-        {steps.length === 0 && <ListingLeer>{tr("hardware.noch_keine_schritte")}</ListingLeer>}
+        {steps.length === 0 && <ListingEmpty>{tr("hardware.noch_keine_schritte")}</ListingEmpty>}
       </Listing>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => update([...steps, { name: "", order: steps.length, assignee: {} as AssigneeSpec }])}
-          className={BUTTON_KLEIN.neben}>+ {tr("hardware.schritt")}</button>
-        <button onClick={() => speichern.mutate()} disabled={!entwurf}
+          className={BUTTON_SMALL.secondary}>+ {tr("hardware.schritt")}</button>
+        <button onClick={() => save.mutate()} disabled={!draft}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-40">{tr("hardware.speichern")}</button>
-        <button onClick={() => asProzess.mutate()} disabled={asProzess.isPending}
-          className={BUTTON_KLEIN.neben}
+        <button onClick={() => asFlow.mutate()} disabled={asFlow.isPending}
+          className={BUTTON_SMALL.secondary}
           title={tr("hardware.diese_schrittliste_als_grafischen_workfl")}>
           🧭 {tr("hardware.als_prozess_bearbeiten")}
         </button>
       </div>
-      {asProzess.error && (
+      {asFlow.error && (
         <p className="mt-1 text-xs text-red-400">
-          {asProzess.error instanceof ApiError ? asProzess.error.message : tr("hardware.prozess_nicht_offen")}
+          {asFlow.error instanceof ApiError ? asFlow.error.message : tr("hardware.prozess_nicht_offen")}
         </p>
       )}
       <p className="mt-1 text-xs text-muted">

@@ -96,7 +96,7 @@ export interface NodeConfig {
     /** Example payload, only for deriving fields in the editor, never at runtime. */
     sample?: Record<string, any>;
     /** Field of the payload the artifact stands in (ticket key or number, unit). */
-    subjekt_feld?: string;
+    subject_field?: string;
   };
   // end
   outcome?: WorkflowInstanceStatus;
@@ -120,27 +120,27 @@ export interface NodeConfig {
   // subflow
   // Switched off step: `ueberspringen` continues over the normal exit, `abbrechen` ends the
   // run at this point.
-  deaktiviert?: boolean;
-  deaktiviert_modus?: "ueberspringen" | "abbrechen";
+  disabled?: boolean;
+  disabled_mode?: "skip" | "abort";
   slot?: WorkflowSlot;
   /** An explicitly named flow instead of a slot, an own one as well. */
   definition_id?: number;
   inherit_context?: boolean;
   // loop: walks through `liste` element by element; the body hangs off the exit `element`
   // and leads back here over a back edge.
-  liste?: string;                // Kontext-Pfad auf die Liste
+  list?: string;                // Kontext-Pfad auf die Liste
   element?: string;              // unter diesem Schlüssel steht das aktuelle Element
   index?: string;                // … und hier der Zähler
-  sammle?: string;               // Pfad, dessen Wert je Durchlauf eingesammelt wird
-  ergebnisse?: string;           // wohin das Eingesammelte am Ende kommt
+  collect?: string;               // Pfad, dessen Wert je Durchlauf eingesammelt wird
+  results?: string;           // wohin das Eingesammelte am Ende kommt
   max?: number;                  // Deckel gegen versehentlich riesige Listen
   // timer
-  dauer?: number;                // Menge …
-  einheit?: string;              // … in s | m | h | t
-  bis?: string;                  // …oder ein fester Zeitpunkt (Vorlagen erlaubt)
+  duration?: number;                // Menge …
+  unit?: string;              // … in s | m | h | t
+  to?: string;                  // …oder ein fester Zeitpunkt (Vorlagen erlaubt)
   // auto_action: retry instead of giving up
-  wiederholungen?: number;
-  warte_sek?: number;
+  retries?: number;
+  retry_wait_sec?: number;
   // agent_task
   agent_role?: string;           // plan_agent | exec_agent | review_agent | assigned | <Rolle>
   phase?: "planning" | "execution";

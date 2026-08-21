@@ -1,6 +1,6 @@
 import type { FormField } from "./types";
 import { tr } from "../../i18n";
-import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
+import { BUTTON_SMALL, BUTTON_TEXT} from "../ui";
 
 export function emptyField(): FormField {
   return { key: "", label: "", type: "text", required: false };
@@ -46,7 +46,7 @@ export function FormFieldsEditor({
               placeholder={tr("form_fields.beschriftung")}
               className="flex-1 rounded border border-line bg-card px-2 py-1 text-sm"
             />
-            <button onClick={() => remove(i)} className={BUTTON_TEXT.gefahr} title={tr("form_fields.feld_entfernen")}>
+            <button onClick={() => remove(i)} className={BUTTON_TEXT.danger} title={tr("form_fields.feld_entfernen")}>
               ✕
             </button>
           </div>
@@ -93,7 +93,7 @@ export function FormFieldsEditor({
       ))}
       <button
         onClick={() => onChange([...fields, emptyField()])}
-        className={BUTTON_KLEIN.neben}
+        className={BUTTON_SMALL.secondary}
       >
         + Feld
       </button>

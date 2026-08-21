@@ -3,9 +3,9 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
 import {
-  Actions, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, LoeschDialog, Area, ListingLeer, BUTTON} from "./ui";
+  Actions, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, DeleteDialog, Area, ListingEmpty, BUTTON} from "./ui";
 
-interface Modell {
+interface Model {
   id: number; provider: string; model: string; display_name: string;
   price_input: number; price_output: number; price_cache_read: number; enabled: boolean;
   context_tokens: number | null; speed_tps: number | null;
@@ -36,19 +36,19 @@ export default function ProviderModelsPanel() {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
-  const [dialog, setDialog] = useState<Modell | null>(null);
-  const [loeschModell, setLoeschModell] = useState<Modell | null>(null);
+  const [dialog, setDialog] = useState<Model | null>(null);
+  const [deleteModel, setDeleteModel] = useState<Model | null>(null);
 
-  const { data: modelle } = useQuery({
-    queryKey: ["provider-models"], queryFn: () => api.get<Modell[]>("/providers/models"),
+  const { data: models } = useQuery({
+    queryKey: ["provider-models"], queryFn: () => api.get<Model[]>("/providers/models"),
   });
 
   const inv = () => qc.invalidateQueries({ queryKey: ["provider-models"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
   const flash = (t: string) => { setNote(t); setTimeout(() => setNote(""), 4000); };
 
-  const speichern = useMutation({
-    mutationFn: (m: Modell) => api.put("/providers/models", {
+  const save = useMutation({
+    mutationFn: (m: Model) => api.put("/providers/models", {
       provider: m.provider, model: m.model, display_name: m.display_name,
       price_input: m.price_input, price_output: m.price_output,
       price_cache_read: m.price_cache_read, enabled: m.enabled,
@@ -59,24 +59,24 @@ export default function ProviderModelsPanel() {
   });
   const remove = useMutation({
     mutationFn: (id: number) => api.del(`/providers/models/${id}`),
-    onSuccess: () => { setErr(""); setLoeschModell(null); inv(); }, onError: fail,
+    onSuccess: () => { setErr(""); setDeleteModel(null); inv(); }, onError: fail,
   });
-  const preise = useMutation({
+  const prices = useMutation({
     mutationFn: () => api.post<any>("/providers/models/prices"),
     onSuccess: (r) => {
       const n = r.updated?.length ?? 0;
-      const namen = (r.updated || []).slice(0, 4).map((u: any) => u.model).join(", ");
-      const context = r.context_set ? ` · ${tr("provider_models_panel.kontext_gesetzt", { anzahl: r.context_set })}` : "";
+      const names = (r.updated || []).slice(0, 4).map((u: any) => u.model).join(", ");
+      const context = r.context_set ? ` · ${tr("provider_models_panel.kontext_gesetzt", { count: r.context_set })}` : "";
       flash((n
-        ? tr("provider_models_panel.preise_uebernommen", { anzahl: n, namen: namen + (n > 4 ? " …" : "") })
+        ? tr("provider_models_panel.preise_uebernommen", { count: n, names: names + (n > 4 ? " …" : "") })
         : tr("provider_models_panel.preise_aktuell"))
         + context
-        + (r.unknown?.length ? ` · ${tr("provider_models_panel.ohne_eintrag", { anzahl: r.unknown.length })}` : ""));
+        + (r.unknown?.length ? ` · ${tr("provider_models_panel.ohne_eintrag", { count: r.unknown.length })}` : ""));
       setErr(""); inv();
     },
     onError: fail,
   });
-  const abrufen = useMutation({
+  const fetch = useMutation({
     mutationFn: () => api.post<Record<string, any>>("/providers/models/fetch"),
     onSuccess: (r) => {
       const parts = Object.entries(r).map(([label, v]: [string, any]) =>
@@ -89,30 +89,30 @@ export default function ProviderModelsPanel() {
     onError: fail,
   });
 
-  const provider = [...new Set((modelle || []).map((m) => m.provider))].sort();
-  const zahl = (v: number | null) => v === null || v === undefined ? "—" : String(v);
+  const provider = [...new Set((models || []).map((m) => m.provider))].sort();
+  const number = (v: number | null) => v === null || v === undefined ? "—" : String(v);
 
   return (
     <div className="space-y-4">
-      <Area hinweis={tr("provider_models_panel.einleitung")} werkzeuge={<>
+      <Area hint={tr("provider_models_panel.einleitung")} tools={<>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <button onClick={() => abrufen.mutate()} disabled={abrufen.isPending}
-            className={BUTTON.neben}>
-            {abrufen.isPending ? tr("common.laedt") : `↻ ${tr("provider_models_panel.modelle_abrufen")}`}
+          <button onClick={() => fetch.mutate()} disabled={fetch.isPending}
+            className={BUTTON.secondary}>
+            {fetch.isPending ? tr("common.laedt") : `↻ ${tr("provider_models_panel.modelle_abrufen")}`}
           </button>
-          <button onClick={() => preise.mutate()} disabled={preise.isPending}
+          <button onClick={() => prices.mutate()} disabled={prices.isPending}
             title={tr("provider_models_panel.preise_aus_dem_offenen_katalog_models_de")}
-            className={BUTTON.neben}>
-            {preise.isPending ? tr("common.laedt") : `💲 ${tr("provider_models_panel.preise")} (models.dev)`}
+            className={BUTTON.secondary}>
+            {prices.isPending ? tr("common.laedt") : `💲 ${tr("provider_models_panel.preise")} (models.dev)`}
           </button>
         </div>
       </>}>
-        <Fehlerzeile text={err} />
+        <Errorrow text={err} />
         {note && <p className="text-sm text-muted">{note}</p>}
       </Area>
 
       {provider.map((p) => (
-        <Area key={p} titel={PROVIDER_LABEL[p] ? tr(PROVIDER_LABEL[p]) : p} nebentitel={p}>
+        <Area key={p} title={PROVIDER_LABEL[p] ? tr(PROVIDER_LABEL[p]) : p} subtitle={p}>
           {/* Werte statt Eingabefelder: die Tabelle darf scrollen, die Seite nicht. */}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -129,22 +129,22 @@ export default function ProviderModelsPanel() {
                 </tr>
               </thead>
               <tbody>
-                {(modelle || []).filter((m) => m.provider === p).map((m) => (
+                {(models || []).filter((m) => m.provider === p).map((m) => (
                   <tr key={m.id} className={`border-b border-line ${m.enabled ? "" : "opacity-50"}`}>
                     <td className="py-2 pr-2 font-mono text-xs">{m.model}</td>
                     <td className="pr-2">{m.display_name || "—"}</td>
                     <td className="pr-2 text-right tabular-nums">{m.price_input}</td>
                     <td className="pr-2 text-right tabular-nums">{m.price_output}</td>
                     <td className="pr-2 text-right tabular-nums">{m.price_cache_read}</td>
-                    <td className="pr-2 text-right tabular-nums">{zahl(m.context_tokens)}</td>
-                    <td className="pr-2 text-right tabular-nums">{zahl(m.speed_tps)}</td>
+                    <td className="pr-2 text-right tabular-nums">{number(m.context_tokens)}</td>
+                    <td className="pr-2 text-right tabular-nums">{number(m.speed_tps)}</td>
                     <td className="py-1 text-right">
                       <div className="flex justify-end">
                         <Actions>
-                          <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
+                          <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
                             onClick={() => { setErr(""); setDialog(m); }} />
-                          <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                            onClick={() => setLoeschModell(m)} />
+                          <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                            onClick={() => setDeleteModel(m)} />
                         </Actions>
                       </div>
                     </td>
@@ -156,37 +156,37 @@ export default function ProviderModelsPanel() {
         </Area>
       ))}
 
-      {modelle && modelle.length === 0 && (
-        <Area><ListingLeer>{tr("provider_models_panel.katalog_leer")}</ListingLeer></Area>
+      {models && models.length === 0 && (
+        <Area><ListingEmpty>{tr("provider_models_panel.katalog_leer")}</ListingEmpty></Area>
       )}
 
       {dialog && (
-        <ModellDialog modell={dialog} fehler={err} laeuft={speichern.isPending}
+        <ModelDialog model={dialog} error={err} runs={save.isPending}
           onClose={() => { setDialog(null); setErr(""); }}
-          onSpeichern={(m) => speichern.mutate(m)} />
+          onSave={(m) => save.mutate(m)} />
       )}
-      {loeschModell && (
-        <LoeschDialog was={loeschModell.model} laeuft={remove.isPending}
-          onClose={() => setLoeschModell(null)} onLoeschen={() => remove.mutate(loeschModell.id)} />
+      {deleteModel && (
+        <DeleteDialog was={deleteModel.model} runs={remove.isPending}
+          onClose={() => setDeleteModel(null)} onDelete={() => remove.mutate(deleteModel.id)} />
       )}
     </div>
   );
 }
 
-function ModellDialog({ modell, fehler: error, laeuft: running, onClose, onSpeichern }: {
-  modell: Modell; fehler: string; laeuft: boolean;
-  onClose: () => void; onSpeichern: (m: Modell) => void;
+function ModelDialog({ model, error: error, runs: running, onClose, onSave }: {
+  model: Model; error: string; runs: boolean;
+  onClose: () => void; onSave: (m: Model) => void;
 }) {
-  const [m, setM] = useState<Modell>(modell);
-  const zahlField = (value: number | null, set: (v: number | null) => void, step: string) => (
+  const [m, setM] = useState<Model>(model);
+  const numberField = (value: number | null, set: (v: number | null) => void, step: string) => (
     <input type="number" step={step} min="0" value={value ?? ""} placeholder="—"
       onChange={(e) => set(e.target.value ? Number(e.target.value) : null)} className={INPUT_VALUE} />
   );
 
   return (
-    <Dialog breit titel={modell.model} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} laeuft={running} onSpeichern={() => onSpeichern(m)} />}>
-      <Fehlerzeile text={error} />
+    <Dialog wide title={model.model} onClose={onClose}
+      foot={<DialogFoot onCancel={onClose} runs={running} onSave={() => onSave(m)} />}>
+      <Errorrow text={error} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <Field label={tr("provider_models_panel.anzeigename")}>
@@ -194,21 +194,21 @@ function ModellDialog({ modell, fehler: error, laeuft: running, onClose, onSpeic
               onChange={(e) => setM({ ...m, display_name: e.target.value })} />
           </Field>
         </div>
-        <Field label={tr("provider_models_panel.input")} hinweis={tr("provider_models_panel.usd_je_1m")}>
-          {zahlField(m.price_input, (v) => setM({ ...m, price_input: v ?? 0 }), "0.01")}
+        <Field label={tr("provider_models_panel.input")} hint={tr("provider_models_panel.usd_je_1m")}>
+          {numberField(m.price_input, (v) => setM({ ...m, price_input: v ?? 0 }), "0.01")}
         </Field>
-        <Field label={tr("provider_models_panel.output")} hinweis={tr("provider_models_panel.usd_je_1m")}>
-          {zahlField(m.price_output, (v) => setM({ ...m, price_output: v ?? 0 }), "0.01")}
+        <Field label={tr("provider_models_panel.output")} hint={tr("provider_models_panel.usd_je_1m")}>
+          {numberField(m.price_output, (v) => setM({ ...m, price_output: v ?? 0 }), "0.01")}
         </Field>
-        <Field label={tr("provider_models_panel.cache_read")} hinweis={tr("provider_models_panel.usd_je_1m")}>
-          {zahlField(m.price_cache_read, (v) => setM({ ...m, price_cache_read: v ?? 0 }), "0.01")}
+        <Field label={tr("provider_models_panel.cache_read")} hint={tr("provider_models_panel.usd_je_1m")}>
+          {numberField(m.price_cache_read, (v) => setM({ ...m, price_cache_read: v ?? 0 }), "0.01")}
         </Field>
         <Field label={tr("provider_models_panel.kontext")}
-          hinweis={tr("provider_models_panel.maximales_kontextfenster_in_tokens")}>
-          {zahlField(m.context_tokens, (v) => setM({ ...m, context_tokens: v }), "1024")}
+          hint={tr("provider_models_panel.maximales_kontextfenster_in_tokens")}>
+          {numberField(m.context_tokens, (v) => setM({ ...m, context_tokens: v }), "1024")}
         </Field>
-        <Field label="≈ t/s" hinweis={tr("provider_models_panel.gemessene_ausgabegeschwindigkeit_tokens_")}>
-          {zahlField(m.speed_tps, (v) => setM({ ...m, speed_tps: v }), "1")}
+        <Field label="≈ t/s" hint={tr("provider_models_panel.gemessene_ausgabegeschwindigkeit_tokens_")}>
+          {numberField(m.speed_tps, (v) => setM({ ...m, speed_tps: v }), "1")}
         </Field>
         <label className="flex items-end gap-2 pb-1.5 text-sm text-ink">
           <input type="checkbox" checked={m.enabled} onChange={(e) => setM({ ...m, enabled: e.target.checked })} />

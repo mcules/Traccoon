@@ -26,7 +26,7 @@ import { tr } from "../../i18n";
 import type { Scope } from "./api.ts";
 import type { GateKind, Roster, RosterEntry, RunStatus } from "./types.ts";
 import type { FeedTotals } from "./useOfficeFeed.ts";
-import { BUTTON_KLEIN } from "../ui";
+import { BUTTON_SMALL } from "../ui";
 
 // ── Gates ───────────────────────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export const GATE_TEXT: Record<GateKind, string> = {
 /** **Verbatim** from `components/AgentMonitor.tsx:5-8`. Two views of the same run must not
  *  contradict each other, and whoever "improves" a colour here produces exactly that.
  *  `loop_exhausted` is missing there and therefore only gets the fallback `text-muted` here. */
-export const ST_FARBE: Record<string, string> = {
+export const ST_COLOR: Record<string, string> = {
   running: "text-yellow-400", success: "text-green-400", done: "text-green-400",
   failed: "text-red-400", blocked: "text-orange-400", planned: "text-sky-400",
 };
@@ -61,15 +61,15 @@ export function statusText(s: RunStatus | string | null | undefined): string {
   return ST_TEXT[s] ? tr(ST_TEXT[s]) : s;
 }
 
-export function statusFarbe(s: RunStatus | string | null | undefined): string {
-  return (s && ST_FARBE[s]) || "text-muted";
+export function statusColor(s: RunStatus | string | null | undefined): string {
+  return (s && ST_COLOR[s]) || "text-muted";
 }
 
 // ── Zahlen ──────────────────────────────────────────────────────────────────────────────────
 
 /** Integer with German thousands separators. By hand, so that the same number looks the same
  *  in every browser: `toLocaleString()` without a language follows the browser setting. */
-export function zahl(n: number): string {
+export function number(n: number): string {
   const s = Math.round(Math.abs(n)).toString();
   let out = "";
   for (let i = 0; i < s.length; i++) {
@@ -79,23 +79,23 @@ export function zahl(n: number): string {
   return (n < 0 ? "−" : "") + out;
 }
 
-function komma(v: number, dez: number): string {
-  return v.toFixed(dez).replace(".", ",");
+function comma(v: number, dec: number): string {
+  return v.toFixed(dec).replace(".", ",");
 }
 
 /** Tokens in short: exact below 10 000, rounded above. The exact number stands in the `title`. */
 export function tokenText(n: number): string {
-  if (n < 10_000) return zahl(n);
-  if (n < 1_000_000) return `${komma(n / 1000, 1)} Tsd.`;
-  return `${komma(n / 1_000_000, 2)} Mio.`;
+  if (n < 10_000) return number(n);
+  if (n < 1_000_000) return `${comma(n / 1000, 1)} Tsd.`;
+  return `${comma(n / 1_000_000, 2)} Mio.`;
 }
 
 /** Dollar amount in the format of the rest of the repository (`Dashboard`, `AgentMonitor`:
  *  `$0.0123`). Deliberately **not** germanised: the same number stands in three other places
  *  of the application with a decimal point, and two notations for the same amount are worse
  *  than a foreign language one. `unvollstaendig` puts the "≥" in front. */
-export function usdText(v: number, unvollstaendig?: boolean): string {
-  return `${unvollstaendig ? "≥ " : ""}$${(v || 0).toFixed(4)}`;
+export function usdText(v: number, incomplete?: boolean): string {
+  return `${incomplete ? "≥ " : ""}$${(v || 0).toFixed(4)}`;
 }
 
 /** Duration in the notation of `AgentMonitor.fmtDauer`. `null` = unknown. */
@@ -110,7 +110,7 @@ export function durationText(ms: number | null | undefined): string {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-function zwei(n: number): string {
+function two(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
@@ -119,66 +119,66 @@ function zwei(n: number): string {
 export function uhrText(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—:—:—";
   const d = new Date(ms);
-  return `${zwei(d.getHours())}:${zwei(d.getMinutes())}:${zwei(d.getSeconds())}`;
+  return `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
 }
 
 // ── Sitzungsreiter ──────────────────────────────────────────────────────────────────────────
 
 /** Without a ticket respectively without a project: a tab of its own instead of "disappears
  *  from the list". Job and assistant runs are real inhabitants of the room. */
-export const OHNE_TICKET = "(ohne Ticket)";   // Gruppierungsschlüssel, kein Anzeigetext
-export const OHNE_PROJEKT = "(ohne Projekt)";
+export const WITHOUT_TICKET = "(ohne Ticket)";   // Gruppierungsschlüssel, kein Anzeigetext
+export const WITHOUT_PROJECT = "(ohne Projekt)";
 
 /** Which tab a run belongs to: its ticket in the project scope, its project globally. */
-export function sitzungsKey(scope: Scope, r: RosterEntry): string {
+export function sessionKey(scope: Scope, r: RosterEntry): string {
   return scope.kind === "project"
-    ? (r.issue_key || OHNE_TICKET)
-    : (r.project_key || OHNE_PROJEKT);
+    ? (r.issue_key || WITHOUT_TICKET)
+    : (r.project_key || WITHOUT_PROJECT);
 }
 
 /** `null` = "all". Used by stage, dock and inspector as well, so that "dimmed" means the same
  *  everywhere. */
-export function passtZumFilter(scope: Scope, r: RosterEntry, filter: string | null): boolean {
-  return filter === null || sitzungsKey(scope, r) === filter;
+export function fitsToFilter(scope: Scope, r: RosterEntry, filter: string | null): boolean {
+  return filter === null || sessionKey(scope, r) === filter;
 }
 
-interface Reiter {
+interface Tab {
   key: string;
-  laeuft: boolean;
-  seit: number;
-  anzahl: number;
+  runs: boolean;
+  since: number;
+  count: number;
 }
 
-function reiterAus(scope: Scope, roster: Roster): Reiter[] {
-  const map = new Map<string, Reiter>();
+function tabFrom(scope: Scope, roster: Roster): Tab[] {
+  const map = new Map<string, Tab>();
   for (const r of roster) {
-    const key = sitzungsKey(scope, r);
-    const seit = r.started_at ? Date.parse(r.started_at) : 0;
-    const vorhanden = map.get(key);
-    if (!vorhanden) {
-      map.set(key, { key, laeuft: r.status === "running", seit: seit || 0, anzahl: 1 });
+    const key = sessionKey(scope, r);
+    const since = r.started_at ? Date.parse(r.started_at) : 0;
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { key, runs: r.status === "running", since: since || 0, count: 1 });
     } else {
-      vorhanden.anzahl++;
-      if (r.status === "running") vorhanden.laeuft = true;
-      if (seit > vorhanden.seit) vorhanden.seit = seit;
+      existing.count++;
+      if (r.status === "running") existing.runs = true;
+      if (since > existing.since) existing.since = since;
     }
   }
   // Running first, then the most recent: the order in which one looks for them.
   return [...map.values()].sort((a, b) =>
-    (a.laeuft === b.laeuft ? b.seit - a.seit : (a.laeuft ? -1 : 1)));
+    (a.runs === b.runs ? b.since - a.since : (a.runs ? -1 : 1)));
 }
 
 // ── Interface ───────────────────────────────────────────────────────────────────────────────
 
 /** 1x / 2x / 4x. More is no help with a replay that computes from the start. */
-export type Tempo = 1 | 2 | 4;
+export type Pace = 1 | 2 | 4;
 
-export const TEMPI: readonly Tempo[] = [1, 2, 4];
+export const TEMPI: readonly Pace[] = [1, 2, 4];
 
 export interface TopBarProps {
   scope: Scope;
   /** Title of the session (ticket respectively run tree), when known. */
-  titel?: string;
+  title?: string;
   roster: Roster;
   totals: FeedTotals;
   /** Socket open **and** backfill done. */
@@ -186,8 +186,8 @@ export interface TopBarProps {
   /** Angesprungene Position in Epoch-ms, `null` = Gegenwart. */
   seekTs: number | null;
   onBackToLive: () => void;
-  speed: Tempo;
-  onSpeedChange: (t: Tempo) => void;
+  speed: Pace;
+  onSpeedChange: (t: Pace) => void;
   /** Session filter, `null` = all. */
   filter: string | null;
   onFilterChange: (f: string | null) => void;
@@ -206,16 +206,16 @@ export interface TopBarProps {
 // ── The component ───────────────────────────────────────────────────────────────────────────
 
 export default function TopBar({
-  scope, titel: title, roster, totals, live, seekTs, onBackToLive,
+  scope, title: title, roster, totals, live, seekTs, onBackToLive,
   speed, onSpeedChange, filter, onFilterChange,
   onFullscreen, error, kiosk,
 }: TopBarProps) {
-  const reiter = reiterAus(scope, roster);
+  const tab = tabFrom(scope, roster);
   const tokenSum_total = totals.in_tokens + totals.out_tokens;
   const tokenTitle = tr("buero.token_titel", {
-    ein: zahl(totals.in_tokens), aus: zahl(totals.out_tokens),
-    cache: zahl(totals.cache_read_tokens) });
-  const kostenTitle = tr(totals.cost_partial ? "buero.kosten_teilweise" : "buero.kosten_geschaetzt",
+    inside: number(totals.in_tokens), from: number(totals.out_tokens),
+    cache: number(totals.cache_read_tokens) });
+  const costTitle = tr(totals.cost_partial ? "buero.kosten_teilweise" : "buero.kosten_geschaetzt",
     { abgerechnet: usdText(totals.cost_usd_billed) });
 
   return (
@@ -229,14 +229,14 @@ export default function TopBar({
           🔢 <b className="text-ink">{tokenText(tokenSum_total)}</b> {tr("buero.tokens")}
         </span>
 
-        <span className="text-muted" title={kostenTitle}>
+        <span className="text-muted" title={costTitle}>
           💵 <b className="text-ink">{usdText(totals.cost_usd_estimated, totals.cost_partial)}</b>
         </span>
 
         <span className="text-muted"
-          title={tr("buero.laufen_gerade", { laufend: totals.running, gesamt: totals.runs })}>
+          title={tr("buero.laufen_gerade", { running: totals.running, total: totals.runs })}>
           🤖 <b className="text-ink">{totals.runs}</b> {tr(totals.runs === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}
-          {totals.running > 0 && <span className="text-yellow-400"> · {tr("buero.aktiv", { anzahl: totals.running })}</span>}
+          {totals.running > 0 && <span className="text-yellow-400"> · {tr("buero.aktiv", { count: totals.running })}</span>}
         </span>
 
         <div className="flex-1" />
@@ -249,7 +249,7 @@ export default function TopBar({
             </span>
             {!kiosk && (
               <button type="button" onClick={onBackToLive}
-                className={BUTTON_KLEIN.neben}>
+                className={BUTTON_SMALL.secondary}>
                 {tr("buero.zurueck_zu_live")}
               </button>
             )}
@@ -283,7 +283,7 @@ export default function TopBar({
 
         {!kiosk && onFullscreen && (
           <button type="button" onClick={onFullscreen}
-            className={BUTTON_KLEIN.neben}
+            className={BUTTON_SMALL.secondary}
             title={tr("buero.ganze_seite")}>
             ⤢ {tr("buero.vollbild")}
           </button>
@@ -293,22 +293,22 @@ export default function TopBar({
       {/* Sitzungsreiter — ein Filter auf den Roster, kein zweites Log.
           Im Kiosk weg: ein Filter, den niemand umstellen kann, ist eine Behauptung über
           den Raum, keine Bedienung. */}
-      {!kiosk && reiter.length > 1 && (
+      {!kiosk && tab.length > 1 && (
         <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" role="group"
           aria-label={tr(scope.kind === "project" ? "buero.tickets_ansicht" : "buero.projekte_ansicht")}>
-          <ReiterButton aktiv={filter === null} onClick={() => onFilterChange(null)}
-            titel={tr("buero.alle_figuren")}>
+          <TabButton active={filter === null} onClick={() => onFilterChange(null)}
+            title={tr("buero.alle_figuren")}>
             {tr("buero.alle")}
-          </ReiterButton>
-          {reiter.map((r) => (
-            <ReiterButton key={r.key} aktiv={filter === r.key}
+          </TabButton>
+          {tab.map((r) => (
+            <TabButton key={r.key} active={filter === r.key}
               onClick={() => onFilterChange(filter === r.key ? null : r.key)}
-              titel={`${r.anzahl} ${tr(r.anzahl === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}`
-                + (r.laeuft ? `, ${tr("buero.davon_laeuft_einer")}` : "")
+              title={`${r.count} ${tr(r.count === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}`
+                + (r.runs ? `, ${tr("buero.davon_laeuft_einer")}` : "")
                 + ` — ${tr("buero.andere_gedimmt")}`}>
-              {r.laeuft && <span className="mr-1 text-yellow-400">●</span>}
+              {r.runs && <span className="mr-1 text-yellow-400">●</span>}
               {r.key}
-            </ReiterButton>
+            </TabButton>
           ))}
         </div>
       )}
@@ -322,13 +322,13 @@ export default function TopBar({
   );
 }
 
-function ReiterButton({ aktiv, onClick, titel: title, children }: {
-  aktiv: boolean; onClick: () => void; titel: string; children: React.ReactNode;
+function TabButton({ active, onClick, title: title, children }: {
+  active: boolean; onClick: () => void; title: string; children: React.ReactNode;
 }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={aktiv} title={title}
+    <button type="button" onClick={onClick} aria-pressed={active} title={title}
       className={"shrink-0 whitespace-nowrap rounded border px-2 py-0.5 font-mono text-xs "
-        + (aktiv ? "border-brand bg-brand/10 text-brand" : "border-line text-muted hover:border-brand")}>
+        + (active ? "border-brand bg-brand/10 text-brand" : "border-line text-muted hover:border-brand")}>
       {children}
     </button>
   );

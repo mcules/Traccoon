@@ -22,11 +22,11 @@ import { Link } from "react-router-dom";
 import type { Scope } from "./api.ts";
 import type { Cmd, GateKind, Roster, RosterEntry } from "./types.ts";
 import type { LogSource } from "./Timeline.tsx";
-import { projektPath } from "../../projectTabs";
+import { projectPath } from "../../projectTabs";
 import {
-  GATE_TEXT, durationText, statusFarbe, statusText, uhrText, usdText, zahl,
+  GATE_TEXT, durationText, statusColor, statusText, uhrText, usdText, number,
 } from "./TopBar.tsx";
-import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
+import { BUTTON_SMALL, BUTTON_TEXT} from "../ui";
 
 /** This many steps back the inspector shows. More is the job of the dock. */
 const STEPS = 10;
@@ -47,7 +47,7 @@ export interface InspectorProps {
    *  the project tab) there is no place the jump could lead to, and then the entry is better
    *  missing than pointing into nothing. The inspector **stays** with the single run in the
    *  process: it passes the role on, it does not become the file itself. */
-  onOpenAkte?: (agent: string) => void;
+  onOpenFile?: (agent: string) => void;
   className?: string;
 }
 
@@ -77,7 +77,7 @@ function stepText(c: Cmd): { text: string; css?: string } | null {
     case "deliver": return { text: `📨 ${tr("inspector.uebergabe")}${c.text ? `: ${c.text}` : ""}` };
     case "gate": return { text: `⏸ ${tr(GATE_TEXT[c.kind])}`, css: "text-orange-400" };
     case "resume": return { text: `▶ ${tr("inspector.antwort_da")}` };
-    case "status": return { text: `● ${statusText(c.status)}`, css: statusFarbe(c.status) };
+    case "status": return { text: `● ${statusText(c.status)}`, css: statusColor(c.status) };
     case "done": return c.ok ? { text: "✅ fertig", css: "text-green-400" }
       : { text: "❌ abgebrochen", css: "text-red-400" };
     // The server rack. `back` gets a line of its own instead of "failed": failed **and**
@@ -91,29 +91,29 @@ function stepText(c: Cmd): { text: string; css?: string } | null {
   }
 }
 
-interface Auszug {
-  schritte: Step[];
+interface Excerpt {
+  steps: Step[];
   /** Zuletzt begonnenes Werkzeug samt Ergebnis, falls es im Fenster endete. */
-  werkzeug: { tool: string; target?: string; ts: number; dauer: number | null; ok: boolean | null | undefined } | null;
+  tool: { tool: string; target?: string; ts: number; duration: number | null; ok: boolean | null | undefined } | null;
   gate: GateKind | null;
   edits: number;
 }
 
-function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id: string, bis: number | null): Auszug {
+function excerptFrom(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id: string, to: number | null): Excerpt {
   const steps: Step[] = [];
-  let tool: Auszug["werkzeug"] = null;
+  let tool: Excerpt["tool"] = null;
   let gate: GateKind | null = null;
   let edits = 0;
   for (const e of log) {
-    if (bis !== null && e.ts > bis) continue;
+    if (to !== null && e.ts > to) continue;
     e.cmds.forEach((c, i) => {
       // `deploy` is the only command without an `id`: it belongs to the room, not to the
       // figure. The triggering figure stands in `by`, the same affiliation for the inspector.
       if ((c.k === "deploy" ? c.by : c.id) !== id) return;
       if (c.k === "tool") {
-        tool = { tool: c.tool, target: c.target, ts: e.ts, dauer: null, ok: undefined };
+        tool = { tool: c.tool, target: c.target, ts: e.ts, duration: null, ok: undefined };
       } else if (c.k === "toolEnd" && tool && tool.ok === undefined) {
-        tool = { ...tool, ok: c.ok, dauer: Math.max(0, e.ts - tool.ts) };
+        tool = { ...tool, ok: c.ok, duration: Math.max(0, e.ts - tool.ts) };
       } else if (c.k === "edit") {
         edits++;
       } else if (c.k === "gate") {
@@ -125,21 +125,21 @@ function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id:
       if (t) steps.push({ key: `${e.seq}:${i}`, ts: e.ts, text: t.text, css: t.css });
     });
   }
-  return { schritte: steps.slice(-STEPS), werkzeug: tool, gate, edits };
+  return { steps: steps.slice(-STEPS), tool: tool, gate, edits };
 }
 
 // ── The component ───────────────────────────────────────────────────────────────────────────
 
 export default function Inspector({
-  scope, entry, roster, recorder, revision, seekTs, onSelect, onClose, onOpenAkte, className,
+  scope, entry, roster, recorder, revision, seekTs, onSelect, onClose, onOpenFile, className,
 }: InspectorProps) {
   const log = useMemo(() => recorder.entries(), [recorder, revision]);
-  const auszug = useMemo(
-    () => (entry ? auszugAus(log, entry.agent_id, seekTs) : null),
+  const excerpt = useMemo(
+    () => (entry ? excerptFrom(log, entry.agent_id, seekTs) : null),
     [log, entry?.agent_id, seekTs],
   );
 
-  if (!entry || !auszug) {
+  if (!entry || !excerpt) {
     return (
       <div className={`rounded border border-line bg-card px-3 py-4 text-center text-xs text-muted ${className ?? ""}`}>
         {tr("inspector.keine_figur")}
@@ -151,31 +151,31 @@ export default function Inspector({
   const ende = entry.ended_at ? Date.parse(entry.ended_at)
     : (entry.status === "running" ? Date.now() : NaN);
   const duration = Number.isFinite(start) && Number.isFinite(ende) ? ende - start : null;
-  const unbepreist = entry.cost_priced !== true;
+  const unpriced = entry.cost_priced !== true;
 
-  const eltern = entry.parent_run_id === null
+  const parent = entry.parent_run_id === null
     ? null
     : (roster.find((r) => r.run_id === entry.parent_run_id) ?? null);
-  const elternId = entry.parent_run_id === null ? null : `run:${entry.parent_run_id}`;
+  const parentId = entry.parent_run_id === null ? null : `run:${entry.parent_run_id}`;
 
   // The project key stands on the run; in the project scope the scope itself is the fallback
   // (a run without a `project_key` can still sit in this project).
-  const projektKey = entry.project_key ?? (scope.kind === "project" ? scope.projectKey : null);
+  const projectKey = entry.project_key ?? (scope.kind === "project" ? scope.projectKey : null);
 
   const blockText = entry.status === "blocked"
-    ? (auszug.gate ? tr(GATE_TEXT[auszug.gate]) : tr("inspector.grund_nicht_im_fenster"))
+    ? (excerpt.gate ? tr(GATE_TEXT[excerpt.gate]) : tr("inspector.grund_nicht_im_fenster"))
     : (entry.status === "planned" ? GATE_TEXT.plan : null);
 
   return (
     <div className={`flex min-h-0 flex-col rounded border border-line bg-card ${className ?? ""}`}>
       <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2">
         <span className="font-medium">{entry.agent || `Lauf ${entry.run_id}`}</span>
-        <span className={`text-xs ${statusFarbe(entry.status)}`}>{statusText(entry.status)}</span>
+        <span className={`text-xs ${statusColor(entry.status)}`}>{statusText(entry.status)}</span>
         <div className="flex-1" />
         <span className="font-mono text-[11px] text-muted">#{entry.run_id}</span>
         {onClose && (
           <button type="button" onClick={onClose} title={tr("inspector.schliessen")}
-            className={BUTTON_KLEIN.neben}>✕</button>
+            className={BUTTON_SMALL.secondary}>✕</button>
         )}
       </div>
 
@@ -198,44 +198,44 @@ export default function Inspector({
             {entry.provider || "—"} / <span className="font-mono">{entry.model || "—"}</span>
           </Field>
           <Field label={tr("buero.tokens")}>
-            <span title={`Cache gelesen ${zahl(entry.cache_read_tokens)}`}>
-              {zahl(entry.in_tokens)} {tr("akte.ein")} · {zahl(entry.out_tokens)} {tr("akte.aus")}
+            <span title={`Cache gelesen ${number(entry.cache_read_tokens)}`}>
+              {number(entry.in_tokens)} {tr("akte.ein")} · {number(entry.out_tokens)} {tr("akte.aus")}
             </span>
           </Field>
           <Field label={tr("akte.kosten")}>
-            <span title={tr(unbepreist ? "inspector.kosten_teilweise" : "inspector.kosten_voll")}>
-              {usdText(entry.cost_usd, unbepreist)}
+            <span title={tr(unpriced ? "inspector.kosten_teilweise" : "inspector.kosten_voll")}>
+              {usdText(entry.cost_usd, unpriced)}
             </span>
           </Field>
           <Field label={tr("inspector.start")}>{Number.isFinite(start) ? uhrText(start) : "—"}</Field>
           <Field label={tr("akte.dauer")}>{durationText(duration)}{entry.status === "running" && ` (${tr("buero.st_running")})`}</Field>
           <Field label={tr("akte.runden")}>{entry.iterations || 0}</Field>
-          <Field label={tr("inspector.bearbeitungen")}>{auszug.edits}</Field>
+          <Field label={tr("inspector.bearbeitungen")}>{excerpt.edits}</Field>
           <Field label={tr("inspector.elternlauf")}>
-            {elternId === null ? (
+            {parentId === null ? (
               <span className="text-muted">— (Wurzellauf)</span>
             ) : onSelect ? (
-              <button type="button" onClick={() => onSelect(elternId)}
-                className={BUTTON_TEXT.neben}>
-                {eltern?.agent || elternId}
+              <button type="button" onClick={() => onSelect(parentId)}
+                className={BUTTON_TEXT.secondary}>
+                {parent?.agent || parentId}
               </button>
             ) : (
-              <span>{eltern?.agent || elternId}</span>
+              <span>{parent?.agent || parentId}</span>
             )}
           </Field>
           <Field label="Verschachtelung">{entry.spawn_depth}</Field>
           <Field label="Letztes Werkzeug">
-            {auszug.werkzeug ? (
+            {excerpt.tool ? (
               <span>
-                <span className="font-mono">{auszug.werkzeug.tool}</span>
-                {auszug.werkzeug.target && <span className="text-muted"> · {auszug.werkzeug.target}</span>}
+                <span className="font-mono">{excerpt.tool.tool}</span>
+                {excerpt.tool.target && <span className="text-muted"> · {excerpt.tool.target}</span>}
                 <span className="text-muted">
                   {" · "}
-                  {auszug.werkzeug.ok === undefined ? tr("buero.st_running")
-                    : auszug.werkzeug.ok === true ? "erfolgreich"
-                      : auszug.werkzeug.ok === false ? "fehlgeschlagen"
+                  {excerpt.tool.ok === undefined ? tr("buero.st_running")
+                    : excerpt.tool.ok === true ? "erfolgreich"
+                      : excerpt.tool.ok === false ? "fehlgeschlagen"
                         : "Ergebnis unbekannt"}
-                  {auszug.werkzeug.ok !== undefined && ` · ${durationText(auszug.werkzeug.dauer)}`}
+                  {excerpt.tool.ok !== undefined && ` · ${durationText(excerpt.tool.duration)}`}
                 </span>
               </span>
             ) : <span className="text-muted">—</span>}
@@ -244,11 +244,11 @@ export default function Inspector({
 
         <div>
           <div className="mb-1 font-medium">Letzte Schritte</div>
-          {auszug.schritte.length === 0 ? (
+          {excerpt.steps.length === 0 ? (
             <div className="text-muted">{tr("inspector.nichts_im_fenster")}</div>
           ) : (
             <div className="space-y-0.5">
-              {auszug.schritte.map((s) => (
+              {excerpt.steps.map((s) => (
                 <div key={s.key} className="flex gap-2">
                   <span className="shrink-0 font-mono text-[11px] text-muted">{uhrText(s.ts)}</span>
                   <span className={`min-w-0 flex-1 break-words ${s.css ?? ""}`}>{s.text}</span>
@@ -259,21 +259,21 @@ export default function Inspector({
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-line pt-2">
-          {onOpenAkte && entry.agent && (
-            <button type="button" onClick={() => onOpenAkte(entry.agent)}
-              title={tr("inspector.alle_laeufe", { rolle: entry.agent })}
-              className={BUTTON_KLEIN.neben}>
+          {onOpenFile && entry.agent && (
+            <button type="button" onClick={() => onOpenFile(entry.agent)}
+              title={tr("inspector.alle_laeufe", { role: entry.agent })}
+              className={BUTTON_SMALL.secondary}>
               📇 Personalakte: {entry.agent}
             </button>
           )}
-          {projektKey && entry.issue_key && (
-            <Link to={`/projects/${projektKey}/tickets/${entry.issue_key}`}
+          {projectKey && entry.issue_key && (
+            <Link to={`/projects/${projectKey}/tickets/${entry.issue_key}`}
               className="rounded border border-line px-2 py-0.5 hover:border-brand">
               🎫 Ticket {entry.issue_key}
             </Link>
           )}
-          {projektKey && (
-            <Link to={projektPath(projektKey, "operations", "monitor")}
+          {projectKey && (
+            <Link to={projectPath(projectKey, "operations", "monitor")}
               className="rounded border border-line px-2 py-0.5 hover:border-brand">
               📈 Agenten-Monitor
             </Link>

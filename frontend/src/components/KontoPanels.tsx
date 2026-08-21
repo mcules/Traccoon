@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import { BUTTON_KLEIN } from "./ui";
+import { BUTTON_SMALL } from "./ui";
 
 /**
  * The switches that hang off `/me/flags`, one panel per subject.
@@ -41,7 +41,7 @@ function useNotice(): [string, (t: string) => void] {
 const KARTE = "rounded-lg border border-line bg-card p-4";
 const FIELD = "rounded border border-line bg-surface px-2 py-1";
 
-export function AgentenBetriebPanel() {
+export function AgentsOperationPanel() {
   const { flags, inv } = useFlags();
   const [runners, setRunners] = useState(3);
   const [msg, flash] = useNotice();
@@ -56,7 +56,7 @@ export function AgentenBetriebPanel() {
           onChange={(e) => setRunners(+e.target.value)} className={`w-20 ${FIELD}`} />
         <button onClick={async () => {
           await api.put("/me/runner-limit", { value: runners }); inv(); flash(tr("konto.limit_gespeichert"));
-        }} className={BUTTON_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
+        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.speichern")}</button>
       </div>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>
@@ -97,11 +97,11 @@ export function AssistantNoticesPanel() {
  * Vorher rechnete die Oberfläche mit der Zone des Browsers und der Server in UTC; ein
  * Cron-Job „0 8 * * *" lief damit im Sommer um zehn.
  */
-export function ZeitzonePanel() {
+export function TimezonePanel() {
   const { flags, inv } = useFlags();
   const [zone, setZone] = useState("");
   const [msg, flash] = useNotice();
-  const { data: zonen } = useQuery({
+  const { data: zones } = useQuery({
     queryKey: ["timezones"], queryFn: () => api.get<string[]>("/timezones"),
     staleTime: 24 * 60 * 60_000,
   });
@@ -124,8 +124,8 @@ export function ZeitzonePanel() {
           await api.put("/me/timezone", { value: e.target.value });
           inv(); flash(tr("konto.gespeichert"));
         }} className={`${FIELD} max-w-xs`}>
-          {!zonen && <option value={zone}>{zone || "…"}</option>}
-          {zonen?.map((z) => <option key={z} value={z}>{z}</option>)}
+          {!zones && <option value={zone}>{zone || "…"}</option>}
+          {zones?.map((z) => <option key={z} value={z}>{z}</option>)}
         </select>
         {now && <span className="text-xs text-muted">dort ist es gerade {now} Uhr</span>}
       </div>
@@ -134,7 +134,7 @@ export function ZeitzonePanel() {
   );
 }
 
-export function GedaechtnisPanel() {
+export function MemoryPanel() {
   const { flags, inv } = useFlags();
   const [path, setPath] = useState("");
   const [msg, flash] = useNotice();
@@ -154,7 +154,7 @@ export function GedaechtnisPanel() {
         <button onClick={async () => {
           await api.put("/me/vault-memory-path", { value: path });
           inv(); flash(tr(path ? "preferences_panel.gedaechtnis_gespeichert" : "preferences_panel.gedaechtnis_aus"));
-        }} className={BUTTON_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
+        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.speichern")}</button>
       </div>
       <p className="mt-2 text-[11px] text-muted">{tr("preferences_panel.gedaechtnis_hinweis")}</p>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
@@ -162,7 +162,7 @@ export function GedaechtnisPanel() {
   );
 }
 
-export function NachtWindowPanel() {
+export function NightWindowPanel() {
   const { flags, inv } = useFlags();
   const [start, setStart] = useState(22);
   const [ende, setEnde] = useState(6);
@@ -194,7 +194,7 @@ export function NachtWindowPanel() {
         <button onClick={async () => {
           await api.put("/me/night-window", { start_hour: start, end_hour: ende, days: days });
           inv(); flash(tr("preferences_panel.fenster_gespeichert"));
-        }} className={BUTTON_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
+        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.speichern")}</button>
       </div>
       <div className="mb-3 flex gap-1">
         {DAYS.map((d, i) => (
@@ -211,7 +211,7 @@ export function NachtWindowPanel() {
   );
 }
 
-export function MeineSchalterPanel() {
+export function MySwitchPanel() {
   const { flags, inv } = useFlags();
   const um = async (path: string, on: boolean) => {
     on ? await api.post(path) : await api.del(path);
@@ -233,7 +233,7 @@ export function MeineSchalterPanel() {
 
 /** System wide switches. They belong to the installation, not to the person, and therefore
  *  stand in the administration (maintenance) and no longer between somebody's own settings. */
-export function SystemSchalterPanel() {
+export function SystemSwitchPanel() {
   const { flags, inv } = useFlags();
   const um = async (path: string, on: boolean) => {
     on ? await api.post(path) : await api.del(path);

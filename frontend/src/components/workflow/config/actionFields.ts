@@ -73,7 +73,7 @@ const TO_MODE: [string, string][] = [
   ["context", "option.aus_dem_kontext_user_id"],
 ];
 
-const KEINE: ActionSpec = { summary: "", fields: [] };
+const NO: ActionSpec = { summary: "", fields: [] };
 
 export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
   http_request: { summary: "action_fields.ruft_ein_hinterlegtes_ziel_auf", fields: [] },  // eigene Maske
@@ -567,4 +567,4 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
 
 };
 
-export const FALLBACK_SPEC: ActionSpec = KEINE;
+export const FALLBACK_SPEC: ActionSpec = NO;

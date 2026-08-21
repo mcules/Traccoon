@@ -24,9 +24,9 @@ export default function Onboarding() {
   });
   if (!data || data.dismissed) return null;
 
-  const openPflicht = data.steps.filter((s) => !s.done && s.required);
+  const openRequired = data.steps.filter((s) => !s.done && s.required);
   const openOptional = data.steps.filter((s) => !s.done && !s.required);
-  if (!openPflicht.length && !openOptional.length) return null;
+  if (!openRequired.length && !openOptional.length) return null;
 
   const dismiss = async () => {
     await api.post("/me/onboarding/dismiss");
@@ -44,7 +44,7 @@ export default function Onboarding() {
             {tr(data.ready ? "onboarding.rest_optional" : "onboarding.pflicht_offen")}
           </p>
         </div>
-        <button onClick={dismiss} className={BUTTON_TEXT.neben}>{tr("onboarding.ausblenden")}</button>
+        <button onClick={dismiss} className={BUTTON_TEXT.secondary}>{tr("onboarding.ausblenden")}</button>
       </div>
 
       <div className="mt-3 space-y-2">

@@ -155,7 +155,7 @@ export default function PluginHost() {
   useEffect(() => setError(""), [slug]);
 
   if (plugins.length && !plugin) {
-    return <Area hinweis={tr("plugins.nicht_gefunden")}><div /></Area>;
+    return <Area hint={tr("plugins.nicht_gefunden")}><div /></Area>;
   }
 
   // The anchor decides which page of a plugin with several contributions is meant.

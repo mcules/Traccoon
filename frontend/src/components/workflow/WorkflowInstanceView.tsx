@@ -6,7 +6,7 @@ import { workflowApi, getToken, type WorkflowInstance } from "../../api";
 import WorkflowCanvas from "./WorkflowCanvas";
 import { graphToFlow } from "./convert";
 import { runtimeStates } from "./runtimeState";
-import Schrittprotokoll from "./Schrittprotokoll";
+import Steplog from "./Schrittprotokoll";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "./layout";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -82,8 +82,8 @@ export default function WorkflowInstanceView({
           Zeile darüber längst, „was kam zurück?" bisher niemand. */}
       {compact ? (
         <>
-          <Schrittprotokoll schritte={instance.steps} maxHoehe="16rem"
-            leerText={tr("instanz.kein_schritt")} />
+          <Steplog steps={instance.steps} maxHeight="16rem"
+            emptyText={tr("instanz.kein_schritt")} />
           <details className="mt-2">
             <summary className="cursor-pointer text-xs text-muted">{tr("workflow_instance_view.ablauf_als_graph")}</summary>
             <div className="mt-1 overflow-hidden rounded-lg border border-line" style={{ height }}>
@@ -101,8 +101,8 @@ export default function WorkflowInstanceView({
               Verlauf — {instance.steps.length} Schritt{instance.steps.length === 1 ? "" : "e"}
             </summary>
             <div className="mt-1">
-              <Schrittprotokoll schritte={instance.steps} maxHoehe="20rem"
-                leerText={tr("instanz.kein_schritt")} />
+              <Steplog steps={instance.steps} maxHeight="20rem"
+                emptyText={tr("instanz.kein_schritt")} />
             </div>
           </details>
         </>

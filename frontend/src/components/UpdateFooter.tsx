@@ -28,7 +28,7 @@ export default function UpdateFooter() {
     content = {
       cls: "bg-yellow-500/15 text-yellow-300",
       text: `⏳ ${tr("update_footer.eingereiht")}${
-        data.running_agents > 0 ? ` (${tr("agents_badge.noch_n", { anzahl: data.running_agents })})` : ""}.`,
+        data.running_agents > 0 ? ` (${tr("agents_badge.noch_n", { count: data.running_agents })})` : ""}.`,
     };
   } else if (completedRecent && dismissed !== data.last_update_completed_at) {
     content = { cls: "bg-green-500/15 text-green-300", text: "✅ Update abgeschlossen.", closable: true };
