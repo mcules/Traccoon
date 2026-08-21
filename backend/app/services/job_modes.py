@@ -144,7 +144,7 @@ def _graph(job: Job, target_name: str = "") -> dict:
 
     report = job.notify_mode or "always"
     if report == "never":
-        nodes.append(_n("fertig", "end", 3, {"label": "Fertig", "outcome": "completed"}))
+        nodes.append(_n("fertig", "end", 3, {"label": "Done", "outcome": "completed"}))
         edges.append(_e("answer", "fertig"))
         return {"nodes": nodes, "edges": edges}
 
@@ -169,7 +169,7 @@ def _graph(job: Job, target_name: str = "") -> dict:
                          {"handle": "still", "label": "still bleiben"}],
             "default_handle": "still"}),
         report_node,
-        _n("fertig", "end", 5, {"label": "Fertig", "outcome": "completed"}),
+        _n("fertig", "end", 5, {"label": "Done", "outcome": "completed"}),
     ]
     edges += [_e("answer", "melden_wenn"), _e("melden_wenn", "melden", "melden"),
               _e("melden_wenn", "fertig", "still", "ohne Nachricht"), _e("melden", "fertig")]

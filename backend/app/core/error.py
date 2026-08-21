@@ -44,6 +44,6 @@ async def error_handler(_request: Request, exc: Error) -> JSONResponse:
     """Put the key beside the text. Everything else stays as FastAPI would send it."""
     content: dict[str, Any] = {"detail": exc.detail, "key": exc.key}
     if exc.values:
-        content["werte"] = exc.values
+        content["values"] = exc.values
     return JSONResponse(status_code=exc.status_code, content=content,
                         headers=getattr(exc, "headers", None))

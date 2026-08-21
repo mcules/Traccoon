@@ -117,6 +117,15 @@ CONTEXT: dict[str, str] = {
     "ablage": "storage",
     "auftrag": "task",
     "einheit": "unit",
+    # Context keys of the spam card (state en9): they stand in published versions as
+    # `{{ spam.karte_titel }}` and would point into the void after the rename.
+    "geklaert": "settled",
+    "karte_titel": "card_title",
+    "karte_text": "card_text",
+    "karte_art": "card_kind",
+    "karte_faellig": "card_due",
+    "befunde_text": "findings_text",
+    "geklaert_urteil": "settled_verdict",
     "erster_am": "first_at",
     "erster_wert": "first_value",
     "gefunden": "found",

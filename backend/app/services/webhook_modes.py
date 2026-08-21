@@ -136,7 +136,7 @@ async def convert(db: AsyncSession) -> int:
             continue
 
         if sub.mode == "assistant":
-            graph = templates.graph("webhook-assistent")
+            graph = templates.graph("trigger-to-assistant")
             task = _tpl(sub.prompt_tmpl) or (
                 f"{_own_title(sub)}\n\n{_tpl(sub.body_template)}".strip())
             _set_params(graph, "auftrag", {
@@ -147,21 +147,21 @@ async def convert(db: AsyncSession) -> int:
                 # andersherum, deshalb die Umkehrung.
                 "freigabe": not bool(sub.auto_run),
             })
-            await _as_flow(db, sub, "webhook-assistent", graph)
+            await _as_flow(db, sub, "trigger-to-assistant", graph)
             continue
 
         if sub.mode == "notify":
-            graph = templates.graph("webhook-melden")
+            graph = templates.graph("trigger-to-message")
             _set_params(graph, "melden", {
                 "to": {"mode": "user", "user_id": await _recipient(db, sub)},
                 "title": _own_title(sub) or sub.route,
                 "text": _tpl(sub.body_template),
             })
-            await _as_flow(db, sub, "webhook-melden", graph)
+            await _as_flow(db, sub, "trigger-to-message", graph)
             continue
 
         # mode == "task"
-        graph = templates.graph("webhook-ticket")
+        graph = templates.graph("trigger-to-ticket")
         params = {"project_id": sub.project_id,
                   "summary": _own_title(sub) or f"Webhook {sub.route}",
                   "description": _tpl(sub.body_template)}
@@ -172,7 +172,7 @@ async def convert(db: AsyncSession) -> int:
         # The flow belongs in the project it creates in. Otherwise the target project would be
         # a foreign one to it, and `create_ticket` would demand a membership from the owner
         # that the webhook never needed.
-        await _as_flow(db, sub, "webhook-ticket", graph, project_id=sub.project_id)
+        await _as_flow(db, sub, "trigger-to-ticket", graph, project_id=sub.project_id)
 
     await db.commit()
     return len(subs)

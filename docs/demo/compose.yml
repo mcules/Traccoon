@@ -1,0 +1,67 @@
+# A Traccoon for screenshots: its own database, its own Redis, fictional data.
+#
+# It exists so that the pictures in the README show a real, running Traccoon without
+# showing anybody's mail, tickets or coordinates. Nothing here is shared with the
+# production stack — separate volumes, separate ports, separate network.
+#
+#   docker compose -f docs/demo/compose.yml up -d --build
+#   docker compose -f docs/demo/compose.yml exec backend python /app/scripts/demo_seed.py
+#   docker compose -f docs/demo/compose.yml down -v
+name: traccoon-demo
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: demo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ../../backend
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgresql+asyncpg://demo:demo@db:5432/demo
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: demo-only-not-a-secret
+      SECRET_ENCRYPTION_KEY: ""
+      INTERNAL_TOKEN: demo-internal
+      DEV_CREATE_ALL: "true"
+      WORKSPACE_ROOT: /workspace
+      WORKSPACE_HOST_PATH: /tmp/traccoon-demo-workspace
+      BOOTSTRAP_ADMIN_USERNAME: ada
+      BOOTSTRAP_ADMIN_EMAIL: ada@example.org
+      BOOTSTRAP_ADMIN_PASSWORD: demo-demo-demo
+      APP_BASE_URL: http://localhost:8089
+    volumes:
+      - ../../backend/app:/app/app
+      - ../../backend/scripts:/app/scripts
+    networks:
+      default:
+        aliases: [traccoon-backend]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8800"]
+
+  frontend:
+    build: ../../frontend
+    depends_on: [backend]
+    ports:
+      - "8089:80"
+
+networks:
+  default:

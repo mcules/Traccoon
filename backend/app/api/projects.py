@@ -36,10 +36,10 @@ def project_out(project: Project, access: Access) -> ProjectOut:
 
 async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
     types = [
-        ("Aufgabe", "task", "#4BADE8", IssueTypeCategory.standard),
+        ("Task", "task", "#4BADE8", IssueTypeCategory.standard),
         ("Bug", "bug", "#E5493A", IssueTypeCategory.standard),
         ("Epic", "epic", "#904EE2", IssueTypeCategory.epic),
-        ("Unteraufgabe", "subtask", "#4BADE8", IssueTypeCategory.subtask),
+        ("Subtask", "subtask", "#4BADE8", IssueTypeCategory.subtask),
         ("Hardware", "cpu", "#00857A", IssueTypeCategory.hardware),
     ]
     for i, (name, icon, color, cat) in enumerate(types):
@@ -47,11 +47,11 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
 
     statuses = [
         ("To Do", StatusCategory.todo),
-        ("In Arbeit", StatusCategory.in_progress),
-        ("Warten", StatusCategory.in_progress),
+        ("In Progress", StatusCategory.in_progress),
+        ("Waiting", StatusCategory.in_progress),
         # Test environment flow (ABC-18): a finished implementation waits here for acceptance.
-        ("Testen", StatusCategory.in_progress),
-        ("Fertig", StatusCategory.done),
+        ("Testing", StatusCategory.in_progress),
+        ("Done", StatusCategory.done),
     ]
     status_objs = []
     for i, (name, cat) in enumerate(statuses):

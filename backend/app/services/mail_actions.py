@@ -123,7 +123,7 @@ async def spam_judge(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
                               cls=(ctx.get("classification") or {}))
     inst.context = {**ctx, "spam": {**((ctx.get("spam") or {})), **verdict_row}}
     return {"action": "spam_evaluate", "score": verdict_row["score"],
-            "geklaert": verdict_row["geklaert_urteil"] or "nein",
+            "settled": verdict_row["settled_verdict"] or "nein",
             "aktiv": verdict_row["aktiv"]}
 
 
@@ -141,8 +141,8 @@ async def spam_card(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     waits at its approval node meanwhile.
 
     With `melden=false` this step only prepares: the verdict comes into being, the text
-    stands in the context (`spam.karte_titel`, `spam.karte_text`, `spam.karte_art`,
-    `spam.karte_faellig`), and the sending is done by a notify node behind it. That way
+    stands in the context (`spam.card_title`, `spam.card_text`, `spam.card_kind`,
+    `spam.card_due`), and the sending is done by a notify node behind it. That way
     switching off the message does not switch off the sorting.
     """
     from .spam_review import create, karte, report
@@ -169,12 +169,12 @@ async def spam_card(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     kind = "rueckholbar" if recoverable else ("sofort" if immediate else "sammel")
     # The text belongs to the spam knowledge, not into the graph: which reasons are named and
     # how a recall hint reads changes with the detection. The report node takes
-    # ihn als `{{ spam.karte_titel }}` / `{{ spam.karte_text }}` und bleibt selbst allgemein.
+    # ihn als `{{ spam.card_title }}` / `{{ spam.card_text }}` und bleibt selbst allgemein.
     title, text = karte(verdict, predecided=predecided, recoverable=recoverable)
     inst.context = {**ctx, "spam": {**verdict_row, "verdict_id": verdict.id, "karte": kind,
-                                    "karte_titel": title, "karte_text": text,
-                                    "karte_faellig": bool(immediate),
-                                    "karte_art": "spam_auto" if recoverable else "spam_review"}}
+                                    "card_title": title, "card_text": text,
+                                    "card_due": bool(immediate),
+                                    "card_kind": "spam_auto" if recoverable else "spam_review"}}
     return {"action": "spam_card", "verdict_id": verdict.id, "karte": kind,
             "vorentschieden": predecided, "selbst_gemeldet": bool(immediate and selbst_report)}
 

@@ -62,24 +62,24 @@ def _notice_from_outside() -> dict:
     """
     nodes = [
         _n("start", "start", 0, 0, {
-            "label": "Meldung von außen",
+            "label": "A report from outside",
             "trigger": {"kind": "webhook",
-                        "sample": {"titel": "Platte fast voll", "schwere": "hoch",
-                                   "quelle": "monitoring"}}}),
+                        "sample": {"title": "Disk almost full", "severity": "high",
+                                   "source": "monitoring"}}}),
         _n("weiche", "decision", 0, 1, {
             "label": "Dringend?",
             "branches": [
-                {"handle": "dringend", "label": "ja",
+                {"handle": "dringend", "label": "yes",
                  "guard": {"==": [{"var": "schwere"}, "hoch"]}},
-                {"handle": "egal", "label": "nein"},
+                {"handle": "egal", "label": "no"},
             ],
             "default_handle": "egal"}),
         _n("melden", "auto_action", 0, 2, _action(
             "notify", "Bescheid geben",
-            title="{{ titel }}",
-            text="Von {{ quelle | default:extern }} gemeldet: {{ titel }}")),
+            title="{{ title }}",
+            text="Reported by {{ source | default:external }}: {{ title }}")),
         _end("end_ok", 0, 3, "Gemeldet"),
-        _end("end_egal", 1, 2, "Nichts zu tun"),
+        _end("end_egal", 1, 2, "Nothing to do"),
     ]
     return {"nodes": nodes, "edges": [
         _e("start", "weiche"),
@@ -104,10 +104,10 @@ def _check_with_grant() -> dict:
             "tool_call", "Daten holen",
             tool="", arguments={}, context_key="tool")),
         _n("auffaellig", "decision", 0, 2, {
-            "label": "Auffällig?",
+            "label": "Anything odd?",
             "branches": [
-                {"handle": "ja", "label": "ja", "guard": {"==": [{"var": "tool.ok"}, True]}},
-                {"handle": "nein", "label": "nein"},
+                {"handle": "ja", "label": "yes", "guard": {"==": [{"var": "tool.ok"}, True]}},
+                {"handle": "nein", "label": "no"},
             ],
             "default_handle": "nein"}),
         _n("freigabe", "approval", 0, 3, {
@@ -116,17 +116,17 @@ def _check_with_grant() -> dict:
             "reason_required_on_reject": True}),
         _n("handeln", "auto_action", 0, 4, _action(
             "notify", "Handeln",
-            title="Freigegeben — ausgeführt",
+            title="Approved — carried out",
             text="Ergebnis: {{ tool.text | truncate:300 }}")),
         _end("end_ok", 0, 5, "Erledigt"),
-        _end("end_nein", 1, 3, "Nichts Auffälliges"),
+        _end("end_nein", 1, 3, "Nothing odd"),
         _end("end_abgelehnt", 2, 4, "Abgelehnt"),
     ]
     return {"nodes": nodes, "edges": [
         _e("start", "holen"),
         _e("holen", "auffaellig"),
-        _e("auffaellig", "freigabe", "ja", "auffällig"),
-        _e("auffaellig", "end_nein", "nein", "alles ruhig"),
+        _e("auffaellig", "freigabe", "ja", "odd"),
+        _e("auffaellig", "end_nein", "nein", "all quiet"),
         _e("freigabe", "handeln", "approved", "freigegeben"),
         _e("freigabe", "end_abgelehnt", "rejected", "abgelehnt"),
         _e("handeln", "end_ok"),
@@ -151,7 +151,7 @@ def _listing_process() -> dict:
             "tool_call", "Liste holen",
             tool="", arguments={}, context_key="tool")),
         _n("schleife", "loop", 0, 2, {
-            "label": "Für jedes Element",
+            "label": "For every element",
             "liste": "posten", "element": "element", "index": "i",
             "sammle": "schritt.action", "ergebnisse": "ergebnisse"}),
         _n("schritt", "auto_action", 1, 3, _action(
@@ -162,13 +162,13 @@ def _listing_process() -> dict:
             "notify", "Zusammenfassung",
             title="Durchlauf fertig",
             text="{{ ergebnisse | count }} Elemente verarbeitet")),
-        _end("end_ok", 0, 5, "Fertig"),
+        _end("end_ok", 0, 5, "Done"),
     ]
     return {"nodes": nodes, "edges": [
         _e("start", "holen"),
         _e("holen", "schleife"),
         _e("schleife", "schritt", "element", "je Element"),
-        _e("schritt", "schleife", None, "nächstes"),
+        _e("schritt", "schleife", None, "next"),
         _e("schleife", "bericht", "fertig", "durch"),
         _e("bericht", "end_ok"),
     ]}
@@ -191,14 +191,14 @@ def _call_with_repeat() -> dict:
             destination="", method="POST", path="/", fail_on_error=True,
             repeats=3, wait_sec=60)),
         _end("end_ok", 0, 2, "Durch"),
-        _n("warten", "timer", 1, 2, {"label": "Später erneut", "dauer": 30, "einheit": "m"}),
+        _n("warten", "timer", 1, 2, {"label": "Later again", "dauer": 30, "einheit": "m"}),
         _n("nochmal", "auto_action", 1, 3, _action(
             "http_request", "Letzter Versuch",
             destination="", method="POST", path="/", fail_on_error=True)),
         _n("aufgeben", "auto_action", 2, 4, _action(
             "notify", "Bescheid geben",
-            title="Aufruf endgültig fehlgeschlagen",
-            text="Auch der Nachzügler kam nicht durch.")),
+            title="The call failed for good",
+            text="The straggler did not get through either.")),
         _end("end_fail", 2, 5, "Fehlgeschlagen", outcome="failed"),
     ]
     return {"nodes": nodes, "edges": [
@@ -206,8 +206,8 @@ def _call_with_repeat() -> dict:
         _e("rufen", "end_ok", None, "durch"),
         _e("rufen", "warten", "error", "Fehler"),
         _e("warten", "nochmal"),
-        _e("nochmal", "end_ok", None, "doch noch"),
-        _e("nochmal", "aufgeben", "error", "auch das nicht"),
+        _e("nochmal", "end_ok", None, "after all"),
+        _e("nochmal", "aufgeben", "error", "not that either"),
         _e("aufgeben", "end_fail"),
     ]}
 
@@ -262,16 +262,16 @@ def _mail_intake() -> dict:
         _n("weiche", "decision", 0, 3, {
             "label": "Spam?",
             "branches": [
-                {"handle": "aus", "label": "Erkennung aus",
+                {"handle": "aus", "label": "detection off",
                  "guard": {"==": [{"var": "spam.aktiv"}, False]}},
                 {"handle": "kontakt", "label": "bekannter Absender",
                  "guard": {"==": [{"var": "spam.bekannter_kontakt"}, True]}},
                 {"handle": "geklaert_spam", "label": "gelernt: Spam", "guard": {"and": [
-                    {"==": [{"var": "spam.geklaert"}, True]},
-                    {"==": [{"var": "spam.geklaert_urteil"}, "spam"]},
+                    {"==": [{"var": "spam.settled"}, True]},
+                    {"==": [{"var": "spam.settled_verdict"}, "spam"]},
                 ]}},
-                {"handle": "geklaert_ham", "label": "gelernt: erwünscht",
-                 "guard": {"==": [{"var": "spam.geklaert"}, True]}},
+                {"handle": "geklaert_ham", "label": "learned: wanted",
+                 "guard": {"==": [{"var": "spam.settled"}, True]}},
                 # Stands BEFORE the question: what takes hold here is no longer asked about
                 # but moved, with a way back on the card. Two paths there: the score above
                 # the auto threshold OR the verdict of one's own mail server. The latter
@@ -288,7 +288,7 @@ def _mail_intake() -> dict:
                 ]}},
                 {"handle": "frage", "label": "Verdacht",
                  "guard": {">=": [{"var": "spam.score"}, {"var": "spam.frage_ab"}]}},
-                {"handle": "sauber", "label": "unauffällig"},
+                {"handle": "sauber", "label": "unremarkable"},
             ],
             "default_handle": "sauber",
         }),
@@ -302,7 +302,7 @@ def _mail_intake() -> dict:
            _action("spam_card", "Gelernten Fall festhalten", predecided=True, report=False)),
         _n("melden_gelernt_frage", "decision", 4, 4, {
             "label": "Gelernten Fall melden?",
-            "branches": [{"handle": "still", "label": "Melden ist aus",
+            "branches": [{"handle": "still", "label": "reporting is off",
                           "guard": {"==": [{"var": "spam.auto_melden"}, False]}},
                          {"handle": "melden", "label": "melden"}],
             "default_handle": "melden",
@@ -310,15 +310,15 @@ def _mail_intake() -> dict:
         _n("melde_gelernt", "auto_action", 5, 4, _action(
             "notify", "Gelernten Fall melden",
             to={"mode": "context", "path": "intake.owner_id"},
-            title="{{ spam.karte_titel }}", text="{{ spam.karte_text }}",
-            kind="{{ spam.karte_art }}", ref={"spam_verdict_id": "{{ spam.verdict_id }}"})),
+            title="{{ spam.card_title }}", text="{{ spam.card_text }}",
+            kind="{{ spam.card_kind }}", ref={"spam_verdict_id": "{{ spam.verdict_id }}"})),
 
         # ── Sicher genug: verschieben, aber widersprechlich ─────────────────
         _n("karte_auto", "auto_action", 3, 5,
            _action("spam_card", "Aussortierung festhalten", recoverable=True, report=False)),
         _n("melden_auto_frage", "decision", 4, 5, {
             "label": "Aussortierung melden?",
-            "branches": [{"handle": "still", "label": "Melden ist aus",
+            "branches": [{"handle": "still", "label": "reporting is off",
                           "guard": {"==": [{"var": "spam.auto_melden"}, False]}},
                          {"handle": "melden", "label": "melden"}],
             "default_handle": "melden",
@@ -326,15 +326,15 @@ def _mail_intake() -> dict:
         _n("melde_auto", "auto_action", 5, 5, _action(
             "notify", "Aussortierung melden",
             to={"mode": "context", "path": "intake.owner_id"},
-            title="{{ spam.karte_titel }}", text="{{ spam.karte_text }}",
-            kind="{{ spam.karte_art }}", ref={"spam_verdict_id": "{{ spam.verdict_id }}"})),
+            title="{{ spam.card_title }}", text="{{ spam.card_text }}",
+            kind="{{ spam.card_kind }}", ref={"spam_verdict_id": "{{ spam.verdict_id }}"})),
 
         # ── Suspicion: ask, wait, execute ────────────────────────────────────
-        _n("karte", "auto_action", 1, 4, _action("spam_card", "Rückfrage stellen")),
+        _n("karte", "auto_action", 1, 4, _action("spam_card", "Ask about it")),
         _n("rueckfrage", "approval", 1, 5, {
-            "label": "Ist das Spam?",
-            "instructions": "Freigabe verschiebt die Mail in den Spam-Ordner. "
-                            "Ablehnung merkt den Absender als erwünscht.",
+            "label": "Is this spam?",
+            "instructions": "Approving moves the mail into the spam folder. "
+                            "Refusing notes the sender as wanted.",
             "assignee": {"mode": "context", "path": "intake.owner_id"},
             # The question has already been asked, as a card with buttons (the step before
             # respectively the digest card of the scheduler beat). A second report would be noise.
@@ -346,15 +346,15 @@ def _mail_intake() -> dict:
         # `auto`). With a fixed value here the memory would book every human decision as
         # automatic.
         _n("weg", "auto_action", 2, 6,
-           _action("spam_apply", "In den Spam-Ordner", decision="spam")),
+           _action("spam_apply", "Into the spam folder", decision="spam")),
         # What the mail was recognised by belongs in the knowledge, not only in the log. The
         # path carries the kind, so a new kind (invoice fraud, sextortion, whatever comes)
         # writes its own note without anybody touching the flow.
         _n("notiz", "auto_action", 2, 7, _action(
             "note_append", "Erkenntnis notieren",
             path="04 Wissen/Erkennung/{{ spam.art }}.md",
-            text="- {{ spam.sender_domain }} · {{ spam.subject }}: {{ spam.befunde_text }}")),
-        _n("end_spam", "end", 2, 8, {"label": "Als Spam weggeräumt", "outcome": "completed"}),
+            text="- {{ spam.sender_domain }} · {{ spam.subject }}: {{ spam.findings_text }}")),
+        _n("end_spam", "end", 2, 8, {"label": "Cleared away as spam", "outcome": "completed"}),
         # Stands on the way back to the middle: from here the mail runs into the assistant.
         _n("kein_spam", "auto_action", 1, 7,
            _action("spam_apply", "Absender merken", decision="ham")),
@@ -377,7 +377,7 @@ def _mail_intake() -> dict:
         }),
         _n("freigabe_karte", "auto_action", 1, 10,
            _action("notify", "Freigabekarte schicken", **MAP_PARAMS)),
-        _n("end_item", "end", 0, 11, {"label": "Übergeben", "outcome": "completed"}),
+        _n("end_item", "end", 0, 11, {"label": "Handed over", "outcome": "completed"}),
     ]
 
     edges = [
@@ -388,18 +388,18 @@ def _mail_intake() -> dict:
         _e("weiche", "karte_gelernt", "geklaert_spam"),
         _e("karte_gelernt", "melden_gelernt_frage"),
         _e("melden_gelernt_frage", "melde_gelernt", "melden"),
-        _e("melden_gelernt_frage", "weg", "still", "ohne Nachricht"),
+        _e("melden_gelernt_frage", "weg", "still", "without a message"),
         _e("melde_gelernt", "weg"),
         _e("weiche", "karte_auto", "auto"),
         _e("karte_auto", "melden_auto_frage"),
         _e("melden_auto_frage", "melde_auto", "melden"),
-        _e("melden_auto_frage", "weg", "still", "ohne Nachricht"),
+        _e("melden_auto_frage", "weg", "still", "without a message"),
         _e("melde_auto", "weg"),
 
         _e("weiche", "karte", "frage"),
         _e("karte", "rueckfrage"),
-        _e("rueckfrage", "weg", "approved", "ist Spam"),
-        _e("rueckfrage", "kein_spam", "rejected", "kein Spam"),
+        _e("rueckfrage", "weg", "approved", "is spam"),
+        _e("rueckfrage", "kein_spam", "rejected", "not spam"),
         _e("weg", "notiz"),
         _e("notiz", "end_spam"),
         # Suspected wrongly: the sender is remembered, the mail goes its normal way.
@@ -407,12 +407,12 @@ def _mail_intake() -> dict:
 
         # Four paths, one target: the assistant handles the mail like any other.
         _e("weiche", "item", "sauber"),
-        _e("weiche", "item", "aus", "Erkennung aus"),
+        _e("weiche", "item", "aus", "detection off"),
         _e("weiche", "item", "kontakt", "bekannt"),
-        _e("weiche", "item", "geklaert_ham", "gelernt: erwünscht"),
+        _e("weiche", "item", "geklaert_ham", "learned: wanted"),
         _e("item", "ist_auto"),
         # The released path needs no step any more: it is already running.
-        _e("ist_auto", "end_item", "auto", "läuft bereits"),
+        _e("ist_auto", "end_item", "auto", "already running"),
         _e("ist_auto", "freigabe_karte", "fragen"),
         _e("freigabe_karte", "end_item"),
     ]
@@ -427,7 +427,7 @@ def _attachment_to_paperless() -> dict:
     """
     nodes = [
         _n("start", "start", 0, 0, {
-            "label": "Knopf am Anhang",
+            "label": "A button on the attachment",
             "trigger": {"kind": "mail_action", "scope": "attachment"},
         }),
         _n("holen", "auto_action", 0, 1,
@@ -443,7 +443,7 @@ def _attachment_to_paperless() -> dict:
             "notify", "Bescheid geben",
             to={"mode": "context", "path": "mail.owner_id"},
             title="📄 {{ attachment.filename }} liegt in Paperless",
-            text="Aus der Mail „{{ mail.subject }}\" von {{ mail.from }}.")),
+            text="From the mail \"{{ mail.subject }}\" by {{ mail.from }}.")),
         _n("fertig", "end", 0, 4, {"label": "Abgelegt", "outcome": "completed"}),
     ]
     edges = [_e("start", "holen"), _e("holen", "ablegen"), _e("ablegen", "melden"),
@@ -461,15 +461,15 @@ def _webhook_assistant() -> dict:
     """A trigger from outside, and the assistant works with it."""
     nodes = [
         _n("start", "start", 0, 0, {
-            "label": "Auslöser von außen",
+            "label": "A trigger from outside",
             "trigger": {"kind": "webhook",
-                        "sample": {"titel": "Batterie schwach", "quelle": "monitoring"}}}),
+                        "sample": {"title": "Battery low", "source": "monitoring"}}}),
         _n("auftrag", "auto_action", 0, 1, _action(
             "assistant_task", "Assistent beauftragen",
             agent="assistent",
-            title="{{ titel | default:Auftrag von außen }}",
-            task="Kümmere dich um diese Meldung:\n\n{{ titel }}\n\nQuelle: "
-                    "{{ quelle | default:Webhook }}",
+            title="{{ title | default:Assignment from outside }}",
+            task="Take care of this report:\n\n{{ title }}\n\nSource: "
+                    "{{ source | default:Webhook }}",
             approval=False)),
         _end("fertig", 0, 2, "Beauftragt"),
     ]
@@ -480,11 +480,11 @@ def _webhook_report() -> dict:
     """A trigger from outside, and a message arrives."""
     nodes = [
         _n("start", "start", 0, 0, {
-            "label": "Auslöser von außen",
-            "trigger": {"kind": "webhook", "sample": {"message": "Etwas ist passiert"}}}),
+            "label": "A trigger from outside",
+            "trigger": {"kind": "webhook", "sample": {"message": "Something happened"}}}),
         _n("melden", "auto_action", 0, 1, _action(
             "notify", "Bescheid geben",
-            title="{{ titel | default:Meldung }}",
+            title="{{ title | default:Report }}",
             text="{{ message }}")),
         _end("fertig", 0, 2, "Gemeldet"),
     ]
@@ -495,9 +495,9 @@ def _webhook_ticket() -> dict:
     """A trigger from outside, and a ticket comes of it."""
     nodes = [
         _n("start", "start", 0, 0, {
-            "label": "Auslöser von außen",
+            "label": "A trigger from outside",
             "trigger": {"kind": "webhook",
-                        "sample": {"title": "Anfrage von außen", "body": "Der Text dazu"}}}),
+                        "sample": {"title": "A request from outside", "body": "The text for it"}}}),
         _n("ticket", "auto_action", 0, 1, _action(
             "create_ticket", "Ticket anlegen",
             summary="{{ title }}", description="{{ body }}")),
@@ -507,72 +507,91 @@ def _webhook_ticket() -> dict:
 
 
 TEMPLATES: list[dict] = [
-    {"key": "meldung-von-aussen",
-     "name": "Meldung von außen verarbeiten",
-     "description": "Webhook rein, Weiche nach Dringlichkeit, Nachricht raus.",
+    {"key": "report-from-outside",
+     "name": "Process a report from outside",
+     "description": "A webhook comes in, a decision by urgency, a message goes out.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "Beispiel-Nutzlast am Start anpassen — daraus entstehen die Kontextfelder.",
+     "hinweis": "Adjust the example payload on the start node — the context fields come out of it.",
      "build": _notice_from_outside},
-    {"key": "pruefung-mit-freigabe",
-     "name": "Geplante Prüfung mit Freigabe",
-     "description": "Daten holen, hinsehen, und erst nach Freigabe handeln.",
+    {"key": "check-with-approval",
+     "name": "Scheduled check with approval",
+     "description": "Fetch data, look at it, and act only after an approval.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "Werkzeug im Schritt „Daten holen\" wählen; Start über einen Job.",
+     "hinweis": "Choose the tool in the step \"Fetch data\"; start it from a job.",
      "build": _check_with_grant},
-    {"key": "liste-abarbeiten",
-     "name": "Liste Element für Element abarbeiten",
-     "description": "Liste holen, durchlaufen, je Element etwas tun, am Ende berichten.",
+    {"key": "process-a-list",
+     "name": "Work through a list element by element",
+     "description": "Fetch a list, walk it, do something per element, report at the end.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "In der Schleife den Pfad zur Liste eintragen (z. B. tool.json.items).",
+     "hinweis": "Enter the path to the list in the loop (tool.json.items, say).",
      "build": _listing_process},
-    {"key": "anhang-paperless",
-     "name": "Anhang nach Paperless",
-     "description": "Ein Knopf an jedem Anhang: holen, ablegen, Bescheid geben.",
+    {"key": "attachment-to-paperless",
+     "name": "Attachment to Paperless",
+     "description": "A button on every attachment: fetch it, file it, say so.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "Erscheint im Postfach an jedem Anhang. Das Werkzeug paperless__post_document "
-                "muss dem Ablauf freigegeben sein; Titel und Schlagworte im Schritt "
-                "„In Paperless ablegen\" anpassen.",
+     "hinweis": "Appears in the mailbox on every attachment. The tool paperless__post_document "
+                "has to be released to the flow; adjust title and tags in the step "
+                "\"File in Paperless\".",
      "build": _attachment_to_paperless},
-    {"key": "mail-eingang",
-     "name": "Mail-Eingang",
-     "description": "Eingegangene Mail einordnen, auf Spam prüfen und entweder wegräumen "
-                    "oder dem Assistenten geben.",
+    {"key": "mail-intake",
+     "name": "Mail intake",
+     "description": "Classify an incoming mail, check it for spam and either clear it away "
+                    "or give it to the assistant.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "Hört auf das Ereignis `mail.received`. Nur EIN Ablauf sollte das tun, "
-                "sonst läuft jede Mail mehrfach. Schwellen und Schalter stehen in den "
-                "Einstellungen (spam_*), die Texte im Melde-Knoten.",
+     "hinweis": "Listens for the event `mail.received`. Only ONE flow should do that, "
+                "otherwise every mail runs several times. Thresholds and switches stand in the "
+                "settings (spam_*), the texts in the report node.",
      "build": _mail_intake},
-    {"key": "webhook-assistent",
-     "name": "Auslöser → Assistent",
-     "description": "Etwas kommt von außen, der Assistent kümmert sich darum.",
+    {"key": "trigger-to-assistant",
+     "name": "Trigger → assistant",
+     "description": "Something comes from outside, the assistant takes care of it.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "Den Auftragstext im Knoten „Assistent beauftragen\" auf die eigene Nutzlast "
-                "anpassen ({{ feld }}). „Erst freigeben lassen\" an: der Auftrag wartet im "
-                "Eingang, statt sofort zu laufen.",
+     "hinweis": "Adjust the assignment text in the node \"Assign the assistant\" to your own "
+                "payload ({{ field }}). \"Have it approved first\" on: the assignment waits in "
+                "the inbox instead of running at once.",
      "build": _webhook_assistant},
-    {"key": "webhook-melden",
-     "name": "Auslöser → Nachricht",
-     "description": "Etwas kommt von außen, und es kommt eine Nachricht an.",
+    {"key": "trigger-to-message",
+     "name": "Trigger → message",
+     "description": "Something comes from outside, and a message arrives.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "Empfänger und Text im Melde-Knoten setzen; ohne Empfänger geht die "
-                "Nachricht an den Besitzer des Ablaufs.",
+     "hinweis": "Set the recipient and the text in the report node; without a recipient the "
+                "message goes to the owner of the flow.",
      "build": _webhook_report},
-    {"key": "webhook-ticket",
-     "name": "Auslöser → Ticket",
-     "description": "Etwas kommt von außen und wird zu einem Ticket.",
+    {"key": "trigger-to-ticket",
+     "name": "Trigger → ticket",
+     "description": "Something comes from outside and becomes a ticket.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "Zielprojekt im Knoten „Ticket anlegen\" eintragen; ein Agent dort setzt "
-                "den Ticket-Lebenszyklus gleich in Gang.",
+     "hinweis": "Enter the target project in the node \"Create a ticket\"; an agent there sets "
+                "the ticket lifecycle going right away.",
      "build": _webhook_ticket},
-    {"key": "aufruf-mit-wiederholung",
-     "name": "Aufruf mit Wiederholung",
-     "description": "Ziel aufrufen, bei Fehler wiederholen, später noch einmal, dann melden.",
+    {"key": "call-with-retry",
+     "name": "Call with retry",
+     "description": "Call a destination, retry on an error, once more later, then report.",
      "subject_kind": WorkflowSubjectKind.standalone,
-     "hinweis": "Ziel eintragen (Einstellungen → Ziele) — Basis-URL und Anmeldung stecken dort.",
+     "hinweis": "Enter the destination (Settings → Destinations) — the base URL and the login sit there.",
      "build": _call_with_repeat},
 ]
 
+# The German keys of the templates until 2026-08. They stand in flows that were created from
+# them and in the code that converted webhooks; resolving both keeps old callers working.
+LEGACY_KEYS = {
+    "meldung-von-aussen": "report-from-outside",
+    "pruefung-mit-freigabe": "check-with-approval",
+    "liste-abarbeiten": "process-a-list",
+    "anhang-paperless": "attachment-to-paperless",
+    "mail-eingang": "mail-intake",
+    "webhook-assistent": "trigger-to-assistant",
+    "webhook-melden": "trigger-to-message",
+    "webhook-ticket": "trigger-to-ticket",
+    "aufruf-mit-wiederholung": "call-with-retry",
+}
+
 _BY_KEY = {v["key"]: v for v in TEMPLATES}
+
+
+def _resolve(key: str) -> str:
+    """The English key of a template, whatever it was called when the caller learned it."""
+    return key if key in _BY_KEY else LEGACY_KEYS.get(key, key)
 
 
 def listing() -> list[dict]:
@@ -584,12 +603,12 @@ def listing() -> list[dict]:
 
 def graph(key: str) -> dict | None:
     """The graph of a template, built fresh so nobody shares it by accident."""
-    template = _BY_KEY.get(key)
+    template = _BY_KEY.get(_resolve(key))
     return template["build"]() if template else None
 
 
 def template(key: str) -> dict | None:
-    return _BY_KEY.get(key)
+    return _BY_KEY.get(_resolve(key))
 
 
 async def free_key(db, wish: str, project_id: int | None = None) -> str:
@@ -632,7 +651,7 @@ async def create(db, key: str, *, owner_id: int | None, def_key: str = "",
     from ..models.enums import WorkflowVersionStatus
     from ..models.workflow import WorkflowDefinition, WorkflowVersion
 
-    v = _BY_KEY.get(key)
+    v = _BY_KEY.get(_resolve(key))
     if v is None:
         raise ValueError(f"Unbekannte Vorlage '{key}'")
     d = WorkflowDefinition(
@@ -648,7 +667,7 @@ async def create(db, key: str, *, owner_id: int | None, def_key: str = "",
         status=(WorkflowVersionStatus.published if published
                 else WorkflowVersionStatus.draft),
         published_at=dt.datetime.now(tz=dt.timezone.utc) if published else None,
-        notes=f"Aus der Vorlage „{v['name']}“")
+        notes=f"From the template \"{v['name']}\"")
     db.add(version)
     await db.flush()
     if published:

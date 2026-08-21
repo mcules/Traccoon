@@ -53,7 +53,7 @@ async def list_plugins(user: User = Depends(get_current_user), db: AsyncSession 
     return out
 
 
-@router.get("/alle")
+@router.get("/all")
 async def list_all(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
     """Everything, disabled ones included — the administrator's view."""
     rows = (await db.execute(select(Plugin))).scalars().all()
@@ -238,7 +238,7 @@ class RightsIn(BaseModel):
     allowed_user_ids: list[int] | None = None
 
 
-@router.put("/{slug}/rechte")
+@router.put("/{slug}/rights")
 async def set_rights(slug: str, data: RightsIn, _: User = Depends(require_admin),
                      db: AsyncSession = Depends(get_session)):
     """Freigaben und Sichtbarkeit setzen.
@@ -252,7 +252,7 @@ async def set_rights(slug: str, data: RightsIn, _: User = Depends(require_admin)
         unknown = [r for r in data.reads_granted if r not in requested]
         if unknown:
             raise Error(400, "err.right_not_requested",
-                         "The plugin does not ask for the right '{recht}'", right=unknown[0])
+                         "The plugin does not ask for the right '{right}'", right=unknown[0])
         plugin.reads_granted = list(data.reads_granted)
     if data.enabled is not None:
         plugin.enabled = data.enabled

@@ -165,7 +165,7 @@ def _check_required_vars(srv: McpServer, values: dict) -> None:
             missing.append(var.get("label") or var.get("key"))
     if missing:
         raise Error(400, "err.required_variable_missing",
-                     "A required variable is missing: {namen}", names=', '.join(missing))
+                     "A required variable is missing: {names}", names=', '.join(missing))
 
 
 @router.get("/agents/{agent_id}/mcp-instances")

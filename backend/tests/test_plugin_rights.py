@@ -47,7 +47,7 @@ async def test_a_new_plugin_gets_nothing_for_free(client, db):
     r = await _feed(client, admin)
     assert r.status_code == 201, r.text
 
-    (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
+    (p,) = (await client.get("/plugins/all", headers=auth(admin))).json()
     assert p["reads"] == ["series:number"]
     assert p["reads_granted"] == []
 
@@ -64,12 +64,12 @@ async def test_a_grant_applies_and_can_be_withdrawn(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin)
 
-    r = await client.put("/plugins/probe/rechte", headers=auth(admin),
+    r = await client.put("/plugins/probe/rights", headers=auth(admin),
                          json={"reads_granted": ["series:number"]})
     assert r.status_code == 200
     assert r.json()["reads_granted"] == ["series:number"]
 
-    r = await client.put("/plugins/probe/rechte", headers=auth(admin),
+    r = await client.put("/plugins/probe/rights", headers=auth(admin),
                          json={"reads_granted": []})
     assert r.json()["reads_granted"] == []
 
@@ -80,7 +80,7 @@ async def test_an_unrequested_right_cannot_be_granted(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin)
 
-    r = await client.put("/plugins/probe/rechte", headers=auth(admin),
+    r = await client.put("/plugins/probe/rights", headers=auth(admin),
                          json={"reads_granted": ["series:location"]})
     assert r.status_code == 400
     assert r.json()["key"] == "err.right_not_requested"
@@ -91,14 +91,14 @@ async def test_a_new_version_may_not_grant_itself_more(client, db):
     naechsten Fassung stillschweigend mehr fordern."""
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin)
-    await client.put("/plugins/probe/rechte", headers=auth(admin),
+    await client.put("/plugins/probe/rights", headers=auth(admin),
                      json={"reads_granted": ["series:number"]})
 
     greedy = {**MANIFEST, "version": "2.0.0",
               "reads": ["series:number", "series:location", "series:text"]}
     assert (await _feed(client, admin, greedy)).status_code == 201
 
-    (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
+    (p,) = (await client.get("/plugins/all", headers=auth(admin))).json()
     assert p["reads"] == ["series:number", "series:location", "series:text"]
     # The old one keeps applying, the new one starts at zero.
     assert p["reads_granted"] == ["series:number"]
@@ -107,13 +107,13 @@ async def test_a_new_version_may_not_grant_itself_more(client, db):
 async def test_a_dropped_right_also_disappears_from_the_grant(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin)
-    await client.put("/plugins/probe/rechte", headers=auth(admin),
+    await client.put("/plugins/probe/rights", headers=auth(admin),
                      json={"reads_granted": ["series:number"]})
 
     lean = {**MANIFEST, "version": "2.0.0", "reads": []}
     await _feed(client, admin, lean)
 
-    (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
+    (p,) = (await client.get("/plugins/all", headers=auth(admin))).json()
     assert p["reads"] == [] and p["reads_granted"] == []
 
 
@@ -122,7 +122,7 @@ async def test_a_dropped_right_also_disappears_from_the_grant(client, db):
 async def test_a_disabled_plugin_is_neither_visible_nor_fetchable(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin)
-    await client.put("/plugins/probe/rechte", headers=auth(admin), json={"enabled": False})
+    await client.put("/plugins/probe/rights", headers=auth(admin), json={"enabled": False})
 
     assert (await client.get("/plugins", headers=auth(admin))).json() == []
     # The files too: a disabled plugin must not live on through its address.
@@ -133,12 +133,12 @@ async def test_only_released_people_see_it(client, db):
     admin = await make_user(db, "chef", admin=True)
     guest = await make_user(db, "gast")
     await _feed(client, admin)
-    await client.put("/plugins/probe/rechte", headers=auth(admin),
+    await client.put("/plugins/probe/rights", headers=auth(admin),
                      json={"all_users": False, "allowed_user_ids": []})
 
     assert (await client.get("/plugins", headers=auth(guest))).json() == []
 
-    await client.put("/plugins/probe/rechte", headers=auth(admin),
+    await client.put("/plugins/probe/rights", headers=auth(admin),
                      json={"allowed_user_ids": [guest.id]})
     assert [p["slug"] for p in (await client.get("/plugins", headers=auth(guest))).json()] \
         == ["probe"]

@@ -212,7 +212,7 @@ def build_ticket_lifecycle() -> dict:
         }, "abnahme"),
         _p("st_done", "auto_action", 0, 15,
            _action("set_status", "Status: fertig", status="done"), "abnahme"),
-        _p("end_ok", "end", 0, 16, {"label": "Fertig", "outcome": "completed"}, "abnahme"),
+        _p("end_ok", "end", 0, 16, {"label": "Done", "outcome": "completed"}, "abnahme"),
         _p("st_merge_hold", "auto_action", 2, 16,
            _action("set_status", "Merge blockiert", status="hold",
                    reason="merge"), "stoerung"),

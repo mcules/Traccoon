@@ -59,7 +59,7 @@ async def test_creating_from_a_template_brings_the_whole_flow(client, db):
     assert r.status_code == 201, r.text
     d = r.json()
     # The description comes from the template when none was given.
-    assert "Webhook" in d["description"]
+    assert "webhook" in d["description"].lower()
 
     versions = (await client.get(f"/workflows/{d['id']}/versions", headers=auth(anna))).json()
     graph = versions[0]["graph"]
@@ -92,4 +92,4 @@ async def test_the_overview_is_served(client, db):
     r = await client.get("/workflow-templates", headers=auth(anna))
     assert r.status_code == 200
     keys = [v["key"] for v in r.json()]
-    assert "liste-abarbeiten" in keys
+    assert "process-a-list" in keys

@@ -31,7 +31,7 @@ _TICKET_STATUS: list[tuple[str, str, str, bool]] = [
     (TicketAgentStatus.testing.value, "In Abnahme", "in_progress", True),
     (TicketAgentStatus.hold.value, "Angehalten", "in_progress", True),
     (TicketAgentStatus.failed.value, "Fehlgeschlagen", "in_progress", True),
-    (TicketAgentStatus.done.value, "Fertig", "done", False),
+    (TicketAgentStatus.done.value, "Done", "done", False),
 ]
 
 _HARDWARE_STATUS: list[tuple[str, str, str, bool]] = [

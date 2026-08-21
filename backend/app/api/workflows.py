@@ -151,7 +151,7 @@ async def _instance_access(db: AsyncSession, user: User, inst: WorkflowInstance,
     access = await build_access(project, user, db)
     if not access.has_role(minimum):
         raise Error(status.HTTP_403_FORBIDDEN, "err.role_required",
-                     "Role {rolle} is required", role=minimum.value)
+                     "Role {role} is required", role=minimum.value)
     return access
 
 
@@ -507,7 +507,7 @@ async def create_workflow(
                 {"id": "start", "type": "start", "position": {"x": 0, "y": 0},
                  "data": {"config": {"label": "Auslöser"}}},
                 {"id": "ende", "type": "end", "position": {"x": 0, "y": 260},
-                 "data": {"config": {"label": "Fertig", "outcome": "completed"}}},
+                 "data": {"config": {"label": "Done", "outcome": "completed"}}},
             ],
             "edges": [{"id": "e-start-out-ende", "source": "start", "target": "ende"}],
         })
@@ -1260,7 +1260,7 @@ async def _require_approval_right(db: AsyncSession, user: User, inst: WorkflowIn
         minimum = ProjectRole.member
     if not access.has_role(minimum):
         raise Error(status.HTTP_403_FORBIDDEN, "err.role_required",
-                     "Role {rolle} is required", role=minimum.value)
+                     "Role {role} is required", role=minimum.value)
 
 
 @router.post("/workflow-instances/{iid:int}/cancel", response_model=InstanceOut)
