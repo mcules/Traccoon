@@ -150,7 +150,7 @@ async def test_the_trigger_finds_subflows_and_manual_starts(client, db, standard
     data = r.json()
     acceptance = [t for t in data if t["slot"] == "acceptance"]
     assert acceptance and acceptance[0]["kind"] == "subflow"
-    assert "KI-Ticket-Lebenszyklus" in acceptance[0]["label"]
+    assert "AI ticket lifecycle" in acceptance[0]["label"]
     # Every published flow turns up exactly once.
     assert {t["slot"] for t in data} >= set(sets.SLOT_META)
 

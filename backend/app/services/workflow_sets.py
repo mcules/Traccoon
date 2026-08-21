@@ -35,23 +35,23 @@ log = logging.getLogger("workflow_sets")
 # Display name and subject per slot, the only place this is written down.
 SLOT_META: dict[str, dict] = {
     WorkflowSlot.ticket_lifecycle.value: {
-        "name": "KI-Ticket-Lebenszyklus",
-        "description": "Planung → Freigabe → Umsetzung → Abnahme eines zugewiesenen Tickets.",
+        "name": "AI ticket lifecycle",
+        "description": "Planning → approval → implementation → acceptance of an assigned ticket.",
         "subject_kind": "issue",
     },
     WorkflowSlot.acceptance.value: {
-        "name": "Abnahme & Auslieferung",
-        "description": "Testumgebung abräumen, Branch mergen bzw. PR öffnen, Deployment einreihen.",
+        "name": "Acceptance & delivery",
+        "description": "Clear the test environment away, merge the branch or open a PR, queue a deployment.",
         "subject_kind": "issue",
     },
     WorkflowSlot.hardware_procurement.value: {
-        "name": "Hardware-Beschaffung",
-        "description": "Bestellen → Erhalten → Einlagern → Einbauen eines Exemplars.",
+        "name": "Hardware procurement",
+        "description": "Order → receive → store → install a unit.",
         "subject_kind": "hardware_asset",
     },
     WorkflowSlot.ticket_intake.value: {
-        "name": "Ticket-Eingang",
-        "description": "Eingehende Meldung (Webhook/Mail) sichten, Ticket anlegen und zuweisen.",
+        "name": "Ticket intake",
+        "description": "Look at an incoming report (webhook/mail), create a ticket and assign it.",
         "subject_kind": "standalone",
     },
 }

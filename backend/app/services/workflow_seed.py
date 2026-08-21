@@ -84,20 +84,20 @@ def build_ticket_lifecycle() -> dict:
         _p("entry", "decision", 0, 1, {
             "label": "Einstieg",
             "branches": [
-                {"handle": "exec", "label": "Plan liegt vor",
+                {"handle": "exec", "label": "a plan exists",
                  "guard": {"==": [{"var": "entry"}, "exec"]}},
-                {"handle": "accept", "label": "nur Abnahme",
+                {"handle": "accept", "label": "acceptance only",
                  "guard": {"==": [{"var": "entry"}, "accept"]}},
-                {"handle": "plan", "label": "planen"},     # without a condition = catch-all
+                {"handle": "plan", "label": "plan it"},     # without a condition = catch-all
             ],
             "default_handle": "plan",
         }, "start"),
 
         # ── Planung ──────────────────────────────────────────────────────────
         _p("st_planning", "auto_action", 0, 2,
-           _action("set_status", "Status: Planung", status="planning"), "planung"),
+           _action("set_status", "Status: planning", status="planning"), "planung"),
         _p("plan", "agent_task", 0, 3, {
-            "label": "Planung durch den Architekten",
+            "label": "Planning by the architect",
             "agent_role": "plan_agent", "phase": "planning",
         }, "planung"),
         # The same brake as in the implementation, it was simply missing here. The back edge
@@ -118,18 +118,18 @@ def build_ticket_lifecycle() -> dict:
             "default_handle": "continue",
         }, "planung"),
         _p("st_plan_review", "auto_action", 0, 4,
-           _action("set_status", "Status: Plan-Freigabe", status="plan_review",
+           _action("set_status", "Status: plan approval", status="plan_review",
                    reason="{{agent.hold_hint}}"), "planung"),
         _p("approve_plan", "approval", 0, 5, {
-            "label": "Plan freigeben", "gate": "ai_assign",
-            "instructions": "Plan prüfen und freigeben — danach arbeitet der Agent los.",
+            "label": "Approve the plan", "gate": "ai_assign",
+            "instructions": "Check the plan and approve it — after that the agent starts working.",
         }, "planung"),
         _p("is_split", "decision", 0, 6, {
             "label": "Aufteilung vorgeschlagen?",
             "branches": [
                 {"handle": "split", "label": "Teilaufgaben",
                  "guard": {"==": [{"var": "agent.has_subtickets"}, True]}},
-                {"handle": "single", "label": "am Stück"},
+                {"handle": "single", "label": "in one go"},
             ],
             "default_handle": "single",
         }, "planung"),
@@ -144,12 +144,12 @@ def build_ticket_lifecycle() -> dict:
                    status="{{agent.hold_status}}", reason="{{agent.hold_reason}}"),
            "stoerung"),
         _p("wait_plan", "wait_event", -2, 5, {
-            "label": "Rückmeldung zur Planung", "events": ["comment", "manual", "answer"],
+            "label": "Feedback on the planning", "events": ["comment", "manual", "answer"],
         }, "stoerung"),
 
         # ── Umsetzung ────────────────────────────────────────────────────────
         _p("cap_baseline", "auto_action", 0, 7,
-           _action("set_cap_baseline", "Kostenfenster zurücksetzen"), "umsetzung"),
+           _action("set_cap_baseline", "Reset the cost window"), "umsetzung"),
         # Read once per approval round; both exits of the implementation access it.
         _p("facts", "auto_action", 0, 8,
            _action("refresh_facts", "Projekt-Einstellungen lesen"), "umsetzung"),
@@ -163,7 +163,7 @@ def build_ticket_lifecycle() -> dict:
         # would rightly answer "no approval is waiting right now". Only the actual start
         # (`workflow_engine._start_agent_task`) switches to `in_progress`.
         _p("st_approved", "auto_action", 0, 7,
-           _action("set_status", "Status: freigegeben", status="approved"), "umsetzung"),
+           _action("set_status", "Status: approved", status="approved"), "umsetzung"),
         _p("exec", "agent_task", 0, 9, {
             "label": "Umsetzung", "agent_role": "exec_agent", "phase": "execution",
         }, "umsetzung"),
@@ -186,42 +186,42 @@ def build_ticket_lifecycle() -> dict:
                    status="{{agent.hold_status}}", reason="{{agent.hold_reason}}"),
            "stoerung"),
         _p("wait_exec", "wait_event", 2, 11, {
-            "label": "Rückmeldung zur Umsetzung", "events": ["comment", "manual", "answer"],
+            "label": "Feedback on the implementation", "events": ["comment", "manual", "answer"],
         }, "stoerung"),
 
         # ── Abnahme ──────────────────────────────────────────────────────────
         _p("needs_test", "decision", 0, 10, {
-            "label": "Abnahme nötig?",
+            "label": "Acceptance needed?",
             "branches": [
-                {"handle": "review", "label": "ja",
+                {"handle": "review", "label": "yes",
                  "guard": {"==": [{"var": "project.needs_acceptance"}, True]}},
-                {"handle": "direct", "label": "nein, direkt liefern"},
+                {"handle": "direct", "label": "no, deliver directly"},
             ],
             "default_handle": "direct",
         }, "abnahme"),
         _p("st_to_test", "auto_action", 0, 11,
-           _action("set_status", "Status: zu testen", status="to_test"), "abnahme"),
+           _action("set_status", "Status: to test", status="to_test"), "abnahme"),
         _p("testenv", "auto_action", 0, 12,
            _action("start_testenv", "Testumgebung starten"), "abnahme"),
         _p("approve_result", "approval", 0, 13, {
             "label": "Abnahme", "gate": "ai_assign",
-            "instructions": "Ergebnis prüfen. Freigabe merged den Branch bzw. öffnet den PR.",
+            "instructions": "Check the result. Approving merges the branch or opens the PR.",
         }, "abnahme"),
         _p("accept", "subflow", 0, 14, {
             "label": "Abnahme & Auslieferung", "slot": WorkflowSlot.acceptance.value,
         }, "abnahme"),
         _p("st_done", "auto_action", 0, 15,
-           _action("set_status", "Status: fertig", status="done"), "abnahme"),
+           _action("set_status", "Status: done", status="done"), "abnahme"),
         _p("end_ok", "end", 0, 16, {"label": "Done", "outcome": "completed"}, "abnahme"),
         _p("st_merge_hold", "auto_action", 2, 16,
-           _action("set_status", "Merge blockiert", status="hold",
+           _action("set_status", "Merge blocked", status="hold",
                    reason="merge"), "stoerung"),
         _p("merge_escalate", "decision", 1, 15, {
             "label": "Konflikt eskalieren?",
             "branches": [
-                {"handle": "human", "label": "an den Menschen",
+                {"handle": "human", "label": "to the person",
                  "guard": {"==": [{"var": "merge.escalate"}, True]}},
-                {"handle": "retry", "label": "Agent löst auf"},
+                {"handle": "retry", "label": "the agent resolves it"},
             ],
             "default_handle": "retry",
         }, "abnahme"),
@@ -229,17 +229,17 @@ def build_ticket_lifecycle() -> dict:
 
     edges = [
         _e("start", "entry"),
-        _e("entry", "st_planning", "plan", "planen"),
+        _e("entry", "st_planning", "plan", "plan it"),
         _e("entry", "exec", "exec", "umsetzen"),
         _e("entry", "facts", "accept", "abnehmen"),
 
         _e("st_planning", "plan"),
-        _e("plan", "st_plan_review", "planned", "Plan da"),
-        _e("plan", "may_plan_continue", "loop_exhausted", "Limit erreicht"),
+        _e("plan", "st_plan_review", "planned", "plan is there"),
+        _e("plan", "may_plan_continue", "loop_exhausted", "limit reached"),
         _e("may_plan_continue", "st_planning", "continue", "weiter planen"),
         _e("may_plan_continue", "st_plan_stop", "stop", "anhalten"),
-        _e("plan", "st_plan_stop", "blocked", "Rückfrage"),
-        _e("plan", "st_plan_stop", "failed", "Fehler"),
+        _e("plan", "st_plan_stop", "blocked", "a question"),
+        _e("plan", "st_plan_stop", "failed", "an error"),
         # Safety net for unknown run results (default mapping to "err").
         _e("plan", "st_plan_stop", "err"),
         _e("st_plan_review", "approve_plan"),
@@ -256,7 +256,7 @@ def build_ticket_lifecycle() -> dict:
         _e("facts", "exec"),
         _e("exec", "needs_test", "done", "fertig"),
         _e("exec", "may_continue", "loop_exhausted", "Limit erreicht"),
-        _e("exec", "st_exec_stop", "blocked", "Rückfrage"),
+        _e("exec", "st_exec_stop", "blocked", "a question"),
         _e("exec", "st_exec_stop", "failed", "Fehler"),
         _e("exec", "st_exec_stop", "err"),
         _e("may_continue", "exec", "continue", "weiter"),
@@ -275,7 +275,7 @@ def build_ticket_lifecycle() -> dict:
         _e("st_done", "end_ok"),
         _e("merge_escalate", "st_merge_hold", "human"),
         _e("st_merge_hold", "wait_exec"),
-        _e("merge_escalate", "exec", "retry", "Agent löst auf"),
+        _e("merge_escalate", "exec", "retry", "the agent resolves it"),
     ]
     return {"nodes": nodes, "edges": edges}
 
@@ -291,9 +291,9 @@ def build_acceptance() -> dict:
     nodes = [
         _n("start", "start", 0, 0, {"label": "Abnahme"}),
         _n("stop_testenv", "auto_action", 0, 1,
-           _action("stop_testenv", "Testumgebung abräumen")),
+           _action("stop_testenv", "Clear the test environment")),
         _n("merge", "auto_action", 0, 2,
-           _action("accept_merge", "Branch mergen / PR öffnen")),
+           _action("accept_merge", "Merge the branch / open the PR")),
         _n("deploy", "auto_action", 0, 3, _action("deploy", "Deployment einreihen")),
         _n("end_ok", "end", 0, 4, {"label": "Geliefert", "outcome": "completed"}),
         _n("end_fail", "end", 1, 4, {"label": "Merge offen", "outcome": "failed"}),
@@ -303,7 +303,7 @@ def build_acceptance() -> dict:
         _e("stop_testenv", "merge"),
         _e("merge", "deploy", "merged", "gemerged"),
         _e("merge", "end_ok", "pr_open", "PR offen"),
-        _e("merge", "end_ok", "no_git", "kein Git"),
+        _e("merge", "end_ok", "no_git", "no git"),
         _e("merge", "end_ok", "out"),
         _e("merge", "end_fail", "conflict", "Konflikt"),
         _e("merge", "end_fail", "push_failed", "Push fehlgeschlagen"),
@@ -326,7 +326,7 @@ def build_ticket_intake() -> dict:
             "branches": [
                 {"handle": "skip", "label": "verwerfen",
                  "guard": {"==": [{"var": "ignore"}, True]}},
-                {"handle": "keep", "label": "übernehmen"},
+                {"handle": "keep", "label": "adopt it"},
             ],
             "default_handle": "keep",
         }),
@@ -373,8 +373,8 @@ async def ensure_builtin_set(db: AsyncSession) -> WorkflowSet:
     if s is None:
         s = WorkflowSet(
             scope=WorkflowSetScope.global_, user_id=None, key=BUILTIN_SET_KEY,
-            name="Traccoon-Standard",
-            description="Ausgelieferte Abläufe. Kopierbar als persönlicher oder Projekt-Satz.",
+            name="Traccoon default",
+            description="The shipped flows. Copyable as a personal set or a project set.",
             is_builtin=True, builtin_revision=0,
         )
         db.add(s)
