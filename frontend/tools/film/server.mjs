@@ -9,7 +9,7 @@
 // picture back. It hangs on the internal compose network and publishes no port.
 
 import { createServer } from "node:http";
-import { baueFilm } from "./film.mjs";
+import { buildFilm } from "./film.mjs";
 
 const PORT = Number(process.env.FILMER_PORT ?? 8710);
 
@@ -25,20 +25,20 @@ const server = createServer((req, res) => {
   }
   if (req.method !== "POST" || (req.url ?? "").split("?")[0] !== "/film") {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("nicht gefunden");
+    res.end("not found");
     return;
   }
 
   const teile = [];
-  let laenge = 0;
+  let length = 0;
   let abgebrochen = false;
   req.on("data", (c) => {
     if (abgebrochen) return;
-    laenge += c.length;
-    if (laenge > MAX_BODY) {
+    length += c.length;
+    if (length > MAX_BODY) {
       abgebrochen = true;
       res.writeHead(413, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Auftrag zu groß");
+      res.end("the order is too large");
       req.destroy();
       return;
     }
@@ -46,24 +46,24 @@ const server = createServer((req, res) => {
   });
   req.on("end", () => {
     if (abgebrochen) return;
-    let auftrag;
+    let order;
     try {
-      auftrag = JSON.parse(Buffer.concat(teile).toString("utf8"));
+      order = JSON.parse(Buffer.concat(teile).toString("utf8"));
     } catch (e) {
       res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("kein gültiges JSON: " + fehlerText(e));
+      res.end("not valid JSON: " + errorText(e));
       return;
     }
 
     let film;
     try {
-      film = baueFilm(auftrag);
+      film = buildFilm(order);
     } catch (e) {
       // The error text goes to the backend, not to a user: it lands in the job log, and without
       // it only "500" would stand there for a day that never repeats.
       console.error("[filmer] Aufbau gescheitert:", e);
       res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Film gescheitert: " + fehlerText(e));
+      res.end("Film gescheitert: " + errorText(e));
       return;
     }
 
@@ -79,22 +79,29 @@ const server = createServer((req, res) => {
     res.writeHead(200, {
       "Content-Type": "image/gif",
       "Content-Length": String(body.length),
-      "X-Film-Kapitel": String(film.kapitel),
-      "X-Film-Inseln": String(film.inseln),
-      "X-Film-Bilder": String(film.bilder),
-      "X-Film-Gekappt": film.gekappt ? "1" : "0",
-      "X-Film-Dauer-Ms": String(film.dauerMs),
+      "X-Film-Chapter": String(film.chapter),
+      "X-Film-Islands": String(film.islands),
+      "X-Film-Images": String(film.images),
+      "X-Film-Capped": film.capped ? "1" : "0",
+      "X-Film-Duration-Ms": String(film.durationMs),
+      // The German names of the first version. A backend that has not been redeployed yet
+      // reads these; they cost five header lines and save a lockstep release.
+      "X-Film-Kapitel": String(film.chapter),
+      "X-Film-Inseln": String(film.islands),
+      "X-Film-Bilder": String(film.images),
+      "X-Film-Gekappt": film.capped ? "1" : "0",
+      "X-Film-Dauer-Ms": String(film.durationMs),
     });
     res.end(body);
-    console.log(`[filmer] ${film.bilder} Bilder, ${film.kapitel}/${film.inseln} Szenen, `
-      + `${body.length} B, ${film.dauerMs} ms`);
+    console.log(`[filmer] ${film.images} images, ${film.chapter}/${film.islands} scenes, `
+      + `${body.length} B, ${film.durationMs} ms`);
   });
 });
 
-function fehlerText(e) {
+function errorText(e) {
   return e && e.message ? String(e.message) : String(e);
 }
 
 server.listen(PORT, () => {
-  console.log(`[filmer] hört auf ${PORT}`);
+  console.log(`[filmer] listening on ${PORT}`);
 });

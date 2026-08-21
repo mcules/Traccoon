@@ -2676,5 +2676,12 @@
   "projects.parent_project": "Parent project",
   "error_boundary.reloads_by_itself": "It reloads by itself in a moment.",
   "office_feed.contract_mismatch": "The office speaks contract version {server}, this view knows {client}. Please reload the page.",
-  "action_fields.outcome_assistant_task": "The context afterwards: task.task_id, task.status as well as task.id/status. With \"wait\" also <result under>.output and .status."
+  "action_fields.outcome_assistant_task": "The context afterwards: task.task_id, task.status as well as task.id/status. With \"wait\" also <result under>.output and .status.",
+  "timer_node.until": "until",
+  "timer_node.unit_s": "sec",
+  "timer_node.unit_m": "min",
+  "timer_node.unit_h": "hrs",
+  "timer_node.unit_t": "days",
+  "timer_config.duration": "Duration",
+  "timer_config.unit": "Unit"
 }

@@ -174,7 +174,7 @@ async def test_standstill_ends_the_gate_rather_than_the_round_count(db, monkeypa
         RunResult("done", "fertig"), _Ctx(), owner_id=None, task_id="t-1", base_urls={})
 
     assert result.blocker_kind == "review"
-    assert "Stillstand" in (result.text or "")
+    assert "standstill" in (result.text or "")
     # Check, correct, the diff is unchanged, stop. NOT only after REVIEW_RUNDEN, and no
     # second check on the same state.
     assert runs.count("code_reviewer") == 1 < worker.REVIEW_ROUNDS

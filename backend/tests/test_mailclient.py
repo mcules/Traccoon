@@ -512,7 +512,7 @@ async def test_without_a_mail_in_the_context_the_node_says_why(db):
 
     inst = type("Inst", (), {"context": {}, "started_by": None, "definition_id": 1, "id": 1})()
     result = await _mail_flag(db, inst, {}, {})
-    assert result["set"] is False and "keine Mail" in result["reason"]
+    assert result["set"] is False and "no mail" in result["reason"]
 
 
 async def test_a_move_without_a_target_goes_to_the_archive(db, monkeypatch):

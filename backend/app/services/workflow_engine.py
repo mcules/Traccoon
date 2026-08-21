@@ -490,7 +490,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
 
     if ntype == "timer":
         if _is_probe(inst):
-            to = cfg.get("bis") or f"{cfg.get('dauer', '?')} {cfg.get('einheit', 'm')}"
+            to = _timer_to(cfg) or f"{_timer_amount(cfg) or '?'} {_timer_unit(cfg)}"
             _probe_step(db, inst, node, token, ntype, f"would wait: {to}")
             return Outcome(handle="out")
         return await _timer(db, inst, node, token, cfg)
@@ -584,6 +584,21 @@ async def resume_on_event(issue_id: int, event: str, payload: dict | None = None
 
 # ── timer: Zeit vergehen lassen ──────────────────────────────────────────────
 
+# The three fields of a timer node. The editor writes them in English; graphs published before
+# the rename still carry the German names, and `workflow_terms` only migrates a version when it
+# is loaded. Reading both is cheaper than a forced migration of every stored version.
+def _timer_to(cfg: dict) -> str:
+    return str(cfg.get("to") or cfg.get("bis") or "")
+
+
+def _timer_amount(cfg: dict):
+    return cfg.get("duration") if cfg.get("duration") is not None else cfg.get("dauer")
+
+
+def _timer_unit(cfg: dict) -> str:
+    return str(cfg.get("unit") or cfg.get("einheit") or "m")
+
+
 async def _timer(db, inst, node, token, cfg) -> Outcome:
     """Wait for a while, without anybody having to report anything.
 
@@ -617,7 +632,7 @@ def _due_from(cfg: dict, ctx: dict) -> dt.datetime:
     never.
     """
     now = _now()
-    to = str(cfg.get("bis") or "").strip()
+    to = str(_timer_to(cfg) or "").strip()
     if to:
         from .workflow_expr import fill
         raw = fill(to, ctx) if "{{" in to else to
@@ -629,8 +644,8 @@ def _due_from(cfg: dict, ctx: dict) -> dt.datetime:
         except ValueError:
             log.warning("Timer: %r is not a point in time, nothing is waited for", raw)
             return now
-    amount = float(cfg.get("dauer") or 0)
-    unit = str(cfg.get("einheit") or "m")[:1].lower()
+    amount = float(_timer_amount(cfg) or 0)
+    unit = str(_timer_unit(cfg))[:1].lower()
     delta = {"s": dt.timedelta(seconds=amount), "m": dt.timedelta(minutes=amount),
              "h": dt.timedelta(hours=amount), "t": dt.timedelta(days=amount)}.get(
                  unit, dt.timedelta(minutes=amount))
@@ -1703,7 +1718,7 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
 
         if ntype == "timer":
             cfg = node_config(n)
-            if not (cfg.get("dauer") or cfg.get("bis")):
+            if not (_timer_amount(cfg) or _timer_to(cfg)):
                 errors.append(f"Timer-Knoten '{nid}': weder Dauer noch Zeitpunkt angegeben")
 
         if ntype == "loop":

@@ -51,10 +51,10 @@ function statistik(e, ord, keys, cnt) {
     }
     summe += cnt[ord[i]];
   }
-  let achse = 0, spanne = max[0] - min[0];
-  for (let c = 1; c < 3; c++) if (max[c] - min[c] > spanne) { spanne = max[c] - min[c]; achse = c; }
+  let achse = 0, span = max[0] - min[0];
+  for (let c = 1; c < 3; c++) if (max[c] - min[c] > span) { span = max[c] - min[c]; achse = c; }
   e.achse = achse;
-  e.spanne = spanne;
+  e.span = span;
   e.summe = summe;
 }
 
@@ -65,15 +65,15 @@ function medianCut(keys, cnt, ziel, ord) {
   const eimer = [{ s: 0, e: keys.length }];
   statistik(eimer[0], ord, keys, cnt);
   while (eimer.length < ziel) {
-    let wahl = -1;
+    let choice = -1;
     for (let i = 0; i < eimer.length; i++) {
       const e = eimer[i];
-      if (e.e - e.s < 2 || e.spanne === 0) continue;
-      const b = wahl < 0 ? null : eimer[wahl];
-      if (!b || e.spanne > b.spanne || (e.spanne === b.spanne && e.summe > b.summe)) wahl = i;
+      if (e.e - e.s < 2 || e.span === 0) continue;
+      const b = choice < 0 ? null : eimer[choice];
+      if (!b || e.span > b.span || (e.span === b.span && e.summe > b.summe)) choice = i;
     }
-    if (wahl < 0) break;                       // nichts mehr teilbar: weniger Farben als gewünscht
-    const e = eimer[wahl];
+    if (choice < 0) break;                       // nothing left to split: fewer colours than wanted
+    const e = eimer[choice];
     const ach = e.achse;
     // A total order (channel, then the full key): then the result is independent of the
     // stability of the sort, and the bytes are the same across Node versions.
@@ -86,7 +86,7 @@ function medianCut(keys, cnt, ziel, ord) {
     e.e = m;
     statistik(e, ord, keys, cnt);
     statistik(rechts, ord, keys, cnt);
-    eimer.splice(wahl + 1, 0, rechts);
+    eimer.splice(choice + 1, 0, rechts);
   }
   for (const e of eimer) {
     let sr = 0, sg = 0, sb = 0, tot = 0;
@@ -167,27 +167,27 @@ const u16 = (v) => [v & 0xff, (v >> 8) & 0xff];
  *  that is 116 MiB of input plus a 64 MiB counting array, measured at 195 MiB RSS, so a caller
  *  must **not** reuse a single raster buffer over `reset()`.
  *
- *  @param {Uint8Array[]} bilder  RGB, je w*h*3, zeilenweise
+ *  @param {Uint8Array[]} images  RGB, je w*h*3, zeilenweise
  *  @param {{w:number,h:number,delaysMs:number[],loop?:boolean}} opt
  *  @returns {{bytes:Buffer, farben:number, gemergt:number, proBild:number[]}}
  *    `farben` = entries of the palette · `gemergt` = how many different input colours were
  *    lost in the process (**0 = lossless**, which always holds at 256 colours or fewer in the
  *    whole film) · `proBild` = bytes per frame, additive to the promised shape and only for
  *    diagnosis (the checker should be able to prove "5 KiB per frame" instead of claiming it). */
-export function gif(bilder, opt) {
-  const w = opt.w | 0, h = opt.h | 0, n = bilder.length;
+export function gif(images, opt) {
+  const w = opt.w | 0, h = opt.h | 0, n = images.length;
   if (!Number.isInteger(opt.w) || !Number.isInteger(opt.h) || w <= 0 || h <= 0) {
-    throw new Error(`gif: ungültige Maße ${opt.w}×${opt.h}`);
+    throw new Error(`gif: invalid size ${opt.w}×${opt.h}`);
   }
-  if (n === 0) throw new Error("gif: keine Bilder");
+  if (n === 0) throw new Error("gif: no images");
   if (!Array.isArray(opt.delaysMs) || opt.delaysMs.length !== n) {
-    throw new Error(`gif: delaysMs hat ${opt.delaysMs ? opt.delaysMs.length : 0} Einträge, `
-      + `${n} Bilder`);
+    throw new Error(`gif: delaysMs has ${opt.delaysMs ? opt.delaysMs.length : 0} entries, `
+      + `${n} images`);
   }
   const px = w * h;
   for (let i = 0; i < n; i++) {
-    if (bilder[i].length !== px * 3) {
-      throw new Error(`gif: Bild ${i} hat ${bilder[i].length} Bytes, erwartet ${px * 3}`);
+    if (images[i].length !== px * 3) {
+      throw new Error(`gif: image ${i} has ${images[i].length} bytes, expected ${px * 3}`);
     }
   }
 
@@ -195,9 +195,9 @@ export function gif(bilder, opt) {
   // million pixels would be orders of magnitude slower. The same array is repurposed as the
   // colour-to-index lookup table right away: nobody needs the counts afterwards.
   const tabelle = new Uint32Array(1 << 24);
-  for (const bild of bilder) {
-    for (let p = 0; p < bild.length; p += 3) {
-      tabelle[(bild[p] << 16) | (bild[p + 1] << 8) | bild[p + 2]]++;
+  for (const image of images) {
+    for (let p = 0; p < image.length; p += 3) {
+      tabelle[(image[p] << 16) | (image[p + 1] << 8) | image[p + 2]]++;
     }
   }
   const keys = [];
@@ -239,9 +239,9 @@ export function gif(bilder, opt) {
   teile.push(Buffer.from("GIF89a", "ascii"));
   teile.push(Buffer.from([
     ...u16(w), ...u16(h),
-    0x80 | ((bitsGct - 1) << 4) | (bitsGct - 1),  // GCT vorhanden, Farbtiefe, GCT-Größe
+    0x80 | ((bitsGct - 1) << 4) | (bitsGct - 1),  // GCT present, colour depth, GCT size
     0,                                            // Hintergrundfarbe
-    0,                                            // Pixelseitenverhältnis
+    0,                                            // pixel aspect ratio
   ]));
   const gct = Buffer.alloc(gctN * 3);
   for (let i = 0; i < farben; i++) {
@@ -259,10 +259,10 @@ export function gif(bilder, opt) {
   const proBild = [];
   let vorher = null;
   for (let i = 0; i < n; i++) {
-    const bild = bilder[i];
+    const image = images[i];
     const idx = new Uint8Array(px);
     for (let j = 0, p = 0; j < px; j++, p += 3) {
-      idx[j] = tabelle[(bild[p] << 16) | (bild[p + 1] << 8) | bild[p + 2]];
+      idx[j] = tabelle[(image[p] << 16) | (image[p + 1] << 8) | image[p + 2]];
     }
 
     // Difference rectangle: the stage is largely static, so only the enclosing box of the
@@ -272,9 +272,9 @@ export function gif(bilder, opt) {
     if (vorher) {
       x0 = w; y0 = h; x1 = -1; y1 = -1;
       for (let y = 0; y < h; y++) {
-        const zeile = y * w;
+        const line = y * w;
         for (let x = 0; x < w; x++) {
-          if (idx[zeile + x] !== vorher[zeile + x]) {
+          if (idx[line + x] !== vorher[line + x]) {
             if (x < x0) x0 = x;
             if (x > x1) x1 = x;
             if (y < y0) y0 = y;

@@ -228,15 +228,23 @@ def _point_out(p: SeriesPoint, kind: str) -> dict:
 
 
 @router.get("/series/{key:path}/points")
-async def list_points(key: str, von: str | None = Query(None), to: str | None = Query(None),
+async def list_points(key: str,
+                      # `from` is a keyword in Python, so the parameter carries a trailing
+                      # underscore and the alias. `von`/`bis` were the names before the house
+                      # became English; a plugin built back then keeps working.
+                      from_: str | None = Query(None, alias="from"),
+                      to: str | None = Query(None),
+                      von: str | None = Query(None, include_in_schema=False),
+                      bis: str | None = Query(None, include_in_schema=False),
                       limit: int = Query(2000, ge=1, le=50000),
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     series = await _my(db, user, key)
     question = select(SeriesPoint).where(SeriesPoint.series_id == series.id)
-    if von and (a := series_formats.moment(von)):
+    start, end = from_ or von, to or bis
+    if start and (a := series_formats.moment(start)):
         question = question.where(SeriesPoint.ts >= a)
-    if to and (b := series_formats.moment(to)):
+    if end and (b := series_formats.moment(end)):
         question = question.where(SeriesPoint.ts <= b)
     # Fetch the newest first and turn them around afterwards: with a limit one wants the
     # youngest points, but they are drawn in the order of time.

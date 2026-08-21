@@ -124,7 +124,7 @@ async def test_required_makes_it_fail(db):
         await run_action(db, inst, _node({
             "series": "akku.shelter", "kind": "number", "value": "", "required": True}))
     except ValueError as exc:
-        assert "kein Wert" in str(exc)
+        assert "no value" in str(exc)
     else:
         raise AssertionError("haette krachen muessen")
 

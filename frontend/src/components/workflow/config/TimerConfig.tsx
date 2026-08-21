@@ -16,7 +16,7 @@ export default function TimerConfig({
     <div className="space-y-3">
       <div className="flex gap-2">
         <label className="flex-1 text-xs font-medium text-muted">
-          Dauer
+          {tr("timer_config.duration")}
           <input
             type="number"
             min={0}
@@ -26,7 +26,7 @@ export default function TimerConfig({
           />
         </label>
         <label className="flex-1 text-xs font-medium text-muted">
-          Einheit
+          {tr("timer_config.unit")}
           <select
             value={(config.unit as string) || "m"}
             onChange={(e) => set({ unit: e.target.value })}
@@ -45,7 +45,7 @@ export default function TimerConfig({
         <input
           value={(config.to as string) || ""}
           onChange={(e) => set({ to: e.target.value.trim() })}
-          placeholder="2026-08-19T08:00:00+02:00 oder {{ jetzt | plus_zeit:1,&quot;t&quot; }}"
+          placeholder={'2026-08-19T08:00:00+02:00 or {{ now | add_time:1,"t" }}'}
           className={`mt-1 font-mono ${inp}`}
         />
         <span className="mt-1 block text-[11px] text-muted">

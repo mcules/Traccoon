@@ -53,15 +53,15 @@ async def _run(db, mcp, owner_id=1):
 
 
 def test_answer_split():
-    b, a = _parts("### BEHALTEN\n- eins\n- zwei\n### ARCHIV\n- alt")
+    b, a = _parts("### KEEP\n- eins\n- zwei\n### ARCHIVE\n- alt")
     assert b == "- eins\n- zwei" and a == "- alt"
-    assert _parts("### BEHALTEN\n- eins\n### ARCHIV\nkeine")[1] == ""
+    assert _parts("### KEEP\n- eins\n### ARCHIVE\nnone")[1] == ""
     assert _parts("kein Format") is None
-    assert _parts("### BEHALTEN\n\n### ARCHIV\n- alles weg") is None   # nichts behalten
+    assert _parts("### KEEP\n\n### ARCHIVE\n- alles weg") is None   # nichts behalten
 
 
 async def test_a_short_note_is_left_alone(db, monkeypatch):
-    _aux(monkeypatch, "### BEHALTEN\n- eins")
+    _aux(monkeypatch, "### KEEP\n- eins")
     mcp = FakeMcp("- nur eine Zeile")
     assert await _run(db, mcp) is None
     assert mcp.notes[PATH] == "- nur eine Zeile"
@@ -69,7 +69,7 @@ async def test_a_short_note_is_left_alone(db, monkeypatch):
 
 async def test_pruning_shortens_and_archives(db, monkeypatch):
     keep = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
-    _aux(monkeypatch, f"### BEHALTEN\n{keep}\n### ARCHIV\n- Erkenntnis 39: alt.")
+    _aux(monkeypatch, f"### KEEP\n{keep}\n### ARCHIVE\n- Erkenntnis 39: alt.")
     mcp = FakeMcp()
     report = await _run(db, mcp)
     assert report and "40 → 20" in report
@@ -83,7 +83,7 @@ async def test_pinned_material_has_to_survive(db, monkeypatch):
     """If a pin is missing in the result, nothing is written at all: the human nailed this
     line down explicitly."""
     content = NOTE + f"\n- {PIN} Niemals ohne Rückfrage deployen"
-    _aux(monkeypatch, "### BEHALTEN\n" + "\n".join(
+    _aux(monkeypatch, "### KEEP\n" + "\n".join(
         f"- Erkenntnis {i}: zusammengefasst." for i in range(20)))
     mcp = FakeMcp(content)
     assert await _run(db, mcp) is None
@@ -92,7 +92,7 @@ async def test_pinned_material_has_to_survive(db, monkeypatch):
 
 async def test_clear_cutting_is_refused(db, monkeypatch):
     """Two thirds gone is no longer tidying up."""
-    _aux(monkeypatch, "### BEHALTEN\n- eins\n### ARCHIV\n- der ganze Rest")
+    _aux(monkeypatch, "### KEEP\n- eins\n### ARCHIVE\n- der ganze Rest")
     mcp = FakeMcp()
     assert await _run(db, mcp) is None
     assert mcp.notes[PATH] == NOTE
@@ -116,7 +116,7 @@ async def test_a_stuck_archive_keeps_the_note_unchanged(db, monkeypatch):
     """Archive first, truncate afterwards: if the archive jams, nothing may be truncated,
     because otherwise what was sorted out would be gone without replacement."""
     keep = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
-    _aux(monkeypatch, f"### BEHALTEN\n{keep}\n### ARCHIV\n- Erkenntnis 39: alt.")
+    _aux(monkeypatch, f"### KEEP\n{keep}\n### ARCHIVE\n- Erkenntnis 39: alt.")
     mcp = FakeMcp(typo="archiv")
     assert await _run(db, mcp) is None
     assert mcp.notes[PATH] == NOTE
@@ -135,7 +135,7 @@ async def test_at_most_once_a_day(db, monkeypatch):
 
 async def test_a_successful_run_remembers_the_moment(db, monkeypatch):
     keep = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
-    _aux(monkeypatch, f"### BEHALTEN\n{keep}\n### ARCHIV\nkeine")
+    _aux(monkeypatch, f"### KEEP\n{keep}\n### ARCHIVE\nnone")
     await _run(db, FakeMcp(), owner_id=7)
     assert await get_setting(db, f"curator_last:7:{PATH}", "") != ""
     assert await due(db, 7, PATH) is False
