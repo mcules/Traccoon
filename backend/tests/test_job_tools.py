@@ -44,15 +44,26 @@ async def test_foreign_jobs_are_invisible(db, anna):
 
 
 async def test_creating_from_a_template(db, anna):
+    from app.services.research_flow import ensure
+    d = await ensure(db)
     out = await _tool(db, anna, "traccoon_create_job", name="Security-News",
                       template="research-digest",
-                      params={"title": "Security news", "topic": "IT security"})
+                      params={"ablage": "security-news", "auftrag": "Was gab es zu IT-Sicherheit?"})
     assert "created" in out and "CAREFUL" not in out
     j = (await db.execute(select(Job))).scalars().one()
-    assert j.user_id == anna.id and j.kind == "prompt" and j.result_html is True
-    assert j.args["topic"] == "IT security"
-    j.args["language"] == "English"        # the default of the template stays
+    # The template hands out the shared flow — no job builds one of its own any more.
+    assert j.user_id == anna.id and j.kind == "workflow" and j.workflow_definition_id == d.id
+    assert j.args["ablage"] == "security-news"
+    assert j.args["agent"] == "news"        # the default of the template stays
     assert j.notify_chat == "123"                  # meldet an denselben Chat
+
+
+async def test_a_template_without_its_flow_creates_nothing(db, anna):
+    """Better no job than one that is scheduled and has nothing to do."""
+    out = await _tool(db, anna, "traccoon_create_job", name="Security-News",
+                      template="research-digest")
+    assert "Ablauf" in out and "Nichts angelegt" in out
+    assert (await db.execute(select(Job))).scalars().first() is None
 
 
 async def test_creating_reports_open_placeholders(db, anna):

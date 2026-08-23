@@ -49,19 +49,28 @@ def test_an_own_parameter_beats_a_builtin_one():
 
 
 def test_the_template_delivers_fields_and_parameters():
-    fields = apply("research-digest", {"title": "Security news"})
-    assert fields["kind"] == "prompt" and fields["result_html"] is True
-    assert fields["args"]["title"] == "Security news"
+    fields = apply("research-digest", {"ablage": "security-news"})
+    # Since the research jobs share ONE flow, a template no longer brings a prompt but the
+    # start context of that flow.
+    assert fields["kind"] == "workflow" and fields["workflow_key"] == "recherche"
+    assert fields["args"]["ablage"] == "security-news"
     # Defaults that are not overridden are kept.
-    assert fields["args"]["language"] == "English" and fields["args"]["sources"]
+    assert fields["args"]["agent"] == "news" and fields["args"]["auftrag"]
 
 
-def test_the_template_renders_without_open_placeholders():
-    """A template that leaves gaps out of the box would be a trap."""
-    fields = apply("research-digest")
-    assert open_placeholder(fields["prompt"], fields["args"]) == []
-    text = render(fields["prompt"], fields["args"])
-    assert "{{" not in text and "Hacker News" in text
+def test_the_assignment_carries_no_placeholders():
+    """`{{…}}` is replaced ONE round: braces inside the assignment would stay put."""
+    for key in ("research-digest", "research-watch"):
+        assert "{{" not in apply(key)["args"]["auftrag"], key
+
+
+def test_the_watcher_stays_silent_by_default_and_the_digest_files():
+    watch, digest = apply("research-watch")["args"], apply("research-digest")["args"]
+    assert watch["still_wenn"] and not watch["ablage"]
+    assert digest["ablage"] and not digest["still_wenn"]
+    # The word the flow watches for has to be IN the assignment, otherwise the job reports
+    # every morning that there is nothing to report.
+    assert watch["still_wenn"] in watch["auftrag"]
 
 
 def test_an_unknown_template():
@@ -72,4 +81,4 @@ def test_an_unknown_template():
 def test_the_listing_shows_parameters():
     entries = {v["key"]: v for v in listing()}
     assert set(entries) == set(JOB_TEMPLATES)
-    assert "sources" in entries["research-digest"]["params"]
+    assert "auftrag" in entries["research-digest"]["params"]

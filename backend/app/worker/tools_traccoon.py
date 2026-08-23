@@ -160,7 +160,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
     """
     from ..models.ops import Job, JobRun
     from ..services.job_params import open_placeholder, parameter
-    from ..services.job_templates import JOB_TEMPLATES, apply, listing
+    from ..services.job_templates import JOB_TEMPLATES, apply, listing, with_flow
 
     async def _job(jid) -> Job | None:
         j = await db.get(Job, int(jid or 0))
@@ -169,7 +169,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
 
     if name == "traccoon_job_templates":
         return "\n".join(
-            f"- {v['key']}: {v['label']} — {v['beschreibung']}\n"
+            f"- {v['key']}: {v['label']} — {v['description']}\n"
             f"  Parameter: {', '.join(v['params'])}" for v in listing()) or "Keine Vorlagen."
 
     if name == "traccoon_list_jobs":
@@ -209,12 +209,18 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
             except KeyError:
                 return (f"The template '{args['template']}' does not exist. Available: "
                         f"{', '.join(JOB_TEMPLATES)}.")
+            # The template names its flow by key; here it becomes the number of this database.
+            fields = await with_flow(db, fields)
+            if fields.get("kind") == "workflow" and not fields.get("workflow_definition_id"):
+                return ("Der Ablauf hinter dieser Vorlage fehlt in dieser Installation "
+                        "— der Job wäre ohne Arbeit. Nichts angelegt.")
         elif args.get("params"):
             fields["args"] = dict(args["params"])
         for f in _JOB_FIELDS:
             if args.get(f) is not None:
                 fields[f] = args[f]
-        if not (fields.get("prompt") or "").strip():
+        # A flow job carries its assignment in the start context, not in the prompt field.
+        if not (fields.get("prompt") or "").strip() and not fields.get("workflow_definition_id"):
             return "No job without a prompt (or a template)."
         fields.setdefault("kind", "prompt")
         fields.setdefault("type", "cron")

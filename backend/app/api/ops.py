@@ -485,11 +485,16 @@ async def list_jobs(user: User = Depends(get_current_user), db: AsyncSession = D
 
 
 @router.get("/jobs/templates")
-async def job_templates(user: User = Depends(get_current_user)):
+async def job_templates(user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
     """Templates for new jobs. They prefill the form; a created job then carries its own
-    fields and parameters, with no binding to the template."""
-    from ..services.job_templates import listing
-    return listing()
+    fields and parameters, with no binding to the template.
+
+    The session is needed for the flow behind the research jobs: the template names it by
+    key, the form needs its number.
+    """
+    from ..services.job_templates import listing_for
+    return await listing_for(db)
 
 
 @router.post("/jobs", response_model=JobOut, status_code=201)
