@@ -238,11 +238,105 @@ def out(s: AssistantSession, *, message_count: int = 0, running: bool = False) -
             "closed_at": s.closed_at, "message_count": message_count, "running": running}
 
 
+async def context_of(db: AsyncSession, session_ids: list[int]) -> dict[int, dict]:
+    """How full the window was last time — per session, in a fixed number of queries.
+
+    A client drawing the chat has no other way to ask. The numbers exist, but behind
+    `/office/*` and the model endpoints, which the `assistant` scope deliberately does not
+    reach. So they are answered where a chat client already looks: on the session.
+
+    Two of the four numbers are not about the size but about the MECHANISM. The percentage
+    alone hides that this context is compacted: it plateaus instead of filling up, and
+    somebody watching a number that never reaches 100 deserves to see why. Hence
+    `verbatim_exchanges` (what still travels word for word) and `summary_chars` (what has
+    already been folded into the memory).
+
+    Deliberately no cache. It is a handful of queries, and a cache would be a second truth
+    about a number that changes with every run.
+    """
+    from sqlalchemy import and_, func
+
+    from ..models.agents import Run
+    from ..models.assistant import ChatSummary
+    from ..models.ops import ProviderModel
+
+    if not session_ids:
+        return {}
+
+    # The NEWEST finished run, not an average: the question is "how full was it last time",
+    # and a mean would smooth away exactly the peak that matters. One window function instead
+    # of a subquery per row — this list is polled by every open chat.
+    ranked = (
+        select(AssistantTask.session_id.label("sid"),
+               Run.input_tokens.label("input_tokens"),
+               Run.model.label("model"), Run.provider.label("provider"),
+               func.coalesce(Run.finished_at, Run.started_at).label("measured_at"),
+               func.row_number().over(partition_by=AssistantTask.session_id,
+                                      order_by=Run.id.desc()).label("rank"))
+        .join(Run, Run.id == AssistantTask.run_id)
+        .where(AssistantTask.session_id.in_(session_ids), Run.status != "running")
+    ).subquery()
+
+    runs = (await db.execute(
+        select(ranked.c.sid, ranked.c.input_tokens, ranked.c.model, ranked.c.measured_at,
+               ProviderModel.context_tokens)
+        .select_from(ranked)
+        # An unknown model leaves the window empty instead of guessing one. A wrong
+        # denominator is worse than no percentage, because it looks authoritative.
+        .outerjoin(ProviderModel, and_(ProviderModel.provider == ranked.c.provider,
+                                       ProviderModel.model == ranked.c.model))
+        .where(ranked.c.rank == 1))).all()
+    if not runs:
+        return {}
+
+    # What `_chat_history` would still take word for word: everything after the point the
+    # summary reaches. The cut-off differs per session, so it comes out of the join and not
+    # out of a second round.
+    open_rows = (await db.execute(
+        select(AssistantTask.session_id, func.count(AssistantTask.id))
+        .outerjoin(ChatSummary, ChatSummary.session_id == AssistantTask.session_id)
+        .where(AssistantTask.session_id.in_(session_ids),
+               AssistantTask.kind == "chat", AssistantTask.status == "done",
+               AssistantTask.id > func.coalesce(ChatSummary.to_task_id, 0))
+        .group_by(AssistantTask.session_id))).all()
+    open_ones = {sid: n for sid, n in open_rows}
+
+    summaries = {sid: length for sid, length in (await db.execute(
+        select(ChatSummary.session_id, func.length(ChatSummary.text))
+        .where(ChatSummary.session_id.in_(session_ids)))).all() if sid is not None}
+
+    # The same two numbers the history reckons with, so "verbatim" here means exactly what
+    # travels there. Imported late: the worker module pulls the whole run machinery along,
+    # and the API must not carry that for one constant.
+    from ..worker.__main__ import CHAT_HISTORY_MAX, CHAT_SUMMARY_BLOCK
+
+    out_map: dict[int, dict] = {}
+    for sid, input_tokens, model, measured_at, window in runs:
+        fresh = open_ones.get(sid, 0)
+        verbatim = min(fresh, CHAT_HISTORY_MAX) if fresh > CHAT_HISTORY_MAX + CHAT_SUMMARY_BLOCK \
+            else fresh
+        out_map[sid] = {
+            "input_tokens": int(input_tokens or 0),
+            "model": model or "",
+            "context_tokens": int(window) if window else None,
+            "pct": round((input_tokens or 0) / window * 100) if window else None,
+            "verbatim_exchanges": verbatim,
+            "summary_chars": int(summaries.get(sid) or 0),
+            "measured_at": measured_at,
+        }
+    return out_map
+
+
 async def out_many(db: AsyncSession, rows: list[AssistantSession]) -> list[dict]:
     ids = [s.id for s in rows]
     counts = await message_counts(db, ids)
     busy = await running_ids(db, ids)
-    return [out(s, message_count=counts.get(s.id, 0), running=s.id in busy) for s in rows]
+    context = await context_of(db, ids)
+    return [{**out(s, message_count=counts.get(s.id, 0), running=s.id in busy),
+             # None when the conversation has never run: there is nothing to report yet, and
+             # a zero would read as "empty window" instead of "not measured".
+             "context": context.get(s.id)}
+            for s in rows]
 
 
 async def delete(db: AsyncSession, sessions: list[AssistantSession], *,

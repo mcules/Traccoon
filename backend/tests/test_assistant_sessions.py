@@ -475,3 +475,169 @@ async def test_an_assistant_token_reaches_every_session_endpoint(client, db, ann
                               headers=head)).status_code == 200
     assert (await client.get(f"/assistant/chat?session_id={sid}",
                              headers=head)).status_code == 200
+
+
+# ── 9. Wie voll die nächste Nachricht wird ───────────────────────────────────
+#
+# Ein Chat-Client hat keinen anderen Weg, danach zu fragen: die Zahlen liegen hinter
+# `/office/*` und den Modell-Endpunkten, die der `assistant`-Scope bewusst nicht erreicht.
+# Also stehen sie an der Unterhaltung.
+
+async def _run(db, session, task, *, input_tokens: int, model: str = "claude-sonnet-5",
+               provider: str = "claude_code", status: str = "success"):
+    from app.models.agents import Run
+    run = Run(owner_id=session.owner_user_id, task_id=f"assistant-{task.id}",
+              agent="assistent", provider=provider, model=model, status=status,
+              input_tokens=input_tokens, output_tokens=100)
+    db.add(run)
+    await db.flush()
+    task.run_id = run.id
+    await db.commit()
+    return run
+
+
+async def _window(db, *, provider="claude_code", model="claude-sonnet-5", tokens=200000):
+    from app.models.ops import ProviderModel
+    db.add(ProviderModel(provider=provider, model=model, context_tokens=tokens))
+    await db.commit()
+
+
+async def test_a_session_that_never_ran_reports_nothing(client, db, anna):
+    sid = (await client.post("/assistant/sessions", json={"title": "Frisch"},
+                             headers=auth(anna))).json()["id"]
+    row = next(s for s in (await client.get("/assistant/sessions",
+                                            headers=auth(anna))).json() if s["id"] == sid)
+    # Nicht 0: eine Null läse sich als „leeres Fenster" statt als „nie gemessen".
+    assert row["context"] is None
+
+
+async def test_the_newest_run_counts_not_the_largest(client, db, anna):
+    """Die Frage ist „wie voll war es zuletzt". Ein Mittelwert glättete genau die Spitze weg,
+    auf die es ankommt — und der grösste Lauf ist nicht der letzte."""
+    await _window(db)
+    s = await sessions.create(db, anna.id, title="Läuft")
+    await _run(db, s, await _msg(db, anna, s, "erste"), input_tokens=90000)
+    await _run(db, s, await _msg(db, anna, s, "zweite"), input_tokens=12480)
+
+    row = next(r for r in (await client.get("/assistant/sessions",
+                                            headers=auth(anna))).json() if r["id"] == s.id)
+    ctx = row["context"]
+    assert ctx["input_tokens"] == 12480
+    assert ctx["model"] == "claude-sonnet-5"
+    assert ctx["context_tokens"] == 200000 and ctx["pct"] == 6
+    assert ctx["measured_at"]
+
+
+async def test_a_running_run_is_not_the_answer_yet(client, db, anna):
+    await _window(db)
+    s = await sessions.create(db, anna.id, title="Mittendrin")
+    await _run(db, s, await _msg(db, anna, s, "fertig"), input_tokens=5000)
+    await _run(db, s, await _msg(db, anna, s, "läuft noch", status="running"),
+               input_tokens=99999, status="running")
+
+    row = next(r for r in (await client.get("/assistant/sessions",
+                                            headers=auth(anna))).json() if r["id"] == s.id)
+    assert row["context"]["input_tokens"] == 5000
+
+
+async def test_an_unknown_model_leaves_the_window_empty(client, db, anna):
+    """Ein falscher Nenner ist schlimmer als gar kein Prozentwert — er sieht amtlich aus."""
+    s = await sessions.create(db, anna.id, title="Fremdes Modell")
+    await _run(db, s, await _msg(db, anna, s, "hallo"), input_tokens=4321,
+               model="qwen3.6-irgendwas")
+
+    row = next(r for r in (await client.get("/assistant/sessions",
+                                            headers=auth(anna))).json() if r["id"] == s.id)
+    ctx = row["context"]
+    assert ctx["context_tokens"] is None and ctx["pct"] is None
+    # Der Rest der Zeile steht trotzdem.
+    assert ctx["input_tokens"] == 4321 and ctx["model"] == "qwen3.6-irgendwas"
+
+
+async def test_a_short_conversation_travels_whole(client, db, anna):
+    """Solange nichts verdichtet ist, reist alles wörtlich — und die Zahl sagt genau das."""
+    await _window(db)
+    s = await sessions.create(db, anna.id, title="Kurz")
+    for i in range(5):
+        await _msg(db, anna, s, f"Frage {i}")
+    await _run(db, s, await _msg(db, anna, s, "und jetzt", ""), input_tokens=3000)
+
+    ctx = next(r for r in (await client.get("/assistant/sessions",
+                                            headers=auth(anna))).json()
+               if r["id"] == s.id)["context"]
+    assert ctx["verbatim_exchanges"] == 6 and ctx["summary_chars"] == 0
+
+
+async def test_a_long_conversation_shows_why_it_plateaus(client, db, anna, monkeypatch):
+    """Der Prozentwert allein verschweigt das Verfahren: dieser Kontext wird verdichtet, er
+    läuft also nicht voll, sondern läuft ein. Wer eine Zahl beobachtet, die nie 100 erreicht,
+    darf sehen, warum — deshalb stehen beide Zahlen da.
+
+    `verbatim_exchanges` ist der GEDECKELTE Wert, also das, was wirklich in den Prompt geht.
+    Er fällt durch eine Verdichtung deshalb nicht: die Deckelung nimmt sie schon vorweg. Was
+    sich sichtbar bewegt, ist `summary_chars` — von nichts auf etwas."""
+    _mock_aux(monkeypatch, "- was bisher geschah")
+    await _window(db)
+    s = await sessions.create(db, anna.id, title="Lang")
+    for i in range(16):
+        await _msg(db, anna, s, f"Frage {i}")
+    task = await _msg(db, anna, s, "und jetzt", "")
+    await _run(db, s, task, input_tokens=30000)
+
+    before = next(r for r in (await client.get("/assistant/sessions",
+                                               headers=auth(anna))).json()
+                  if r["id"] == s.id)["context"]
+    from app.worker.__main__ import CHAT_HISTORY_MAX
+    assert before["verbatim_exchanges"] == CHAT_HISTORY_MAX      # gedeckelt, nicht 17
+    assert before["summary_chars"] == 0
+
+    await worker._chat_history(db, task)      # verdichtet den älteren Teil
+
+    after = next(r for r in (await client.get("/assistant/sessions",
+                                              headers=auth(anna))).json()
+                 if r["id"] == s.id)["context"]
+    # Danach steht die Erinnerung, und offen sind nur noch die jungen Wortwechsel. Die Zahl
+    # fällt dabei NICHT — sie sägt: vorher war sie gedeckelt (die Deckelung nimmt die
+    # Verdichtung vorweg), danach stehen wieder etwas mehr offen als der Deckel. Was sich
+    # eindeutig bewegt, ist die Erinnerung: von nichts auf etwas.
+    from app.worker.__main__ import CHAT_SUMMARY_BLOCK
+    assert after["summary_chars"] == len("- was bisher geschah")
+    assert 0 < after["verbatim_exchanges"] <= CHAT_HISTORY_MAX + CHAT_SUMMARY_BLOCK
+    # Und die Erinnerung gehört DIESER Unterhaltung: ohne den Sitzungs-Schnitt läse die
+    # Zahl den Stand einer fremden mit.
+    other = await sessions.create(db, anna.id, title="Andere")
+    await _run(db, other, await _msg(db, anna, other, "hallo"), input_tokens=100)
+    fremd = next(r for r in (await client.get("/assistant/sessions",
+                                              headers=auth(anna))).json()
+                 if r["id"] == other.id)["context"]
+    assert fremd["summary_chars"] == 0
+
+
+async def test_the_list_does_not_query_per_session(client, db, anna):
+    """Diese Liste fragt jeder offene Chat im Sekundentakt ab. Eine Unterabfrage je Zeile
+    wäre bei zehn Unterhaltungen zehnmal dieselbe Arbeit."""
+    await _window(db)
+    counted = {"n": 0}
+    import sqlalchemy
+
+    @sqlalchemy.event.listens_for(db.sync_session, "do_orm_execute")
+    def _count(_state):
+        counted["n"] += 1
+
+    for i in range(3):
+        s = await sessions.create(db, anna.id, title=f"A{i}")
+        await _run(db, s, await _msg(db, anna, s, "x"), input_tokens=1000 + i)
+    counted["n"] = 0
+    three = (await client.get("/assistant/sessions", headers=auth(anna))).json()
+    for_three = counted["n"]
+
+    for i in range(3, 9):
+        s = await sessions.create(db, anna.id, title=f"A{i}")
+        await _run(db, s, await _msg(db, anna, s, "x"), input_tokens=1000 + i)
+    counted["n"] = 0
+    nine = (await client.get("/assistant/sessions", headers=auth(anna))).json()
+
+    assert len(three) == 3 and len(nine) == 9
+    assert all(r["context"] for r in nine)
+    # Dreimal so viele Unterhaltungen, gleich viele Abfragen.
+    assert counted["n"] == for_three
