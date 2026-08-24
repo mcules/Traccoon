@@ -103,8 +103,17 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
 
 
 def _text(result: dict[str, Any]) -> str:
-    """Pull the text parts of an MCP result together (for messages and the log)."""
-    parts = [c.get("text", "") for c in (result.get("content") or [])
+    """Pull the text parts of an MCP result together (for messages and the log).
+
+    The same seam as in `worker/mcp_client.py`, only for the flow side: what comes out here
+    lands in the context of a run and therefore in a JSON column, and Postgres encodes to
+    UTF-8 just as the provider does. A lone surrogate from a foreign server would kill the
+    flow at the write, with an error that names a position and not a cause — see
+    `worker/text.py`.
+    """
+    # No cycle: `worker/text.py` imports nothing from the application.
+    from ..worker.text import scrub_surrogates
+    parts = [scrub_surrogates(c.get("text", "")) for c in (result.get("content") or [])
              if isinstance(c, dict) and c.get("type") == "text"]
     return " ".join(t for t in parts if t).strip()
 

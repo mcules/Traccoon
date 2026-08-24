@@ -29,6 +29,7 @@ from . import perms
 from .mcp_client import mcp_session
 from .providers.base import ProviderError
 from .providers.router import router
+from .text import MojibakeWatch
 from .assistant_gate import gate_check
 from .tools_memory import (
     MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLECTION_PROMPT, call_memory_tool, memory_root, read_memory,
@@ -1008,6 +1009,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     # `_end_run`, and if they were bound only inside the `async with`, the rescue path of all
     # things would raise a NameError instead of saving the tokens.
     in_tok = out_tok = cache_read = 0
+    # Everything a tool returns passes through here before it becomes a message: a lone
+    # surrogate (a filename in cp1252, a mail body a foreign server decoded leniently) would
+    # otherwise only fall over at the encode to the provider — after all the work is done and
+    # paid for. One watch per run, so the warning names the tool once and not once per call.
+    mojibake = MojibakeWatch()
     # Empty string (not None) means NO gateway; no fallback to a global one (hard separation).
     try:
         async with mcp_session(agent.name, servers=await _agent_mcp(db, agent, owner_id),
@@ -1421,6 +1427,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             result = await mcp.call(call.name, call.arguments)
                         except Exception as exc:  # noqa: BLE001
                             result = f"TOOL-ERROR: {exc}"
+
+                    # Before ANYTHING else happens with it. The next two steps both encode to
+                    # UTF-8 — the step row goes into Postgres, the message to the provider —
+                    # and both would refuse a lone surrogate. A filename from `fs_list` is
+                    # enough: `os.walk` hands the bytes over as they lie on the volume.
+                    result = mojibake.clean_deep(result, call.name)
 
                     # The counterpart to the start above: only this closes the tool again.
                     _duration_ms = max(0, int((asyncio.get_running_loop().time() - _t0) * 1000))

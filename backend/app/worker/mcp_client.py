@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 
+from .text import MojibakeWatch
+
 MCP_GATEWAY_URL = os.getenv("MCP_GATEWAY_URL", "")
 MCP_GATEWAY_TOKEN = os.getenv("MCP_GATEWAY_TOKEN", "")
 
@@ -34,6 +36,9 @@ class McpSession:
         self._extra_headers: dict[str, str] = {}
         self._session_id: str | None = None   # streamable HTTP: Mcp-Session-Id from initialize
         self._id = 0
+        # A session lives exactly one run, so "once per session" IS "once per run" — without
+        # any global state that two runs side by side would share.
+        self._mojibake = MojibakeWatch()
 
     def _headers(self) -> dict[str, str]:
         # Streamable-HTTP-Server (z. B. MCPJungle) verlangen text/event-stream im Accept
@@ -110,7 +115,10 @@ class McpSession:
         parts = []
         for c in res.get("content", []):
             if c.get("type") == "text":
-                parts.append(c.get("text", ""))
+                # The earliest seam. A foreign server may have decoded a filename or a mail
+                # body with `surrogateescape`; taken as given, that string travels through the
+                # whole run and only falls over at the provider, long after the work is done.
+                parts.append(self._mojibake.clean(c.get("text", ""), f"MCP-Tool {name}"))
         return ("\n".join(parts) or "(kein Output)", bool(res.get("isError")))
 
 
