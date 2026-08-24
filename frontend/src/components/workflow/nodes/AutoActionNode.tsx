@@ -32,6 +32,7 @@ const ACTION_LABEL: Record<string, string> = {
   mail_assistant_card: "action.mail_assistant_card",
   mail_assistant_run: "action.mail_assistant_run",
   assistant_task: "action.assistant_task",
+  assistant_session: "action.assistant_session",
   agent_run: "action.agent_run",
   script: "action.script",
   job_pause: "action.job_pause",

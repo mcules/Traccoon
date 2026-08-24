@@ -10,6 +10,7 @@ import logging
 import os
 import time
 
+from ..text import repair_messages
 from .anthropic import AnthropicProvider
 from .base import ChatResponse, Provider, ProviderError
 from .codex import CodexProvider
@@ -82,6 +83,16 @@ class Router:
                    extra_body: dict | None = None, effort: str = "") -> ChatResponse:
         tokens = tokens or {}
         base_urls = base_urls or {}
+        # The last line of defence, one choke point for every provider and every caller. A
+        # lone surrogate anywhere in the prompt makes the whole request fail at the encode,
+        # and a source nobody thought of must not be able to take a run down for it.
+        #
+        # NOT the only fix, on purpose: scrubbing only here would hide where the mojibake came
+        # from, so the seams (tool result, MCP answer) clean up first and name their tool. If
+        # this one still fires, it is a source that is not yet covered — hence the warning.
+        if (spot := repair_messages(messages)):
+            log.warning("Undecodable bytes reached the provider unscrubbed (%s). "
+                        "Repaired here, but the seam that let it through is missing.", spot)
         raw_chain = [provider] + ([fallback] if fallback and fallback != provider else [])
         chain = [p for p in raw_chain if not self._cooling(p)] or raw_chain
         last_err: ProviderError | None = None

@@ -24,6 +24,7 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
     ["create_ticket", "action.create_ticket"],
     ["refresh_facts", "action.read_project_facts"],
     ["assistant_task", "action.assistant_task"],
+    ["assistant_session", "action.assistant_session"],
     ["agent_run", "action.agent_run"],
     ["script", "action.script"],
     ["job_pause", "action.job_pause"],

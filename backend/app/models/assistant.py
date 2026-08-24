@@ -9,6 +9,65 @@ from ..db import Base
 from .base import TimestampMixin
 
 
+class AssistantSession(TimestampMixin, Base):
+    """One conversation of one person with one agent — created, loaded, switched, closed.
+
+    The thread used to be endless: every chat message of an owner was one conversation, cut
+    only by the calendar. There was no way to start a new subject without dragging yesterday
+    along, and none to pick a subject up again that had been set aside. The session is that
+    cut, and from here on it is the ONLY one: the history reads by session, not by a time
+    window.
+
+    A session belongs to exactly ONE agent. The GameProj operator keeps a conversation of its
+    own, and mixing the two would poison both — the assistant would answer out of a game and
+    the operator out of the post.
+
+    Closed is not deleted: it drops out of the default list, stays loadable and can be
+    carried on. Deleting is deliberately not a button but a workflow action
+    (`assistant_session` with `op=delete`), so that clearing out old conversations can be
+    scheduled as a job.
+    """
+    __tablename__ = "assistant_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    agent: Mapped[str] = mapped_column(String(100), default="assistent")
+    # From the first message, editable. A list of conversations all called "New conversation"
+    # is a list nobody can navigate.
+    title: Mapped[str] = mapped_column(String(200), default="")
+    # What the list is ordered by. `created_at` would put a conversation picked up after
+    # three weeks back at the position it had when it started.
+    last_message_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True)
+    closed_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True)
+    # Room for later. Nothing is invented in here now.
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class AssistantChannelSession(TimestampMixin, Base):
+    """Which conversation a channel is currently in ("the pointer").
+
+    Only Telegram genuinely needs this: a chat message there carries no parameter, so the bot
+    has to remember by itself which conversation it is in. The API clients (web interface,
+    Obsidian plugin) pass `session_id` explicitly and keep their own idea of "the last one I
+    had open" locally; `web` is written all the same, so that a person who was last in a
+    session in the browser finds the same one after a reload.
+    """
+    __tablename__ = "assistant_channel_sessions"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "channel", name="uq_assistant_channel"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    channel: Mapped[str] = mapped_column(String(20), default="telegram")  # telegram | web
+    session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assistant_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
+
+
 class AssistantTask(TimestampMixin, Base):
     """Project-less work item of the personal assistant (stands above the projects).
 
@@ -23,6 +82,12 @@ class AssistantTask(TimestampMixin, Base):
     # Owner = the human the assistant serves; their token, their MCP group.
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    # Which conversation this message belongs to. NULLABLE, and that is the point: everything
+    # that is not a chat (mail intake, webhook items) never has one and must not be routed
+    # through sessions.
+    session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assistant_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
 
     kind: Mapped[str] = mapped_column(String(30), default="email")  # email | note | …
     source: Mapped[str] = mapped_column(String(120), default="")     # z. B. webhook:new-email
@@ -255,17 +320,26 @@ class ChatSummary(TimestampMixin, Base):
     gradually weaker but abruptly nothing. Now older exchanges wander here, into a summary
     that grows along; it replaces nothing newer but carries the older part.
 
-    Exactly ONE row per (human, agent): it is written on, not multiplied.
-    `bis_task_id` remembers how far it reaches; everything after is still verbatim.
+    Exactly ONE row per (human, agent, session): it is written on, not multiplied.
+    `to_task_id` remembers how far it reaches; everything after is still verbatim.
+
+    The session belongs in the key, and it is the one thing here that must not be got wrong:
+    without it the compacted memory of one conversation is read into the next one, and that
+    bug is invisible — the agent simply "remembers" something the human never said in this
+    conversation.
     """
     __tablename__ = "chat_summaries"
     __table_args__ = (
-        UniqueConstraint("owner_user_id", "agent", name="uq_chat_summary_faden"),
+        UniqueConstraint("owner_user_id", "agent", "session_id", name="uq_chat_summary_faden"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     agent: Mapped[str] = mapped_column(String(100), default="assistent")
+    # NULL = the thread of a task without a session (a webhook run), which keeps the
+    # behaviour it always had.
+    session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assistant_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
     to_task_id: Mapped[int] = mapped_column(Integer, default=0)
     text: Mapped[str] = mapped_column(Text, default="")

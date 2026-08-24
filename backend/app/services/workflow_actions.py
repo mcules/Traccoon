@@ -19,6 +19,8 @@ Supported actions:
   comment             {text}                    system comment on the bound issue
   notify              {to:{mode,...}, title, text}  notification (bell plus channel)
   assistent_auftrag   {auftrag, agent?, warten?, ...}  hand a free assignment to the assistant
+  assistant_session   {op, ...}                 conversations of the assistant: create, close,
+                                                delete (the ONLY way one is deleted)
   mail_anhang         {index?, context_key?, max_mb?}  fetch a mail attachment as base64
   antwort             {text | fielder}           the answer of this run (a waiting webhook reads it)
   noop                (default)                 nothing, a placeholder
@@ -1155,6 +1157,121 @@ async def _assistant_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
     return result
 
 
+async def _assistant_session(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Create, close or delete conversations of the personal assistant.
+
+    Deleting a conversation is deliberately NOT a button anywhere in the interface. It is
+    here, as an action, so that clearing out old conversations can be scheduled as a job —
+    and so that the destructive path has exactly ONE place where its guard rails live.
+
+      op=create   {title?, agent?}
+                  The new id lands in the context under `session`, so a following node can
+                  send into it.
+      op=close    {session_id}  or a sweep: {older_than_days, agent?}
+      op=delete   {session_id}  or a selector: {closed_only (default true), older_than_days,
+                  agent, keep_last}
+                  Returns {"deleted": n, "ids": [...]}.
+
+    `context_key` (default `session_cleanup`) is where close and delete put their outcome, so
+    a following decision can ask whether anything happened at all.
+
+    Three guard rails, because this is the one path that destroys something:
+
+    * A conversation with a running task is never deleted — not by any selector. That rule
+      lives in `assistant_sessions.delete`, not here, so it cannot be walked around.
+    * An OPEN conversation is deleted only when `session_id` names it explicitly. A sweep
+      that eats the conversation somebody is sitting in would be unforgivable, and a selector
+      is exactly the kind of thing that gets misconfigured once.
+    * A selector without an owner does nothing at all. Without one it would reach across
+      every person in the house.
+    """
+    import datetime as _dt
+
+    from sqlalchemy import select
+
+    from ..models.assistant import AssistantSession
+    from . import assistant_sessions as sessions
+
+    op = str(_interp(params.get("op") or "", ctx)).strip().lower() or "create"
+    owner = params.get("owner_id") or inst.started_by or _dig(ctx, "intake.owner_id")
+    owner = _as_int(_interp(owner, ctx)) if owner is not None else None
+    agent = str(_interp(params.get("agent") or "", ctx)).strip()
+    named = _as_int(_interp(params.get("session_id"), ctx)) if params.get("session_id") else None
+
+    if op == "create":
+        if owner is None:
+            return {"action": "assistant_session", "op": op, "created": False,
+                    "reason": "no owner (neither on the flow nor on the node)"}
+        title = str(_interp(params.get("title") or "", ctx)).strip()
+        s = await sessions.create(db, owner, title=title, agent=agent or "assistent",
+                                  commit=False)
+        inst.context = {**ctx, "session": {"id": s.id, "title": s.title, "agent": s.agent}}
+        return {"action": "assistant_session", "op": op, "created": True, "session_id": s.id}
+
+    # ── The set this call works on ───────────────────────────────────────────
+    if named is not None:
+        s = await db.get(AssistantSession, named)
+        if s is None or (owner is not None and s.owner_user_id != owner):
+            return {"action": "assistant_session", "op": op, "deleted": 0, "ids": [],
+                    "reason": "the conversation was not found"}
+        candidates = [s]
+    else:
+        if owner is None:
+            # A selector without an owner would reach across everybody. Say so instead of
+            # doing it.
+            return {"action": "assistant_session", "op": op, "deleted": 0, "ids": [],
+                    "reason": "a selector needs an owner"}
+        q = select(AssistantSession).where(AssistantSession.owner_user_id == owner)
+        if agent:
+            q = q.where(AssistantSession.agent == agent)
+        candidates = list((await db.execute(q)).scalars().all())
+
+    from .assistant_sessions import recency as age_of
+
+    days = _as_int(_interp(params.get("older_than_days"), ctx))
+    if days and days > 0:
+        cutoff = _dt.datetime.now(tz=_dt.timezone.utc) - _dt.timedelta(days=days)
+        candidates = [s for s in candidates if age_of(s) < cutoff]
+
+    key = str(_interp(params.get("context_key") or "", ctx)).strip() or "session_cleanup"
+
+    if op == "close":
+        closed = []
+        for s in candidates:
+            if s.closed_at is None:
+                await sessions.close(db, s, commit=False)
+                closed.append(s.id)
+        inst.context = {**ctx, key: {"closed": len(closed), "deleted": 0, "ids": closed}}
+        return {"action": "assistant_session", "op": op, "closed": len(closed), "ids": closed}
+
+    if op != "delete":
+        return {"action": "assistant_session", "op": op, "reason": "unknown op"}
+
+    # `closed_only` defaults to TRUE and is only lifted for a session named by number. An
+    # open conversation is one somebody may be sitting in right now.
+    closed_only = _yes(params.get("closed_only"), ctx) \
+        if params.get("closed_only") is not None else True
+    if named is None or closed_only:
+        candidates = [s for s in candidates if s.closed_at is not None]
+
+    keep = _as_int(_interp(params.get("keep_last"), ctx)) or 0
+    if keep > 0:
+        # The N most recent of ALL the person's conversations (in this agent's scope), not
+        # only of the ones the selector caught: "keep the last five" is meant as a floor
+        # under the whole shelf, not under the part that happens to be old and closed.
+        q = select(AssistantSession).where(AssistantSession.owner_user_id == owner)
+        if agent:
+            q = q.where(AssistantSession.agent == agent)
+        everything = list((await db.execute(q)).scalars().all())
+        everything.sort(key=age_of, reverse=True)
+        protected = {s.id for s in everything[:keep]}
+        candidates = [s for s in candidates if s.id not in protected]
+
+    gone = await sessions.delete(db, candidates, commit=False)
+    inst.context = {**ctx, key: {"deleted": len(gone), "closed": 0, "ids": gone}}
+    return {"action": "assistant_session", "op": op, "deleted": len(gone), "ids": gone}
+
+
 async def _agent_run(db, inst: WorkflowInstance, params: dict, ctx: dict,
                      node_id: str) -> dict:
     """Let an agent work and wait for its result — without a ticket, without an intake.
@@ -1560,6 +1677,9 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
 
     if action == "assistant_task":
         return await _assistant_task(db, inst, params, ctx, str(node.get("id") or ""))
+
+    if action == "assistant_session":
+        return await _assistant_session(db, inst, params, ctx)
 
     if action == "answer":
         return _answer(inst, params, ctx)

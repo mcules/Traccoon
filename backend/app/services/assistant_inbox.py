@@ -52,8 +52,14 @@ async def create_chat_task(db: AsyncSession, owner_user_id: int | None, text: st
         source = await _find_source(db, owner_user_id, str(chat_id), reference)
         if source is not None:
             meta["bezug_task_id"] = source
+    # Which conversation this lands in. A Telegram message carries no parameter, so the
+    # pointer of the channel decides — and it stays there until another one is loaded.
+    from .assistant_sessions import for_message
+    session = await for_message(db, owner_user_id, "telegram", text,
+                                agent=agent or "assistent")
     task = AssistantTask(owner_user_id=owner_user_id, kind="chat", source="telegram",
-                         title=text[:200], status="approved", meta=meta)
+                         title=text[:200], status="approved", meta=meta,
+                         session_id=session.id)
     db.add(task)
     await db.commit()
     await db.refresh(task)

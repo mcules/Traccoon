@@ -7,9 +7,23 @@ import { BUTTON_SMALL, BUTTON} from "./ui";
 
 interface ChatMsg {
   id: number; text: string; status: string; result: string; error: string;
-  pending_tool: string | null; created_at: string;
+  pending_tool: string | null; created_at: string; session_id: number | null;
 }
 type Page = { messages: ChatMsg[]; more: boolean };
+
+interface Session {
+  id: number; agent: string; title: string; created_at: string;
+  last_message_at: string | null; closed_at: string | null;
+  message_count: number; running: boolean;
+}
+
+/**
+ * Which conversation was open here last. Deliberately in the browser and not on the server:
+ * the pointer on the server belongs to the channel `web` and follows the sending, this here
+ * only decides what is shown on opening — and it may differ per device without either being
+ * wrong.
+ */
+const LAST_SESSION = "traccoon.assistant.session";
 
 const RUNNING = ["new", "approved", "running", "awaiting"];
 
@@ -32,6 +46,11 @@ export default function AssistantChat() {
   const [input, setInput] = useState("");
   const [err, setErr] = useState("");
   const [showArchive, setShowArchive] = useState(false);
+  const [sessionId, setSessionId] = useState<number | null>(() => {
+    const stored = Number(localStorage.getItem(LAST_SESSION) || 0);
+    return stored > 0 ? stored : null;
+  });
+  const [showClosed, setShowClosed] = useState(false);
   // Older pages, fetched on demand. They stand before the live page and do not refresh
   // themselves: what is past does not change.
   const [older, setOlder] = useState<ChatMsg[]>([]);
@@ -41,12 +60,24 @@ export default function AssistantChat() {
   // Height before older messages were prepended, so that the view can stay where it stood.
   const heightBefore = useRef<number | null>(null);
 
+  // The switcher is drawn from this. `running` says where something is still going on, so
+  // that one does not switch away from the answer one is waiting for without noticing.
+  const { data: sessions } = useQuery({
+    queryKey: ["assistant-sessions", showClosed],
+    queryFn: () => api.get<Session[]>(`/assistant/sessions${showClosed ? "?closed=1" : ""}`),
+    refetchInterval: 5000,
+  });
   const { data } = useQuery({
-    queryKey: ["assistant-chat", showArchive],
-    queryFn: () => api.get<Page>(`/assistant/chat?limit=20${showArchive ? "&archive=1" : ""}`),
+    queryKey: ["assistant-chat", showArchive, sessionId],
+    queryFn: () => api.get<Page>(
+      `/assistant/chat?limit=20${showArchive ? "&archive=1" : ""}` +
+      (sessionId ? `&session_id=${sessionId}` : "")),
     refetchInterval: showArchive ? false : 3000,
   });
-  const inv = () => qc.invalidateQueries({ queryKey: ["assistant-chat"] });
+  const inv = () => {
+    qc.invalidateQueries({ queryKey: ["assistant-chat"] });
+    qc.invalidateQueries({ queryKey: ["assistant-sessions"] });
+  };
   const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const messages = [...older, ...(data?.messages || [])];
@@ -56,12 +87,53 @@ export default function AssistantChat() {
   // nothing to do with the other.
   useEffect(() => {
     setOlder([]); setStillMore(false); firstImage.current = true;
-  }, [showArchive]);
+  }, [showArchive, sessionId]);
+
+  // The conversation a message was answered in is remembered locally, so a reload lands
+  // where one left off.
+  useEffect(() => {
+    if (sessionId) localStorage.setItem(LAST_SESSION, String(sessionId));
+    else localStorage.removeItem(LAST_SESSION);
+  }, [sessionId]);
+
+  // A conversation that is gone (deleted by a job) must not leave the view stuck on a number
+  // that answers nothing: back to "no particular one", which shows everything.
+  useEffect(() => {
+    if (sessionId && sessions && !showClosed && !sessions.some((s) => s.id === sessionId)) {
+      api.get<Session[]>("/assistant/sessions?closed=1")
+        .then((closed) => { if (!closed.some((s) => s.id === sessionId)) setSessionId(null); })
+        .catch(() => undefined);
+    }
+  }, [sessions, sessionId, showClosed]);
 
   const send = useMutation({
-    mutationFn: (text: string) => api.post("/assistant/chat", { text }),
-    onSuccess: () => { setInput(""); inv(); },
+    mutationFn: (text: string) => api.post<ChatMsg>("/assistant/chat",
+      { text, ...(sessionId ? { session_id: sessionId } : {}) }),
+    // Without a conversation of its own the server picks one (the pointer, or a fresh one).
+    // Which one that was comes back with the message, so the view follows along instead of
+    // staying on "everything".
+    onSuccess: (message) => { setInput(""); setSessionId(message.session_id); inv(); },
     onError: error,
+  });
+  const newSession = useMutation({
+    mutationFn: () => api.post<Session>("/assistant/sessions", {}),
+    onSuccess: (s) => { setShowClosed(false); setSessionId(s.id); inv(); },
+    onError: error,
+  });
+  const closeSession = useMutation({
+    mutationFn: (id: number) => api.post(`/assistant/sessions/${id}/close`),
+    onSuccess: () => { setSessionId(null); inv(); },
+    onError: error,
+  });
+  const reopenSession = useMutation({
+    mutationFn: (id: number) => api.post(`/assistant/sessions/${id}/reopen`),
+    onSuccess: () => { setShowClosed(false); inv(); },
+    onError: error,
+  });
+  const rename = useMutation({
+    mutationFn: ({ id, title }: { id: number; title: string }) =>
+      api.patch(`/assistant/sessions/${id}`, { title }),
+    onSuccess: inv, onError: error,
   });
   const decide = useMutation({
     mutationFn: ({ id, decision }: { id: number; decision: string }) =>
@@ -87,12 +159,14 @@ export default function AssistantChat() {
     heightBefore.current = listingRef.current?.scrollHeight ?? null;
     try {
       const page = await api.get<Page>(
-        `/assistant/chat?limit=20&before=${oldest}${showArchive ? "&archive=1" : ""}`);
+        `/assistant/chat?limit=20&before=${oldest}${showArchive ? "&archive=1" : ""}` +
+        (sessionId ? `&session_id=${sessionId}` : ""));
       setOlder((v) => [...page.messages, ...v]);
       setStillMore(page.more);
     } catch (e) { error(e); }
   }
 
+  const current = (sessions || []).find((s) => s.id === sessionId) || null;
   const lastId = messages[messages.length - 1]?.id;
   const states = messages.map((m) => m.status).join();
 
@@ -120,6 +194,45 @@ export default function AssistantChat() {
 
   return (
     <div className="flex h-[calc(100vh-16rem)] flex-col">
+      {/* The switcher. A conversation is picked here, a new one begun, the current one put
+          away — deleting is deliberately not among them: that is a workflow action, so that
+          clearing out can be scheduled instead of clicked. */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor="session-picker">{tr("assistant_chat.sessions")}</label>
+        <select id="session-picker" value={sessionId ?? ""}
+          onChange={(e) => setSessionId(e.target.value ? Number(e.target.value) : null)}
+          className="max-w-[18rem] flex-1 rounded border border-line bg-card px-2 py-1 text-sm text-ink outline-none">
+          <option value="">{tr("assistant_chat.sessions")}</option>
+          {(sessions || []).map((s) => (
+            <option key={s.id} value={s.id}>
+              {(s.running ? "🔄 " : "") + (s.title || tr("assistant_chat.untitled"))
+               + (s.agent !== "assistent" ? ` [${s.agent}]` : "")}
+            </option>
+          ))}
+        </select>
+        <button onClick={() => newSession.mutate()} disabled={newSession.isPending}
+          title={tr("assistant_chat.new_conversation")} className={BUTTON_SMALL.secondary}>+</button>
+        {current && !current.closed_at && (
+          <button onClick={() => closeSession.mutate(current.id)} disabled={closeSession.isPending}
+            title={tr("assistant_chat.close_conversation")}
+            className={BUTTON_SMALL.secondary}>×</button>
+        )}
+        {current?.closed_at && (
+          <button onClick={() => reopenSession.mutate(current.id)} disabled={reopenSession.isPending}
+            className={BUTTON_SMALL.secondary}>{tr("assistant_chat.reopen")}</button>
+        )}
+        {current && (
+          <button
+            onClick={() => {
+              const title = window.prompt(tr("assistant_chat.rename"), current.title);
+              if (title && title.trim()) rename.mutate({ id: current.id, title: title.trim() });
+            }}
+            title={tr("assistant_chat.rename")} className={BUTTON_SMALL.secondary}>✎</button>
+        )}
+        <button onClick={() => setShowClosed((v) => !v)} className={BUTTON_SMALL.secondary}>
+          {showClosed ? tr("assistant_chat.show_open") : tr("assistant_chat.show_closed")}
+        </button>
+      </div>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <p className="flex-1 text-sm text-muted">{tr("assistant_chat.tell_assistant_what_do")}</p>
         <button onClick={() => setShowArchive((v) => !v)}

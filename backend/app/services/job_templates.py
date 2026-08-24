@@ -15,7 +15,7 @@ from copy import deepcopy
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import research_flow
+from . import assistant_cleanup_flow, research_flow
 
 # Placeholders of the flow language have NO place in here: `{{…}}` is replaced exactly one
 # round, and an assignment is itself a context value — its braces would stay put literally.
@@ -95,6 +95,25 @@ JOB_TEMPLATES: dict[str, dict] = {
             "still_wenn": "",
         },
     },
+    "unterhaltungen-aufraeumen": {
+        "label": "Alte Unterhaltungen aufräumen",
+        "description": "Löscht geschlossene Unterhaltungen des Assistenten, die älter als 90 "
+                       "Tage sind — die fünf jüngsten bleiben in jedem Fall. Was gerade "
+                       "läuft und was offen ist, wird nie angefasst.",
+        "fields": {
+            "type": "cron",
+            # Nachts und wöchentlich: es ist Hausputz, kein Ereignis.
+            "schedule": "20 4 * * 0",
+            "kind": "workflow",
+            "workflow_key": assistant_cleanup_flow.KEY,
+        },
+        "params": {
+            "closed_only": True,
+            "older_than_days": 90,
+            "keep_last": 5,
+            "agent": "",
+        },
+    },
     "research-watch": {
         "label": "Research watcher",
         "description": "Looks daily for something new and stays SILENT while there is none. "
@@ -124,7 +143,9 @@ async def with_flow(db: AsyncSession, fields: dict) -> dict:
     key = fields.pop("workflow_key", "")
     if not key:
         return fields
-    d = await research_flow.find(db) if key == research_flow.KEY else None
+    module = {research_flow.KEY: research_flow,
+              assistant_cleanup_flow.KEY: assistant_cleanup_flow}.get(key)
+    d = await module.find(db) if module is not None else None
     if d is not None and d.current_version_id:
         fields["workflow_definition_id"] = d.id
     return fields

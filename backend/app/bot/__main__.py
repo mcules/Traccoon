@@ -27,6 +27,7 @@ from ..models.user import User
 from ..services.assistant_inbox import (
     approve_assistant_task, create_chat_task, reject_assistant_task,
 )
+from ..services import assistant_sessions as sessions
 from ..services.artifacts import set_ticket_status
 from ..services.comments import add_system_comment, apply_user_comment
 from ..services.spam_review import decide_batch, decide, karte, reclaim
@@ -643,7 +644,9 @@ async def run_bot() -> None:
             user = await _acting_user(db, m.chat.id)
             roles = await _agent_roles(db, user.id if user else None)
         agents = " \u00b7 /agent <" + "|".join(roles) + "> <Text>" if roles else ""
-        await m.answer("\U0001f99d Traccoon-Bot. /tasks \u00b7 /comment <KEY> <Text>" + agents)
+        await m.answer("\U0001f99d Traccoon-Bot. /tasks \u00b7 /comment <KEY> <Text>" + agents
+                       + "\nUnterhaltungen: /sessions \u00b7 /session <Nr> \u00b7 /neu [Titel] "
+                         "\u00b7 /schliessen")
 
     @dp.message(Command("tasks"))
     async def _tasks(m: Message):
@@ -708,6 +711,105 @@ async def run_bot() -> None:
             await create_chat_task(db, user.id if user else None, text, str(m.chat.id),
                                    agent=name)
         await m.answer("\U0001f6f0 \u2026")
+
+    # ── Unterhaltungen (Sessions) ────────────────────────────────────────────
+    #
+    # Eine Chat-Nachricht traegt keinen Parameter, deshalb merkt sich der Bot ueber den
+    # Zeiger (`assistant_channel_sessions`, Kanal `telegram`), in welcher Unterhaltung er
+    # steht. Laden heisst genau das: den Zeiger schreiben, sonst nichts. Jede folgende
+    # Nachricht dieser Person landet dort, bis eine andere geladen wird.
+
+    def _session_kb(rows, current_id: int | None) -> InlineKeyboardMarkup:
+        buttons = []
+        for s in rows[:20]:
+            mark = "\u2714\ufe0f " if s.id == current_id else ""
+            extra = f" [{s.agent}]" if s.agent != "assistent" else ""
+            label = f"{mark}{s.title or 'ohne Titel'}{extra}"
+            buttons.append([InlineKeyboardButton(text=clip(label, 60),
+                                                 callback_data=f"sess:{s.id}")])
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    async def _session_line(s) -> str:
+        return f"\U0001f5c2 Unterhaltung #{s.id}: {s.title or 'ohne Titel'}"
+
+    @dp.message(Command("sessions"))
+    async def _sessions(m: Message):
+        if not await _allowed(m.from_user.id):
+            return
+        async with SessionLocal() as db:
+            user = await _acting_user(db, m.chat.id)
+            if user is None:
+                await m.answer("Ich kenne dich noch nicht \u2014 hinterlege deine Chat-ID "
+                               "in der Weboberflaeche.")
+                return
+            rows = await sessions.listing(db, user.id)
+            pointer = await sessions.pointer(db, user.id, "telegram")
+            current_id = pointer.session_id if pointer else None
+        if not rows:
+            await m.answer("Keine offenen Unterhaltungen. /neu [Titel] legt eine an.")
+            return
+        await m.answer("Offene Unterhaltungen \u2014 tippen laedt:",
+                       reply_markup=_session_kb(rows, current_id))
+
+    @dp.message(Command("session"))
+    async def _session_load(m: Message):
+        """Nach Nummer laden \u2014 fuer den Fall, dass die Liste lang ist."""
+        if not await _allowed(m.from_user.id):
+            return
+        parts = (m.text or "").split(maxsplit=1)
+        number = parts[1].strip() if len(parts) > 1 else ""
+        if not number.isdigit():
+            await m.answer("So geht es: /session <Nummer> \u2014 die Nummern zeigt /sessions.")
+            return
+        async with SessionLocal() as db:
+            user = await _acting_user(db, m.chat.id)
+            s = await sessions.get_owned(db, int(number), user.id if user else None)
+            if s is None:
+                await m.answer("Diese Unterhaltung gibt es nicht.")
+                return
+            await sessions.load(db, user.id, "telegram", s.id)
+            line = await _session_line(s)
+        await m.answer(f"\u2714\ufe0f Geladen. {line}")
+
+    @dp.message(Command("neu"))
+    async def _session_new(m: Message):
+        """Anlegen und laden in einem Schritt."""
+        if not await _allowed(m.from_user.id):
+            return
+        parts = (m.text or "").split(maxsplit=1)
+        title = parts[1].strip() if len(parts) > 1 else ""
+        async with SessionLocal() as db:
+            user = await _acting_user(db, m.chat.id)
+            if user is None:
+                await m.answer("Ich kenne dich noch nicht \u2014 hinterlege deine Chat-ID "
+                               "in der Weboberflaeche.")
+                return
+            s = await sessions.create(db, user.id, title=title)
+            await sessions.load(db, user.id, "telegram", s.id)
+            answer = (f"\u2728 Neue Unterhaltung. {await _session_line(s)}" if title else
+                      f"\u2728 Neue Unterhaltung #{s.id}. "
+                      "Die erste Nachricht gibt ihr den Titel.")
+        await m.answer(answer)
+
+    @dp.message(Command("schliessen"))
+    async def _session_close(m: Message):
+        """Die aktuelle schliessen. Die naechste Nachricht faengt dann eine frische an."""
+        if not await _allowed(m.from_user.id):
+            return
+        async with SessionLocal() as db:
+            user = await _acting_user(db, m.chat.id)
+            s = await sessions.current(db, user.id if user else None, "telegram") \
+                if user else None
+            if s is None:
+                await m.answer("Gerade ist keine Unterhaltung geladen.")
+                return
+            await sessions.close(db, s)
+            # Den Zeiger mit loesen: sonst schriebe die naechste Nachricht weiter in die
+            # geschlossene hinein, und "schliessen" haette nichts geschlossen.
+            await sessions.load(db, user.id, "telegram", None)
+            line = await _session_line(s)
+        await m.answer(f"\U0001f512 Geschlossen. {line}\n"
+                       "Die naechste Nachricht faengt eine neue an.")
 
     @dp.message(F.reply_to_message)
     async def _reply(m: Message):
@@ -878,6 +980,18 @@ async def run_bot() -> None:
                 else:
                     await cq.answer("already decided")
                     await _done(cq, "⏭ already decided")
+            elif data.startswith("sess:"):
+                # Tippen laedt. Mehr passiert hier nicht: der Zeiger IST das Laden.
+                user = await _acting_user(db, cq.from_user.id)
+                s = await sessions.get_owned(db, int(data.split(":", 1)[1]),
+                                             user.id if user else None)
+                if s is None:
+                    await cq.answer("Gibt es nicht mehr")
+                    await _done(cq, "\u23ed Die Unterhaltung ist weg")
+                else:
+                    await sessions.load(db, user.id, "telegram", s.id)
+                    await cq.answer("Geladen")
+                    await _done(cq, f"\u2714\ufe0f Geladen: {s.title or 'ohne Titel'}")
             elif data.startswith("atask:"):
                 _, action, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))
