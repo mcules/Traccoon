@@ -95,12 +95,23 @@ class McpSession:
                 for t in res.get("tools", [])]
 
     async def call(self, name: str, arguments: dict) -> str:
+        text, _ = await self.call_ex(name, arguments)
+        return text
+
+    async def call_ex(self, name: str, arguments: dict) -> tuple[str, bool]:
+        """Like `call`, but says whether the server flagged the result as an error.
+
+        `call` throws the `isError` flag away, so its callers can only guess from the text
+        whether something went wrong — and guessing by substring reads an error out of a note
+        that merely QUOTES one ("Section target not found"). Whoever needs the difference
+        (tools_memory) asks here.
+        """
         res = await self._rpc("tools/call", {"name": name, "arguments": arguments})
         parts = []
         for c in res.get("content", []):
             if c.get("type") == "text":
                 parts.append(c.get("text", ""))
-        return "\n".join(parts) or "(kein Output)"
+        return ("\n".join(parts) or "(kein Output)", bool(res.get("isError")))
 
 
 class McpNotAvailable(RuntimeError):
@@ -135,14 +146,19 @@ class MultiMcpSession:
         return tools
 
     async def call(self, name: str, arguments: dict) -> str:
+        text, _ = await self.call_ex(name, arguments)
+        return text
+
+    async def call_ex(self, name: str, arguments: dict) -> tuple[str, bool]:
+        """`call` plus the server's `isError` flag; see `McpSession.call_ex`."""
         for server, sess in self._servers.items():
             if name.startswith(f"{server}__"):
-                return await sess.call(name[len(server) + 2:], arguments)
+                return await sess.call_ex(name[len(server) + 2:], arguments)
         if self._gateway is None:
             raise McpNotAvailable(
                 f"no MCP server for {name!r}: no server of that name is registered and "
                 f"kein Gateway eingerichtet")
-        return await self._gateway.call(name, arguments)
+        return await self._gateway.call_ex(name, arguments)
 
 
 @asynccontextmanager

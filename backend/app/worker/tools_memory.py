@@ -31,8 +31,12 @@ from ..models.user import User
 log = logging.getLogger(__name__)
 
 # How much memory goes into the prompt at most: enough for a few dozen lines, little enough
-# that it does not cover the assignment.
-MAX_MEMORY_CHARS = 6000
+# that it does not cover the assignment. 6000 was too tight once the notes had grown — the
+# person note alone filled it and the role note fell out of the prompt entirely, so the agent
+# relearned rules it had long since written down (which is how the duplicates got in). 20000
+# is roughly 6k tokens: person plus role fit whole today, and it sits at the top of the
+# prompt, so the history cache carries it. `_fit` decides what gives when they grow past it.
+MAX_MEMORY_CHARS = 20000
 # A single insight is a sentence, not an essay.
 MAX_ENTRY_CHARS = 600
 
@@ -126,27 +130,60 @@ async def memory_root(db: AsyncSession, owner_id: int | None) -> str:
     return (user.vault_memory_path or "").strip() if user else ""
 
 
-# MCP errors do NOT come as an exception: `mcp_client.call` discards `isError` and returns
-# the error text of the server (mcp_client.py:97-103). A missing call success is therefore
-# recognisable by the text here, and a "the note does not exist yet" is the normal case, not an error.
+# MCP errors do NOT come as an exception: the server answers with a normal result that only
+# carries an `isError` flag, and `mcp_client.call` throws that flag away. Whoever judges by
+# the text alone reads an error out of a note that merely QUOTES one — on 2026-08-01 the line
+# 'schlägt mit "Section target not found" fehl' landed in Agent-assistent.md, and from then on
+# every read of that note counted as failed: the role memory silently fell out of the prompt
+# and the curator skipped the note for weeks. That is why the flag is asked for here
+# (`call_ex`) and the text is only a fallback for callers that cannot deliver it.
 _ERROR_MARKER = ("mcp error", "kein mcp konfiguriert", "not found", "does not exist",
                   "file_exists", "error:", "\"code\":")
 
 
 def _failed(text: str) -> bool:
-    low = (text or "").lower()
-    return not text or any(m in low for m in _ERROR_MARKER)
+    """Only for results without a flag: markers count at the START, not somewhere inside.
+
+    An MCP error message begins with its cause ("Error: Not found: …"); a note begins with
+    its own content. Searching the whole text would make every note that writes about errors
+    unreadable.
+    """
+    low = (text or "").strip().lower()
+    return not low or any(low.startswith(m) for m in _ERROR_MARKER)
 
 
 async def _read_note(mcp, path: str) -> str:
     """Note content or empty (a missing note is the normal case, not the error case)."""
     try:
-        out = await mcp.call("obsidian__obsidian_get_note",
-                             {"format": "content", "target": _note_target(path)})
+        if hasattr(mcp, "call_ex"):
+            out, is_error = await mcp.call_ex(
+                "obsidian__obsidian_get_note",
+                {"format": "content", "target": _note_target(path)})
+            if is_error:
+                return ""
+        else:
+            out = await mcp.call("obsidian__obsidian_get_note",
+                                 {"format": "content", "target": _note_target(path)})
+            if _failed(out):
+                return ""
     except Exception as exc:  # noqa: BLE001
         log.debug("Memory: %s not readable (%s)", path, exc)
         return ""
-    return "" if _failed(out) else out
+    return _strip_note_header(out, path)
+
+
+def _strip_note_header(text: str, path: str) -> str:
+    """Drop the `**<path>** (format: content)` line the obsidian MCP puts in front.
+
+    It is presentation for a model reading a tool result, not part of the note. `forget`
+    writes what it reads back into the note, so leaving it in would file the header away as
+    the first line of the memory.
+    """
+    head = f"**{path}** (format: content)"
+    body = text.lstrip()
+    if body.startswith(head):
+        body = body[len(head):]
+    return body.lstrip("\n")
 
 
 async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "") -> str:
@@ -167,7 +204,30 @@ async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "
         body = (await _read_note(mcp, path)).strip()
         if body:
             chunks.append(f"## {title}\n{body}")
-    return "\n\n".join(chunks)[:MAX_MEMORY_CHARS]
+    return _fit(chunks)
+
+
+def _fit(chunks: list[str], budget: int = MAX_MEMORY_CHARS) -> str:
+    """Join the blocks, shortening the GENERAL ones first when the budget is tight.
+
+    A plain `[:MAX_MEMORY_CHARS]` over the joined text cuts from the end — and the end is the
+    role and project memory, the most specific part and the one that weighs most in case of
+    doubt. So hand the budget out from the back: the project block first, then the role, and
+    whatever is left goes to the person block.
+    """
+    keep: list[str] = []
+    left = budget
+    for chunk in reversed(chunks):                      # specific before general
+        if left <= 0:
+            break
+        if len(chunk) <= left:
+            keep.append(chunk)
+            left -= len(chunk) + 2                      # +2 for the blank line
+        else:
+            mark = "\n…(shortened)"
+            keep.append(chunk[:max(0, left - len(mark))].rstrip() + mark)
+            left = 0
+    return "\n\n".join(reversed(keep))
 
 
 async def _append_line(mcp, path: str, line: str) -> str:

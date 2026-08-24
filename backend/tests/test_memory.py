@@ -9,7 +9,7 @@ import pytest
 from conftest import auth, make_user
 
 from app.worker.tools_memory import (
-    NO_MEMORY, call_memory_tool, memory_root, note_path, read_memory,
+    MAX_MEMORY_CHARS, NO_MEMORY, call_memory_tool, memory_root, note_path, read_memory,
 )
 
 
@@ -103,7 +103,53 @@ async def test_recall_without_a_folder_recalls_nothing():
 async def test_recall_is_capped():
     """A vault that got out of hand does not bury the assignment."""
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "- Zeile\n" * 5000})
-    assert len(await read_memory(mcp, ROOT, "", "")) <= 6000
+    assert len(await read_memory(mcp, ROOT, "", "")) <= MAX_MEMORY_CHARS
+
+
+async def test_the_role_memory_survives_a_bloated_person_note():
+    """The cap shortens the GENERAL block, never the specific one.
+
+    A person note big enough to fill the budget on its own used to push the role note out of
+    the prompt completely — the agent then relearned rules that were long since written down.
+    """
+    mcp = FakeMcp({f"{ROOT}/Mensch.md": "- allgemein\n" * 5000,
+                   f"{ROOT}/Agent-assistent.md": "- nur fuer die Rolle\n" * 20})
+    block = await read_memory(mcp, ROOT, "assistent", "")
+    assert len(block) <= MAX_MEMORY_CHARS
+    assert block.count("- nur fuer die Rolle") == 20
+    assert "## About your person" in block
+
+
+async def test_a_note_quoting_an_error_message_still_reads():
+    """A memory line ABOUT an error must not look like a failed read.
+
+    'Section target not found' stood in Agent-assistent.md from 2026-08-01 on; the substring
+    check declared every read of that note a failure, so the role memory silently vanished
+    from the prompt and the curator skipped the note for weeks.
+    """
+    note = "- Der Heading-Name schlaegt mit \"Section target not found\" fehl."
+    mcp = FakeMcp({f"{ROOT}/Agent-assistent.md": note})
+    block = await read_memory(mcp, ROOT, "assistent", "")
+    assert "Section target not found" in block
+
+
+class FlaggingMcp(FakeMcp):
+    """A server that reports failure the way MCP really does: through `isError`."""
+
+    async def call_ex(self, name: str, args: dict) -> tuple[str, bool]:
+        text = await self.call(name, args)
+        return text, name in self.fail
+
+
+async def test_the_iserror_flag_beats_the_text():
+    """With a flag available the text is not searched at all — in either direction."""
+    note = "- Eine Regel, die das Wort not found enthaelt."
+    mcp = FlaggingMcp({f"{ROOT}/Agent-assistent.md": note})
+    assert "not found" in await read_memory(mcp, ROOT, "assistent", "")
+
+    mcp = FlaggingMcp({f"{ROOT}/Agent-assistent.md": "- harmlos"},
+                      fail={"obsidian__obsidian_get_note"})
+    assert await read_memory(mcp, ROOT, "assistent", "") == ""
 
 
 async def test_without_a_vault_it_tells_the_agent(db):

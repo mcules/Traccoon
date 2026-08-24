@@ -53,14 +53,17 @@ TASK = (
 
 
 def _parts(answer: str) -> tuple[str, str] | None:
-    """(keep, archive) from the model answer; None when it does not follow the format."""
-    if "### KEEP" not in answer:
+    """(keep, archive) from the model answer; None when it does not follow the format.
+
+    `### ARCHIVE` is REQUIRED, and not out of pedantry: the assignment demands exactly two
+    sections, so the second one is the proof that the answer arrived whole. An answer that
+    ran into `max_tokens` breaks off in the middle of the KEEP list — and that list is what
+    overwrites the note. Without this check a truncated answer looks like a tidy-up and files
+    away every entry behind the break, unarchived and unnoticed.
+    """
+    if "### KEEP" not in answer or "### ARCHIVE" not in answer:
         return None
-    remainder = answer.split("### KEEP", 1)[1]
-    if "### ARCHIVE" in remainder:
-        keep, archive = remainder.split("### ARCHIVE", 1)
-    else:
-        keep, archive = remainder, ""
+    keep, archive = answer.split("### KEEP", 1)[1].split("### ARCHIVE", 1)
     keep = keep.strip()
     archive = archive.strip()
     if archive.lower() in ("none", "none.", "-", ""):
@@ -97,14 +100,22 @@ async def curate_note(db, mcp, *, owner_id: int, path: str, agent, tokens: dict,
     pinned = [z for z in _lines(content) if PIN in z]
 
     from .aux import aux_chat
+    # The answer repeats the whole list plus what is thrown out, so it is roughly as long as
+    # the note itself. A fixed 3000 was enough for a short note and broke off in the middle of
+    # a 12k one — German markdown runs at ~3 characters per token, and both sections have to
+    # fit. Scaled with a floor, capped so a runaway note cannot pull the aux model apart.
+    budget = min(16000, max(3000, len(content) // 2))
     answer = await aux_chat(db, owner_id=owner_id, task="curator",
                              messages=[{"role": "user", "content": TASK + content}],
-                             agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=3000)
+                             agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=budget)
     if not answer:
         return None
     shared = _parts(answer)
     if shared is None:
-        log.warning("Curator: the answer does not follow the format, %s stays unchanged", path)
+        log.warning("Curator: the answer does not follow the format (%d chars, KEEP=%s, "
+                    "ARCHIVE=%s — a missing ARCHIVE usually means it hit max_tokens=%d), "
+                    "%s stays unchanged",
+                    len(answer), "### KEEP" in answer, "### ARCHIVE" in answer, budget, path)
         return None
     keep, archive = shared
 
