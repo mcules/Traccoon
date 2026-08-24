@@ -213,6 +213,25 @@ async def create_report(db: AsyncSession, source: BugSource, payload: dict) -> A
     await db.commit()
     await db.refresh(artifact)
     log.info("bug report %s from %s: %s", artifact.id, source.key, title)
+
+    # A report is an occasion, not only a row. Whoever wants to hear about it (a message on
+    # the phone, a ticket right away, a note in the vault) hangs a flow on this event instead
+    # of somebody having to remember to look at the list.
+    #
+    # After the commit on purpose: the flow starts at once and reads the report, so it has to
+    # be there. And in a `try`, because a report must never be lost over a broken flow — the
+    # sender is a stranger's program that gets one attempt.
+    from .events import emit
+    try:
+        await emit(db, "bug.reported", project_id=source.project_id,
+                   payload={"report": {"id": artifact.id, "title": title, "kind": art,
+                                       "app": source.key, "program": source.name,
+                                       "version": values["version"],
+                                       "contact": values["contact"],
+                                       "details": values["details"],
+                                       "project_id": source.project_id}})
+    except Exception:  # noqa: BLE001
+        log.exception("bug report %s: the event could not be reported", artifact.id)
     return artifact
 
 

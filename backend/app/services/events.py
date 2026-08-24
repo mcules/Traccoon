@@ -40,6 +40,7 @@ BUILTIN_EVENTS: list[tuple[str, str]] = [
     ("comment.added", "Kommentar geschrieben"),
     ("hardware.status_changed", "Beschaffungs-Status gewechselt"),
     ("mail.received", "E-Mail eingegangen"),
+    ("bug.reported", "Meldung eingegangen"),
     ("assistant.session_created", "Unterhaltung angelegt"),
     ("assistant.session_closed", "Unterhaltung geschlossen"),
     ("assistant.session_deleted", "Unterhaltung geloescht"),
