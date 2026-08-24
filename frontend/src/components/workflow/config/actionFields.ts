@@ -277,6 +277,38 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     outcomes: "action_fields.outcome_assistant_task",
   },
 
+  assistant_session: {
+    summary: "action_fields.assistant_session_summary",
+    fields: [
+      { key: "op", label: "action_fields.session_op", type: "select", required: true,
+        options: [["create", "action_fields.session_op_create"],
+                  ["close", "action_fields.session_op_close"],
+                  ["delete", "action_fields.session_op_delete"]],
+        hint: "action_fields.session_op_hint" },
+      { key: "title", label: "action_fields.title", type: "text",
+        showIf: ["op", ["create"]],
+        hint: "action_fields.session_title_hint" },
+      { key: "agent", label: "action_fields.agent", type: "select", source: "agent_role",
+        hint: "action_fields.session_agent_hint" },
+      { key: "session_id", label: "action_fields.session_number", type: "text",
+        placeholder: "{{ session.id }}",
+        hint: "action_fields.session_number_hint" },
+      { key: "closed_only", label: "action_fields.session_closed_only", type: "boolean",
+        default: true, showIf: ["op", ["delete"]],
+        hint: "action_fields.session_closed_only_hint" },
+      { key: "older_than_days", label: "action_fields.session_older_than_days", type: "number",
+        showIf: ["op", ["close", "delete"]],
+        hint: "action_fields.session_older_than_days_hint" },
+      { key: "keep_last", label: "action_fields.session_keep_last", type: "number",
+        showIf: ["op", ["delete"]],
+        hint: "action_fields.session_keep_last_hint" },
+      { key: "context_key", label: "action_fields.result_under", type: "text",
+        placeholder: "session_cleanup", showIf: ["op", ["close", "delete"]],
+        hint: "action_fields.session_context_key_hint" },
+    ],
+    outcomes: "action_fields.outcome_assistant_session",
+  },
+
   answer: {
     summary: "action_fields.answer_summary",
     fields: [

@@ -17,6 +17,7 @@ from ..models.assistant import AssistantPermission, AssistantPolicy, AssistantTa
 from ..models.user import User
 from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
 from ..services.assistant_policy import upsert_policy
+from ..services import assistant_sessions as sessions
 from .deps import get_current_user, is_owner_or_admin
 
 log = logging.getLogger("traccoon.mail")
@@ -232,11 +233,89 @@ async def delete_tool_perm(pid: int, user: User = Depends(get_current_user),
     await db.commit()
 
 
+# ================= Conversations (sessions) =================
+#
+# Everything under `/assistant/*`, so the `assistant` scope reaches it without a new scope
+# having to be invented (see `core/scopes.py`). Deleting is deliberately NOT in here: it is a
+# workflow action (`assistant_session`, op `delete`), so that clearing out old conversations
+# can be scheduled as a job instead of hanging off a button nobody presses twice.
+
+
+class SessionIn(BaseModel):
+    title: str | None = None
+    agent: str | None = None
+
+
+class SessionPatch(BaseModel):
+    title: str
+
+
+async def _get_session_owned(sid: int, user: User, db: AsyncSession):
+    s = await sessions.get_owned(db, sid, user.id)
+    if s is None:
+        raise Error(404, "err.not_found", "Not found")
+    return s
+
+
+@router.get("/assistant/sessions")
+async def list_sessions(closed: bool = False, agent: str = "",
+                        user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    """The conversations a switcher is drawn from, newest activity first.
+
+    `running` says whether something is still going on in one. A switcher has to show that:
+    otherwise a person switches away from the conversation whose answer they are waiting for
+    and cannot see where it went.
+    """
+    rows = await sessions.listing(db, user.id, closed=closed, agent=agent.strip())
+    return await sessions.out_many(db, rows)
+
+
+@router.post("/assistant/sessions", status_code=201)
+async def create_session(data: SessionIn, user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    s = await sessions.create(db, user.id, title=(data.title or ""),
+                              agent=(data.agent or "assistent"))
+    return sessions.out(s)
+
+
+@router.patch("/assistant/sessions/{sid}")
+async def rename_session(sid: int, data: SessionPatch, user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    s = await _get_session_owned(sid, user, db)
+    title = (data.title or "").strip()
+    if not title:
+        raise Error(400, "err.empty_title", "Empty title")
+    s.title = title[:200]
+    await db.commit()
+    return sessions.out(s)
+
+
+@router.post("/assistant/sessions/{sid}/close")
+async def close_session(sid: int, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    """Out of the default list, not out of the world: it stays loadable and continuable."""
+    s = await _get_session_owned(sid, user, db)
+    await sessions.close(db, s)
+    return sessions.out(s)
+
+
+@router.post("/assistant/sessions/{sid}/reopen")
+async def reopen_session(sid: int, user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    s = await _get_session_owned(sid, user, db)
+    await sessions.reopen(db, s)
+    return sessions.out(s)
+
+
 # ================= Chat with the assistant (web, in parallel to Telegram) =================
 
 def _chat_out(t: AssistantTask) -> dict:
     return {
         "id": t.id, "text": (t.meta or {}).get("chat_text") or t.title,
+        # Which conversation the message belongs to. A client that draws a switcher has to be
+        # able to tell whether a message that came in belongs to the one it is showing.
+        "session_id": t.session_id,
         "status": t.status, "result": t.result, "error": t.error,
         # Which run belongs to this message. Without it a client that wants to follow the
         # live events of its own chat message has to guess.
@@ -247,6 +326,9 @@ def _chat_out(t: AssistantTask) -> dict:
 
 class ChatIn(BaseModel):
     text: str
+    # Optional so that a client which knows nothing of sessions can still send: without it the
+    # channel pointer decides, and a conversation comes into being when there is none.
+    session_id: int | None = None
 
 
 class DecideIn(BaseModel):
@@ -255,21 +337,28 @@ class DecideIn(BaseModel):
 
 @router.get("/assistant/chat")
 async def chat_history(before: int | None = None, limit: int = 20, archive: bool = False,
+                       session_id: int | None = None,
                        user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    """A page of the conversation, newest last.
+    """A page of ONE conversation, newest last.
 
     Formerly the last fifty came at once, and the browser scrolled through all of them down
     to the current one on every opening. Now the newest `limit` come, and whoever wants to
     read further back fetches the page before them (`before` = the id one is standing at).
 
-    `mehr` says whether anything lies before that page, which the browser cannot tell from a
+    `more` says whether anything lies before that page, which the browser cannot tell from a
     full page alone.
+
+    WITHOUT `session_id` everything of the owner comes back, exactly as before. That is not
+    tidiness but compatibility: a client that predates the sessions must not fall silent
+    because a parameter it does not know now exists.
     """
     n = max(1, min(limit, 100))
     q = (select(AssistantTask)
          .where(AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat")
          .order_by(AssistantTask.id.desc()))
+    if session_id:
+        q = q.where(AssistantTask.session_id == session_id)
     q = q.where(AssistantTask.archived_at.isnot(None) if archive
                 else AssistantTask.archived_at.is_(None))
     if before:
@@ -323,11 +412,21 @@ async def chat_unarchive(tid: int, user: User = Depends(get_current_user),
 @router.post("/assistant/chat")
 async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
+    """Send a message into a conversation.
+
+    Named explicitly it goes there — into a closed one as well, because whoever loaded it
+    again wants to carry on in it. Without a name the `web` pointer decides, and when that
+    points at nothing a conversation comes into being. Sending always writes the pointer, so
+    that a person who was last in a session in the browser finds the same one after a reload.
+    """
     text = (data.text or "").strip()
     if not text:
         raise Error(400, "err.empty_message", "Empty message")
+    if data.session_id and await sessions.get_owned(db, data.session_id, user.id) is None:
+        raise Error(404, "err.not_found", "Not found")
+    s = await sessions.for_message(db, user.id, "web", text, session_id=data.session_id)
     t = AssistantTask(owner_user_id=user.id, kind="chat", source="web", status="approved",
-                      title=text[:200], meta={"chat_text": text})
+                      title=text[:200], meta={"chat_text": text}, session_id=s.id)
     db.add(t)
     await db.commit()
     await db.refresh(t)

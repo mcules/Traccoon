@@ -518,6 +518,10 @@ async def lifespan(app: FastAPI):
         # missing and never overwritten — the job templates hand out its number.
         from .services.research_flow import ensure as ensure_research_flow
         await ensure_research_flow(db)
+        # Der Aufräum-Ablauf für alte Unterhaltungen. Gleiche Art: einmal angelegt, danach
+        # gehört er dem, der ihn bearbeitet.
+        from .services.assistant_cleanup_flow import ensure as ensure_cleanup_flow
+        await ensure_cleanup_flow(db)
         # The same for the job kinds: prompt, script and HTTP are nodes in the flow.
         from .services.job_modes import convert as jobs_convert
         count = await jobs_convert(db)

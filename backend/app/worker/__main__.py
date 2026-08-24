@@ -642,8 +642,9 @@ async def _handle_agent_free(job: dict, redis: Redis) -> None:
 # on context compaction.
 CHAT_HISTORY_MAX = 8
 CHAT_HISTORY_HOURS = 12
-# How far back still counts as the same conversation. More generous than the verbatim window,
-# because what is summarised costs almost nothing.
+# Only still for tasks WITHOUT a session (a mail item, a webhook run). For a conversation the
+# session is the boundary: one that is picked up again after three weeks has to arrive whole,
+# and how long it is stays the business of the summary block below, not of the calendar.
 CHAT_MEMORY_DAYS = 14
 # This many exchanges pile up above the verbatim window before a summary is made. Without
 # this buffer an auxiliary run would happen on EVERY message from the ninth exchange on:
@@ -662,21 +663,36 @@ _SUMMARISE = (
 
 
 async def _chat_history(db, t) -> list[dict]:
-    """The thread of a conversation: a summary of the older part plus the recent exchanges verbatim."""
+    """The thread of a conversation: a summary of the older part plus the recent exchanges verbatim.
+
+    The SESSION is the cut. It used to be the calendar (`CHAT_MEMORY_DAYS`), which meant two
+    things at once: a subject could not be begun without dragging yesterday's along, and a
+    conversation picked up after three weeks arrived empty. A session that is loaded again
+    must arrive whole — that is the point of loading it — and how long it gets is handled by
+    the summary block, not by the calendar.
+
+    A task without a session (a mail item, a webhook run) keeps the behaviour it has today:
+    owner plus time window. Those never went through a conversation and must not start now.
+    """
     import datetime as _dt
 
     from ..models.assistant import AssistantTask, ChatSummary
     agent_name = (t.meta or {}).get("agent") or "assistent"
-    since = _now_dt() - _dt.timedelta(days=CHAT_MEMORY_DAYS)
-    all_rows = (await db.execute(
-        select(AssistantTask).where(
-            AssistantTask.owner_user_id == t.owner_user_id,
-            AssistantTask.kind == "chat",
-            AssistantTask.id != t.id,
-            AssistantTask.status == "done",
-            AssistantTask.created_at >= since,
-        ).order_by(AssistantTask.id))).scalars().all()
-    # Specialised agents hold conversations of their own: the GameProj operator has nothing to do with the assistant.
+    q = select(AssistantTask).where(
+        AssistantTask.kind == "chat",
+        AssistantTask.id != t.id,
+        AssistantTask.status == "done",
+    )
+    if t.session_id:
+        q = q.where(AssistantTask.session_id == t.session_id)
+    else:
+        since = _now_dt() - _dt.timedelta(days=CHAT_MEMORY_DAYS)
+        q = q.where(AssistantTask.owner_user_id == t.owner_user_id,
+                    AssistantTask.created_at >= since)
+    all_rows = (await db.execute(q.order_by(AssistantTask.id))).scalars().all()
+    # A session belongs to one agent, so this is a cheap consistency net rather than the
+    # separation itself. Without a session it IS the separation: the GameProj operator has
+    # nothing to do with the assistant.
     all_rows = [r for r in all_rows if ((r.meta or {}).get("agent") or "assistent") == agent_name]
 
     def exchange(r) -> list[dict]:
@@ -688,9 +704,15 @@ async def _chat_history(db, t) -> list[dict]:
             out.append({"label": "Du", "role": "agent", "body": answer[:2000]})
         return out
 
+    # The memory of THIS session. Reading it by (owner, agent) alone was the one bug worth
+    # naming: the compacted memory of one conversation would be read into the next, and
+    # nothing about it is visible — the agent simply "remembers" something the human never
+    # said in this conversation.
     summary = (await db.execute(select(ChatSummary).where(
         ChatSummary.owner_user_id == t.owner_user_id,
-        ChatSummary.agent == agent_name))).scalar_one_or_none()
+        ChatSummary.agent == agent_name,
+        ChatSummary.session_id == t.session_id,
+    ).order_by(ChatSummary.id))).scalars().first()
 
     # Not summarised yet means it stands verbatim in the history. Summarising happens in
     # blocks, not on every message moving up: otherwise an auxiliary run would happen on EVERY
@@ -715,7 +737,8 @@ async def _chat_history(db, t) -> list[dict]:
                               agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1500)
         if text:
             if summary is None:
-                summary = ChatSummary(owner_user_id=t.owner_user_id, agent=agent_name)
+                summary = ChatSummary(owner_user_id=t.owner_user_id, agent=agent_name,
+                                      session_id=t.session_id)
                 db.add(summary)
             summary.text = text
             summary.to_task_id = new_to_grasp[-1].id

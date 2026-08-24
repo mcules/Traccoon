@@ -37,8 +37,8 @@ from .artifact import (  # noqa: F401
 )
 from .testenv import BranchTestenv  # noqa: F401
 from .assistant import (  # noqa: F401
-    AssistantContact, AssistantPermission, AssistantPolicy, AssistantTask, ChatSummary,
-    SpamFeatureStat, SpamVerdict,
+    AssistantChannelSession, AssistantContact, AssistantPermission, AssistantPolicy,
+    AssistantSession, AssistantTask, ChatSummary, SpamFeatureStat, SpamVerdict,
 )
 from .chat import Message  # noqa: F401
 from .notification import Notification  # noqa: F401

@@ -61,7 +61,7 @@ export type AutoActionName =
   | "mail_classify" | "spam_evaluate" | "spam_card" | "spam_apply"
   | "mail_assistant_task" | "mail_assistant_card" | "mail_assistant_run"
   // The assistant in general (without a mail, without a ticket) and the answer of a flow
-  | "assistant_task" | "answer"
+  | "assistant_task" | "assistant_session" | "answer"
   // What used to be job kinds of their own: a free agent run and a script
   | "agent_run" | "script" | "job_pause"
   // Stores: texts with a history, the counterpart to the metric series
