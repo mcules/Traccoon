@@ -2846,5 +2846,7 @@
   "assistant_chat.show_open": "Offene zeigen",
   "assistant_chat.untitled": "ohne Titel",
   "assistant_chat.reopen": "Wieder öffnen",
-  "assistant_chat.rename": "Umbenennen"
+  "assistant_chat.rename": "Umbenennen",
+  "start_config.only_the_ticked_ones": "Nur die angehakten Arten starten den Ablauf.",
+  "start_config.nothing_ticked_means_all": "Nichts angehakt heißt: jede Art startet den Ablauf."
 }

@@ -159,8 +159,14 @@ async def _instance_access(db: AsyncSession, user: User, inst: WorkflowInstance,
 @router.get("/workflow-events")
 async def workflow_events(user: User = Depends(get_current_user)):
     """Events Traccoon reports itself: suggestion list for the trigger."""
-    from ..services.events import BUILTIN_EVENTS
-    return [{"event": e, "label": l} for e, l in BUILTIN_EVENTS]
+    from ..services.events import BUILTIN_EVENTS, EVENT_FIELDS
+    return [{"event": e, "label": l,
+             # What can be filtered on without writing JSONLogic. Empty for most events; the
+             # editor then simply shows no picker.
+             "fields": [{"path": f["path"], "label": f["label"],
+                         "options": [{"value": v, "label": lbl} for v, lbl in f["options"]]}
+                        for f in EVENT_FIELDS.get(e, [])]}
+            for e, l in BUILTIN_EVENTS]
 
 
 class EventIn(BaseModel):

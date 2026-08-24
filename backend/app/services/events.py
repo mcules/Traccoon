@@ -47,6 +47,46 @@ BUILTIN_EVENTS: list[tuple[str, str]] = [
     ("deployment.finished", "Deployment abgeschlossen"),
 ]
 
+# What an event carries that is worth filtering on, written out per event so the editor can
+# offer it instead of having somebody guess the path. The same reasoning as with the action
+# fields in the editor: without this table only an empty JSONLogic box remains, in which the
+# right names have to be guessed — and a wrong guess is QUIET, because a filter that matches
+# nothing simply never starts the flow, which looks exactly like "nothing happened".
+#
+# Anything not in here is still reachable through `filter`. This is the shortcut for the
+# handful of fields one actually filters on, not a fence around the rest.
+EVENT_FIELDS: dict[str, list[dict]] = {
+    "bug.reported": [
+        {"path": "report.kind", "label": "Art der Meldung",
+         "options": [("bug", "Etwas ist kaputt"), ("feature", "Ein Wunsch"),
+                     ("question", "Eine Frage")]},
+    ],
+}
+
+
+def _selection_matches(where: dict, ctx: dict) -> bool:
+    """Does the payload match what was ticked in the editor? (`where` on the trigger.)
+
+    Deliberately beside `filter` and not inside it. A dropdown that wrote JSONLogic would
+    have to read it back to know what is ticked, and an expression somebody wrote by hand
+    would be overwritten by the next click. So: `where` belongs to the editor, `filter`
+    belongs to the person, and both have to be true.
+
+    A field without a selection means no restriction — one that was never touched must not
+    silence the flow.
+    """
+    from .workflow_expr import evaluate
+
+    for path, wanted in (where or {}).items():
+        if isinstance(wanted, (str, int)):
+            wanted = [wanted]
+        if not wanted:
+            continue
+        value = evaluate(str(path), ctx)
+        if str(value) not in {str(w) for w in wanted}:
+            return False
+    return True
+
 
 def trigger_of(graph: dict) -> dict | None:
     """The trigger settings on the start node of a graph (or None)."""
@@ -142,6 +182,10 @@ async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,
     for d in await listeners(db, event, project_id):
         version = await db.get(WorkflowVersion, d.current_version_id)
         t = trigger_of(version.graph if version else {}) or {}
+        # What was ticked in the editor first: it costs no evaluation and is what a person
+        # set with two clicks.
+        if not _selection_matches(t.get("where") or {}, ctx):
+            continue
         rule = t.get("filter")
         if rule:
             try:

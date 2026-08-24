@@ -2846,5 +2846,7 @@
   "assistant_chat.show_open": "Show the open ones",
   "assistant_chat.untitled": "untitled",
   "assistant_chat.reopen": "Reopen",
-  "assistant_chat.rename": "Rename"
+  "assistant_chat.rename": "Rename",
+  "start_config.only_the_ticked_ones": "Only the ticked kinds start the flow.",
+  "start_config.nothing_ticked_means_all": "Nothing ticked means every kind starts the flow."
 }

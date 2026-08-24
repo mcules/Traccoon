@@ -5,6 +5,14 @@ import type { NodeConfig } from "../types";
 
 interface ProjectLite { id: number; key: string; name: string }
 
+/** What an event carries that can be filtered on without writing JSONLogic. */
+interface EventField {
+  path: string;
+  label: string;
+  options: { value: string; label: string }[];
+}
+interface EventDef { event: string; label: string; fields?: EventField[] }
+
 /**
  * Trigger of a flow.
  *
@@ -45,7 +53,7 @@ export default function StartConfig({
   });
   const { data: events } = useQuery({
     queryKey: ["workflow-events"],
-    queryFn: () => api.get<{ event: string; label: string }[]>("/workflow-events"),
+    queryFn: () => api.get<EventDef[]>("/workflow-events"),
     staleTime: 10 * 60_000,
   });
   const { data: projects } = useQuery({
@@ -69,7 +77,7 @@ export default function StartConfig({
   const setArt = (fresh: typeof art) => {
     const remainder = { ...t };
     delete remainder.event; delete remainder.project_id; delete remainder.filter; delete remainder.kind;
-    delete remainder.scope;
+    delete remainder.scope; delete remainder.where;
     if (fresh !== "manuell") remainder.kind = fresh;
     if (fresh === "mail_action") remainder.scope = "message";
     onChange({
@@ -94,6 +102,24 @@ export default function StartConfig({
     });
   };
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
+
+  // Was dieses Ereignis zum Filtern anbietet. Leer für die meisten — dann steht hier nichts,
+  // und es bleibt bei der Bedingung von Hand.
+  const fields: EventField[] = t.event
+    ? (events?.find((e) => e.event === t.event)?.fields || []) : [];
+  const picked = (path: string): string[] => {
+    const value = (t.where || {})[path];
+    return Array.isArray(value) ? value.map(String) : value ? [String(value)] : [];
+  };
+  const toggle = (path: string, value: string) => {
+    const now = picked(path);
+    const next = now.includes(value) ? now.filter((v) => v !== value) : [...now, value];
+    const where = { ...(t.where || {}) };
+    // Nichts angehakt heisst „alles" und nicht „nichts": ein leerer Eintrag würde den
+    // Ablauf stumm schalten, obwohl man gerade das letzte Häkchen weggenommen hat.
+    if (next.length) where[path] = next; else delete where[path];
+    setT({ where: Object.keys(where).length ? where : "" });
+  };
 
   return (
     <div className="space-y-3">
@@ -229,6 +255,27 @@ export default function StartConfig({
               {tr("start_config.flow_already_belongs_project")}
             </span>
           </label>
+
+          {fields.map((f) => (
+            <div key={f.path} className="block text-xs font-medium text-muted">
+              {f.label}
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {f.options.map((o) => (
+                  <label key={o.value} className="flex items-center gap-1 font-normal text-ink">
+                    <input type="checkbox" checked={picked(f.path).includes(o.value)}
+                      onChange={() => toggle(f.path, o.value)} />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+              <span className="mt-1 block text-[11px] font-normal text-muted">
+                {picked(f.path).length
+                  ? tr("start_config.only_the_ticked_ones")
+                  : tr("start_config.nothing_ticked_means_all")}{" "}
+                <code>{f.path}</code>
+              </span>
+            </div>
+          ))}
 
           <label className="block text-xs font-medium text-muted">
             {tr("start_config.only_when_condition_jsonlogic")}

@@ -87,6 +87,11 @@ export interface NodeConfig {
     event?: string;
     project_id?: number;
     filter?: Record<string, any>;
+    /** Picked values per payload path (`{"report.kind": ["bug"]}`), what the editor's
+     *  checkboxes write. Stands beside `filter`, not inside it: a dropdown that generated
+     *  JSONLogic would have to read it back, and would overwrite an expression written by
+     *  hand on the next click. Both have to be true. */
+    where?: Record<string, string[]>;
     /** `webhook` = called from outside, `ereignis` = listens for an event,
      *  `mail_action` = a button on a mail respectively on one of its attachments;
      *  missing = by hand respectively over a job. */
