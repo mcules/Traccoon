@@ -4,17 +4,17 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
-import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core import scopes as scopes_mod
 from ..core.error import Error
-from ..core.security import decode_access_token
 from ..db import get_session
-from ..models.enums import GlobalRole, ProjectRole, UserStatus
+from ..models.enums import GlobalRole, ProjectRole
 from ..models.project import Project, ProjectMember
 from ..models.user import User
+from ..services import api_tokens
 
 ROLE_RANK = {
     ProjectRole.viewer: 0,
@@ -24,32 +24,67 @@ ROLE_RANK = {
 }
 
 
-def _unauth(detail: str = "Not authenticated") -> HTTPException:
-    return HTTPException(status.HTTP_401_UNAUTHORIZED, detail, {"WWW-Authenticate": "Bearer"})
+def _bearer(exc: Error) -> Error:
+    """Hang `WWW-Authenticate` on a 401. That header is what tells a client it may retry with
+    credentials, and `Error` carries no headers of its own (the handler passes through
+    whatever stands there).
+
+    Why the `Error` is built at the call site and not in here: the check in
+    `frontend/tools/error-texts-check.mjs` reads the key out of the source, and a key handed
+    in as a variable is invisible to it. A 401 would then be the one error class whose text
+    silently stays English on a German screen.
+    """
+    exc.headers = {"WWW-Authenticate": "Bearer"}
+    return exc
+
+
+def route_path(request: Request) -> str:
+    """The matched route TEMPLATE (`/issues/{key}`), which is what the scope table is keyed
+    by. FastAPI hangs the route into the request scope while matching, so this is available
+    by the time a dependency runs. The concrete path is the fallback for the cases that have
+    no route at all (a 404 never reaches a dependency, but a mounted sub-app might)."""
+    route = request.scope.get("route")
+    return getattr(route, "path", None) or request.url.path
 
 
 async def get_current_user(
+    request: Request,
     authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> User:
+    """Who is calling. Two kinds of bearer come in here, and only one dependency comes out.
+
+    A second dependency for personal access tokens would be a second truth about who is
+    logged in, and every router already hangs off this one. What differs is only the reach:
+    a JWT session is unrestricted (`request.state.scopes is None`), a token is measured
+    against `core/scopes.py`, deny by default.
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise _unauth()
+        raise _bearer(Error(status.HTTP_401_UNAUTHORIZED, "err.not_authenticated",
+                            "Not authenticated"))
     token = authorization.split(" ", 1)[1].strip()
-    try:
-        payload = decode_access_token(token)
-    except jwt.PyJWTError:
-        raise _unauth("Invalid token")
-    user = await db.get(User, int(payload.get("sub", 0)))
-    if user is None:
-        raise _unauth("Unknown user")
-    # Session invalidation: JWTs from before the last password change are invalid
-    if user.password_changed_at is not None:
-        iat = payload.get("iat", 0)
-        if iat < int(user.password_changed_at.timestamp()):
-            raise _unauth("Token expired by password change")
-    if user.status != UserStatus.active:
+    result = await api_tokens.authenticate(db, token)
+    if result.error == api_tokens.BAD_TOKEN:
+        # One answer for every way a token can fail. Which of them it was is information an
+        # attacker does not need.
+        raise _bearer(Error(status.HTTP_401_UNAUTHORIZED, "err.invalid_token",
+                            "Invalid token"))
+    if result.error == api_tokens.BAD_UNKNOWN_USER:
+        raise _bearer(Error(status.HTTP_401_UNAUTHORIZED, "err.unknown_user",
+                            "Unknown user"))
+    if result.error == api_tokens.BAD_PASSWORD_CHANGED:
+        raise _bearer(Error(status.HTTP_401_UNAUTHORIZED,
+                            "err.token_expired_by_password_change",
+                            "Token expired by password change"))
+    if result.error == api_tokens.BAD_INACTIVE or result.user is None:
         raise Error(status.HTTP_403_FORBIDDEN, "err.account_not_active", "Account not active")
-    return user
+    if not scopes_mod.allowed(result.scopes, request.method, route_path(request)):
+        raise Error(status.HTTP_403_FORBIDDEN, "err.scope_missing",
+                     "This access token does not reach {method} {path}",
+                     method=request.method, path=route_path(request))
+    # Where the endpoints can see it: None = a JWT session, unrestricted.
+    request.state.scopes = result.scopes
+    return result.user
 
 
 async def require_admin(user: User = Depends(get_current_user)) -> User:

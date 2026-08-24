@@ -6,6 +6,7 @@ from .enums import (  # noqa: F401
     WorkflowStepStatus, WorkflowSubjectKind, WorkflowTokenState, WorkflowVersionStatus,
 )
 from .user import SYSTEM_USER_ID, User  # noqa: F401
+from .api_token import ApiToken  # noqa: F401
 from .project import Project, ProjectMember, ResourceGrant, default_ai_assign  # noqa: F401
 from .invitation import ProjectInvitation  # noqa: F401
 from .mail import MailAccount, MailIdentity  # noqa: F401
@@ -24,6 +25,7 @@ from .ops import (  # noqa: F401
     Deployment, Job, JobRun, PermAction, PermGrant, PermRequest, Permission,
     ProviderModel, WebhookCoalesce, WebhookSub,
 )
+from .bugs import BugSource, ReportImage, ReportPost  # noqa: F401
 from .i18n import UiLocale, UiTranslation  # noqa: F401
 from .documents import DocEntry, DocSeries  # noqa: F401
 from .series import Series, SeriesPlace, SeriesPoint, SeriesShare  # noqa: F401
@@ -47,7 +49,7 @@ from .workflow import (  # noqa: F401
 )
 
 __all__ = [
-    "User", "SYSTEM_USER_ID", "Project", "ProjectMember", "ResourceGrant", "default_ai_assign",
+    "User", "SYSTEM_USER_ID", "ApiToken", "Project", "ProjectMember", "ResourceGrant", "default_ai_assign",
     "ProjectInvitation",
     "IssueType", "WorkflowStatus", "IssueCounter", "Board", "BoardColumn", "Sprint",
     "Tag", "IssueTag", "Issue", "IssueLink", "Comment", "ActivityLog", "SavedFilter",
@@ -60,6 +62,6 @@ __all__ = [
     "AssistantTask", "AssistantPolicy", "AssistantPermission",
     "WorkflowDefinition", "WorkflowVersion", "WorkflowInstance", "WorkflowToken",
     "WorkflowStepRun", "WorkflowSet", "BranchTestenv", "Destination",
-    "ArtifactType", "Artifact",
+    "ArtifactType", "Artifact", "BugSource", "ReportPost", "ReportImage",
     "Series", "SeriesPoint", "SeriesPlace", "SeriesShare",
 ]

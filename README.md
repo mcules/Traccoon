@@ -378,6 +378,10 @@ Out of the box Traccoon is a complete ticket system. Everything else is opt-in:
 ## Security
 
 - Argon2id password hashing, JWT with session invalidation, manual account activation
+- **Personal access tokens** for long lived clients (an Obsidian plugin, a script): named,
+  scoped (`assistant`, `tickets`, `full`, deny by default), individually revocable, and not
+  killed by a password change the way a session is. The secret half is shown exactly once
+  and kept only as an Argon2 hash
 - **Secret vault** (Fernet encrypted) for tokens and credentials. Values are never returned,
   only used
 - Permissions are enforced server side: project roles, the AI permission, grants on

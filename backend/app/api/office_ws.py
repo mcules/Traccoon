@@ -47,9 +47,11 @@ refreshes it, **never** the hot path. The filter per event needs no database at 
 `project_id`/`owner_id` hang off every event, so the decision cannot drift past a stale
 join.
 
-**Auth.** The socket does what `deps.get_current_user` does: decode the token, load the
-user, reject `status != active` and reject tokens issued before `password_changed_at`.
-Close codes: 4401 (token broken or unknown user), 4403 (inactive or revoked).
+**Auth.** The socket does what `deps.get_current_user` does, through the very same
+function (`services.api_tokens.authenticate`): decode the token, load the user, reject
+`status != active` and reject JWTs issued before `password_changed_at`. A personal access
+token additionally needs the `assistant` scope for this socket. Close codes: 4401 (token
+broken or unknown user), 4403 (inactive, revoked, or out of scope).
 """
 from __future__ import annotations
 
@@ -59,16 +61,16 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-import jwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.security import decode_access_token
+from ..core import scopes
 from ..db import SessionLocal
 from ..models.enums import GlobalRole, UserStatus
 from ..models.project import Project, ProjectMember
 from ..models.user import User
+from ..services import api_tokens
 from ..services.office import CHANNEL, EVENT_VERSION
 from .deps import build_access_bulk
 
@@ -283,26 +285,25 @@ async def compute_acl(db: AsyncSession, user: User) -> set[int]:
     }
 
 
-def token_revoked(payload: dict, user: User) -> bool:
-    """Was this token devalued by a password change? (like `get_current_user`)"""
-    if user.password_changed_at is None:
-        return False
-    return int(payload.get("iat", 0) or 0) < int(user.password_changed_at.timestamp())
-
-
 async def authenticate(token: str, db: AsyncSession) -> tuple[User | None, int]:
     """(User, close code). Exactly the checks from `deps.get_current_user`: a socket is not
-    a weaker entrance than a request."""
-    try:
-        payload = decode_access_token(token)
-    except jwt.PyJWTError:
-        return None, CLOSE_UNAUTHENTICATED
-    user = await db.get(User, int(payload.get("sub", 0) or 0))
-    if user is None:
-        return None, CLOSE_UNAUTHENTICATED
-    if user.status != UserStatus.active or token_revoked(payload, user):
+    a weaker entrance than a request, and it is not a stronger one either.
+
+    Both kinds of bearer arrive here as the query parameter `?token=`. A personal access
+    token needs the `assistant` scope for this socket; without that the live stream would be
+    the one thing a token cannot do, and a client would silently degrade to polling.
+    """
+    result = await api_tokens.authenticate(db, token)
+    if result.user is None:
+        # An unreadable token or an unknown user is "not authenticated"; a locked account or
+        # a JWT devalued by a password change is "forbidden". A failed access token counts as
+        # the former on purpose: it says nothing about which of its five ways it failed.
+        return None, (CLOSE_UNAUTHENTICATED
+                      if result.error in (api_tokens.BAD_TOKEN, api_tokens.BAD_UNKNOWN_USER)
+                      else CLOSE_FORBIDDEN)
+    if not scopes.allowed(result.scopes, "GET", "/ws"):
         return None, CLOSE_FORBIDDEN
-    return user, 0
+    return result.user, 0
 
 
 # ── The socket ──────────────────────────────────────────────────────────────

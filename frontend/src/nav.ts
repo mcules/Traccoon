@@ -36,6 +36,7 @@ export function primaryNavigation(isAdmin: boolean, plugins: NavEntry[] = []): N
     { key: "projekte", label: tr("layout.projects"), icon: "🗂️", to: "/" },
     { key: "inbox", label: tr("layout.inbox"), icon: "📥", to: "/inbox", counter: "inbox" },
     { key: "mail", label: "Mail", icon: "✉️", to: "/mail", counter: "mail" },
+    { key: "bugs", label: tr("layout.bugs"), icon: "🐞", to: "/bugs" },
     { key: "office", label: tr("layout.office"), icon: "🏢", to: "/office" },
     { key: "flows", label: tr("layout.flows"), icon: "🔀", to: "/processes" },
     // Plugins stand before the settings: they are areas like the others, and the settings

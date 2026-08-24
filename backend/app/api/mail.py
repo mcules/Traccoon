@@ -238,6 +238,9 @@ def _chat_out(t: AssistantTask) -> dict:
     return {
         "id": t.id, "text": (t.meta or {}).get("chat_text") or t.title,
         "status": t.status, "result": t.result, "error": t.error,
+        # Which run belongs to this message. Without it a client that wants to follow the
+        # live events of its own chat message has to guess.
+        "run_id": t.run_id,
         "pending_tool": t.pending_tool, "created_at": t.created_at, "finished_at": t.finished_at,
     }
 

@@ -5,15 +5,13 @@ import asyncio
 import json
 import logging
 
-import jwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from ..core import scopes
 from ..core.redis import PREFIX, get_redis
-from ..core.security import decode_access_token
 from ..db import SessionLocal
-from ..models.enums import UserStatus
 from ..models.project import Project
-from ..models.user import User
+from ..services import api_tokens
 from .deps import build_access
 
 log = logging.getLogger("ws")
@@ -82,24 +80,22 @@ persons = PersonsChannel()
 
 @router.websocket("/ws/me")
 async def persons_ws(websocket: WebSocket, token: str = ""):
-    """The personal channel: what concerns the person arrives here (new mail)."""
-    try:
-        payload = decode_access_token(token)
-    except jwt.PyJWTError:
-        await websocket.close(code=4401)
-        return
+    """The personal channel: what concerns the person arrives here (new mail).
+
+    Same entrance as every request (`services.api_tokens.authenticate`), so a socket is
+    neither a weaker nor a stronger way in. A personal access token needs the `assistant`
+    scope: this channel carries what concerns the person, like `/notifications`.
+    """
     async with SessionLocal() as db:
-        user = await db.get(User, int(payload.get("sub", 0)))
-        if user is None or user.status != UserStatus.active:
+        result = await api_tokens.authenticate(db, token)
+        if result.user is None:
+            await websocket.close(code=4401 if result.error in (
+                api_tokens.BAD_TOKEN, api_tokens.BAD_UNKNOWN_USER) else 4403)
+            return
+        if not scopes.allowed(result.scopes, "GET", "/ws/me"):
             await websocket.close(code=4403)
             return
-        revoke = (user.password_changed_at is not None
-                      and int(payload.get("iat", 0) or 0)
-                      < int(user.password_changed_at.timestamp()))
-        if revoke:
-            await websocket.close(code=4403)
-            return
-        user_id = user.id
+        user_id = result.user.id
 
     await persons.join(user_id, websocket)
     try:
@@ -112,25 +108,26 @@ async def persons_ws(websocket: WebSocket, token: str = ""):
 
 @router.websocket("/projects/{project_id}/ws")
 async def project_ws(websocket: WebSocket, project_id: int, token: str = ""):
-    try:
-        payload = decode_access_token(token)
-    except jwt.PyJWTError:
-        await websocket.close(code=4401)
-        return
     async with SessionLocal() as db:
-        user = await db.get(User, int(payload.get("sub", 0)))
-        project = await db.get(Project, project_id)
-        if user is None or project is None:
-            await websocket.close(code=4404)
+        # The socket used to be the only entrance without the account checks: a deactivated
+        # account and a token revoked by a password change still got in here, while
+        # `deps.get_current_user` rejected them on every request. A token alone is not access
+        # as long as the account behind it is locked or the token devalued. It runs through
+        # the same function now, so the two cannot drift apart again.
+        result = await api_tokens.authenticate(db, token)
+        if result.user is None:
+            await websocket.close(code=4401 if result.error in (
+                api_tokens.BAD_TOKEN, api_tokens.BAD_UNKNOWN_USER) else 4403)
             return
-        # Fix: the socket used to be the only entrance without these two checks. A
-        # deactivated account and a token revoked by a password change still got in here,
-        # while `deps.get_current_user` rejected them on every request. A token alone is not
-        # access as long as the account behind it is locked or the token devalued.
-        revoked = (user.password_changed_at is not None
-                   and int(payload.get("iat", 0) or 0) < int(user.password_changed_at.timestamp()))
-        if user.status != UserStatus.active or revoked:
+        # No scope names this socket, so only `full` reaches it. The project chat can assign
+        # agents; that is not what an "assistant" token is for.
+        if not scopes.allowed(result.scopes, "GET", "/projects/{project_id}/ws"):
             await websocket.close(code=4403)
+            return
+        user = result.user
+        project = await db.get(Project, project_id)
+        if project is None:
+            await websocket.close(code=4404)
             return
         try:
             access = await build_access(project, user, db)
@@ -168,19 +165,19 @@ async def _run_pm(project_id: int, user_id: int, text: str) -> None:
 
 @router.get("/projects/{project_id}/messages")
 async def list_messages(project_id: int, token: str = "", limit: int = 100):
+    """The backlog of the project chat. Takes its token in the query like the socket beside
+    it, and therefore through the same check: an endpoint that reads the same room must not
+    be the softer of the two ways in."""
     from sqlalchemy import select as _select
     from ..models.chat import Message
-    from ..core.security import decode_access_token
-    try:
-        payload = decode_access_token(token) if token else None
-    except jwt.PyJWTError:
-        payload = None
     async with SessionLocal() as db:
-        if payload is None:
+        result = await api_tokens.authenticate(db, token)
+        user = result.user
+        if user is None or not scopes.allowed(
+                result.scopes, "GET", "/projects/{project_id}/messages"):
             return []
-        user = await db.get(User, int(payload.get("sub", 0)))
         project = await db.get(Project, project_id)
-        if user is None or project is None:
+        if project is None:
             return []
         try:
             await build_access(project, user, db)

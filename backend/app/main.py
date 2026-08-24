@@ -9,12 +9,13 @@ from sqlalchemy import text
 
 from . import models  # noqa: F401  (fills the metadata for create_all)
 from .api import (
-    admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, deployments,
+    admin, agents, artifacts as artifacts_api, auth, bugs as bugs_api, config, cost,
+    dashboard, deployments,
     destinations, files, hardware, invitations,
     documents as documents_api,
     series as series_api, i18n as i18n_api, issues, lifecycle, mail, mailbox, mcp_server, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
     projects, repo, office,
-    runs, secrets, skills, testenv, users, workflows, ws,
+    runs, secrets, skills, testenv, tokens as tokens_api, users, workflows, ws,
 )
 from .config import settings
 from .core.error import Error, error_handler
@@ -122,6 +123,15 @@ async def lifespan(app: FastAPI):
                 "REFERENCES workflow_definitions(id) ON DELETE SET NULL",
                 # E-Mail optional (login-lose Konten): NOT NULL entfernen (UNIQUE bleibt).
                 "ALTER TABLE users ALTER COLUMN email DROP NOT NULL",
+                # Reports from outside: where the reporting program wants to be told that
+                # one of its reports moved (an answer, a new state).
+                "ALTER TABLE bug_sources ADD COLUMN IF NOT EXISTS callback_url VARCHAR(500) "
+                "DEFAULT '' NOT NULL",
+                # A picture belongs to an answer or to the report itself; the report is no
+                # answer, so `post_id` had to let go of NOT NULL.
+                "ALTER TABLE report_images ADD COLUMN IF NOT EXISTS artifact_id INTEGER "
+                "REFERENCES artifacts(id) ON DELETE CASCADE",
+                "ALTER TABLE report_images ALTER COLUMN post_id DROP NOT NULL",
                 # Ticket opening mode per user (popup|page).
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS ticket_open_mode VARCHAR(10) "
                 "DEFAULT 'popup' NOT NULL",
@@ -531,6 +541,10 @@ async def lifespan(app: FastAPI):
         from .services.artifact_fields import adopt_old_states
         await adopt_old_states(db)
         await ensure_builtin_types(db)
+        # The report type registers itself the same way; without it the bug page has
+        # nothing to show and the intake would create its type on the first report.
+        from .services.bugs import ensure_type as ensure_bug_type
+        await ensure_bug_type(db)
         # Only now does the old status model fall; before this the takeover would have had
         # nothing left to read.
         await db.execute(text("DROP TABLE IF EXISTS artifact_statuses"))
@@ -587,6 +601,7 @@ api = FastAPI(title="Traccoon API", version=VERSION)
 api.add_exception_handler(Error, error_handler)
 api.include_router(auth.router)
 api.include_router(me.router)
+api.include_router(tokens_api.router)
 api.include_router(users.router)
 api.include_router(projects.router)
 api.include_router(invitations.router)
@@ -603,6 +618,7 @@ api.include_router(documents_api.router)
 api.include_router(series_api.router)
 api.include_router(i18n_api.router)
 api.include_router(artifacts_api.router)
+api.include_router(bugs_api.router)
 api.include_router(mail.router)
 api.include_router(mailbox.router)
 api.include_router(mcp_server.router)

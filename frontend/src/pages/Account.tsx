@@ -6,6 +6,7 @@ import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 import MailAccountsPanel from "../components/MailAccountsPanel";
+import TokensPanel from "../components/TokensPanel";
 import {
   AgentsOperationPanel, AssistantNoticesPanel, MemoryPanel, MySwitchPanel, TimezonePanel,
   NightWindowPanel,
@@ -44,8 +45,12 @@ export default function Account() {
   return (
     <div className="max-w-2xl space-y-4">
       {/* The time zone belongs to the person, not to the agents: it decides what stands on
-          "8 o'clock" means in this UI — and thereby in the night window and in the schedule too. */}
-      {tab === "person" && <><LanguagePanel /><TimezonePanel /><EmailPanel /><PasswordPanel /></>}
+          "8 o'clock" means in this UI, and thereby in the night window and in the schedule too.
+          The tokens stand beside the password: both are how this person proves who they are,
+          only one of them is meant for a client that runs for months. */}
+      {tab === "person" && (
+        <><LanguagePanel /><TimezonePanel /><EmailPanel /><PasswordPanel /><TokensPanel /></>
+      )}
       {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
       {tab === "notifications" && <><NotificationsPanel /><AssistantNoticesPanel /></>}
       {tab === "mail" && <MailAccountsPanel />}

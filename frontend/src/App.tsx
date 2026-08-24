@@ -14,6 +14,7 @@ import StorePage from "./pages/Store";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Account from "./pages/Account";
+import Bugs from "./pages/Bugs";
 import Inbox from "./pages/Inbox";
 import Mail from "./pages/Mail";
 import PluginHost from "./pages/PluginHost";
@@ -117,6 +118,7 @@ export default function App() {
         <Routes>
         <Route path="/" element={<Projects />} />
         <Route path="/inbox" element={<Inbox />} />
+        <Route path="/bugs" element={<Bugs />} />
         <Route path="/mail" element={<Mail />} />
         <Route path="/account" element={<Account />} />
         <Route path="/account/:tab" element={<AccountPage />} />
