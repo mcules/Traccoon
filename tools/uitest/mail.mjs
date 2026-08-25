@@ -77,6 +77,29 @@ if (await kandidat.count()) {
   await seite.screenshot({ path: "/w/mail-04-lesen.png" });
 }
 
+// Die Naht zwischen Liste und Nachricht ziehen, und sie muss den Neuladen überleben.
+const naht = seite.locator("[role=separator]").first();
+if (await naht.count()) {
+  const vorher = await seite.evaluate(() =>
+    document.querySelector("[role=separator]").previousElementSibling.getBoundingClientRect().width);
+  const kasten = await naht.boundingBox();
+  await seite.mouse.move(kasten.x + 4, kasten.y + 200);
+  await seite.mouse.down();
+  await seite.mouse.move(kasten.x + 204, kasten.y + 200, { steps: 10 });
+  await seite.mouse.up();
+  await seite.waitForTimeout(300);
+  const nachher = await seite.evaluate(() =>
+    document.querySelector("[role=separator]").previousElementSibling.getBoundingClientRect().width);
+  await seite.screenshot({ path: "/w/mail-06-naht.png" });
+  await seite.reload({ waitUntil: "networkidle" });
+  await seite.waitForTimeout(2000);
+  const nachReload = await seite.evaluate(() =>
+    document.querySelector("[role=separator]")?.previousElementSibling.getBoundingClientRect().width);
+  console.log("NAHT", JSON.stringify({ vorher, nachher, nachReload }));
+} else {
+  console.log("NAHT nicht gefunden");
+}
+
 // Schmaler: zwei Spalten
 await seite.setViewportSize({ width: 1100, height: 900 });
 await seite.waitForTimeout(600);

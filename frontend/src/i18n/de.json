@@ -2901,5 +2901,6 @@
   "mail.mark_read_short": "Gelesen",
   "mail.mark_unread_short": "Ungelesen",
   "mail.selection_off": "Auswahl aufheben",
-  "mail.choose_all_on_page": "Alle auf dieser Seite"
+  "mail.choose_all_on_page": "Alle auf dieser Seite",
+  "mail.drag_the_seam": "Ziehen ändert die Breite der Liste, Doppelklick setzt sie zurück"
 }

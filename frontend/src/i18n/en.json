@@ -2901,5 +2901,6 @@
   "mail.mark_read_short": "Read",
   "mail.mark_unread_short": "Unread",
   "mail.selection_off": "Clear selection",
-  "mail.choose_all_on_page": "All on this page"
+  "mail.choose_all_on_page": "All on this page",
+  "mail.drag_the_seam": "Drag to change the width of the list, double click puts it back"
 }

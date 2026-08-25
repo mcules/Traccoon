@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, RefObject, useEffect, useRef, useState } from "react";
 import { tr } from "../i18n";
 
 /**
@@ -610,4 +610,77 @@ export function MenuItem({ onClick, disabled = false, danger = false, title: tit
 /** The line between two groups of a menu. */
 export function MenuLine() {
   return <div className="my-1 border-t border-line" />;
+}
+
+
+/**
+ * The seam between two columns, to be dragged.
+ *
+ * Which column deserves how much depends on the mail and on the person: a list of subjects
+ * needs width once the sender writes in sentences, and a newsletter laid out for a sheet of
+ * paper needs it too. Whoever decides that once should not have to decide it again on the
+ * next visit, which is why the caller keeps the number and not this handle.
+ *
+ * The grip is wider than the line one sees. A seam of one pixel is a seam one hits by luck;
+ * eight pixels are caught reliably, and the line inside stays quiet until the pointer arrives.
+ */
+export function Splitter({ leftOf, value, onChange, min = 240, keepRight = 420, standard,
+                           title: title }: {
+  /** The element to the left of the seam. Its left edge is where the width is measured from. */
+  leftOf: RefObject<HTMLElement | null>;
+  value: number; onChange: (px: number) => void;
+  min?: number;
+  /** How much the column on the right keeps at the very least. */
+  keepRight?: number;
+  /** Where a double click puts it back to. */
+  standard?: number;
+  title: string;
+}) {
+  const [pulls, setPulls] = useState(false);
+
+  const set = (clientX: number) => {
+    const box = leftOf.current?.getBoundingClientRect();
+    if (!box) return;
+    const room = window.innerWidth - box.left - keepRight;
+    onChange(Math.round(Math.max(min, Math.min(clientX - box.left, Math.max(min, room)))));
+  };
+
+  useEffect(() => {
+    if (!pulls) return;
+    const move = (e: PointerEvent) => { e.preventDefault(); set(e.clientX); };
+    const up = () => setPulls(false);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    // While dragging, everything the pointer sweeps over would otherwise be selected, and one
+    // ends up with half the mailbox marked blue.
+    const before = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.userSelect = before;
+      document.body.style.cursor = "";
+    };
+  }, [pulls]);
+
+  return (
+    <div
+      role="separator" aria-orientation="vertical" aria-valuenow={value} tabIndex={0}
+      title={title} aria-label={title}
+      onPointerDown={(e) => { e.preventDefault(); setPulls(true); }}
+      onDoubleClick={() => standard !== undefined && onChange(standard)}
+      // The keyboard can do it too, and it costs three lines: a seam that only answers to the
+      // mouse is one that some people cannot move at all.
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft") onChange(Math.max(min, value - (e.shiftKey ? 50 : 10)));
+        if (e.key === "ArrowRight") onChange(value + (e.shiftKey ? 50 : 10));
+      }}
+      className="group hidden w-2 shrink-0 cursor-col-resize items-stretch justify-center
+        outline-none xl:flex"
+    >
+      <div className={`w-px rounded transition-colors ${
+        pulls ? "w-0.5 bg-brand" : "bg-line group-hover:bg-brand group-focus:bg-brand"}`} />
+    </div>
+  );
 }

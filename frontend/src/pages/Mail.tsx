@@ -1,5 +1,5 @@
 import { tr } from "../i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, fetchFile } from "../api";
 import { usePageChrome } from "../pageChrome";
@@ -9,7 +9,7 @@ import { AccountDialog, type MailAccount, type MailIdentity } from "../component
 import {
   Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
   IconButton, Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT,
-  Menu, MenuItem, MenuLine} from "../components/ui";
+  Menu, MenuItem, MenuLine, Splitter} from "../components/ui";
 
 /**
  * The mailbox.
@@ -60,6 +60,21 @@ const PAPER = "rounded border border-line bg-white p-3 text-sm text-neutral-900"
 /** What one can ask of a single folder. `manage` is the way out into the overview. */
 type FolderCommand = "read" | "empty" | "child" | "rename" | "delete";
 
+/**
+ * How wide the message list stands beside the reading pane.
+ *
+ * In the browser and not on the person: it is a decision about THIS screen, and the same
+ * account on a laptop beside a 34-inch monitor wants two different answers. A number that
+ * travelled with the login would be wrong on one of the two every time.
+ */
+const WIDTH_KEY = "traccoon_mail_list_width";
+const WIDTH_STANDARD = 420;
+
+function storedWidth(): number {
+  const raw = Number(localStorage.getItem(WIDTH_KEY));
+  return raw >= 240 && raw <= 1200 ? raw : WIDTH_STANDARD;
+}
+
 export default function Mail() {
   // The mailbox takes the whole window instead of the reading column: three columns beside
   // each other, and the one on the right is a mail somebody laid out for a screen.
@@ -82,6 +97,9 @@ export default function Mail() {
   const [chosen, setChosen] = useState<number[]>([]);
   const [command, setCommand] = useState<{ folder: Folder; kind: FolderCommand } | null>(null);
   const [manage, setManage] = useState(false);
+  const [listWidth, setListWidth] = useState(storedWidth);
+  const listColumn = useRef<HTMLDivElement>(null);
+  useEffect(() => { localStorage.setItem(WIDTH_KEY, String(listWidth)); }, [listWidth]);
 
   const { data: accounts } = useQuery({
     queryKey: ["mail-accounts"], queryFn: () => api.get<MailAccount[]>("/mailbox/accounts") });
@@ -218,14 +236,22 @@ export default function Mail() {
             onManage={() => setManage(true)} />
         </div>
 
-        <div className={`min-h-0 flex-col xl:flex xl:min-w-[24rem] xl:max-w-[38rem] xl:flex-[2] ${
-          uid !== null ? "hidden sm:hidden xl:flex" : "flex flex-1"}`}>
+        {/* The width is a variable, because it only applies from `xl` on: below that the list
+            has the whole place to itself, and a number in pixels would take it away. */}
+        <div ref={listColumn}
+          style={{ ["--list" as any]: `${listWidth}px` }}
+          className={`min-h-0 flex-col xl:flex xl:w-[var(--list)] xl:shrink-0 xl:grow-0 ${
+            uid !== null ? "hidden sm:hidden xl:flex" : "flex flex-1"}`}>
           <MessagesListing accountId={accountId!} folder={folder} search={search}
             account={account} onOpen={setUid} onError={setErr} open={uid}
             chosen={chosen} onChosen={setChosen} />
         </div>
 
-        <div className={`min-h-0 min-w-0 flex-col xl:flex-[3] ${
+        <Splitter leftOf={listColumn} value={listWidth} onChange={setListWidth}
+          min={280} keepRight={420} standard={WIDTH_STANDARD}
+          title={tr("mail.drag_the_seam")} />
+
+        <div className={`min-h-0 min-w-0 flex-col xl:flex-1 ${
           uid === null ? "hidden xl:flex" : "flex flex-1"}`}>
           {uid === null ? (
             <Area fills>
