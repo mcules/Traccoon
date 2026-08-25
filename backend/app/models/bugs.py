@@ -3,7 +3,7 @@
 The report itself is an artifact of the type `bug` and needs no table of its own: title,
 state and all the fields hang off the register like with every other artifact. What does
 need one is the sender. A program that runs on the machine of a stranger (the web interface
-of the Devprog programmer, for example) carries no user session, so it identifies itself with
+of a device programmer, for example) carries no user session, so it identifies itself with
 a token of its own, and that token has to be revocable without touching an account.
 
 The token is stored as a hash for the same reason a password is: whoever gets to read the

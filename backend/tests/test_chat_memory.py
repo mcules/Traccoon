@@ -136,10 +136,10 @@ async def test_without_aux_the_old_memory_remains(db, anna, monkeypatch):
 async def test_a_specialist_agent_has_its_own_conversation(db, anna, monkeypatch):
     _mock_aux(monkeypatch, "- egal")
     await _chat(db, anna, "Assistenten-Sache", "ok")
-    await _chat(db, anna, "GameProj-Sache", "ok", agent="gameproj-operator")
-    new = await _chat(db, anna, "Weiter", "", agent="gameproj-operator")
+    await _chat(db, anna, "Game matter", "ok", agent="game-operator")
+    new = await _chat(db, anna, "Weiter", "", agent="game-operator")
     history = await worker._chat_history(db, new)
-    assert [w["body"] for w in history if w["role"] == "user"] == ["GameProj-Sache"]
+    assert [w["body"] for w in history if w["role"] == "user"] == ["Game matter"]
 
 
 async def test_very_old_conversations_no_longer_count(db, anna, monkeypatch):

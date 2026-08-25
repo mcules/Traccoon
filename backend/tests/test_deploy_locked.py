@@ -24,7 +24,7 @@ def test_traccoon_itself_is_blocked(monkeypatch):
 
 def test_a_foreign_project_may_not(monkeypatch):
     monkeypatch.setenv("SELF_STACK_DIR", "/opt/docker/stacks/traccoon")
-    assert deploy_locked("/opt/docker/stacks/gameproj") == ""
+    assert deploy_locked("/opt/docker/stacks/other") == ""
 
 
 @pytest.mark.parametrize("selbst", ["", "/opt/docker/stacks/traccoon"])
@@ -33,4 +33,4 @@ def test_without_a_configured_own_path_the_verdict_stays_stable(monkeypatch, sel
     carry on its own, and a set path must not lock foreign targets."""
     monkeypatch.setenv("SELF_STACK_DIR", selbst)
     assert deploy_locked("") != ""
-    assert deploy_locked("/opt/docker/stacks/gameproj") == ""
+    assert deploy_locked("/opt/docker/stacks/other") == ""

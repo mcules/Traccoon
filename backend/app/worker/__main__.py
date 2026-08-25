@@ -714,7 +714,7 @@ async def _chat_history(db, t) -> list[dict]:
                     AssistantTask.created_at >= since)
     all_rows = (await db.execute(q.order_by(AssistantTask.id))).scalars().all()
     # A session belongs to one agent, so this is a cheap consistency net rather than the
-    # separation itself. Without a session it IS the separation: the GameProj operator has
+    # separation itself. Without a session it IS the separation: a specialist agent has
     # nothing to do with the assistant.
     all_rows = [r for r in all_rows if ((r.meta or {}).get("agent") or "assistent") == agent_name]
 
@@ -965,7 +965,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             report = False
         if report:
             # Who answered belongs in the title, otherwise answers from the personal assistant
-            # and from a specialised agent (gameproj-operator, say) cannot be told apart.
+            # and from a specialised agent cannot be told apart.
             label = "🤖 Assistent" if (meta.get("agent") or "assistent") == "assistent" \
                 else f"🛰 {meta['agent']}"
             title = (label if is_chat else f"{label}: {t.title}") + (

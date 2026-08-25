@@ -26,7 +26,7 @@ from conftest import auth, make_project, make_user
 
 
 async def _source(db, *, project=None) -> BugSource:
-    source = BugSource(key="devprog", name="Devprog-Programmer", enabled=True,
+    source = BugSource(key="devprog", name="Device programmer", enabled=True,
                        project_id=project.id if project else None)
     db.add(source)
     await db.commit()
@@ -78,7 +78,7 @@ async def test_a_report_starts_the_listening_flow(db):
     # Was die Nachricht braucht, steht im Kontext — sonst müsste der Ablauf die Meldung
     # erst nachschlagen, um sagen zu können, worum es geht.
     assert report["title"] == "Der Import bricht bei Kanal 200 ab"
-    assert report["app"] == "devprog" and report["program"] == "Devprog-Programmer"
+    assert report["app"] == "devprog" and report["program"] == "Device programmer"
     assert report["kind"] == "bug" and report["version"] == "2.1.0"
     assert report["contact"] == "dl1abc@example.org"
     assert "Importieren" in report["details"]

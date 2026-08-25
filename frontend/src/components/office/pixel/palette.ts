@@ -243,7 +243,7 @@ const SALT_ROLE = 0x524f4c4c;  // "ROLL"
  * recognised. Out of `hash32(role)` on the other hand falls the same colour for a role forever.
  *
  * Deliberately **no role colour table**: the real roles (`developer`, `assistent`,
- * `architect`, `code_reviewer`, `project_manager`, `gameproj-operator`, `news`) are data, not an
+ * `architect`, `code_reviewer`, `project_manager`, `game-operator`, `news`) are data, not an
  * enumeration. A table would need maintenance with every new agent and would have no entry at
  * all for the test fixture (`exec_agent`/`plan_agent`/`review_agent`).
  *

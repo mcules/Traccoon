@@ -39,12 +39,12 @@ async def test_chat_task_is_created_and_queued(db, anna, monkeypatch):
 
 
 async def test_a_named_agent_lands_in_the_meta(db, anna, monkeypatch):
-    """/gameproj goes the same way: the agent stands in the meta, otherwise the assistant runs."""
+    """A role command goes the same way: the agent stands in the meta, otherwise the assistant runs."""
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nothing())
 
-    t = await create_chat_task(db, anna.id, "neue baurunde", "277", agent="gameproj-operator")
-    assert t.meta["agent"] == "gameproj-operator"
+    t = await create_chat_task(db, anna.id, "neue baurunde", "277", agent="game-operator")
+    assert t.meta["agent"] == "game-operator"
 
 
 async def _nothing():

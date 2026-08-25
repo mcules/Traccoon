@@ -6,7 +6,7 @@ gradually but abruptly: the human referred to yesterday, the assistant knew only
 hour and seemed clueless.
 
 Older exchanges now wander into a summary that grows along (the model being the context
-compaction of Predecessor). One row per (human, agent): it is written on, not multiplied.
+compaction). One row per (human, agent): it is written on, not multiplied.
 
 Revision ID: f2c8a91d40e5
 Revises: e3f9c07a2b16

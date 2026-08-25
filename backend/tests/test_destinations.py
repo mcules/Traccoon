@@ -91,7 +91,7 @@ async def test_api_key_in_header_and_query(db, calls):
 
 
 async def test_hmac_signature_without_a_prefix(db, calls):
-    """Signature over the sent body; the prefix is configurable and empty by default (Predecessor
+    """Signature over the sent body; the prefix is configurable and empty by default (some counterparts
     rejects a `sha256=` prefix)."""
     d = await _dest(db, auth_type="hmac", secret_enc=encrypt_secret("s3cr3t"),
                     hmac_header="X-Webhook-Signature")
@@ -266,10 +266,10 @@ async def test_http_call_does_not_shorten_a_second_time(db, large_answer):
     """The agent tool must not revoke the permission of the destination."""
     from app.worker.tools_traccoon import call_traccoon_tool
     u = await make_user(db, "zielnutzer")
-    await _dest(db, name="gameproj-bot", user_id=u.id, allow_agents=True,
+    await _dest(db, name="game-bot", user_id=u.id, allow_agents=True,
                 max_response_chars=40000)
     out = await call_traccoon_tool(db, u.id, "traccoon_http_call",
-                                   {"destination": "gameproj-bot", "method": "GET"})
+                                   {"destination": "game-bot", "method": "GET"})
     assert "ABGESCHNITTEN" not in out
     assert len(out) > 9000
 

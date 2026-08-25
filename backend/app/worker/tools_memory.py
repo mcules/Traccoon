@@ -110,7 +110,7 @@ TEACH_TOOL = _def(
     "sentence per call, no reference to a single run.",
     {"agent": {"type": "string",
                "description": "The role whose memory is meant (developer, code_reviewer, "
-                              "gameproj-operator …)."},
+                              "or whatever roles exist here)."},
      "area": {"type": "string", "enum": ["agent", "project_agent"],
               "description": "'agent' = for that role everywhere · 'project_agent' = for that "
                              "role in the named project only."},

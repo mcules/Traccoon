@@ -12,7 +12,7 @@ from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.services import bugs as svc
 
 
-async def make_source(db, key="yaesuprog", project=None, limit=20):
+async def make_source(db, key="devprog", project=None, limit=20):
     source = BugSource(key=key, name=key.title(), hourly_limit=limit,
                        project_id=project.id if project else None)
     token = svc.new_token()
@@ -70,7 +70,7 @@ async def test_the_report_keeps_what_the_program_sent(client, db, helpers):
     bug = liste.json()[0]
     assert bug["title"] == REPORT["title"]
     assert bug["contact"] == "DN9MAK"
-    assert bug["app"] == "yaesuprog"
+    assert bug["app"] == "devprog"
     assert bug["status"] == "new"
     # The attachment is the reason these reports are worth anything.
     assert "MR00001" in bug["technical"]
@@ -150,7 +150,7 @@ async def test_a_judged_report_leaves_the_open_list(client, db, helpers):
 
 @pytest.mark.asyncio
 async def test_a_wish_is_not_a_fault(client, db, helpers):
-    """Three kinds share the list: bug, wish, question. The words come from gameproj."""
+    """Three kinds share the list: bug, wish, question. The words come from the first caller."""
     _, token = await make_source(db)
     for art, titel in (("feature", "A button for the CAT log"),
                        ("question", "Which baud rate does the FT-991 want?")):

@@ -682,7 +682,7 @@ async def run_bot() -> None:
     async def _agent_chat(m: Message):
         """Talk to a named agent instead of to the personal assistant.
 
-        This used to be one handler per agent — `/gameproj` for exactly one operator, built into
+        This used to be one handler per agent, one command for exactly one operator, built into
         the bot. A second agent would have needed a second handler and a deployment. Now the
         name is an argument, and which names exist comes out of the agents this person
         actually has.

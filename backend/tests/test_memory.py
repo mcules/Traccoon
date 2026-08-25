@@ -407,7 +407,7 @@ async def test_chat_history(db):
         task(title="alt", meta={"chat_text": "Uraltes"}, result="Uralte Antwort",
              created_at=now - dt.timedelta(days=30)),
         task(title="fremd", meta={"chat_text": "Fremdes"}, result="A", owner_user_id=foreign.id),
-        task(title="anderer", meta={"chat_text": "GameProj", "agent": "gameproj-operator"}, result="A"),
+        task(title="anderer", meta={"chat_text": "Game", "agent": "game-operator"}, result="A"),
         task(title="laufend", meta={"chat_text": "Noch offen"}, status="running"),
         task(title="frueher", meta={"chat_text": "Wie schreibe ich Commits?"},
              result="Auf Deutsch mit TRA-Nummer."),
@@ -421,7 +421,7 @@ async def test_chat_history(db):
     history = await _chat_history(db, current)
     texts = " | ".join(v["body"] for v in history)
     assert "Wie schreibe ich Commits?" in texts and "Auf Deutsch mit TRA-Nummer." in texts
-    for outside in ("Uraltes", "Fremdes", "GameProj", "Noch offen", "Und die Betreffzeile?"):
+    for outside in ("Uraltes", "Fremdes", "Game", "Noch offen", "Und die Betreffzeile?"):
         assert outside not in texts
     assert [v["role"] for v in history] == ["user", "agent"]
 
@@ -436,17 +436,17 @@ async def test_chat_history_kept_separate_per_agent(db):
         AssistantTask(owner_user_id=u.id, kind="chat", status="done", title="a",
                       meta={"chat_text": "Assistenten-Frage"}, result="A1"),
         AssistantTask(owner_user_id=u.id, kind="chat", status="done", title="b",
-                      meta={"chat_text": "GameProj-Frage", "agent": "gameproj-operator"}, result="A2"),
+                      meta={"chat_text": "Game question", "agent": "game-operator"}, result="A2"),
     ])
     await db.commit()
     running = AssistantTask(owner_user_id=u.id, kind="chat", status="approved", title="c",
-                            meta={"chat_text": "Weiter", "agent": "gameproj-operator"})
+                            meta={"chat_text": "Weiter", "agent": "game-operator"})
     db.add(running)
     await db.commit()
     await db.refresh(running)
 
     texts = " | ".join(v["body"] for v in await _chat_history(db, running))
-    assert "GameProj-Frage" in texts and "Assistenten-Frage" not in texts
+    assert "Game question" in texts and "Assistenten-Frage" not in texts
 
 
 # ── Review ───────────────────────────────────────────────────────────────────

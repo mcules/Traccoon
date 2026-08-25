@@ -1,7 +1,7 @@
 """A response limit per destination instead of a flat upper bound
 
 `MAX_RESPONSE_CHARS = 4000` applied to every destination alike. For counterparts that
-deliberately deliver their state in ONE call that is too little: the GameProj bot API answers
+deliberately deliver their state in ONE call that is too little: one game bot API answers
 with around 12 000 characters, and an agent planned on truncated JSON with that, which is
 worse than no answer, because the cut does not stand out.
 

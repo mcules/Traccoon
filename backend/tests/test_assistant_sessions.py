@@ -237,7 +237,7 @@ async def test_the_backfill_puts_the_existing_history_where_people_expect_it(db,
     berta = await make_user(db, "berta")
     for i in range(3):
         await _msg(db, anna, None, f"Assistent {i}")
-    await _msg(db, anna, None, "GameProj-Sache", agent="gameproj-operator")
+    await _msg(db, anna, None, "Game matter", agent="game-operator")
     await _msg(db, berta, None, "Bertas Sache")
     db.add(ChatSummary(owner_user_id=anna.id, agent="assistent", text="- alte Erinnerung"))
     await db.commit()
@@ -317,13 +317,13 @@ async def test_telegram_without_a_pointer_starts_a_conversation(db, anna):
 
 
 async def test_a_named_agent_does_not_land_in_the_assistants_conversation(db, anna):
-    """Der GameProj-Operator hat eine eigene Unterhaltung; sie zu mischen vergiftete beide."""
+    """A specialist agent has a conversation of its own; mixing the two poisoned both."""
     loaded = await sessions.create(db, anna.id, title="Assistent")
     await sessions.load(db, anna.id, "telegram", loaded.id)
 
-    task = await create_chat_task(db, anna.id, "Angriff?", "4711", agent="gameproj-operator")
+    task = await create_chat_task(db, anna.id, "Angriff?", "4711", agent="game-operator")
     assert task.session_id != loaded.id
-    assert (await db.get(AssistantSession, task.session_id)).agent == "gameproj-operator"
+    assert (await db.get(AssistantSession, task.session_id)).agent == "game-operator"
 
 
 # ── 7. Löschen ist eine Ablauf-Aktion ────────────────────────────────────────

@@ -343,13 +343,13 @@ async def test_costs_survive_the_run(client, db):
     and an entry survives the deletion of the run. Computed over `runs.agent` the bill would
     disappear with the run."""
     user, proj, issue = await stage(db)
-    r1 = await make_run(db, issue, agent="gameproj-operator")
+    r1 = await make_run(db, issue, agent="game-operator")
     await item(db, r1, cost=3.0)
     await db.delete(r1)
     await db.commit()
 
     row = role_of((await client.get("/office/agents", headers=auth(user))).json(),
-                "gameproj-operator")
+                "game-operator")
     assert row["runs"] == 0
     assert row["cost_usd"] == 3.0
     assert row["cost_partial"] is True

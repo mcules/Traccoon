@@ -31,7 +31,8 @@ log = logging.getLogger("bugs")
 
 TYPE_KEY = "bug"
 
-# What kind of report it is. The words come from gameproj, which has had this since its
+# What kind of report it is. The words come from the first program that reported here,
+# which has had this since its
 # migration 034 and whose players are the largest group of reporters: bug, feature, question.
 # A shared vocabulary is worth more than a nicer one of our own, because the reports of both
 # programs end up in the same list.
@@ -52,12 +53,12 @@ STATUS: list[tuple[str, str, str, bool]] = [
     ("duplicate", "Duplicate", "done", False),
 ]
 
-# gameproj has carried the same matter since its migration 023, in German words. The two lists
-# have to meet somewhere, and the meeting point stands here rather than in gameproj: whoever
+# That program has carried the same matter for as long, in German words. The two lists
+# have to meet somewhere, and the meeting point stands here rather than over there: whoever
 # connects the next program looks in one place for how its states are called.
-UNIWAR_STATUS = {"offen": "new", "in_arbeit": "in_progress", "erledigt": "done",
+FOREIGN_STATUS = {"offen": "new", "in_arbeit": "in_progress", "erledigt": "done",
                  "abgelehnt": "rejected"}
-UNIWAR_KIND = {"bug": "bug", "feature": "feature", "frage": "question"}
+FOREIGN_KIND = {"bug": "bug", "feature": "feature", "frage": "question"}
 
 
 # The fields of a report. `key` is what the reporting program sends, so renaming one breaks
@@ -72,10 +73,10 @@ FIELDS: list[dict] = [
     {"key": "details", "label": "What happened", "kind": "text"},
     {"key": "technical", "label": "Technical attachment", "kind": "text"},
     {"key": "ticket", "label": "Ticket", "kind": "text"},
-    # How the reporting program recognises its own user again. Not a name: gameproj renames
+    # How the reporting program recognises its own user again. Not a name: a program renames
     # players, and a report must stay theirs.
     {"key": "reporter_ref", "label": "Reporter reference", "kind": "text"},
-    # Where a taken over report came from ("gameproj:17"). Keeps a second import from writing
+    # Where a taken over report came from ("game:17"). Keeps a second import from writing
     # everything a second time, and answers "was that not the one from back then?".
     {"key": "foreign_ref", "label": "Taken over from", "kind": "text"},
 ]

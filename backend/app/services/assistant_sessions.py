@@ -6,7 +6,7 @@ choice but to go through the pointer (a chat message carries no parameter), the 
 pass `session_id`; underneath, both end up here.
 
 The one rule that runs through the whole file: a session belongs to exactly ONE agent. The
-GameProj operator keeps a conversation of its own, and a message that lands in the wrong one
+A specialist agent keeps a conversation of its own, and a message that lands in the wrong one
 poisons both threads at once.
 """
 from __future__ import annotations
@@ -121,7 +121,7 @@ async def current(db: AsyncSession, owner_user_id: int | None, channel: str,
 
     A pointer at a session that has been deleted meanwhile answers None as well, so the
     caller creates a fresh one instead of running into a dangling number. The agent is
-    checked too: `/agent gameproj …` must not land in the assistant's conversation just because
+    checked too: `/agent <role> …` must not land in the assistant's conversation just because
     that is the one the person had loaded.
     """
     row = await pointer(db, owner_user_id, channel)

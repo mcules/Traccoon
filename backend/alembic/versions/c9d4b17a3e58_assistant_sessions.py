@@ -89,7 +89,7 @@ def _stamp(value):
 def backfill(conn) -> int:
     """Put every existing chat task into the conversation it was already in.
 
-    One session per (owner, agent) — a session belongs to exactly one agent, so the GameProj
+    One session per (owner, agent) — a session belongs to exactly one agent, so a specialist
     operator does not end up in the same conversation as the assistant. Returns the number of
     sessions created; importable so the test can run exactly this code instead of a
     reimplementation of it.

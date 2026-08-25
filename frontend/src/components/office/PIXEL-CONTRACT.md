@@ -260,7 +260,7 @@ cosmetics but follows the visibility at 16x24 pixels:
 Three things about that are contract, not taste:
 
 - **There is no role colour table.** Roles are data (`developer`, `assistent`, `architect`,
-  `code_reviewer`, `project_manager`, `gameproj-operator`, `news`, and an eighth tomorrow), not an
+  `code_reviewer`, `project_manager`, `game-operator`, `news`, and an eighth tomorrow), not an
   enumeration. A table would need maintenance with every new agent and would have no entry at all
   for unknown roles; `hash32(role)` gives every role a stable colour forever.
 - **An empty role means the run seed.** A nameless figure should not make all nameless figures

@@ -244,7 +244,7 @@ function TargetDialog({ target: target, error: error, runs: running, onClose, on
             <Field label={tr("destinations_panel.signature_header")}>
               <input value={f.hmac_header} onChange={(e) => setF({ ...f, hmac_header: e.target.value })} className={INPUT_VALUE} />
             </Field>
-            <Field label={tr("destinations_panel.prefix_leave_empty_e_g_hermes")}>
+            <Field label={tr("destinations_panel.prefix_leave_empty")}>
               <input value={f.hmac_prefix} onChange={(e) => setF({ ...f, hmac_prefix: e.target.value })} className={INPUT_VALUE} />
             </Field>
           </>

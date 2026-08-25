@@ -63,7 +63,7 @@ class Destination(TimestampMixin, Base):
     hmac_header: Mapped[str] = mapped_column(String(120), default="X-Webhook-Signature")
     hmac_algo: Mapped[str] = mapped_column(String(20), default="sha256")
     # Prefix before the hex digest. Deliberately EMPTY as the default: some counterparts
-    # (Predecessor for instance) reject a `sha256=` prefix.
+    # (some of them) reject a `sha256=` prefix.
     hmac_prefix: Mapped[str] = mapped_column(String(20), default="")
 
     # oauth2_cc (Client Credentials)
@@ -82,7 +82,7 @@ class Destination(TimestampMixin, Base):
     timeout_sec: Mapped[int] = mapped_column(Integer, default=30)
     # How much of the answer a caller (an AI agent above all) gets to see at most.
     # Deliberately per destination: the default protects the context, but a counterpart that
-    # deliberately delivers its whole state in ONE call (the GameProj bot API) would be
+    # deliberately delivers its whole state in ONE call (a game bot API) would be
     # unusable with 4000 characters, and the agent would plan on truncated JSON.
     max_response_chars: Mapped[int] = mapped_column(Integer, default=4000)
     verify_tls: Mapped[bool] = mapped_column(Boolean, default=True)

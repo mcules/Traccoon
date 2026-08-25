@@ -3,7 +3,7 @@
 The memory is a bullet list per note that every run appends to at the bottom. It
 therefore only grows, and `read_memory` truncates at `MAX_MEMORY_CHARS`. From that limit on,
 the bottom falls silently out of the prompt: first learned, then forgotten, without anybody
-noticing. That is exactly what Predecessor has its `curator` for: tidying up as a small background
+noticing. That is exactly what a curator is for: tidying up as a small background
 job of its own on the aux model.
 
 The rules are deliberately strict, because other people's memories are touched here:

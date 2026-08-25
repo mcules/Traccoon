@@ -156,7 +156,7 @@ async def test_the_project_id_filter_narrows_and_does_not_authorise(db, client):
     which would be a proof of existence."""
     user = await make_user(db, "nutzer")
     mine = await make_project(db, "ABC", "A project")
-    foreign = await make_project(db, "UNI", "GameProj", inherit_members=False)
+    foreign = await make_project(db, "XYZ", "Another project", inherit_members=False)
     await add_member(db, mine, user, ProjectRole.owner)
     own = await deploy(db, project=mine)
     await deploy(db, project=foreign)
@@ -455,7 +455,7 @@ async def test_status_filter(db, client):
 
 # ── The button: queueing by hand ────────────────────────────────────────────
 
-STACK = "/opt/docker/stacks/gameproj"
+STACK = "/opt/docker/stacks/other"
 
 
 async def with_stack(db, project, path: str = STACK):
@@ -545,7 +545,7 @@ async def test_a_second_deploy_while_one_is_open_is_409(db, client):
     assert third.status_code == 200
 
     # An open deploy of **another** project does not lock along.
-    different = await make_project(db, "UNI", "GameProj")
+    different = await make_project(db, "XYZ", "Another project")
     await with_stack(db, different, "/opt/docker/stacks/anderes")
     await add_member(db, different, tender, ProjectRole.maintainer)
     r = await client.post(f"/projects/{different.id}/deployments", json={}, headers=auth(tender))
@@ -619,7 +619,7 @@ async def test_the_issue_id_is_taken_over_a_foreign_ticket_is_404(db, client):
     done.status = "ok"
     await db.commit()
 
-    foreign = await make_project(db, "UNI", "GameProj")
+    foreign = await make_project(db, "XYZ", "Another project")
     ft = await ticket(db, foreign, 1)
     wrong = await client.post(f"/projects/{project.id}/deployments",
                                json={"issue_id": ft.id}, headers=auth(tender))

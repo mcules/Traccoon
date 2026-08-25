@@ -1,6 +1,6 @@
-"""Take gameproj's bug reports over into Traccoon, once.
+"""Take the bug reports of another program over into Traccoon, once.
 
-gameproj has carried its own reports since its migration 023: `bugs` (the matter), `bug_posts`
+The program that first needed this carried its own reports: `bugs` (the matter), `bug_posts`
 (first description plus replies, some of them internal) and `bug_post_images` (files under
 `data/bug-images/<id>.<ext>`). From now on the reports live here, so the old ones have to
 come along - a report whose history stays behind is only half a report.
@@ -10,11 +10,11 @@ and above all the times. A migrated conversation that all happened "today" is wo
 understanding what somebody was told a year ago.
 
 Run:
-    docker compose exec backend python scripts/import_uniwar_bugs.py \
-        --export /tmp/gameproj-bugs.json --images /tmp/bug-images --source gameproj [--go]
+    docker compose exec backend python scripts/import_bug_reports.py \
+        --export /tmp/bugs.json --images /tmp/bug-images --source <program> [--go]
 
 Without `--go` it only says what it would do. Running it twice does not duplicate: a report
-already imported is recognised by its gameproj id (field `foreign_ref`).
+already imported is recognised by its id over there (field `foreign_ref`).
 """
 from __future__ import annotations
 
@@ -45,9 +45,9 @@ def when(millis: int) -> dt.datetime:
 
 async def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--export", required=True, help="JSON out of gameproj (rows/posts/imgs)")
+    parser.add_argument("--export", required=True, help="JSON out of the other program (rows/posts/imgs)")
     parser.add_argument("--images", default="", help="Directory with the picture files")
-    parser.add_argument("--source", default="gameproj", help="Key of the reporting program")
+    parser.add_argument("--source", required=True, help="Key of the reporting program")
     parser.add_argument("--go", action="store_true", help="Really write")
     args = parser.parse_args()
 
@@ -104,21 +104,21 @@ async def one_report(db, source, kind, fields, bug, posts, by_post, args, marke)
     first = posts[0] if posts else None
     artifact = Artifact(
         type_id=kind.id, project_id=source.project_id, title=bug["title"][:500],
-        status_key=svc.UNIWAR_STATUS.get(bug["status"], "new"),
+        status_key=svc.FOREIGN_STATUS.get(bug["status"], "new"),
         created_at=when(bug["created_at"]), updated_at=when(bug["updated_at"]),
     )
     db.add(artifact)
     await db.flush()
 
     values = {
-        "status": svc.UNIWAR_STATUS.get(bug["status"], "new"),
-        "kind": svc.UNIWAR_KIND.get(bug["kind"], "bug"),
+        "status": svc.FOREIGN_STATUS.get(bug["status"], "new"),
+        "kind": svc.FOREIGN_KIND.get(bug["kind"], "bug"),
         "app": source.key,
         "contact": bug["reporter"],
         "reporter_ref": str(bug["reporter_id"]),
         "foreign_ref": marke,
         "details": (first or {}).get("body", ""),
-        "environment": "gameproj",
+        "environment": args.source,
     }
     for key, value in values.items():
         if fields.get(key) is not None and value:
@@ -127,7 +127,7 @@ async def one_report(db, source, kind, fields, bug, posts, by_post, args, marke)
     # The first post is the description and stands in `details`; only what came afterwards
     # is conversation. Otherwise every migrated report would start by saying itself twice.
     # Its pictures do have to come along though, and they hang off the report: 18 of the 21
-    # pictures in gameproj were attached to a first description, and skipping the post silently
+    # pictures over there were attached to a first description, and skipping the post silently
     # dropped them.
     if first is not None:
         for image in by_post.get(first["id"], []):

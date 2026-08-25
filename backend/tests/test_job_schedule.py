@@ -2,7 +2,7 @@
 
 `type` is the schedule (cron/interval/once), `kind` the sort of work (workflow, film …). If a
 sort accidentally stands in `type`, the job is never due: the UI still shows "enabled, every 15
-minutes", and nothing happens. Exactly that way the job "Predecessor-Posteingang" lay still for 13
+minutes", and nothing happens. Exactly that way one job lay still for 13
 days without anyone noticing.
 
 Two safeguards against it — one that stops it coming into being, and one that makes existing

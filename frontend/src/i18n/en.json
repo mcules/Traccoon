@@ -797,7 +797,7 @@
   "destinations_panel.name_z_b_crm": "Name (e.g. crm)",
   "destinations_panel.new_destination": "New destination",
   "destinations_panel.no_destinations_yet": "No destinations yet.",
-  "destinations_panel.prefix_leave_empty_e_g_hermes": "Prefix (leave empty, e.g. Predecessor)",
+  "destinations_panel.prefix_leave_empty": "Prefix (leave empty when the counterpart wants none)",
   "destinations_panel.test_call_get_on_the_base_url": "Test call (GET on the base URL)",
   "destinations_panel.scope_optional": "Scope (optional)",
   "destinations_panel.signature_header": "Signature header",

@@ -1,7 +1,7 @@
 """Shapes of the bug endpoints.
 
 The intake shape (`BugReportIn`) is the one thing here that strangers program against: it
-lands in the web interface of the Devprog programmer and in whatever reports next. Fields may
+lands in the web interface of a device programmer and in whatever reports next. Fields may
 be added to it, never renamed, or a program somebody installed months ago starts failing at
 a wording change.
 """
@@ -28,7 +28,7 @@ class BugReportIn(BaseModel):
     # trace, the answer of a device.
     technical: str = ""
     # Who reported it over there. The reference is how the program finds its own user again
-    # (gameproj: the player id), the contact is what a human reads.
+    # (a game, say: the player id), the contact is what a human reads.
     external_ref: str = ""
 
 

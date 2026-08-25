@@ -797,7 +797,7 @@
   "destinations_panel.name_z_b_crm": "Name (z. B. crm)",
   "destinations_panel.new_destination": "Neues Ziel",
   "destinations_panel.no_destinations_yet": "Noch keine Ziele.",
-  "destinations_panel.prefix_leave_empty_e_g_hermes": "Präfix (leer lassen, z. B. Predecessor)",
+  "destinations_panel.prefix_leave_empty": "Präfix (leer lassen, wenn die Gegenstelle keins will)",
   "destinations_panel.test_call_get_on_the_base_url": "Probeaufruf (GET auf die Basis-URL)",
   "destinations_panel.scope_optional": "Scope (optional)",
   "destinations_panel.signature_header": "Signatur-Kopfzeile",

@@ -2,7 +2,7 @@
 
 Summarising, titling, tidying up: that is diligence without judgement, and letting it run on
 the same Sonnet or Opus that is thinking right now costs money and waiting time. The
-predecessor Predecessor had an `auxiliary:` block with a model of its own **per task**
+predecessor had an `auxiliary:` block with a model of its own **per task**
 (compression, title_generation, triage …); the default `auto` meant the main provider. That
 is exactly what happens here, with Traccoon's building blocks: named provider tokens from the vault, router with a fallback.
 
@@ -94,7 +94,7 @@ async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, message
         return None
 
     try:
-        # Time cap: a side task must not hold the main run up. Predecessor regularly ran into 120 s
+        # Time cap: a side task must not hold the main run up. The predecessor regularly ran into 120 s
         # timeouts here because the compaction hung on the large model, which is why the
         # deadline is configurable and the failure has no consequences.
         resp = await asyncio.wait_for(

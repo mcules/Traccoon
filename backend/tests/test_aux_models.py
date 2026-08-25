@@ -1,6 +1,7 @@
 """Side tasks on a model of their own.
 
-The model is Predecessor: an `auxiliary:` block with a model per task, the default `auto`. What
+The model comes from the predecessor: an `auxiliary:` block with a model per task, the
+default `auto`. What
 matters above all is what does NOT happen: without a setting nothing changes, and a failure
 does not tear the main run with it.
 """
