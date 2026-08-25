@@ -2533,7 +2533,6 @@
   "mail.delete_folder_q": "Ordner „{folder}“ löschen?",
   "mail.remote_images_blocked": "Bilder von fremden Servern wurden nicht geladen — das würde dem Absender verraten, dass du die Mail gelesen hast.",
   "mail.load_images": "Bilder laden",
-  "mail.search_label": "Suche",
   "mail.hits": "Treffer",
   "mail.flagged": "markiert",
   "mail.answered": "beantwortet",
@@ -2899,7 +2898,6 @@
   "mail.choose_all_on_page": "Alle auf dieser Seite",
   "mail.drag_the_seam": "Ziehen ändert die Breite der Liste, Doppelklick setzt sie zurück",
   "mail.search_in_folder": "In „{folder}“ suchen",
-  "mail.search_go": "Suchen",
   "mail.mailbox_handles": "Was man mit dem Postfach „{name}“ machen kann",
   "mail.mailbox_settings_short": "Einstellungen"
 }

@@ -2533,7 +2533,6 @@
   "mail.delete_folder_q": "Delete the folder “{folder}”?",
   "mail.remote_images_blocked": "Images from other servers were not loaded — that would tell the sender you read the mail.",
   "mail.load_images": "Load the images",
-  "mail.search_label": "Search",
   "mail.hits": "hits",
   "mail.flagged": "flagged",
   "mail.answered": "answered",
@@ -2899,7 +2898,6 @@
   "mail.choose_all_on_page": "All on this page",
   "mail.drag_the_seam": "Drag to change the width of the list, double click puts it back",
   "mail.search_in_folder": "Search in '{folder}'",
-  "mail.search_go": "Search",
   "mail.mailbox_handles": "What one can do with the mailbox '{name}'",
   "mail.mailbox_settings_short": "Settings"
 }

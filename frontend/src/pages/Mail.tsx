@@ -8,7 +8,7 @@ import { formatDateTime } from "../lib/formatTime";
 import { AccountDialog, type MailAccount, type MailIdentity } from "../components/MailAccountsPanel";
 import {
   Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
-  IconButton, Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT,
+  Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT,
   Menu, MenuItem, MenuLine, Splitter} from "../components/ui";
 
 /**
@@ -891,11 +891,10 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
   const qc = useQueryClient();
   const [page, setPage] = useState(0);
   const [moveOpen, setMoveOpen] = useState(false);
-  // The search field only takes the row when it is wanted. It searches THIS folder, which is
-  // why it stands over it and not in a bar above the whole page.
-  const [asking, setAsking] = useState(false);
+  // The search searches THIS folder, which is why it stands over it and not in a bar above
+  // the whole page. It stays visible: a search one has to open first is one nobody uses.
   const [question, setQuestion] = useState(search);
-  useEffect(() => { setQuestion(search); if (!search) setAsking(false); }, [search, folder]);
+  useEffect(() => { setQuestion(search); }, [search, folder]);
   // Where the last tick sat, for the range that shift asks for.
   const [anchor, setAnchor] = useState<number | null>(null);
   const limit = 50;
@@ -964,74 +963,57 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
       // One row above the list, not three. The folder name, the tick for all of them and the
       // count fit beside each other, and every line that goes is a line of mail that stays.
       tools={<>
-        {messages.length > 0 && chosen.length > 0 && (
-          <input type="checkbox" checked={allTicked} className="h-4 w-4 accent-brand"
+        {/* The tick for all of them and the search stay where they are, whatever else
+            happens in this row: both are answers to a question one has while looking at the
+            list, and a handle that has to be opened first is one nobody uses. */}
+        <div className="flex w-full items-center gap-2">
+          <input type="checkbox" checked={allTicked} disabled={!messages.length}
+            className="h-4 w-4 shrink-0 accent-brand disabled:opacity-40"
             title={tr("mail.choose_all_on_page")} aria-label={tr("mail.choose_all_on_page")}
             onChange={() => onChosen(allTicked ? [] : messages.map((m) => m.uid))} />
-        )}
-        {asking || search ? (
-          // Searching takes the row over, as the selection does: while typing, how many
-          // messages the folder holds is not the question of the moment.
+          {/* The folder stands in the placeholder, not as a heading: it is marked in the tree
+              beside this column anyway, and a line for it would be a line of mail less. */}
           <form className="flex min-w-0 flex-1 items-center gap-2"
                 onSubmit={(e) => { e.preventDefault(); onSearch(question.trim()); }}>
-            <input value={question} autoFocus placeholder={tr("mail.search_in_folder", { folder })}
+            <input value={question} placeholder={tr("mail.search_in_folder", { folder })}
               className={`${INPUT_VALUE} min-w-0 flex-1`}
               onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape") { setAsking(false); onSearch(""); } }} />
-            <Rowbutton onClick={() => onSearch(question.trim())}>{tr("mail.search_go")}</Rowbutton>
-            <Rowbutton onClick={() => { setQuestion(""); setAsking(false); onSearch(""); }}>
-              {tr("common.close")}
-            </Rowbutton>
+              onKeyDown={(e) => { if (e.key === "Escape") { setQuestion(""); onSearch(""); } }} />
+            {(search || question) && (
+              <Rowbutton onClick={() => { setQuestion(""); onSearch(""); }}>✕</Rowbutton>
+            )}
           </form>
-        ) : chosen.length > 0 ? (
-        // The selection takes the row over: with something ticked, how many messages the
-        // folder holds is not the question of the moment.
-        <>
-          <Tag color="brand">{tr("mail.n_chosen", { n: chosen.length })}</Tag>
-          <Rowbutton onClick={() => bulk.mutate({ action: "flag", flag: "\\Seen", on: true })}>
-            {tr("mail.mark_read_short")}
-          </Rowbutton>
-          <Rowbutton onClick={() => bulk.mutate({ action: "flag", flag: "\\Seen", on: false })}>
-            {tr("mail.mark_unread_short")}
-          </Rowbutton>
-          {archivable && (
-            <Rowbutton onClick={() => bulk.mutate({ action: "archive" })}>
-              {tr("mail.archive_button")}
-            </Rowbutton>
-          )}
-          <Rowbutton onClick={() => setMoveOpen(true)}>{tr("mail.move_button")}</Rowbutton>
-          <Rowbutton danger onClick={() => bulk.mutate({ action: "delete" })}>
-            {tr("mail.delete_3")}
-          </Rowbutton>
-          <div className="flex-1" />
-          <Rowbutton onClick={() => { onChosen([]); setAnchor(null); }}>
-            {tr("mail.selection_off")}
-          </Rowbutton>
-        </>
-      ) : (
-        <>
-          {messages.length > 0 && (
-            <input type="checkbox" checked={allTicked} className="h-4 w-4 accent-brand"
-              title={tr("mail.choose_all_on_page")} aria-label={tr("mail.choose_all_on_page")}
-              onChange={() => onChosen(allTicked ? [] : messages.map((m) => m.uid))} />
-          )}
-          <span className="min-w-0 truncate text-sm font-semibold text-ink">{folder}</span>
-          <div className="flex-1" />
-          <span className="text-xs text-muted">
-            {data?.total ?? 0} {tr("mail.messages")}
+          <span className="shrink-0 text-xs text-muted">
+            {data?.total ?? 0} {search ? tr("mail.hits") : tr("mail.messages")}
           </span>
-          <IconButton icon="🔍" title={tr("mail.search_in_folder", { folder })}
-            onClick={() => setAsking(true)} />
-        </>
-      )}
+        </div>
+
+        {chosen.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-2">
+            <Tag color="brand">{tr("mail.n_chosen", { n: chosen.length })}</Tag>
+            <Rowbutton onClick={() => bulk.mutate({ action: "flag", flag: "\\Seen", on: true })}>
+              {tr("mail.mark_read_short")}
+            </Rowbutton>
+            <Rowbutton onClick={() => bulk.mutate({ action: "flag", flag: "\\Seen", on: false })}>
+              {tr("mail.mark_unread_short")}
+            </Rowbutton>
+            {archivable && (
+              <Rowbutton onClick={() => bulk.mutate({ action: "archive" })}>
+                {tr("mail.archive_button")}
+              </Rowbutton>
+            )}
+            <Rowbutton onClick={() => setMoveOpen(true)}>{tr("mail.move_button")}</Rowbutton>
+            <Rowbutton danger onClick={() => bulk.mutate({ action: "delete" })}>
+              {tr("mail.delete_3")}
+            </Rowbutton>
+            <div className="flex-1" />
+            <Rowbutton onClick={() => { onChosen([]); setAnchor(null); }}>
+              {tr("mail.selection_off")}
+            </Rowbutton>
+          </div>
+        )}
       </>}
     >
-      {search && (
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Tag color="brand">{tr("mail.search_label")}: {search}</Tag>
-          {data?.total ?? 0} {tr("mail.hits")}
-        </div>
-      )}
       <Listing>
         {messages.map((m, index) => (
           <ListRow key={m.uid} dense onClick={() => onOpen_it(m.uid)}>
