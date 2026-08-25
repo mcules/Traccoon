@@ -1,4 +1,4 @@
-"""Fields and values on artifacts, following the Artefakt example (Artifacts → Fields → Values).
+"""Fields and values on artifacts, following the same three-level example (Artifacts → Fields → Values).
 
 An artifact (ticket, hardware, own type) carries typed fields; a choice field has a
 maintained value list, and the field says whether a unit may carry one or several values

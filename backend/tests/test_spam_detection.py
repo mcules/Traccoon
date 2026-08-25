@@ -55,7 +55,7 @@ async def test_a_clean_mail_without_suspicion():
 async def test_the_forgery_pattern_fires():
     """SPF failed, a foreign return path, a foreign reply address, a disguised name."""
     res = evaluate(_mail(
-        **{"from": [{"name": "Paketdienst Zustellung <service@dhl.de>", "addr": "x@paket-tracking.xyz"}],
+        **{"from": [{"name": "Paketdienst Zustellung <service@paket.example>", "addr": "x@paket-tracking.xyz"}],
            "reply_to": [{"name": "", "addr": "kasse@4t7k.ru"}],
            "headers": {
                "Authentication-Results": "mx; spf=fail; dkim=fail; dmarc=fail",
@@ -970,9 +970,9 @@ async def test_a_brand_in_the_display_name_without_backing():
 
 
 async def test_a_brand_with_backing_stays_quiet():
-    """Contained is enough: `shopmailer.com` sends for Amazon, `sparkasse-musterstadt.de` is one."""
-    for name, addr in (("Bank", "service@bank.com"),
-                       ("Amazon.de", "versand@shopmailer.com"),
+    """Contained is enough: a mailer domain sends for the shop, `sparkasse-musterstadt.de` is one."""
+    for name, addr in (("Beispielbank", "service@bank.example"),
+                       ("Beispielshop", "versand@shopmailer.example"),
                        ("Sparkasse Bamberg", "news@sparkasse-musterstadt.de")):
         res = evaluate(_brands_mail(**{"from": [{"name": name, "addr": addr}]}),
                        my_addresses=frozenset({"vorstand@verein.example"}))
@@ -1030,10 +1030,10 @@ async def test_an_identity_without_backing_needs_no_brand_list():
     The mail delivers the comparison value itself — it names the domain it claims to belong
     to. Whether that name stands on a list is irrelevant.
     """
-    mail = _claim("Stadtwerke Hintertupfing", "service@stw-abrechnung.info",
+    mail = _claim("Stadtwerke Musterstadt", "service@stw-abrechnung.info",
                      "Ihre Abschlagszahlung konnte nicht gebucht werden",
-                     "Bitte prüfen Sie Ihre Daten. Fragen? service@stadtwerke-hintertupfing.de",
-                     [("https://kunden-portal-swh.top/login", "Jetzt prüfen")])
+                     "Bitte prüfen Sie Ihre Daten. Fragen? service@stadtwerke-musterstadt.de",
+                     [("https://kunden-portal-stw.top/login", "Jetzt prüfen")])
     res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" in res.signals
@@ -1043,13 +1043,13 @@ async def test_an_identity_without_backing_needs_no_brand_list():
 
 async def test_real_mail_links_to_its_own_house():
     """The hardest honest case, taken from the real inbox: `Versicherung via Vergleichsportal` sends over the
-    comparison portal, names versicherung.de in the imprint — and links to click.email.versicherung.de.
+    comparison portal, names its own domain in the imprint and links to a mailer domain.
     Exactly that link is the cover, and it is the reason the rule stays quiet."""
-    mail = _claim("Versicherung via Vergleichsportal", "agd7e36j9xadmv2.v@as.vergleich.de",
-                     "Willkommen bei Versicherung, Herr Muster!",
-                     "Herzlich willkommen! Es gelten die auf www.versicherung-empfehlen.de genannten "
-                     "Bedingungen. Versicherung Versicherung AG, Rheinstraße 7A. www.versicherung.de",
-                     [("https://click.email.versicherung.de/?qs=abc", "Zum Kundenportal")])
+    mail = _claim("Versicherung via Vergleichsportal", "a7f3c9e2.v@as.vergleich.example",
+                     "Willkommen bei der Versicherung, Herr Muster!",
+                     "Herzlich willkommen! Es gelten die auf www.versicherung-empfehlen.example genannten "
+                     "Bedingungen. Beispiel Versicherung AG, Musterstraße 7. www.versicherung.example",
+                     [("https://click.email.versicherung.example/?qs=abc", "Zum Kundenportal")])
     res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" not in res.signals
@@ -1078,7 +1078,7 @@ async def test_a_mentioned_partner_is_no_claim():
 async def test_without_links_no_verdict_about_the_target():
     """Without a single link there is nothing to compare, and a mention alone says nothing."""
     mail = _claim("Bank Support", "support@fremd.example", "Ihr Konto",
-                     "Melden Sie sich bei support@bank.com.", [])
+                     "Melden Sie sich bei support@bank.example.", [])
     res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" in res.signals or "marke_im_anzeigenamen" in res.signals

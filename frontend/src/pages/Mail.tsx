@@ -418,11 +418,10 @@ function AccountBranch({ account, unseen, open, active, folder: folder, onToggle
 
   return (
     <>
-      <ListRow dense onClick={onToggle}>
+      <ListRow dense active={active} onClick={onToggle}>
         <div className="group flex items-center gap-1.5">
           <span className={BUTTON_TEXT.secondary}>{open ? "▼" : "▶"}</span>
-          <span className={`min-w-0 flex-1 truncate font-semibold ${
-            active ? "text-brand" : "text-ink"}`}>
+          <span className="min-w-0 flex-1 truncate font-semibold text-ink">
             {account.name}
           </span>
           {!account.enabled && <Tag>{tr("mail.off_short")}</Tag>}
@@ -546,7 +545,8 @@ function FolderRows({ folders: folder, account, active, onChoose, onCommand, onM
       {folder.filter(visible).map((o) => {
         const fixed = role(o);
         return (
-          <ListRow key={o.name} dense onClick={() => onChoose(o.name)}>
+          <ListRow key={o.name} dense active={o.name === active}
+                   onClick={() => onChoose(o.name)}>
             {/* Fixed columns instead of flex with placeholders: only that way does the folder
                 icon of every line sit in the same place, whether or not a fold arrow stands
                 in front of it. The first column is the indentation under the mailbox. */}
@@ -561,8 +561,7 @@ function FolderRows({ folders: folder, account, active, onChoose, onCommand, onM
               ) : <span />}
               <span className="text-center leading-none">{SPECIAL[o.special] || "📁"}</span>
               <span className={`min-w-0 truncate ${
-                o.name === active ? "font-medium text-brand"
-                  : sum_total(o) ? "font-medium text-ink" : ""}`}>
+                o.name === active || sum_total(o) ? "font-medium" : ""}`}>
                 {o.display}
               </span>
               {(() => {
@@ -1319,7 +1318,7 @@ const MessageRow = memo(function MessageRow({ m, index, folder: folder, showFold
   onTick: (uid: number, index: number, shift: boolean) => void;
 }) {
   return (
-    <ListRow dense onClick={() => onOpen_it(m.uid, m.folder || folder)}>
+    <ListRow dense active={open} onClick={() => onOpen_it(m.uid, m.folder || folder)}>
       <div className="flex items-start gap-2">
         {/* Its own click target, and it must not open the mail: a tick is a decision about
             the row, not a way into it. */}
@@ -1327,10 +1326,9 @@ const MessageRow = memo(function MessageRow({ m, index, folder: folder, showFold
           onClick={(e) => { e.stopPropagation(); onTick(m.uid, index, (e as any).shiftKey); }}
           onChange={() => {/* der Klick oben entscheidet */}} />
         <div className="min-w-0 flex-1">
-          <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 ${
-            open ? "text-brand" : ""}`}>
-            <span className={`min-w-0 flex-1 truncate ${
-              open ? "font-medium" : m.seen ? "text-ink" : "font-semibold text-ink"}`}>
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className={`min-w-0 flex-1 truncate text-ink ${
+              open || !m.seen ? "font-semibold" : ""}`}>
               {m.subject || tr("mail.no_subject")}
             </span>
             {showFolder && m.folder && m.folder !== folder && (

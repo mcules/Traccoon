@@ -335,8 +335,12 @@ export function ListHeader({ columns, children }: { columns: string; children: R
 export const LINE = "group block bg-surface px-3 py-2.5 text-sm transition-colors hover:bg-card";
 
 export function ListRow({ columns, dimmed = false, warning = false, dense = false,
-                             onClick, children }: {
+                             active = false, onClick, children }: {
   columns?: string; dimmed?: boolean; warning?: boolean; dense?: boolean;
+  /** Where one IS. The whole row carries it, not the writing in it: a coloured word among
+   *  black ones is something one has to look for, a coloured row one simply sees, and in a
+   *  list of thirty that is the difference between finding and searching. */
+  active?: boolean;
   onClick?: () => void; children: ReactNode;
 }) {
   // Without columns the entry only gets the surface and its padding; the layout inside is
@@ -348,8 +352,10 @@ export function ListRow({ columns, dimmed = false, warning = false, dense = fals
   return (
     <div
       onClick={onClick}
-      className={`group bg-surface px-3 text-sm transition-colors ${dense ? "py-1.5" : "py-2.5"} ${layout} ${
-        onClick ? "cursor-pointer hover:bg-card" : ""} ${dimmed ? "opacity-55" : ""} ${
+      className={`group px-3 text-sm transition-colors ${dense ? "py-1.5" : "py-2.5"} ${layout} ${
+        active ? "bg-brand/20 text-ink ring-1 ring-inset ring-brand/40" : "bg-surface"} ${
+        onClick && !active ? "cursor-pointer hover:bg-card" : onClick ? "cursor-pointer" : ""} ${
+        dimmed ? "opacity-55" : ""} ${
         // A stripe on the left instead of a coloured surface: the row stays readable, and in a
         // long list one still sees the conspicuous entries from afar.
         warning ? "border-l-2 border-amber-400 pl-[calc(0.75rem-2px)]" : ""}`}

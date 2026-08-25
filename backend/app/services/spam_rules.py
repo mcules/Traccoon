@@ -128,7 +128,7 @@ _GEFAEHRLICHE_ENDUNGEN = frozenset({
     "vhd", "vhdx", "ace", "docm", "xlsm", "xlsb", "pptm", "dotm", "xlam", "chm",
     "appx", "msix", "apk",
 })
-# Attached web pages are a known route for rebuilt sign in masks, but Google also attaches its
+# Attached web pages are a known route for rebuilt sign in masks, but large providers also attach their
 # terms of service as `.html`. Hence an entry of its own with little weight instead of one pot
 # together with executables.
 _WEBSEITEN_ENDUNGEN = frozenset({"html", "htm", "xht", "xhtml", "shtml", "svg", "mhtml"})
@@ -232,7 +232,7 @@ _WEIGHT = {
     "link_text_umgeleitet": 0.10,
     # Attachments
     "anhang_ausfuehrbar": 0.50,
-    # An attached web page is a known route for sign in masks, but Google also sends its terms
+    # An attached web page is a known route for sign in masks, but large providers also send their terms
     # of service as .html. An entry of its own, with little weight.
     "anhang_webseite": 0.15,
     "anhang_doppelendung": 0.45,
@@ -393,7 +393,7 @@ def _signaturedomains(headers: dict) -> list[str]:
     """Domains that signed this mail with DKIM (`d=`).
 
     The watcher pulls them from the `DKIM-Signature` headers; when nothing is there,
-    `header.d=` from `Authentication-Results` is read instead (Google and Microsoft write it
+    `header.d=` from `Authentication-Results` is read instead (the large providers write it
     along).
     """
     raw = (headers or {}).get("DKIM-Domains")
@@ -434,7 +434,7 @@ def _check_serververdict(res: RuleResult, headers: dict, payload: dict) -> None:
 
     # Beside the score the server notes WHICH tests hit. A blacklist entry among them says
     # more than the sum: the total can stay far below the threshold while the link target is
-    # demonstrably listed (2026-08-19, N26 phishing: 1.6 of 7 points, URIBL_BLACK among them).
+    # demonstrably listed (2026-08-19, a phishing case: 1.6 of 7 points, URIBL_BLACK among them).
     m = re.search(r"tests=([\w,\s]+)", _header(headers, "X-Spam-Status"))
     hit = sorted(set(re.split(r"[,\s]+", (m.group(1) if m else "").upper())) & SPERRLISTEN)
     if hit:
@@ -475,7 +475,7 @@ def _check_authenticity(res: RuleResult, headers: dict, payload: dict, *,
     # Alignment: a valid signature only says that SOMEBODY signed. Only the comparison with the
     # sender domain turns that into a statement about THIS sender. BUT: exactly that check is
     # DMARC. If DMARC passes, something IS aligned (SPF or DKIM), and then this rule stays
-    # quiet. Otherwise it fires on every mailing list post and every Google Workspace sender,
+    # quiet. Otherwise it fires on every mailing list post and every sender of a large provider,
     # both of which regularly countersign with a foreign domain.
     # both of which regularly countersign with a foreign domain.
     domains = _signaturedomains(headers)
@@ -554,9 +554,9 @@ def _identity_without_backing(res: RuleResult, subject: str, body: str, targets:
 
     Three things have to come together, and each one alone would be normal:
 
-    1. The mail **names a foreign domain** in its text (`n26.com`).
+    1. The mail **names a foreign domain** in its text (`bank.example`).
     2. It **presents itself under that name**: the name of the domain stands in the display
-       name or in the subject ("Support-N26", "… – N26 Sicherheitsteam").
+       name or in the subject ("Support-Bank", "… – Bank Sicherheitsteam").
     3. **Nothing leads there**: neither the sender domain nor a single link target carries the
        name.
 
@@ -579,9 +579,9 @@ def _identity_without_backing(res: RuleResult, subject: str, body: str, targets:
         if root in own:
             continue
         # A name is written with a space, a domain with a hyphen or with nothing at all
-        # ("Stadtwerke Hintertupfing" / stadtwerke-hintertupfing.de). So compare the letters,
+        # ("Stadtwerke Musterstadt" / stadtwerke-hintertupfing.de). So compare the letters,
         # not the spelling. As a whole word always, run together only from six letters on:
-        # "verti" would otherwise be found inside "konvertieren".
+        # a short brand name would otherwise be found inside a longer ordinary word.
         eng = mark.replace("-", "")
         if mark not in words and not (len(eng) >= 6 and eng in compact):
             continue
@@ -603,7 +603,7 @@ _NO_MARK = frozenset({
 def _mark_without_backing(name: str, domain: str) -> str:
     """The brand from the display name that the sender domain does not carry, or ''.
 
-    Contained is enough, not equal: `amazonses.com` sends for Amazon and
+    Contained is enough, not equal: a mailer domain sends for the shop and
     `sparkasse-musterstadt.de` is one. Only a domain that does not carry the name at all lies.
     """
     if not name or not domain:
@@ -626,7 +626,7 @@ def _check_namespoofing(res: RuleResult, known_domains: frozenset[str]) -> None:
         res.hits("unsichtbare_zeichen", "invisible characters in the sender")
 
     # The display name claims an address or brand the sender address does not keep: "DHL
-    # delivery <noreply@dhl-tracking-de.xyz>". Only checked when the name itself names an
+    # delivery <noreply@paket-tracking-de.xyz>". Only checked when the name itself names an
     # address or a domain: free names ("Sparkasse") are too vague.
     name_domains = {_domain(a) for _, a in _addr_list(res.sender_name)}
     name_domains |= {d.lower() for d in re.findall(r"\b([\w-]+\.[a-z]{2,})\b", res.sender_name or "")}
@@ -637,7 +637,7 @@ def _check_namespoofing(res: RuleResult, known_domains: frozenset[str]) -> None:
                         f"Anzeigename nennt {sorted(name_domains)[0]}, "
                         f"gesendet von {res.sender_domain}")
 
-    # A brand in the display name that the address does not keep: "Support-N26
+    # A brand in the display name that the address does not keep: "Support-Bank
     # <support@fremde-firma.example>". Mail programs show the name and hide the address, which
     # is why this is the cheapest disguise there is, and why it needs no technical flaw: the
     # sender owns their throwaway domain and signs it properly.
@@ -884,7 +884,7 @@ def _check_facade(res: RuleResult, payload: dict, *, has_unsubscribe: bool) -> N
     path to the victim then runs through a reply or a phone call.
 
     **Only as an amplifier, never alone.** Measured against real post (2026-08-18) the pattern
-    fired on Google Play, OpenAI and eQSL: large senders unsubscribe by one click in the header
+    fired on three well known senders: large houses unsubscribe by one click in the header
     (RFC 8058) and need no link in the body. Whoever passes their authenticity checks may build
     their HTML as they like; the facade only becomes suspicious once the technique is off
     anyway.

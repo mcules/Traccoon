@@ -108,7 +108,7 @@ def _mix(rule: float, model: float, learned: float | None) -> float:
 
 # What a fraud named by the model is worth at least. The weighted mixture cannot carry it:
 # with a single rule signal (0.4) even a model at 0.95 reaches 0.76 at most, and every
-# sensible auto threshold stays out of reach. Case of 2026-08-19 (verdict #42): a "Bank" mail
+# sensible auto threshold stays out of reach. Case of 2026-08-19 (verdict #42): a mail claiming to be from a bank
 # from fremde-firma.example, SPF, DKIM and DMARC all passing, model 0.95 with "Phishing-Versuch
 # with a forged sender", overall verdict 0.731, and so it stayed in the inbox.
 _FRAUD_SCORE = 0.95

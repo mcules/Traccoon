@@ -14,7 +14,7 @@ knows, maintainable in the administration. Where the data comes from is said by 
 That makes the type configurable without board, sprints or the AI lifecycle losing their
 grown tables. New, self defined types land in `artifacts`.
 
-Below it hangs the field model following the Artefakt example (`Artifacts → Fields → Values`):
+Below it hangs the field model following the same three-level example (`Artifacts → Fields → Values`):
 an artifact carries any number of **fields**, a field of type "choice" a maintained **value
 list**, and the field says whether a single artifact may carry one or several values from
 it.

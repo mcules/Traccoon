@@ -1,4 +1,4 @@
-"""Fields and values on artifacts (the Artefakt model: Artifacts → Fields → Values)
+"""Fields and values on artifacts (the artifact model: Artifacts → Fields → Values)
 
 An artifact (ticket, hardware, own type) carries typed fields; a choice field has a
 maintained value list, and `multi` says whether a unit may carry one or several values from

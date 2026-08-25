@@ -59,7 +59,7 @@ const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
  * Artifact register: what Traccoon manages, which states it knows and which fields it
  * carries.
  *
- * Three levels following the Artefakt example: an **artifact type** orders things (process,
+ * Three levels following the same three-level example: an **artifact type** orders things (process,
  * object), an **artifact** is the thing itself (ticket, hardware), and below it hang the
  * **fields** with their **value list**. The field says whether a single unit may carry one
  * or several values from it.

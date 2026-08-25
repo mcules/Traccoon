@@ -1,6 +1,6 @@
 """Fields of an artifact and the values a single unit of it carries.
 
-Following the Artefakt model (`Artifacts → Fields → Values`): an artifact (ticket, hardware,
+Following the artifact model (`Artifacts → Fields → Values`): an artifact (ticket, hardware,
 own type) carries any number of fields; a field of type "choice" has a maintained value
 list, and the field says whether a unit may carry one or several values from it.
 
