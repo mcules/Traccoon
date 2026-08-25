@@ -864,8 +864,15 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
   return (
     <Area
       fills
-      title={folder}
-      tools={chosen.length > 0 ? (
+      // One row above the list, not three. The folder name, the tick for all of them and the
+      // count fit beside each other, and every line that goes is a line of mail that stays.
+      tools={<>
+        {messages.length > 0 && (
+          <input type="checkbox" checked={allTicked} className="h-4 w-4 accent-brand"
+            title={tr("mail.choose_all_on_page")} aria-label={tr("mail.choose_all_on_page")}
+            onChange={() => onChosen(allTicked ? [] : messages.map((m) => m.uid))} />
+        )}
+        {chosen.length > 0 ? (
         // The selection takes the row over: with something ticked, how many messages the
         // folder holds is not the question of the moment.
         <>
@@ -892,6 +899,7 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
         </>
       ) : (
         <>
+          <span className="text-sm font-semibold text-ink">{folder}</span>
           {search && <Tag color="brand">{tr("mail.search_label")}: {search}</Tag>}
           <div className="flex-1" />
           <span className="text-xs text-muted">
@@ -899,17 +907,9 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
           </span>
         </>
       )}
+      </>}
     >
       <Listing>
-        {messages.length > 0 && (
-          <ListRow dense>
-            <label className="flex items-center gap-2 text-xs text-muted">
-              <input type="checkbox" checked={allTicked} className="h-4 w-4 accent-brand"
-                onChange={() => onChosen(allTicked ? [] : messages.map((m) => m.uid))} />
-              {tr("mail.choose_all_on_page")}
-            </label>
-          </ListRow>
-        )}
         {messages.map((m, index) => (
           <ListRow key={m.uid} dense onClick={() => onOpen_it(m.uid)}>
             <div className="flex items-start gap-2">
