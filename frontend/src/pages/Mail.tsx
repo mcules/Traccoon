@@ -41,6 +41,21 @@ const SPECIAL: Record<string, string> = {
   sent: "📤", drafts: "📝", trash: "🗑", junk: "🚫", archive: "📦",
 };
 
+/**
+ * A mail stands on paper, in both themes.
+ *
+ * It is the one surface of this house that was not written here: a foreign mail brings its
+ * own colours along, and they were chosen for white. On the dark ground of the interface a
+ * signature in dark grey becomes unreadable, a logo with a white box around it glows like a
+ * hole, and a table with light grey lines disappears altogether. The theme belongs to
+ * Traccoon, the mail belongs to whoever wrote it.
+ *
+ * Paper is the ground, not a rule: a mail that paints its own background does so on top of
+ * it. That is why nothing here is `!important`, and why the cleaning keeps the `style`
+ * attribute (`_ALLOWED_ATTRIBUTE`) while dropping `<style>` blocks along with the scripts.
+ */
+const PAPER = "rounded border border-line bg-white p-3 text-sm text-neutral-900";
+
 export default function Mail() {
   usePageChrome("Mail", []);
   const qc = useQueryClient();
@@ -618,11 +633,11 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
       <meta http-equiv="Content-Security-Policy" content="${policy}">
       <base target="_blank">
       <style>
-        body { font: 14px/1.5 system-ui, sans-serif; color: #c9d1d9; background: #0d1117;
+        body { font: 14px/1.5 system-ui, sans-serif; color: #1c1c1c; background: #ffffff;
                margin: 12px; word-break: break-word; }
-        a { color: #58a6ff; } img { max-width: 100%; height: auto; }
-        table { max-width: 100%; } blockquote { border-left: 2px solid #30363d;
-               margin: 0; padding-left: 12px; color: #8b949e; }
+        a { color: #0645ad; } img { max-width: 100%; height: auto; }
+        table { max-width: 100%; } blockquote { border-left: 2px solid #d0d7de;
+               margin: 0; padding-left: 12px; color: #57606a; }
       </style></head><body>${content}</body></html>`;
 
   return (
@@ -637,7 +652,7 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
         title={tr("mail.message")}
         sandbox="allow-popups allow-popups-to-escape-sandbox"
         srcDoc={document}
-        className="h-[60vh] w-full rounded border border-line bg-surface"
+        className="h-[60vh] w-full rounded border border-line bg-white"
       />
     </div>
   );
@@ -1068,12 +1083,12 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               ]} />
               {view === "html"
                 ? <HtmlView html={m.html} remoteimages={m.remote_images} />
-                : <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded border border-line bg-surface p-3 text-sm text-ink">
+                : <pre className={`max-h-[60vh] overflow-auto whitespace-pre-wrap ${PAPER}`}>
                     {m.text || tr("mail.no_text")}
                   </pre>}
             </div>
           ) : (
-            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded border border-line bg-surface p-3 text-sm text-ink">
+            <pre className={`max-h-[60vh] overflow-auto whitespace-pre-wrap ${PAPER}`}>
               {m.text || tr("mail.no_text")}
             </pre>
           )}

@@ -799,3 +799,25 @@ async def test_without_an_extension_nothing_is_invented():
 
     found = _attachments(_with_attachment("application/octet-stream", "datei"))
     assert found[0]["content_type"] == "application/octet-stream"
+
+
+# ── Hat die Mail überhaupt einen HTML-Teil? ─────────────────────────────────
+
+async def test_a_wrapper_without_content_is_no_html_part():
+    """Plenty of senders hang a second part on the mail that is nothing but a wrapper and a
+    tracking pixel. What is left after the cleaning is an empty white box, offered as
+    "formatted" beside the text nobody gets to see."""
+    from app.services.mailbox import has_content
+
+    assert not has_content('<div><span>&nbsp;</span></div>')
+    assert not has_content("")
+    assert not has_content("<p></p><table><tr><td></td></tr></table>")
+
+
+async def test_a_mail_that_is_one_picture_stays_html():
+    """A newsletter that consists of a single graphic carries no text, and it is still a
+    formatted mail."""
+    from app.services.mailbox import has_content
+
+    assert has_content('<div><img data-fern="https://example.org/a.png"></div>')
+    assert has_content("<p>Guten Tag</p>")

@@ -184,6 +184,27 @@ _ALLOWED_ATTRIBUTE = {
 }
 
 
+def has_content(html: str) -> bool:
+    """Is there anything left to see in this HTML?
+
+    An HTML part is not the same as an HTML mail. Plenty of senders hang a second part on
+    their message that consists of nothing but a wrapper, a tracking pixel and a `<style>`
+    block, and the block is the first thing the cleaning throws away. What is left is an empty
+    white box beside a tab called "formatted", while the readable text sits in the plain part
+    the reader never gets offered.
+
+    So: text counts, and a picture counts (a mail that is one single graphic is a mail).
+    Empty tags and non-breaking spaces do not.
+    """
+    import re
+
+    if re.search(r"<img\b", html or "", re.I):
+        return True
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    text = text.replace("&nbsp;", " ").replace("&zwnj;", " ").replace("&shy;", "")
+    return bool(text.strip())
+
+
 def clean(html: str) -> tuple[str, bool]:
     """Returns (cleaned HTML, whether there are remote images).
 
@@ -447,6 +468,10 @@ def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
         msg = email.message_from_bytes(entry[b"RFC822"], policy=email.policy.default)
         text, html = _text_from(msg)
         html_clean, remoteimages = clean(html) if html else ("", False)
+        # A part that carries nothing is no part: without this the reader gets a choice
+        # between an empty page and the text, with the empty one preselected.
+        if html_clean and not has_content(html_clean):
+            html_clean, remoteimages = "", False
         flags = {f.decode().lower() for f in entry.get(b"FLAGS", ())}
         return {
             "uid": uid, "folder": folder,
