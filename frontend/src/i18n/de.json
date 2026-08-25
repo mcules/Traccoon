@@ -2364,7 +2364,6 @@
   "mail.folder_disappears": "Der Ordner und alles darin verschwindet — auf dem Server, nicht nur hier.",
   "mail.final_special_protected": "Das ist endgültig. Sonderordner (Posteingang, Gesendet, Entwürfe, Papierkorb, Spam) sind geschützt.",
   "mail.delete_finally": "Endgültig löschen",
-  "mail.older": "älter →",
   "mail.recall": "Zurückholen",
   "mail.delete_2": "Löschen",
   "mail.delete_3": "🗑 Löschen",
@@ -2538,7 +2537,6 @@
   "mail.answered": "beantwortet",
   "mail.loading": "Wird geladen…",
   "mail.nothing_in_folder": "Nichts in diesem Ordner.",
-  "mail.newer": "← neuer",
   "mail.of": "von",
   "mail.move": "Verschieben",
   "mail.mark_as_spam": "Als Spam markieren",
@@ -2951,5 +2949,8 @@
   "mail.only_unsubscribable": "nur direkt abmeldbare",
   "mail.by_amount": "Menge",
   "mail.by_name": "Name",
-  "mail.by_last": "Zuletzt"
+  "mail.by_last": "Zuletzt",
+  "mail.loading_more": "Weitere werden geladen…",
+  "mail.scroll_for_more": "Zum Weiterlesen scrollen",
+  "mail.all_loaded": "Alle {n} geladen"
 }

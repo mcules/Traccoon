@@ -1,6 +1,6 @@
 import { tr } from "../i18n";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, fetchFile } from "../api";
 import { usePageChrome } from "../pageChrome";
 import { useAuth } from "../auth";
@@ -9,7 +9,7 @@ import { AccountDialog, type MailAccount, type MailIdentity } from "../component
 import {
   Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
   Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT,
-  Menu, MenuItem, MenuLine, Splitter, Busy, BUTTON_SMALL, SortBar} from "../components/ui";
+  Menu, MenuItem, MenuLine, Splitter, Busy, BUTTON_SMALL, SortBar, Spinner} from "../components/ui";
 
 /**
  * The mailbox.
@@ -1020,8 +1020,8 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
   onSearch: (q: string, scope: "folder" | "all") => void;
 }) {
   const qc = useQueryClient();
-  const [page, setPage] = useState(0);
   const [moveOpen, setMoveOpen] = useState(false);
+  const end = useRef<HTMLDivElement>(null);
   // The search searches THIS folder, which is why it stands over it and not in a bar above
   // the whole page. It stays visible: a search one has to open first is one nobody uses.
   const [question, setQuestion] = useState(search);
@@ -1029,14 +1029,30 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
   // Where the last tick sat, for the range that shift asks for.
   const [anchor, setAnchor] = useState<number | null>(null);
   const limit = 50;
-  useEffect(() => { setPage(0); }, [folder, search]);
 
-  const { data, isLoading, isPlaceholderData, error } = useQuery({
-    queryKey: ["mail-list", accountId, folder, search, scope, page],
-    queryFn: () => api.get<{ total: number; capped?: boolean; messages: Header[] }>(
+  /**
+   * The list grows while one scrolls, in packs of fifty.
+   *
+   * Paging was the honest first answer and the wrong one for mail: whoever looks for
+   * something from March does not think in pages, they scroll. A pack of fifty is what the
+   * mailbox hands over in one go without a wait, and the next one comes when the end of the
+   * list gets close, not when it is reached: arriving at a wall and then waiting is exactly
+   * the pause this is meant to avoid.
+   */
+  const { data, isLoading, isPlaceholderData, isFetchingNextPage, hasNextPage, fetchNextPage,
+          error } = useInfiniteQuery({
+    queryKey: ["mail-list", accountId, folder, search, scope],
+    queryFn: ({ pageParam }) => api.get<{ total: number; capped?: boolean; messages: Header[] }>(
       `/mailbox/accounts/${accountId}/messages?folder=${encodeURIComponent(folder)}`
       + `&q=${encodeURIComponent(search)}&scope=${scope}`
-      + `&offset=${page * limit}&limit=${limit}`),
+      + `&offset=${pageParam}&limit=${limit}`),
+    initialPageParam: 0,
+    getNextPageParam: (last, all) => {
+      const have = all.reduce((n, p) => n + p.messages.length, 0);
+      // An empty answer ends it too, whatever the count says: otherwise a folder whose total
+      // lies would be asked for the same nothing forever.
+      return last.messages.length && have < last.total ? have : undefined;
+    },
     // Not before an account is picked: `kontoId` is null on the first render, and the
     // request went out as `accounts/null/messages` — a 422 on every visit to the page.
     enabled: !!accountId,
@@ -1044,16 +1060,33 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
     // list empties itself for the length of a search, everything below it jumps up, and the
     // click one had already aimed at lands on a different mail.
     placeholderData: (before) => before,
-    // New mail should turn up in the list, not only in the counter next to it. A search is
-    // not repeated by itself: it costs the server real work, and its result does not go stale
-    // in a minute.
-    refetchInterval: search ? false : 60_000, refetchOnWindowFocus: !search,
+    // New mail should turn up in the list, not only in the counter next to it. But a refetch
+    // fetches EVERY loaded pack, so whoever has scrolled far enough is left in peace: ten
+    // requests a minute for a list nobody is looking at the top of is a bad trade. A search
+    // is never repeated by itself, it costs the server real work.
+    refetchInterval: (q) => (search || (q.state.data?.pages.length ?? 1) > 3) ? false : 60_000,
+    refetchOnWindowFocus: !search,
   });
+
+  // The end of the list comes into view: fetch the next pack. `rootMargin` asks a screen
+  // early, so the packs join up instead of stuttering.
+  useEffect(() => {
+    const mark = end.current;
+    if (!mark || !hasNextPage) return;
+    const box = mark.closest(".overflow-y-auto");
+    const watch = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) fetchNextPage();
+    }, { root: box || null, rootMargin: "600px" });
+    watch.observe(mark);
+    return () => watch.disconnect();
+  }, [hasNextPage, fetchNextPage, isFetchingNextPage]);
   useEffect(() => {
     if (error) onError(error instanceof ApiError ? error.message : tr("mail.mailbox_unreachable"));
   }, [error]);
 
-  const messages = data?.messages || [];
+  const messages = data?.pages.flatMap((p) => p.messages) || [];
+  const total = data?.pages[0]?.total ?? 0;
+  const capped = data?.pages[0]?.capped;
   const ticked = new Set(chosen);
   const allTicked = messages.length > 0 && messages.every((m) => ticked.has(m.uid));
 
@@ -1134,7 +1167,7 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
           {/* While a new answer is on its way the old number is not wrong, it is stale.
               Dimmed it says so, and it keeps its place so the row does not jump. */}
           <span className={`shrink-0 text-xs text-muted ${isPlaceholderData ? "opacity-40" : ""}`}>
-            {data?.total ?? 0}{data?.capped ? "+" : ""}{" "}
+            {total}{capped ? "+" : ""}{" "}
             {search ? tr("mail.hits") : tr("mail.messages")}
           </span>
         </div>
@@ -1148,9 +1181,9 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
             <Tab active={scope} selection={[
               ["folder", tr("mail.scope_folder")], ["all", tr("mail.scope_all")],
             ]} onChoose={(wide) => onSearch(question.trim(), wide)} />
-            {data?.capped && (
-              <Tag title={tr("mail.capped_hint", { n: data.total })}>
-                {tr("mail.capped", { n: data.total })}
+            {capped && (
+              <Tag title={tr("mail.capped_hint", { n: total })}>
+                {tr("mail.capped", { n: total })}
               </Tag>
             )}
           </div>
@@ -1201,15 +1234,15 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
         )}
       </Listing>
       </Busy>
-      {(data?.total ?? 0) > limit && (
-        <div className="mt-3 flex items-center gap-2">
-          <Rowbutton onClick={() => setPage(Math.max(0, page - 1))}>{tr("mail.newer")}</Rowbutton>
-          <span className="text-xs text-muted">
-            {page * limit + 1}–{Math.min((page + 1) * limit, data!.total)} {tr("mail.of")} {data!.total}
-          </span>
-          <Rowbutton onClick={() => setPage(page + 1)}>{tr("mail.older")}</Rowbutton>
-        </div>
-      )}
+
+      {/* The mark the observer watches, and at the same time the place where the state of the
+          growing list is said out loud: loading, or "that was all". */}
+      <div ref={end} className="py-3 text-center text-xs text-muted">
+        {isFetchingNextPage ? <Spinner text={tr("mail.loading_more")} />
+          : hasNextPage ? tr("mail.scroll_for_more")
+          : messages.length > limit ? tr("mail.all_loaded", { n: messages.length })
+          : ""}
+      </div>
 
       {moveOpen && (
         <FolderChoice accountId={accountId} without={folder} onClose={() => setMoveOpen(false)}
@@ -1601,7 +1634,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
 
   return (
     <Area
-      fills
+      fills column
       title={m?.subject || "…"}
       tools={<>
         {/* Back to the list is only a way where the list had to give up its place. In three

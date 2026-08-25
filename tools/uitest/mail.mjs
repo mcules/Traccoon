@@ -46,6 +46,29 @@ if (await punkte.count()) {
   console.log("MENUE nicht gefunden");
 }
 
+// Scrollen in der Liste, und ob dabei nachgeladen wird. Der Kasten ist der mit den
+// Kreuzchen darin, nicht der mit der Mail.
+const listenKasten = () => seite.evaluateHandle(() => {
+  // Die Klasse allein sagt nichts: `sm:overflow-hidden` steht daneben und gewinnt. Es zählt,
+  // was der Browser daraus macht.
+  const alle = [...document.querySelectorAll("main div")].filter((d) =>
+    getComputedStyle(d).overflowY === "auto"
+    && d.querySelectorAll("input[type=checkbox]").length > 5);
+  return alle.sort((a, b) => a.clientHeight - b.clientHeight)[0] || null;
+});
+let griff = await listenKasten();
+const vorher = await griff.evaluate((k) => k ? {
+  h: Math.round(k.clientHeight), scroll: Math.round(k.scrollHeight),
+  zeilen: k.querySelectorAll("input[type=checkbox]").length } : null);
+await griff.evaluate((k) => { if (k) k.scrollTop = k.scrollHeight; });
+await seite.waitForTimeout(4000);
+griff = await listenKasten();
+const nachher = await griff.evaluate((k) => k ? {
+  scroll: Math.round(k.scrollHeight),
+  zeilen: k.querySelectorAll("input[type=checkbox]").length } : null);
+console.log("SCROLLEN", JSON.stringify({ vorher, nachher }));
+await seite.screenshot({ path: "/w/mail-19-nachladen.png" });
+
 // Ordner auf- und zuklappen: was passiert wirklich?
 const baum = async () => seite.evaluate(() => [...document.querySelectorAll(
   "[class*='grid-cols-[0.75rem']")].map((d) => {

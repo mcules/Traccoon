@@ -2364,7 +2364,6 @@
   "mail.folder_disappears": "The folder and everything in it disappears — on the server, not only here.",
   "mail.final_special_protected": "This is final. Special folders (inbox, sent, drafts, trash, spam) are protected.",
   "mail.delete_finally": "Delete for good",
-  "mail.older": "older →",
   "mail.recall": "Recall",
   "mail.delete_2": "Delete",
   "mail.delete_3": "🗑 Delete",
@@ -2538,7 +2537,6 @@
   "mail.answered": "answered",
   "mail.loading": "Loading…",
   "mail.nothing_in_folder": "Nothing in this folder.",
-  "mail.newer": "← newer",
   "mail.of": "of",
   "mail.move": "Move",
   "mail.mark_as_spam": "Mark as spam",
@@ -2951,5 +2949,8 @@
   "mail.only_unsubscribable": "only directly unsubscribable",
   "mail.by_amount": "Amount",
   "mail.by_name": "Name",
-  "mail.by_last": "Last"
+  "mail.by_last": "Last",
+  "mail.loading_more": "Loading more…",
+  "mail.scroll_for_more": "Scroll on for more",
+  "mail.all_loaded": "All {n} loaded"
 }

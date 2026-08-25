@@ -367,12 +367,17 @@ export function ListRow({ columns, dimmed = false, warning = false, dense = fals
  * From a step away that reads as five pages instead of one.
  */
 export function Area({ title: title, subtitle, hint: hint, tools: tools, fills = false,
-                      children }: {
+                      column = false, children }: {
   title?: ReactNode; subtitle?: ReactNode; hint?: ReactNode; tools?: ReactNode;
   /** The card fills the height it is given, and what does not fit scrolls INSIDE it.
    *  For a page built of columns beside each other (the mailbox): without this the frame
    *  scrolls away with the content and the heading of a list leaves through the top edge. */
   fills?: boolean;
+  /** With `fills`: the content is a column in which a child may take what is left
+   *  (`flex-1`), and nothing scrolls by itself. For a mail that is meant to fill its space.
+   *  Without it the content scrolls, which is what a list wants — in a flex column a list
+   *  would be squeezed instead of scrolled, and `Listing` cuts off what sticks out. */
+  column?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -388,11 +393,9 @@ export function Area({ title: title, subtitle, hint: hint, tools: tools, fills =
       {tools && (
         <div className="flex flex-wrap items-center gap-3 text-sm">{tools}</div>
       )}
-      {/* A column, so that a child may say "I take what is left" (`flex-1`): a mail is meant
-          to fill the space it has, and a fixed 60vh leaves a hole below it on a tall screen.
-          What does not fit still scrolls. */}
       {fills
-        ? <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">{children}</div>
+        ? <div className={column ? "flex min-h-0 flex-1 flex-col gap-3 overflow-hidden"
+                                  : "min-h-0 flex-1 overflow-y-auto"}>{children}</div>
         : children}
     </div>
   );
