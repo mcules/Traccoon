@@ -57,7 +57,7 @@ def _task(job: Job) -> str:
     open_ones = sorted({m for m in re.findall(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", text)}
                    - set(values) - set(ZEITWERTE))
     if open_ones:
-        log.warning("Job %s: %s ohne Wert im Parametersatz — im Ablauf bleiben sie leer",
+        log.warning("Job %s: %s without a value in the parameter set, they stay empty in the flow",
                     job.name, ", ".join(open_ones))
     return text
 
@@ -172,7 +172,7 @@ def _graph(job: Job, target_name: str = "") -> dict:
         _n("fertig", "end", 5, {"label": "Done", "outcome": "completed"}),
     ]
     edges += [_e("answer", "melden_wenn"), _e("melden_wenn", "melden", "melden"),
-              _e("melden_wenn", "fertig", "still", "ohne Nachricht"), _e("melden", "fertig")]
+              _e("melden_wenn", "fertig", "still", "without a message"), _e("melden", "fertig")]
     from .workflow_terms import stamp
     return stamp({"nodes": nodes, "edges": edges})
 

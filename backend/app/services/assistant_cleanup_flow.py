@@ -1,4 +1,4 @@
-"""The flow behind the job "Alte Unterhaltungen aufräumen".
+"""The flow behind the job that clears out old conversations.
 
 Deleting a conversation is deliberately not a button. It is a workflow action
 (`assistant_session`, op `delete`), and this is the flow that carries it, so that clearing
@@ -32,15 +32,15 @@ from .workflow_terms import migrate_graph
 log = logging.getLogger("traccoon.assistant.cleanup")
 
 KEY = "unterhaltungen-aufraeumen"
-NAME = "Alte Unterhaltungen aufräumen"
+NAME = "Clear out old conversations"
 DESCRIPTION = (
-    "Löscht alte Unterhaltungen des persönlichen Assistenten. Alles Job-Eigene steht im "
+    "Deletes old conversations of the personal assistant. Everything a job brings of its own "
     "Startkontext:\n"
     "  closed_only      — nur geschlossene (Vorgabe: ja)\n"
-    "  older_than_days  — wie alt die letzte Nachricht sein muss\n"
-    "  keep_last        — die N jüngsten bleiben in jedem Fall\n"
+    "  older_than_days  how old the last message has to be\n"
+    "  keep_last        the N most recent ones stay in any case\n"
     "  agent            — nur Unterhaltungen dieses Agenten (leer = alle)\n"
-    "Was gerade läuft, wird nie gelöscht; Offenes nur, wenn eine Nummer genannt ist."
+    "Whatever is running right now is never deleted, and open ones only when a number says so."
 )
 
 _COL, _ROW = 280, 130
@@ -71,20 +71,20 @@ def _e(source: str, target: str, handle: str | None = None, label: str = "") -> 
 def build() -> dict:
     return {
         "nodes": [
-            _n("start", "start", 0, 0, {"label": "Aufräum-Job", "trigger": {"kind": "job"}}),
+            _n("start", "start", 0, 0, {"label": "Cleanup job", "trigger": {"kind": "job"}}),
             _n("loeschen", "auto_action", 0, 1, _action(
-                "assistant_session", "Alte Unterhaltungen löschen", op="delete",
+                "assistant_session", "Delete old conversations", op="delete",
                 closed_only="{{ closed_only }}", older_than_days="{{ older_than_days }}",
                 keep_last="{{ keep_last }}", agent="{{ agent }}", context_key="cleanup")),
             _n("melden_wenn", "decision", 0, 2, {
                 "label": "Melden?",
                 "branches": [
-                    {"handle": "melden", "label": "es wurde gelöscht", "guard": MELDEN_GUARD},
+                    {"handle": "melden", "label": "something was deleted", "guard": MELDEN_GUARD},
                     {"handle": "still", "label": "nichts zu tun"}],
                 "default_handle": "still"}),
             _n("melden", "auto_action", -1, 3, _action(
-                "notify", "Bescheid geben", kind="job", title="Job: {{ job.name }}",
-                text="{{ cleanup.deleted }} alte Unterhaltungen gelöscht.")),
+                "notify", "Say something", kind="job", title="Job: {{ job.name }}",
+                text="{{ cleanup.deleted }} old conversations deleted.")),
             _n("fertig", "end", 0, 4, {"label": "Fertig", "outcome": "completed"}),
         ],
         "edges": [
@@ -133,7 +133,7 @@ async def ensure(db: AsyncSession) -> WorkflowDefinition:
         definition_id=d.id, version=(last.version + 1) if last else 1, graph=graph,
         status=WorkflowVersionStatus.published,
         published_at=dt.datetime.now(tz=dt.timezone.utc),
-        notes="Der Aufräum-Ablauf für alte Unterhaltungen, wie er im Code steht.")
+        notes="The cleanup flow for old conversations, as it stands in the code.")
     db.add(version)
     await db.flush()
     d.current_version_id = version.id

@@ -105,7 +105,7 @@ async def test_a_lost_run_is_called_by_its_name(db, seeded, redis_stub):
     assert step.status == WorkflowStepStatus.done
     assert step.result["verloren"] is True
     assert step.result["task_id"]
-    assert "verschwunden" in step.result["output"]
+    assert "vanished" in step.result["output"]
 
     texts = [c.body for c in (await db.execute(select(Comment).where(
         Comment.issue_id == issue.id))).scalars().all()]

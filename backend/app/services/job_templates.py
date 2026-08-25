@@ -20,57 +20,59 @@ from . import assistant_cleanup_flow, research_flow
 # Placeholders of the flow language have NO place in here: `{{…}}` is replaced exactly one
 # round, and an assignment is itself a context value — its braces would stay put literally.
 # What the run knows (date, window, last run) the flow appends by itself.
-_DIGEST_AUFTRAG = """Erstelle den Rückblick „<Titel>" für das Zeitfenster aus den Angaben unten.
-Autonom, keine Rückfragen.
+_DIGEST_AUFTRAG = """Write the review "<title>" for the window given in the facts below.
+Work on your own, ask nothing back.
 
-Thema: <worum es geht>
+Topic: <what it is about>
 
-Recherchiere per Web-Suche aus: <Quellen, mit Komma getrennt>. Nur echte, belegte Meldungen;
-Themen STRENG quellenübergreifend deduplizieren; Einordnung auf Deutsch.
+Research it over web search from: <sources, comma separated>. Only real, sourced reports.
+Deduplicate topics STRICTLY across sources. Write the assessment in German: a person reads
+this, and they read German.
 
-Gib das Ergebnis als **Markdown** aus (es wird zu einer HTML-Seite gerendert — KEINE
-Längenbegrenzung, KEIN eigenes HTML, KEINE Telegram-Rücksicht). Struktur:
+Return the result as **markdown** (it is rendered into an HTML page, so there is NO length
+limit, NO HTML of your own and NO need to spare a messenger). Structure:
 
-# 🗞️ <Titel> — Stand <hier das Datum aus „Heute" in den Angaben unten einsetzen>
+# <title>, as of <put the date from "Today" in the facts below here>
 
-## Auf einen Blick
-- 5–8 knappe Bulletpoints mit den wichtigsten Themen.
+## At a glance
+- 5 to 8 short bullet points with the most important topics.
 
-## Top-Meldungen
-Pro Meldung:
-### <Kategorie> — <Überschrift>
-2–4 Sätze Einordnung. Quelle(n) als Markdown-Link.
+## Top reports
+Per report:
+### <category>: <headline>
+2 to 4 sentences of assessment. Source or sources as a markdown link.
 
-## Diskussionen & Signale
-Relevante Debatten mit Link + kurzem Kontext (warum diskutiert).
+## Discussions and signals
+Relevant debates with a link and short context (why it is being discussed).
 
-## Weitere Quellen
-Wichtige Artikel mit Link + Kurzkontext.
+## Further sources
+Important articles with a link and short context.
 
-Nutze echte URLs als Markdown-Links `[Quelle](https://…)`."""
+Use real URLs as markdown links `[source](https://…)`."""
 
 # A watcher is the same flow with the other two knobs: no store, and a word that keeps it
 # quiet. Without that word it would report every morning that there is nothing to report.
 _WATCH_SENTINEL = "KEIN_NEUZUGANG"
-_WATCH_AUFTRAG = f"""REGEL VOR ALLEM ANDEREN — Schweigen ist der Normalfall.
-Wenn es nichts Neues gibt, antworte mit genau einem Wort und sonst nichts: {_WATCH_SENTINEL}
-Keine Einleitung, keine Zusammenfassung, keine Begründung, keine Aufzählung des bekannten
-Stands. Nur dieses eine Wort. Der Job meldet nur dann, wenn deine Antwort dieses Wort NICHT
-enthält — an den allermeisten Tagen ist {_WATCH_SENTINEL} die richtige Antwort. Umgekehrt:
-Bei einem echten Neuzugang darf {_WATCH_SENTINEL} nirgends in deiner Antwort stehen.
+_WATCH_AUFTRAG = f"""THE RULE ABOVE ALL OTHERS: silence is the normal case.
+If there is nothing new, answer with exactly one word and nothing else: {_WATCH_SENTINEL}
+No preamble, no summary, no reasoning, no listing of what is already known. Only that one
+word. The job reports only when your answer does NOT contain it, and on almost every day
+{_WATCH_SENTINEL} is the right answer. The other way round: on a real new arrival
+{_WATCH_SENTINEL} must not appear anywhere in your answer.
 
-Aufgabe: Prüfe, ob es seit dem letzten erfolgreichen Lauf (siehe „Angaben zu diesem Lauf"
-unten) etwas Neues zu <Thema> gibt.
+Task: check whether anything new has turned up about <topic> since the last successful run
+(see "Facts about this run" below).
 
-Quellen:
-1. <Adresse>
-2. <Adresse>
+Sources:
+1. <address>
+2. <address>
 
-Bekannter Stand, das ist die Grundlinie, niemals melden: <was es schon gibt>.
+What is already known, the baseline, never report it: <what already exists>.
 
-Bei echtem Neuzugang pro Treffer: <was gemeldet werden soll>.
+On a real new arrival, per hit: <what should be reported>.
 
-Zur Erinnerung: nichts Neues = die Antwort ist genau {_WATCH_SENTINEL}."""
+A reminder: nothing new means the answer is exactly {_WATCH_SENTINEL}. The answer itself is
+written in German, a person reads it."""
 
 
 JOB_TEMPLATES: dict[str, dict] = {
@@ -96,13 +98,13 @@ JOB_TEMPLATES: dict[str, dict] = {
         },
     },
     "unterhaltungen-aufraeumen": {
-        "label": "Alte Unterhaltungen aufräumen",
-        "description": "Löscht geschlossene Unterhaltungen des Assistenten, die älter als 90 "
-                       "Tage sind — die fünf jüngsten bleiben in jedem Fall. Was gerade "
-                       "läuft und was offen ist, wird nie angefasst.",
+        "label": "Clear out old conversations",
+        "description": "Deletes closed conversations of the assistant older than 90 days. "
+                       "The five most recent ones stay in any case, and whatever is running "
+                       "or still open is never touched.",
         "fields": {
             "type": "cron",
-            # Nachts und wöchentlich: es ist Hausputz, kein Ereignis.
+            # At night and weekly: this is housekeeping, not an event.
             "schedule": "20 4 * * 0",
             "kind": "workflow",
             "workflow_key": assistant_cleanup_flow.KEY,

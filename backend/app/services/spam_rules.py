@@ -415,7 +415,7 @@ def _check_serververdict(res: RuleResult, headers: dict, payload: dict) -> None:
     hit = sorted(set(re.split(r"[,\s]+", (m.group(1) if m else "").upper())) & SPERRLISTEN)
     if hit:
         res.hits("server_blockliste",
-                    f"Mailserver fand einen Eintrag in einer Sperrliste ({hit[0]})")
+                    f"the mail server found an entry in a block list ({hit[0]})")
 
     flag = _header(headers, "X-Spam-Flag").strip().lower()
     status = _header(headers, "X-Spam-Status").strip().lower()

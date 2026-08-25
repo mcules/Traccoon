@@ -200,7 +200,7 @@ FILTER = {
     "first": (lambda w: w[0] if isinstance(w, (list, tuple)) and w else "", "Erster Eintrag"),
     "last": (lambda w: w[-1] if isinstance(w, (list, tuple)) and w else "", "Letzter Eintrag"),
     "join": (_f_join, "Liste zu Text — join:\", \""),
-    "field": (_f_field, "Ein Feld aus einer Objektliste — field:\"name\""),
+    "field": (_f_field, "One field out of a list of objects, field:\"name\""),
     "basename": (_f_filename, "the note name out of the path (without folder and .md)"),
     "max": (_f_max, "the largest number in a list"),
     "lines_with": (_f_lines_with, "the lines of a text that contain something — lines_with:\"### \""),

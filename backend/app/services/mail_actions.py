@@ -250,7 +250,7 @@ MAP_PARAMS: dict = {
 
 
 async def assistant_item(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Altname `assistant_task`, umgeleitet auf den allgemeinen Knoten.
+    """The old name `assistant_task`, redirected onto the general node.
 
     It stands in published versions, and those are immutable — running instances hang on them.
     That is why it is redirected instead of maintained twice, as with `_OLD_ACTIONS`.

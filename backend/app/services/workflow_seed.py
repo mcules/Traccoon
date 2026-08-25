@@ -102,7 +102,7 @@ def build_ticket_lifecycle() -> dict:
             "agent_role": "plan_agent", "phase": "planning",
         }, "planung"),
         # The same brake as in the implementation, it was simply missing here. The back edge
-        # "keep planning" led back to `plan` unbraked: on 2026-08-07 ABC-31 hit the limit
+        # "keep planning" led back to `plan` unbraked: on 2026-08-07 a ticket hit the limit
         # every time after 20 iterations (~90 s) and immediately started the next run
         # without anything counting along. The only thing braking that was the gatekeeper.
         # Planning is cheaper than implementation but not free: a lower cap (10 instead of

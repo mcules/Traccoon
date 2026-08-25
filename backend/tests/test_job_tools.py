@@ -1,7 +1,8 @@
 """The job control tools of the assistant.
 
 The occasion: the assistant could not see scheduled jobs. Asked about the move of the news
-job from predecessor to Traccoon, it answered that this was still open and it needed a ticket; the
+job from the predecessor to Traccoon, it answered that this was still open and it needed a
+ticket; the
 job had long been running in Traccoon. Whoever is to talk about jobs has to be able to read them.
 """
 import pytest

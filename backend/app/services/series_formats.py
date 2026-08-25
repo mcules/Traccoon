@@ -63,7 +63,7 @@ def moment(value: Any) -> dt.datetime | None:
     if not text:
         return None
     try:
-        # `Z` kennt fromisoformat erst ab 3.11 sicher; das Ersetzen kostet nichts.
+        # `fromisoformat` only handles `Z` reliably from 3.11 on, and replacing it costs nothing.
         read = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
@@ -135,7 +135,7 @@ def normalise(payload: Any, query: dict | None = None) -> list[dict]:
                  source="traccar", raw=dict(query))
         return [p] if p else []
 
-    # Flach — Home Assistant und alles Selbstgebaute.
+    # Flat: home automation and everything home grown.
     p = _fix(data.get("lat", data.get("latitude")),
              data.get("lon", data.get("lng", data.get("longitude"))),
              data.get("ts", data.get("timestamp", data.get("time"))),

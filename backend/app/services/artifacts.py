@@ -336,7 +336,7 @@ async def reconcile(db: AsyncSession) -> dict:
     # assignments back, the agents worked, and the board showed "waiting", because nobody had
     # touched the state.
     # What is checked is the STATE AND THE COLUMN. The rule concerns the board, and that can
-    # be wrong even when `agent_status` has long been right: ABC-32 on 2026-08-07 was
+    # be wrong even when `agent_status` has long been right: a ticket on 2026-08-07 was
     # continued out of the disturbance branch, the agent ran with `in_progress`, and the
     # column stayed on "waiting" because it was set while parking and never touched again. A
     # reconciliation that only looks at `agent_status` sees nothing wrong with that.

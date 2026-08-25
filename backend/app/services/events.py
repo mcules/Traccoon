@@ -194,7 +194,7 @@ async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,
             except JsonLogicError as e:
                 log.warning("Flow %s: the trigger filter is faulty (%s)", d.key, e)
                 continue
-        # Doppelte Zustellung desselben Ereignisses erzeugt keinen zweiten Lauf.
+        # Delivering the same event twice does not produce a second run.
         if source_ref:
             dup = (await db.execute(select(WorkflowInstance).where(
                 WorkflowInstance.definition_id == d.id,

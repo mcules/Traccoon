@@ -68,7 +68,7 @@ _DEFAULT_AGENT_MAP = {
 # Until 2026-08-05 this was 1800 s and the watcher gave up after 30 minutes although the run
 # kept working. An exec step covers implementation AND review rounds in ONE job, which
 # regularly takes longer. The result was a ticket reading "failed: unknown error" while the
-# agent committed cleanly moments later (ABC-2, ABC-6). Waiting now happens on the sign of
+# agent committed cleanly moments later. Waiting now happens on the sign of
 # life of the run (`wait_result`), not on the clock. Whoever wants a limit for a single node
 # sets `timeout_sec` in its config, AGENT_WAIT_LIMIT_SEC is the global emergency brake
 # (0 = off).
@@ -792,7 +792,7 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
     def_id = cfg.get("definition_id")
     if not slot and not def_id:
         return Outcome(terminal=True, instance_status="failed",
-                       error=f"subflow-Knoten '{node['id']}' ohne Ablauf")
+                       error=f"subflow node '{node['id']}' without a flow")
     if await _instance_depth(db, inst) >= MAX_SUBFLOW_DEPTH:
         return Outcome(terminal=True, instance_status="failed",
                        error=f"subflow zu tief verschachtelt (> {MAX_SUBFLOW_DEPTH})")
@@ -1063,7 +1063,7 @@ async def _wait(task_id: str, timeout: int, was: str) -> tuple[dict | None, dict
         text = (f"Zeitgrenze dieses Schrittes erreicht ({duration}s ≥ {timeout}s). "
                 "The run itself can still work.")
     else:
-        text = (f"Lauf verschwunden — seit {int(GRACE / 60)} Minuten kein Lebenszeichen "
+        text = (f"The run vanished: no sign of life for {int(GRACE / 60)} minutes "
                 "(no worker pulse, no longer in the queue).")
     log.warning("Watchdog %s (%s) without a result after %ds: %s", task_id, was, duration, text)
     return None, {"status": "failed", "success": False, "output": text, "summary": text,
@@ -2000,7 +2000,7 @@ async def recover_workflow_agents() -> None:
 
     Runs at start AND in every tick. At start alone was not enough: a watcher can get lost
     during operation too. On 2026-08-07 one was stuck in a half dead Redis connection, the
-    finished result for ABC-31 sat unclaimed in Redis from 19:54 on, and the ticket stood
+    finished result sat unclaimed in Redis from 19:54 on, and the ticket stood
     still for an hour without anything noticing. Whoever already has a watcher does not get
     a second one (`_WAECHTER`).
     """

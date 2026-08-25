@@ -171,8 +171,8 @@ def _text_from(msg: email.message.Message) -> tuple[str, str]:
 
 
 # What may survive from a foreign mail. Everything else goes: scripts of course, but forms
-# too (a login mask inside the mailbox is exactly the trick phishing is about),
-# eingebettete Rahmen und Objekte.
+# too (a login mask inside the mailbox is exactly the trick phishing is about), embedded
+# frames and objects.
 #
 # `style` is in here, and that was a decision. Without it a mail keeps only what stands in its
 # `style=` attributes, and half the senders put their table widths in a block: what arrived
@@ -466,12 +466,12 @@ def tree_sort(entries: list[dict]) -> list[dict]:
 
 
 def _folder_sync(account: MailAccount, count: bool) -> list[dict]:
-    """The folders as a tree: name, display name, level, parent folder — and on request the
-    der ungelesenen Nachrichten.
+    """The folders as a tree: name, display name, level, parent folder, and on request the
+    number of unread messages.
 
     The separator comes from the server (a dot with Courier, a slash with Dovecot); guessing
     it would mean showing a flat list with dots in the name at every second provider instead
-    einer Struktur.
+    of a structure.
 
     Counting happens only on demand: one STATUS per folder is forty questions to the mailbox
     when there are forty folders, and nobody needs that while paging through a list.
@@ -584,7 +584,7 @@ def _listing_sync(account: MailAccount, folder: str, search: str, offset: int,
         total = state.get(b"EXISTS", 0)
         criterion = ["TEXT", search] if search else ["ALL"]
         uids = client.search(criterion)
-        uids = list(reversed(uids))          # neueste zuerst, wie in jedem Postfach
+        uids = list(reversed(uids))          # newest first, as in every mailbox
         excerpt = uids[offset:offset + limit]
         if not excerpt:
             return {"total": len(uids), "exists": total, "messages": []}

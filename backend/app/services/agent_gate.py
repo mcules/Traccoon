@@ -54,9 +54,9 @@ WARN_INPUT_TOKENS_PER_TICKET = 3_000_000
 class GateVerdict:
     """Result of the gate check.
 
-    ok=True      → Lauf darf starten.
-    hold=True    means a permanent stop (runaway cap); the caller puts the ticket on hold.
-    otherwise    means not NOW (time window, limit); try again later.
+    ok=True      the run may start.
+    hold=True    a permanent stop (runaway cap); the caller puts the ticket on hold.
+    otherwise    not NOW (time window, limit); try again later.
     """
     ok: bool
     reason: str = ""

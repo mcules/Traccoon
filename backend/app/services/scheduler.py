@@ -55,8 +55,8 @@ def _seconds(schedule: str) -> int:
 
 # What may stand in `type`. `kind` is something else — the kind of work (workflow, film).
 # Confusing the two is the obvious mistake, and it does not stand out: a job with an unknown
-# `type` is simply never due, while the UI shows "enabled, all
-# 15 Minuten" anzeigt. Genau so lag der Job "Predecessor-Posteingang" 13 Tage still.
+# `type` is simply never due, while the UI shows "enabled, every 15 minutes". Exactly that
+# left one job standing still for 13 days.
 SCHEDULE_KINDS = ("cron", "interval", "once")
 
 

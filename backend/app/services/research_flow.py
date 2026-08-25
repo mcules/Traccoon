@@ -35,14 +35,17 @@ from .workflow_terms import migrate_graph
 log = logging.getLogger("traccoon.research")
 
 KEY = "recherche"
-NAME = "Recherche (generisch)"
+NAME = "Research (generic)"
 DESCRIPTION = (
-    "Ein Ablauf für alle wiederkehrenden Recherchen. Alles Job-Eigene steht im Startkontext:\n"
-    "  auftrag     — der Rechercheauftrag als Text (Pflicht)\n"
-    "  agent       — Rolle mit Web-Suche (Vorgabe: news)\n"
-    "  ablage      — Schlüssel der Ablage; leer = nicht ablegen, gemeldet wird der Text\n"
-    "  still_wenn  — Wort, bei dem geschwiegen wird; leer = immer melden\n"
-    "Die Zeitwerte (today, now, window, since) hängt der Ablauf selbst an den Auftrag."
+    "One flow for every recurring research job. Everything a job brings of its own stands "
+    "in the start context:\n"
+    "  auftrag     the research assignment as text (required)\n"
+    "  agent       the role with web search (default: news)\n"
+    "  ablage      key of the store; empty = do not file, the text itself is reported\n"
+    "  still_wenn  word at which the flow stays silent; empty = always report\n"
+    "The time values (today, now, window, since) are appended by the flow itself. The context "
+    "keys keep their original names: they stand in the parameters of every job that runs on "
+    "this flow."
 )
 
 _COL, _ROW = 280, 130
@@ -51,11 +54,11 @@ _COL, _ROW = 280, 130
 # reads the prompt sees their own text first.
 TASK = """{{ auftrag }}
 
-————
-Angaben zu diesem Lauf (vom Job gesetzt — nicht erfinden, nicht überschreiben):
-Heute: {{ today }} · Jetzt: {{ now }}
-Zeitfenster: {{ window }}
-Letzter erfolgreicher Lauf: {{ since }}"""
+----
+Facts about this run (set by the job, do not invent them and do not overwrite them):
+Today: {{ today }} · Now: {{ now }}
+Window: {{ window }}
+Last successful run: {{ since }}"""
 
 # Report when there IS something — and the job may name a word at which it stays silent.
 # Every `var` carries its stand-in: a missing key would otherwise become `None`, and
@@ -96,42 +99,42 @@ def _e(source: str, target: str, handle: str | None = None, label: str = "") -> 
 def build() -> dict:
     return {
         "nodes": [
-            _n("start", "start", 0, 0, {"label": "Recherche-Job", "trigger": {"kind": "job"}}),
+            _n("start", "start", 0, 0, {"label": "Research job", "trigger": {"kind": "job"}}),
             # `timeout_sec` is read as a number, not interpolated — hence firmly in the graph.
             _n("arbeit", "auto_action", 0, 1, _action(
-                "agent_run", "Agenten recherchieren lassen",
+                "agent_run", "Let an agent do the research",
                 agent='{{ agent | default:"news" }}', task=TASK,
                 title="{{ job.name }}", timeout_sec=900, context_key="result")),
             # Trimmed: without it a lone line break would count as "said something".
             _n("antwort", "auto_action", 0, 2, _action(
-                "answer", "Ergebnis festhalten", text="{{ result.output | trim }}")),
+                "answer", "Hold on to the result", text="{{ result.output | trim }}")),
             _n("ablegen_wenn", "decision", 0, 3, {
-                "label": "In eine Ablage legen?",
+                "label": "File it in a store?",
                 "branches": [
-                    {"handle": "ablegen", "label": "Ablage genannt", "guard": ABLAGE_GUARD},
-                    {"handle": "direkt", "label": "ohne Ablage"}],
+                    {"handle": "ablegen", "label": "a store was named", "guard": ABLAGE_GUARD},
+                    {"handle": "direkt", "label": "without a store"}],
                 "default_handle": "direkt"}),
             _n("ablegen", "auto_action", 1, 4, _action(
-                "document", "In die Ablage legen", storage="{{ ablage }}", name="{{ job.name }}",
+                "document", "Put it in the store", storage="{{ ablage }}", name="{{ job.name }}",
                 text="{{ answer }}", format="markdown")),
             # A long text does not belong in a message field: what is reported is the
             # reference to it.
             _n("bericht_link", "auto_action", 1, 5, _action(
-                "answer", "Bericht = Link zur Ablage", context_key="bericht",
+                "answer", "Report = link to the store", context_key="bericht",
                 text="{{ document.title }}\n{{ document.url }}")),
             _n("bericht_text", "auto_action", -1, 4, _action(
-                "answer", "Bericht = die Antwort selbst", context_key="bericht",
+                "answer", "Report = the answer itself", context_key="bericht",
                 text="{{ answer }}")),
             _n("melden_wenn", "decision", 0, 6, {
-                "label": "Melden?",
+                "label": "Report?",
                 "branches": [
-                    {"handle": "melden", "label": "berichtenswert", "guard": MELDEN_GUARD},
-                    {"handle": "still", "label": "still bleiben"}],
+                    {"handle": "melden", "label": "worth reporting", "guard": MELDEN_GUARD},
+                    {"handle": "still", "label": "stay silent"}],
                 "default_handle": "still"}),
             _n("melden", "auto_action", -1, 7, _action(
-                "notify", "Bescheid geben", kind="job", title="Job: {{ job.name }}",
+                "notify", "Say something", kind="job", title="Job: {{ job.name }}",
                 text="{{ bericht }}")),
-            _n("fertig", "end", 0, 8, {"label": "Fertig", "outcome": "completed"}),
+            _n("fertig", "end", 0, 8, {"label": "Done", "outcome": "completed"}),
         ],
         "edges": [
             _e("start", "arbeit"),
@@ -140,11 +143,11 @@ def build() -> dict:
             _e("ablegen_wenn", "ablegen", "ablegen"),
             _e("ablegen", "bericht_link"),
             _e("bericht_link", "melden_wenn"),
-            _e("ablegen_wenn", "bericht_text", "direkt", "ohne Ablage"),
+            _e("ablegen_wenn", "bericht_text", "direkt", "without a store"),
             _e("bericht_text", "melden_wenn"),
             _e("melden_wenn", "melden", "melden"),
             _e("melden", "fertig"),
-            _e("melden_wenn", "fertig", "still", "ohne Nachricht"),
+            _e("melden_wenn", "fertig", "still", "without a message"),
         ],
     }
 
@@ -189,7 +192,7 @@ async def ensure(db: AsyncSession) -> WorkflowDefinition:
         definition_id=d.id, version=(last.version + 1) if last else 1, graph=graph,
         status=WorkflowVersionStatus.published,
         published_at=dt.datetime.now(tz=dt.timezone.utc),
-        notes="Der gemeinsame Recherche-Ablauf, wie er im Code steht.")
+        notes="The shared research flow, as it stands in the code.")
     db.add(version)
     await db.flush()
     d.current_version_id = version.id

@@ -1021,8 +1021,8 @@ async def _mail_attachment(db, inst: WorkflowInstance, params: dict, ctx: dict) 
         raise ValueError(f"the attachment {name} is {len(data) // 1024 // 1024} MB "
                          f"(Grenze {limit // 1024 // 1024} MB)")
     key = str(params.get("context_key") or "attachment")
-    # Der Index bleibt drin. Ohne ihn weiss spaeter niemand mehr, welcher Anhang das war, und
-    # eine Rueckmeldung aus dem Archiv landet an der Mail statt an der Datei.
+    # The index stays in. Without it nobody knows later which attachment this was, and an
+    # answer coming back from the archive lands on the mail instead of on the file.
     inst.context = {**ctx, key: {"index": int(index), "filename": name, "content_type": kind,
                                  "size": len(data),
                                  "base64": base64.b64encode(data).decode()}}
@@ -1077,8 +1077,8 @@ async def _mail_document(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
         if account_id is None or uid is None:
             continue
         folder = str(mail.get("folder") or "INBOX")
-        # Der Startvermerk ist die verlaesslichere Quelle: er traegt den Index seit dem Klick,
-        # waehrend der Kontext ihn unterwegs verlieren kann.
+        # The start record is the more reliable source: it has carried the index since the
+        # click, while the context can lose it on the way.
         teile = (run.source_ref or "").rsplit(":", 1)
         index = int(teile[1]) if len(teile) == 2 and teile[1].isdigit() \
             and teile[0] != folder else int(attachment.get("index", -1))

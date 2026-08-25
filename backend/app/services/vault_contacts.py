@@ -220,7 +220,7 @@ async def named_collision(db: AsyncSession, owner_id: int | None, displayname: s
     if not matching:
         return ""
     if any((r.email or "").lower() == (sender_email or "").lower() for r in matching):
-        return ""       # derselbe Mensch, alles in Ordnung
+        return ""       # the same person, nothing wrong
     return matching[0].name
 
 

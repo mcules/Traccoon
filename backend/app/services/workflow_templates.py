@@ -422,8 +422,8 @@ def _mail_intake() -> dict:
 def _attachment_to_paperless() -> dict:
     """A button on every attachment: an invoice into the archive, without a detour via the machine.
 
-    Zeigt den ganzen Weg einer Mail-Aktion — Anhang holen, Werkzeug rufen, Bescheid geben —
-    and is at the same time the answer to the question of how one builds further buttons like it.
+    It shows the whole path of a mail action (fetch the attachment, call the tool, say
+    something) and is at the same time the answer to how one builds further buttons like it.
     """
     nodes = [
         _n("start", "start", 0, 0, {
@@ -431,9 +431,9 @@ def _attachment_to_paperless() -> dict:
             "trigger": {"kind": "mail_action", "scope": "attachment"},
         }),
         _n("holen", "auto_action", 0, 1,
-           _action("mail_attachment", "Anhang holen", context_key="attachment")),
+           _action("mail_attachment", "Fetch the attachment", context_key="attachment")),
         _n("ablegen", "auto_action", 0, 2, _action(
-            "tool_call", "In Paperless ablegen",
+            "tool_call", "File it in the archive",
             tool="paperless__post_document",
             arguments={"file": "{{ attachment.base64 }}",
                        "filename": "{{ attachment.filename }}",
@@ -442,9 +442,9 @@ def _attachment_to_paperless() -> dict:
         _n("melden", "auto_action", 0, 3, _action(
             "notify", "Say so",
             to={"mode": "context", "path": "mail.owner_id"},
-            title="📄 {{ attachment.filename }} liegt in Paperless",
+            title="📄 {{ attachment.filename }} is in the archive",
             text="From the mail \"{{ mail.subject }}\" by {{ mail.from }}.")),
-        _n("fertig", "end", 0, 4, {"label": "Abgelegt", "outcome": "completed"}),
+        _n("fertig", "end", 0, 4, {"label": "Filed", "outcome": "completed"}),
     ]
     edges = [_e("start", "holen"), _e("holen", "ablegen"), _e("ablegen", "melden"),
              _e("melden", "fertig")]
@@ -621,8 +621,7 @@ async def free_key(db, wish: str, project_id: int | None = None) -> str:
     """A key that does not exist here yet — made out of a name.
 
     Names and keys describe the matter, not its trigger: `ki-tech-news`, not `job-3`. Whoever
-    gives the same name twice gets a number appended instead of
-    einem Unique-Fehler zu scheitern.
+    gives the same name twice gets a number appended instead of a unique constraint error.
     """
     from sqlalchemy import select
 

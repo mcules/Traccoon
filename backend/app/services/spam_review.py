@@ -602,7 +602,7 @@ async def imap_action(verdict: SpamVerdict, is_spam: bool) -> str:
     """Move mail through `imap-mcp`. Errors are reported, not raised: a mail that cannot be
     moved must not undo the decision."""
     if not (verdict.account and verdict.folder and verdict.uid):
-        return "keine Mailkennung hinterlegt — nichts verschoben"
+        return "no mail identifier stored, nothing moved"
     tool = "mark_spam" if is_spam else "mark_not_spam"
     try:
         result = await call_tool(IMAP_MCP_URL, tool, {
