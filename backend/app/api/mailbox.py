@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.error import Error
 from ..core.security import encrypt_secret
 from ..db import get_session
-from ..models.mail import MailAccount, MailIdentity, MailImageRule
+from ..models.mail import MailAccount, MailIdentity, MailImageRule, MailUnsubscribe
 from ..models.user import User
 from ..services import mailbox
 from ..services import mailbox_cache as cache
@@ -741,9 +741,64 @@ async def newsletters(kid: int, folders: str = "", user: User = Depends(get_curr
 
     account = await _account(db, kid, user)
     wanted = [f.strip() for f in folders.split(",") if f.strip()] or ["INBOX"]
-    return {"newsletters": await cache.cached(
-        account.id, f"newsletters:{','.join(wanted)}", 300,
-        lambda: service.scan(account, wanted))}
+    found = await cache.cached(account.id, f"newsletters:{','.join(wanted)}", 300,
+                                lambda: service.scan(account, wanted))
+    # A subscription one has got out of keeps its old mails in the folder and would otherwise
+    # go on standing here for months as if nothing had happened. It is not gone, it has moved
+    # into the history.
+    gone = {u.key for u in await _unsubscribed(db, account.id)}
+    return {"newsletters": [n for n in found if n["key"] not in gone],
+            "unsubscribed": len(gone)}
+
+
+async def _unsubscribed(db: AsyncSession, account_id: int) -> list[MailUnsubscribe]:
+    return list((await db.execute(select(MailUnsubscribe)
+                                   .where(MailUnsubscribe.account_id == account_id)
+                                   .order_by(MailUnsubscribe.created_at.desc()))).scalars().all())
+
+
+class UnsubscribeOut(BaseModel):
+    id: int
+    key: str
+    name: str
+    sender: str
+    list_id: str
+    way: str
+    detail: str
+    when: str
+
+
+@router.get("/accounts/{kid}/unsubscribes", response_model=list[UnsubscribeOut])
+async def unsubscribes(kid: int, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    """What one has got out of, when and by which way.
+
+    Unsubscribing is a request, not a switch. Whoever still gets mail four weeks later wants
+    to be able to say when they asked and how, and against a list that keeps sending, that
+    date is the whole argument.
+    """
+    account = await _account(db, kid, user)
+    return [UnsubscribeOut(id=u.id, key=u.key, name=u.name, sender=u.sender,
+                            list_id=u.list_id, way=u.way, detail=u.detail,
+                            when=u.created_at.isoformat() if u.created_at else "")
+            for u in await _unsubscribed(db, account.id)]
+
+
+@router.delete("/accounts/{kid}/unsubscribes/{eid}", status_code=204)
+async def unsubscribe_forget(kid: int, eid: int, user: User = Depends(get_current_user),
+                              db: AsyncSession = Depends(get_session)):
+    """Take the entry back out of the history, so the subscription counts as one again.
+
+    For the case where the unsubscribing did not work: the list goes on sending, and then it
+    belongs back in the overview where one can try again.
+    """
+    account = await _account(db, kid, user)
+    entry = await db.get(MailUnsubscribe, eid)
+    if entry is None or entry.account_id != account.id:
+        return
+    await db.delete(entry)
+    await db.commit()
+    await cache.invalidate(account.id)
 
 
 class UnsubscribeIn(BaseModel):
@@ -751,7 +806,12 @@ class UnsubscribeIn(BaseModel):
     mailto: str = ""
     one_click: bool = False
     identity_id: int | None = None
+    # What is written down when it worked. Without a key nothing is: an entry one cannot
+    # match to a subscription would neither hide it nor prove anything.
+    key: str = ""
     name: str = ""
+    sender: str = ""
+    list_id: str = ""
 
 
 @router.post("/accounts/{kid}/newsletters/unsubscribe")
@@ -770,8 +830,30 @@ async def unsubscribe(kid: int, data: UnsubscribeIn, user: User = Depends(get_cu
     from ..services import newsletters as service
 
     account = await _account(db, kid, user)
+
+    async def note(way: str, detail: str) -> None:
+        """Write it down, once per subscription and mailbox.
+
+        Only what really went out: a failed attempt is no unsubscribing, and an entry for it
+        would hide the subscription from the overview although it goes on sending.
+        """
+        if not data.key:
+            return
+        exists = (await db.execute(select(MailUnsubscribe).where(
+            MailUnsubscribe.account_id == account.id,
+            MailUnsubscribe.key == data.key))).scalar_one_or_none()
+        if exists is not None:
+            return
+        db.add(MailUnsubscribe(owner_user_id=user.id, account_id=account.id, key=data.key,
+                                name=data.name, sender=data.sender, list_id=data.list_id,
+                                way=way, detail=detail[:500]))
+        await db.commit()
+        await cache.invalidate(account.id)
+
     if data.one_click and data.http:
         ok, said = await service.one_click(data.http)
+        if ok:
+            await note("one_click", said)
         return {"done": ok, "way": "one_click", "detail": said}
 
     if data.mailto:
@@ -795,6 +877,7 @@ async def unsubscribe(kid: int, data: UnsubscribeIn, user: User = Depends(get_cu
             "text": (fields.get("body") or ["unsubscribe"])[0],
             "in_reply_to": "", "attachments": [],
         })
+        await note("mail", unquote(address))
         return {"done": True, "way": "mail", "detail": unquote(address)}
 
     if data.http:

@@ -40,6 +40,10 @@ interface Message {
   attachments: Attachment[]; seen: boolean; flagged: boolean;
 }
 interface ImageRule { id: number; kind: "sender" | "domain" | "all"; value: string }
+interface Unsubscribed {
+  id: number; key: string; name: string; sender: string; list_id: string;
+  way: string; detail: string; when: string;
+}
 interface Newsletter {
   key: string; name: string; sender: string; list_id: string; folder: string; uid: number;
   count: number; last: string; http: string; mailto: string; one_click: boolean;
@@ -2059,6 +2063,7 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
   // Sorting and filtering happen here and not on the server: the whole list is already in
   // the browser, and a second pass over the mailbox for a different order would be minutes
   // of waiting for a question the answer to which is already lying here.
+  const [tab, setTab] = useState<"open" | "gone">("open");
   const [by, setBy] = useState<"count" | "name" | "last">("count");
   const [dir, setDir] = useState<"asc" | "desc">("desc");
   const [filter, setFilter] = useState("");
@@ -2075,18 +2080,40 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
     placeholderData: (before) => before,
   });
 
+  const { data: gone } = useQuery({
+    queryKey: ["mail-unsubscribes", account.id],
+    queryFn: () => api.get<Unsubscribed[]>(`/mailbox/accounts/${account.id}/unsubscribes`),
+  });
+
   const out = useMutation({
     mutationFn: (n: Newsletter) => api.post<{ done: boolean; way: string; detail: string }>(
       `/mailbox/accounts/${account.id}/newsletters/unsubscribe`,
-      { http: n.http, mailto: n.mailto, one_click: n.one_click, name: n.name }),
+      { http: n.http, mailto: n.mailto, one_click: n.one_click,
+        key: n.key, name: n.name, sender: n.sender, list_id: n.list_id }),
     onSuccess: (r, n) => {
-      setDone((old) => ({ ...old, [n.key]: r.done
-        ? (r.way === "mail" ? tr("mail.unsub_mail_sent") : tr("mail.unsub_done"))
-        : tr("mail.unsub_failed", { detail: r.detail }) }));
-      qc.invalidateQueries({ queryKey: ["mail-newsletters"] });
+      if (!r.done) {
+        setDone((old) => ({ ...old, [n.key]: tr("mail.unsub_failed", { detail: r.detail }) }));
+        return;
+      }
+      // Out means out of the list. It stands in the history from now on, and that is where
+      // one looks it up, not here between the subscriptions one still has.
+      qc.setQueriesData({ queryKey: ["mail-newsletters", account.id] }, (old: any) =>
+        old ? { ...old, newsletters: old.newsletters.filter((e: Newsletter) => e.key !== n.key) }
+            : old);
+      qc.invalidateQueries({ queryKey: ["mail-unsubscribes"] });
     },
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.unsub_failed",
                                                                     { detail: "" })),
+  });
+
+  const again = useMutation({
+    mutationFn: (u: Unsubscribed) =>
+      api.del(`/mailbox/accounts/${account.id}/unsubscribes/${u.id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mail-unsubscribes"] });
+      qc.invalidateQueries({ queryKey: ["mail-newsletters"] });
+    },
+    onError: (e) => onError(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   const word = filter.trim().toLowerCase();
@@ -2104,6 +2131,15 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
     <Dialog huge title={tr("mail.newsletters_of", { name: account.name })} onClose={onClose}
       foot={<Button onClick={onClose}>{tr("common.close")}</Button>}>
       <div className="space-y-3">
+        <Tab active={tab} onChoose={setTab} selection={[
+          ["open", tr("mail.subs_open")],
+          ["gone", `${tr("mail.subs_gone")}${gone?.length ? ` (${gone.length})` : ""}`],
+        ]} />
+
+        {tab === "gone" ? (
+          <UnsubscribeHistory listing={gone} onAgain={(u) => again.mutate(u)} />
+        ) : (
+        <>
         <p className="text-sm text-muted">{tr("mail.newsletters_hint")}</p>
 
         {/* Which folders are looked at. Every one costs its own pass over up to eight hundred
@@ -2222,7 +2258,51 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
             )}
           </Listing>
         </Busy>
+        </>
+        )}
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * What one has got out of, when and by which way.
+ *
+ * Unsubscribing is a request, not a switch. Whoever still gets mail from them four weeks
+ * later wants to be able to say when they asked and how, and against a list that keeps
+ * sending, that date is the whole argument.
+ *
+ * "Show again" is for the case where it did not work: the list goes on sending, and then the
+ * subscription belongs back in the overview where one can try a second time.
+ */
+function UnsubscribeHistory({ listing, onAgain }: {
+  listing: Unsubscribed[] | undefined; onAgain: (u: Unsubscribed) => void;
+}) {
+  if (!listing?.length) {
+    return (
+      <Listing><ListingEmpty>{tr("mail.nothing_unsubscribed_yet")}</ListingEmpty></Listing>
+    );
+  }
+  return (
+    <Listing>
+      {listing.map((u) => (
+        <ListRow key={u.id}>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-ink">{u.name || u.key}</div>
+              <div className="truncate text-xs text-muted">
+                {u.list_id || u.sender}
+                {u.detail ? ` · ${u.detail}` : ""}
+              </div>
+            </div>
+            <Tag title={u.way === "mail" ? tr("mail.way_mail_hint") : tr("mail.way_click_hint")}>
+              {u.way === "mail" ? tr("mail.way_mail") : tr("mail.way_click")}
+            </Tag>
+            <span className="shrink-0 text-xs text-muted">{formatDateTime(u.when)}</span>
+            <Rowbutton onClick={() => onAgain(u)}>{tr("mail.show_again")}</Rowbutton>
+          </div>
+        </ListRow>
+      ))}
+    </Listing>
   );
 }

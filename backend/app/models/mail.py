@@ -114,3 +114,32 @@ class MailImageRule(TimestampMixin, Base):
     # sender | domain | all. With `all` the value stays empty.
     kind: Mapped[str] = mapped_column(String(10), nullable=False)
     value: Mapped[str] = mapped_column(String(320), default="")
+
+
+class MailUnsubscribe(TimestampMixin, Base):
+    """A subscription one has got out of, and how.
+
+    Two reasons for writing it down. The first is the list: a newsletter one has unsubscribed
+    from keeps its old mails in the folder, so it would go on turning up in the overview for
+    months as if nothing had happened. The second is the receipt: unsubscribing is a request,
+    not a switch. Whoever still gets mail from them four weeks later wants to be able to say
+    when they asked and by which way, and against a list that keeps sending, that date is the
+    whole argument.
+    """
+    __tablename__ = "mail_unsubscribes"
+    __table_args__ = (UniqueConstraint("account_id", "key", name="uq_mail_unsubscribe"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("mail_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    # What groups the subscription: the list id where there is one, otherwise the sender.
+    key: Mapped[str] = mapped_column(String(320), nullable=False)
+    name: Mapped[str] = mapped_column(String(320), default="")
+    sender: Mapped[str] = mapped_column(String(320), default="")
+    list_id: Mapped[str] = mapped_column(String(320), default="")
+    # one_click | mail — the way that was actually taken, not the ones on offer.
+    way: Mapped[str] = mapped_column(String(20), default="")
+    # What the other side said. `HTTP 200`, or the address the mail went to.
+    detail: Mapped[str] = mapped_column(String(500), default="")

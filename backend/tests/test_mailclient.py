@@ -1227,3 +1227,97 @@ async def test_a_page_is_not_clicked_for_anybody(db, client):
                           json={"http": "https://shop.de/abmelden", "one_click": False})
     assert r.status_code == 200
     assert r.json() == {"done": False, "way": "link", "detail": "https://shop.de/abmelden"}
+
+
+# ── Abgemeldet, und was davon bleibt ────────────────────────────────────────
+
+async def test_an_unsubscribing_that_worked_is_written_down(db, client, monkeypatch):
+    """Unsubscribing is a request, not a switch. Whoever still gets mail four weeks later
+    wants to say when they asked and how."""
+    from app.services import newsletters
+
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+
+    async def worked(url):
+        return True, "HTTP 200"
+    monkeypatch.setattr(newsletters, "one_click", worked)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/newsletters/unsubscribe",
+                          headers=auth(anna),
+                          json={"http": "https://shop.de/u", "one_click": True,
+                                "key": "news@shop.de", "name": "Shop",
+                                "sender": "news@shop.de"})
+    assert r.json()["done"] is True
+
+    listing = (await client.get(f"/mailbox/accounts/{kid}/unsubscribes",
+                                 headers=auth(anna))).json()
+    assert len(listing) == 1
+    assert listing[0]["way"] == "one_click" and listing[0]["detail"] == "HTTP 200"
+    assert listing[0]["when"], "ohne Zeitpunkt ist der Eintrag als Beleg wertlos"
+
+
+async def test_a_failed_attempt_is_no_unsubscribing(db, client, monkeypatch):
+    """An entry for it would hide the subscription from the overview although it goes on
+    sending, and that is the one mistake this must not make."""
+    from app.services import newsletters
+
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+
+    async def gonewrong(url):
+        return False, "HTTP 500"
+    monkeypatch.setattr(newsletters, "one_click", gonewrong)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/newsletters/unsubscribe",
+                          headers=auth(anna),
+                          json={"http": "https://shop.de/u", "one_click": True,
+                                "key": "news@shop.de"})
+    assert r.json()["done"] is False
+    assert (await client.get(f"/mailbox/accounts/{kid}/unsubscribes",
+                             headers=auth(anna))).json() == []
+
+
+async def test_what_is_unsubscribed_leaves_the_overview(db, client, monkeypatch):
+    import datetime as dt
+
+    from app.services import newsletters
+
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+
+    fake = _NewsIMAP({
+        1: _newsletter_head("Shop <news@shop.de>", "<mailto:stop@shop.de>"),
+        2: _newsletter_head("Verein <post@verein.de>", "<mailto:stop@verein.de>"),
+    }, {1: dt.datetime(2026, 1, 1), 2: dt.datetime(2026, 1, 2)})
+    monkeypatch.setattr(newsletters, "_imap", _fake_imap_maker(fake))
+
+    before = (await client.get(f"/mailbox/accounts/{kid}/newsletters",
+                                headers=auth(anna))).json()
+    assert len(before["newsletters"]) == 2
+
+    async def sent(account, ident, fields):
+        return None
+    monkeypatch.setattr(mailbox, "send", sent)
+    await client.post(f"/mailbox/accounts/{kid}/identities", headers=auth(anna),
+                      json={"email": "ich@example.org", "is_default": True})
+    await client.post(f"/mailbox/accounts/{kid}/newsletters/unsubscribe", headers=auth(anna),
+                      json={"mailto": "mailto:stop@shop.de", "key": "news@shop.de",
+                            "name": "Shop"})
+
+    after = (await client.get(f"/mailbox/accounts/{kid}/newsletters",
+                               headers=auth(anna))).json()
+    assert [n["key"] for n in after["newsletters"]] == ["post@verein.de"]
+    assert after["unsubscribed"] == 1
+
+    # Und zurück in die Übersicht, wenn die Liste weitersendet.
+    entry = (await client.get(f"/mailbox/accounts/{kid}/unsubscribes",
+                               headers=auth(anna))).json()[0]
+    await client.delete(f"/mailbox/accounts/{kid}/unsubscribes/{entry['id']}",
+                        headers=auth(anna))
+    back = (await client.get(f"/mailbox/accounts/{kid}/newsletters",
+                              headers=auth(anna))).json()
+    assert len(back["newsletters"]) == 2

@@ -2952,5 +2952,13 @@
   "mail.by_last": "Last",
   "mail.loading_more": "Loading more…",
   "mail.scroll_for_more": "Scroll on for more",
-  "mail.all_loaded": "All {n} loaded"
+  "mail.all_loaded": "All {n} loaded",
+  "mail.subs_open": "Subscriptions",
+  "mail.subs_gone": "Unsubscribed",
+  "mail.nothing_unsubscribed_yet": "Nothing unsubscribed yet.",
+  "mail.way_mail": "by mail",
+  "mail.way_click": "one click",
+  "mail.way_mail_hint": "An unsubscribe went from this mailbox to the list.",
+  "mail.way_click_hint": "One click under RFC 8058, and the server confirmed.",
+  "mail.show_again": "Show again"
 }
