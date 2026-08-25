@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, fetchFile } from "../api";
 import { usePageChrome } from "../pageChrome";
+import { toast } from "../toast";
 import { useAuth } from "../auth";
 import { formatDateTime } from "../lib/formatTime";
 import { AccountDialog, type MailAccount, type MailIdentity } from "../components/MailAccountsPanel";
@@ -147,9 +148,6 @@ export default function Mail() {
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<"folder" | "all">("folder");
   const [err, setErr] = useState("");
-  // What a folder command did. It stands until the next one, because "127 into the trash" is
-  // exactly the sentence one wants to read again a moment later.
-  const [notice, setNotice] = useState("");
   const [compose, setCompose] = useState<null | Record<string, string>>(null);
   const [settings, setSettings] = useState<MailAccount | null>(null);
   // The selection belongs to the page, not to the list: the handles above it and the folder
@@ -226,7 +224,6 @@ export default function Mail() {
     // three scrolling areas on a phone screen would be three windows into a keyhole.
     <div className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto sm:overflow-hidden">
       <Errorrow text={err} />
-      {notice && <div className="shrink-0 text-xs text-green-400">{notice}</div>}
 
       {/* Three columns from `xl` on, as in every mail program: folders change rarely, the list
           often, the message with every click. Below that the reading pane takes the place of
@@ -303,7 +300,7 @@ export default function Mail() {
           folder={command.folder} kind={command.kind} onClose={() => setCommand(null)}
           onGone={() => { setCommand(null); go(command.accountId, "INBOX"); }}
           onEmptied={() => { setUid(null); setChosen([]); }}
-          onDone={setNotice} onError={setErr} />
+          onDone={toast} onError={setErr} />
       )}
       {papers && (
         <NewsletterOverview account={papers} onClose={() => setPapers(null)} onError={setErr}
@@ -650,7 +647,9 @@ function FolderCommands({ accountId, account, folder: folder, kind, onClose, onG
     mutationFn: () => api.post<{ marked: number }>(
       `/mailbox/accounts/${accountId}/folders/read-all`, { folder: folder.name }),
     onSuccess: (r) => {
-      onDone(r.marked ? tr("mail.marked_read_n", { n: r.marked }) : tr("mail.nothing_unread"));
+      onDone(!r.marked ? tr("mail.nothing_unread")
+        : r.marked === 1 ? tr("mail.marked_read_one")
+        : tr("mail.marked_read_n", { n: r.marked }));
       refresh();
       onClose();
     },
@@ -1567,7 +1566,6 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   const [headOpen, setHeadOpen] = useState(false);
   const [asking, setAsking] = useState(false);
   const qc = useQueryClient();
-  const [run, setRun] = useState("");
   const [view, setView] = useState<"html" | "text">("html");
   const basis = `/mailbox/accounts/${accountId}/messages/${uid}`;
   const { data: m, error } = useQuery({
@@ -1651,8 +1649,8 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     // One run per file: the message says how many were started, not which. The details
     // stand in the flows, and twenty numbers here would be no news but a wall.
     onSuccess: (r) => {
-      setRun((r.runs?.length || 1) > 1 ? tr("mail.runs_started", { n: r.runs.length })
-                                        : tr("mail.run_started", { id: r.instance_id }));
+      toast((r.runs?.length || 1) > 1 ? tr("mail.runs_started", { n: r.runs.length })
+                                       : tr("mail.run_started", { id: r.instance_id }));
       // Damit der Knopf sofort weiß, dass er getan hat, was er tun sollte.
       qc.invalidateQueries({ queryKey: ["mail-message"] });
     },
@@ -2005,7 +2003,6 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               })}
             </div>
           )}
-          {run && <div className="text-xs text-green-400">{run}</div>}
         </>
       )}
 

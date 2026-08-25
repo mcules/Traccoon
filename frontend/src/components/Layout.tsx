@@ -10,6 +10,7 @@ import { pluginNav, usePlugins } from "../plugins";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
 import UpdateFooter from "./UpdateFooter";
+import { Toasts } from "../toast";
 
 // Project title (name plus subtitle), at the same time a quick switcher. On project pages it
 // shows the current project; otherwise a compact "projects ▾". A click opens the project list.
@@ -356,6 +357,8 @@ export default function Layout({ children }: { children: ReactNode }) {
         </main>
         <UpdateFooter />
       </div>
+      {/* Once for the whole app: a short message belongs over everything and to no page. */}
+      <Toasts />
     </div>
   );
 }

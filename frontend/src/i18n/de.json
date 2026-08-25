@@ -2967,5 +2967,6 @@
   "mail.one_attachment": "1 Anhang",
   "mail.ran_already": "„{name}“ lief am {date} (Vorgang {id}). Ein zweiter Lauf legt ein zweites Dokument an.",
   "mail.open_in": "In {system} öffnen",
-  "mail.filed_at": "Liegt seit {date} in {system}."
+  "mail.filed_at": "Liegt seit {date} in {system}.",
+  "mail.marked_read_one": "1 Nachricht als gelesen markiert"
 }
