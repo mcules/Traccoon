@@ -308,11 +308,15 @@ export default function Layout({ children }: { children: ReactNode }) {
     : (loc.pathname === t.to || current === t.to);
   const onProjectPage = /^\/projects\//.test(loc.pathname);
   const sideways = chrome.layout === "side" && chrome.tabs.length > 0;
+  // A wide page gets the window instead of the reading column, and with it a frame that ends
+  // at the lower edge: it scrolls inside itself. Everything else keeps the page that grows
+  // downwards, which is right for a list one reads through.
+  const wide = !!chrome.wide;
 
   return (
-    <div className="flex min-h-full">
+    <div className={`flex ${wide ? "h-full" : "min-h-full"}`}>
       <AreaRail />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className={`flex min-w-0 flex-1 flex-col ${wide ? "min-h-0" : ""}`}>
         <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
           {/* On the left: the menu (on mobile) plus project title/switcher or page title */}
           <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
@@ -336,7 +340,8 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </header>
         {/* [&>*]:mx-auto centres bounded page columns; full width stays untouched. */}
-        <main className="mx-auto w-full max-w-[1400px] flex-1 p-3 [&>*]:mx-auto sm:p-5">
+        <main className={`mx-auto w-full flex-1 p-3 [&>*]:mx-auto sm:p-5 ${
+          wide ? "flex min-h-0 flex-col overflow-hidden" : "max-w-[1400px]"}`}>
           {sideways ? (
             <div className="flex flex-col gap-4 md:flex-row md:gap-6">
               <PagesNavigation tabs={chrome.tabs} active={isActive} sideways />

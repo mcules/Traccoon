@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { tr } from "../i18n";
 
 /**
@@ -362,12 +362,18 @@ export function ListRow({ columns, dimmed = false, warning = false, dense = fals
  * its list into a card, the next left it loose on the page, a third invented its own heading.
  * From a step away that reads as five pages instead of one.
  */
-export function Area({ title: title, subtitle, hint: hint, tools: tools, children }: {
+export function Area({ title: title, subtitle, hint: hint, tools: tools, fills = false,
+                      children }: {
   title?: ReactNode; subtitle?: ReactNode; hint?: ReactNode; tools?: ReactNode;
+  /** The card fills the height it is given, and what does not fit scrolls INSIDE it.
+   *  For a page built of columns beside each other (the mailbox): without this the frame
+   *  scrolls away with the content and the heading of a list leaves through the top edge. */
+  fills?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-3 rounded-lg border border-line bg-card p-4">
+    <div className={`rounded-lg border border-line bg-card p-4 ${
+      fills ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-3"}`}>
       {title && (
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-sm font-semibold text-ink">{title}</span>
@@ -378,7 +384,7 @@ export function Area({ title: title, subtitle, hint: hint, tools: tools, childre
       {tools && (
         <div className="flex flex-wrap items-center gap-3 text-sm">{tools}</div>
       )}
-      {children}
+      {fills ? <div className="min-h-0 flex-1 overflow-y-auto">{children}</div> : children}
     </div>
   );
 }
@@ -506,4 +512,102 @@ export function Errorrow({ text }: { text: string }) {
       {text}
     </div>
   );
+}
+
+
+/**
+ * A small menu that hangs off a button.
+ *
+ * For the handles of an entry that are needed rarely and would otherwise stand in every row:
+ * a folder is clicked twenty times a day and emptied twice a year, and a delete button beside
+ * every one of thirty folders is thirty chances to hit the wrong thing.
+ *
+ * Deliberately not on the right mouse button: a web page that swallows the browser menu
+ * surprises people, and on a phone there is no right button at all. The sign is visible
+ * instead, and where a row has a hover state it may keep quiet until then (`quiet`).
+ */
+export function Menu({ title: title, sign = "⋯", quiet = false, children }: {
+  title: string; sign?: string; quiet?: boolean; children: (close: () => void) => ReactNode;
+}) {
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const WIDTH = 224;      // w-56, needed as a number to keep the menu inside the window
+
+  /**
+   * The menu hangs off the window, not off the row.
+   *
+   * `absolute` would be the obvious way and it was the wrong one: the column it stands in
+   * scrolls, and a scrolling box cuts off everything that reaches out of it. The menu was
+   * sliced down the middle, half of every label gone. `fixed` with the measured position of
+   * the button knows no such edge.
+   */
+  const open = () => {
+    const box = button.current?.getBoundingClientRect();
+    if (!box) return;
+    const top = window.innerHeight - box.bottom < 280 ? box.top - 272 : box.bottom + 4;
+    setAt({ top: Math.max(8, top), left: Math.min(Math.max(8, box.right - WIDTH),
+                                                  window.innerWidth - WIDTH - 8) });
+  };
+  // Scrolling moves the row and would leave the menu standing somewhere in the picture.
+  useEffect(() => {
+    if (!at) return;
+    const zu = () => setAt(null);
+    window.addEventListener("scroll", zu, true);
+    window.addEventListener("resize", zu);
+    return () => {
+      window.removeEventListener("scroll", zu, true);
+      window.removeEventListener("resize", zu);
+    };
+  }, [at]);
+
+  return (
+    <>
+      <button ref={button}
+        onClick={(e) => { e.stopPropagation(); at ? setAt(null) : open(); }}
+        title={title} aria-label={title}
+        // Quiet means quiet where there is a pointer. On a touch screen there is no hover, and
+        // a sign that only appears on hovering is a sign that does not exist there.
+        className={`shrink-0 rounded px-1.5 text-muted transition-colors hover:bg-surface
+          hover:text-ink ${quiet && !at
+            ? "sm:opacity-0 sm:focus:opacity-100 sm:group-hover:opacity-100" : ""}`}
+      >
+        {sign}
+      </button>
+      {at && (
+        <>
+          {/* The surface that catches the next click, wherever it lands. Without it a menu
+              stays open behind the page one has moved on to. */}
+          <div className="fixed inset-0 z-40"
+               onClick={(e) => { e.stopPropagation(); setAt(null); }} />
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ top: at.top, left: at.left, width: WIDTH }}
+            className="fixed z-50 rounded-lg border border-line bg-card p-1 text-sm shadow-2xl">
+            {children(() => setAt(null))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** One line of a `Menu`. Switched off it says why, it does not disappear: a handle that is
+ *  missing looks like one that does not exist. */
+export function MenuItem({ onClick, disabled = false, danger = false, title: title, children }: {
+  onClick: () => void; disabled?: boolean; danger?: boolean; title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button type="button" disabled={disabled} title={title}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={`block w-full rounded px-2 py-1.5 text-left transition-colors ${
+        disabled ? "cursor-not-allowed text-muted/60"
+          : danger ? "text-red-400 hover:bg-red-500/10" : "text-ink hover:bg-surface"}`}>
+      {children}
+    </button>
+  );
+}
+
+/** The line between two groups of a menu. */
+export function MenuLine() {
+  return <div className="my-1 border-t border-line" />;
 }

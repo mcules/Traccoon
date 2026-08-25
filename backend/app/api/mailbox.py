@@ -600,6 +600,41 @@ async def delete(kid: int, uid: int, data: HandgripIn,
     await cache.invalidate(account.id)
 
 
+class BulkIn(BaseModel):
+    folder: str = "INBOX"
+    uids: list[int] = []
+    action: str                       # flag | archive | move | delete
+    target: str = ""                  # bei move
+    flag: str = "\\Seen"               # bei flag
+    on: bool = True
+
+
+@router.post("/accounts/{kid}/messages/bulk")
+async def bulk(kid: int, data: BulkIn, user: User = Depends(get_current_user),
+                db: AsyncSession = Depends(get_session)):
+    """The same handle over several messages at once.
+
+    A selection of thirty used to be thirty requests. The answer says how many it was and
+    where they went, because with a pattern archive that is not one folder but several, and
+    "127 into the trash" is different news from "127 gone".
+    """
+    account = await _account(db, kid, user)
+    if data.action not in ("flag", "archive", "move", "delete"):
+        raise Error(400, "err.unknown_action", "Unknown action '{name}'", name=data.action)
+    if not data.uids:
+        return {"done": 0, "action": data.action}
+    if data.action == "move" and not data.target:
+        raise Error(400, "err.no_target_folder", "No target folder")
+    if data.action == "archive" and account.archive_mode != "pattern" \
+            and not account.folder_archive:
+        raise Error(400, "err.no_archive_folder",
+                     "This account has no archive folder configured")
+    result = await mailbox.bulk(account, data.folder, data.uids, data.action,
+                                 target=data.target, flag=data.flag, on=data.on)
+    await cache.invalidate(account.id)
+    return result
+
+
 # ── Sending and drafts ──────────────────────────────────────────────────────
 
 class AttachmentIn(BaseModel):

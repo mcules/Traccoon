@@ -38,6 +38,10 @@ log = logging.getLogger("mailbox")
 # HTML part already has megabytes of base64 — nobody needs to read that.
 MAX_TEXT = 200_000
 
+# How many messages go into one command. A folder with ten thousand mails would otherwise
+# become a single line the server has to read in one piece, and some servers cut it off.
+BLOCK = 500
+
 
 def _join(account: MailAccount) -> IMAPClient:
     client = IMAPClient(account.imap_host, port=account.imap_port, ssl=account.imap_ssl,
@@ -518,16 +522,53 @@ def _flag_sync(account: MailAccount, folder: str, uid: int, flag: str, an: bool)
             client.remove_flags([uid], [flag])
 
 
+def _separator(client) -> str:
+    """How this server nests folders. Asked of the server, never guessed."""
+    for _flags, raw, _name in client.list_folders():
+        if raw:
+            return raw.decode() if isinstance(raw, bytes) else raw
+    return "/"
+
+
+def _sure_folder(client, name: str) -> None:
+    """Create the folder if it is missing, and subscribe to it.
+
+    Without this a yearly archive would break exactly once a year, on the first of January.
+    """
+    if client.folder_exists(name):
+        return
+    client.create_folder(name)
+    try:
+        client.subscribe_folder(name)
+    except Exception:  # noqa: BLE001 (not every server knows subscriptions)
+        log.debug("no subscription for %s", name)
+
+
+def _shift(client, uids: list[int], target: str) -> None:
+    """Move, in blocks, and with the old way where the server cannot MOVE."""
+    move = client.has_capability("MOVE")
+    for start in range(0, len(uids), BLOCK):
+        block = uids[start:start + BLOCK]
+        if move:
+            client.move(block, target)
+        else:
+            client.copy(block, target)
+            client.add_flags(block, [b"\\Deleted"])
+    if not move:
+        client.expunge()
+
+
+def _erase(client, uids: list[int]) -> None:
+    """Really gone. Meant for the trash, and for whatever one empties there."""
+    for start in range(0, len(uids), BLOCK):
+        client.add_flags(uids[start:start + BLOCK], [b"\\Deleted"])
+    client.expunge()
+
+
 def _move_sync(account: MailAccount, folder: str, uid: int, target: str) -> None:
     with _imap(account) as client:
         client.select_folder(folder)
-        # MOVE where the server can do it; otherwise the old way (copy, delete, clean up).
-        if client.has_capability("MOVE"):
-            client.move([uid], target)
-        else:
-            client.copy([uid], target)
-            client.add_flags([uid], [b"\\Deleted"])
-            client.expunge()
+        _shift(client, [uid], target)
 
 
 # What may appear in an archive pattern. Deliberately spelled out: everyone reads `{year}`,
@@ -591,19 +632,24 @@ def archive_target(account: MailAccount, message_date, sender: str = "",
 
 
 def _archive_sync(account: MailAccount, folder: str, uid: int) -> str:
-    """Archives and creates the target folder if it does not exist yet.
-
-    Without the creation a yearly archive would be broken exactly once a year — on the first
-    im Januar.
-    """
+    """Archive one message and say where it ended up."""
     with _imap(account) as client:
-        separator = "/"
-        for _flags, raw_separator, _name in client.list_folders():
-            if raw_separator:
-                separator = raw_separator.decode() if isinstance(raw_separator, bytes) else raw_separator
-                break
         client.select_folder(folder)
-        entry = (client.fetch([uid], ["ENVELOPE", "INTERNALDATE"]) or {}).get(uid) or {}
+        return _to_archive(client, account, [uid])[uid]
+
+
+def _archive_goals(client, account: MailAccount, uids: list[int]) -> dict[int, str]:
+    """Which archive folder each of these messages belongs in.
+
+    With a fixed folder that is one answer for all of them. With a pattern every message
+    brings its own: an invoice from 2023 goes into the year 2023, even when it is archived in
+    2026, which is exactly the point of the pattern.
+    """
+    separator = _separator(client)
+    raw = client.fetch(uids, ["ENVELOPE", "INTERNALDATE"]) or {}
+    goals = {}
+    for uid in uids:
+        entry = raw.get(uid) or {}
         envelope = entry.get(b"ENVELOPE")
         sender = ""
         if envelope is not None and envelope.from_:
@@ -611,21 +657,23 @@ def _archive_sync(account: MailAccount, folder: str, uid: int) -> str:
             sender = f"{(first.mailbox or b'').decode()}@{(first.host or b'').decode()}"
         when = (envelope.date if envelope is not None and envelope.date
                 else entry.get(b"INTERNALDATE"))
+        goals[uid] = archive_target(account, when, sender, separator)
+    return goals
 
-        target = archive_target(account, when, sender, separator)
-        if not client.folder_exists(target):
-            client.create_folder(target)
-            try:
-                client.subscribe_folder(target)
-            except Exception:  # noqa: BLE001 (not every server knows subscriptions)
-                log.debug("no subscription for %s", target)
-        if client.has_capability("MOVE"):
-            client.move([uid], target)
-        else:
-            client.copy([uid], target)
-            client.add_flags([uid], [b"\\Deleted"])
-            client.expunge()
-        return target
+
+def _to_archive(client, account: MailAccount, uids: list[int]) -> dict[int, str]:
+    """Archive these messages and say where each one ended up.
+
+    Grouped by target: thirty mails from three years are three MOVE commands, not thirty.
+    """
+    goals = _archive_goals(client, account, uids)
+    together: dict[str, list[int]] = {}
+    for uid, target in goals.items():
+        together.setdefault(target, []).append(uid)
+    for target, block in together.items():
+        _sure_folder(client, target)
+        _shift(client, block, target)
+    return goals
 
 
 def _unread_sync(account: MailAccount, folder: str = "INBOX") -> int:
@@ -662,11 +710,6 @@ def _folder_delete_sync(account: MailAccount, folder: str) -> None:
         client.delete_folder(folder)
 
 
-# How many messages go into one command. A folder with ten thousand mails would otherwise
-# become a single line the server has to read in one piece, and some servers cut it off.
-BLOCK = 500
-
-
 def _folder_empty_sync(account: MailAccount, folder: str, trash: str) -> dict:
     """Empty the folder: everything in it goes, the folder itself stays.
 
@@ -679,20 +722,11 @@ def _folder_empty_sync(account: MailAccount, folder: str, trash: str) -> dict:
         uids = client.search(["ALL"])
         if not uids:
             return {"deleted": 0, "target": ""}
-        final = not trash or folder == trash
-        move = client.has_capability("MOVE")
-        for start in range(0, len(uids), BLOCK):
-            block = uids[start:start + BLOCK]
-            if final:
-                client.add_flags(block, [b"\\Deleted"])
-            elif move:
-                client.move(block, trash)
-            else:
-                client.copy(block, trash)
-                client.add_flags(block, [b"\\Deleted"])
-        if final or not move:
-            client.expunge()
-        return {"deleted": len(uids), "target": "" if final else trash}
+        if not trash or folder == trash:
+            _erase(client, uids)
+            return {"deleted": len(uids), "target": ""}
+        _shift(client, uids, trash)
+        return {"deleted": len(uids), "target": trash}
 
 
 def _folder_create_sync(account: MailAccount, name: str) -> None:
@@ -722,12 +756,53 @@ def _folder_rename_sync(account: MailAccount, folder: str, target: str) -> None:
 
 
 def _final_sync(account: MailAccount, folder: str, uid: int) -> None:
-    """Really gone. Meant for the trash only — everywhere else things are moved so that a
+    """Really gone. Meant for the trash only: everywhere else things are moved so that a
     misgrab stays a movement and not a loss."""
     with _imap(account) as client:
         client.select_folder(folder)
-        client.add_flags([uid], [b"\\Deleted"])
-        client.expunge()
+        _erase(client, [uid])
+
+
+def _bulk_sync(account: MailAccount, folder: str, uids: list[int], action: str,
+                target: str = "", flag: str = "", on: bool = True) -> dict:
+    """The same handle over many messages, in one connection.
+
+    Thirty selected mails used to be thirty requests, each with its own IMAP round trip and
+    its own cache invalidation, and the list redrew itself thirty times while they came back
+    in whatever order they liked. Here it is one command per block, and one answer.
+
+    `delete` follows the rule of the single message: into the trash, and only there (or
+    without one) really gone.
+    """
+    if not uids:
+        return {"done": 0, "action": action}
+    with _imap(account) as client:
+        client.select_folder(folder)
+        if action == "flag":
+            marker = [flag.encode()]
+            for start in range(0, len(uids), BLOCK):
+                block = uids[start:start + BLOCK]
+                if on:
+                    client.add_flags(block, marker)
+                else:
+                    client.remove_flags(block, marker)
+            return {"done": len(uids), "action": action}
+        if action == "archive":
+            goals = _to_archive(client, account, uids)
+            return {"done": len(uids), "action": action,
+                    "targets": sorted(set(goals.values()))}
+        if action == "move":
+            _sure_folder(client, target)
+            _shift(client, uids, target)
+            return {"done": len(uids), "action": action, "target": target}
+        if action == "delete":
+            trash = account.folder_trash
+            if not trash or folder == trash:
+                _erase(client, uids)
+                return {"done": len(uids), "action": action, "target": ""}
+            _shift(client, uids, trash)
+            return {"done": len(uids), "action": action, "target": trash}
+        raise ValueError(f"unknown action {action!r}")
 
 
 def _draft_sync(account: MailAccount, raw: bytes) -> None:
@@ -896,6 +971,12 @@ async def archive(account: MailAccount, folder_name: str, uid: int) -> str:
 
 async def final_delete(account: MailAccount, folder_name: str, uid: int) -> None:
     await asyncio.to_thread(_final_sync, account, folder_name, uid)
+
+
+async def bulk(account: MailAccount, folder_name: str, uids: list[int], action: str,
+                target: str = "", flag: str = "", on: bool = True) -> dict:
+    return await asyncio.to_thread(_bulk_sync, account, folder_name, uids, action,
+                                    target, flag, on)
 
 
 async def draft_save(account: MailAccount, identity: MailIdentity,

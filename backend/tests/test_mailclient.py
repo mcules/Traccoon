@@ -551,6 +551,9 @@ class _FakeIMAP:
         self.created: list[str] = []
         self.renamed: list[tuple[str, str]] = []
         self.subscribed: list[str] = []
+        self.unflagged: list[tuple[list[int], list]] = []
+        self.there: set[str] = {"INBOX"}
+        self.envelopes: dict[int, dict] = {}
 
     def select_folder(self, name, readonly=False):
         self.selected = name
@@ -581,6 +584,18 @@ class _FakeIMAP:
 
     def subscribe_folder(self, name):
         self.subscribed.append(name)
+
+    def remove_flags(self, uids, flags):
+        self.unflagged.append((list(uids), list(flags)))
+
+    def folder_exists(self, name):
+        return name in self.there
+
+    def list_folders(self):
+        return [([], b".", "INBOX")]
+
+    def fetch(self, uids, what):
+        return {uid: self.envelopes.get(uid, {}) for uid in uids}
 
 
 def _fake_imap(monkeypatch, client) -> None:
@@ -821,3 +836,85 @@ async def test_a_mail_that_is_one_picture_stays_html():
 
     assert has_content('<div><img data-fern="https://example.org/a.png"></div>')
     assert has_content("<p>Guten Tag</p>")
+
+
+# ── Mehrere Nachrichten auf einmal ──────────────────────────────────────────
+
+async def test_a_selection_is_one_command_not_thirty(monkeypatch):
+    """Thirty ticked mails used to be thirty requests, each with its own round trip."""
+    fake = _FakeIMAP([])
+    _fake_imap(monkeypatch, fake)
+    account = MailAccount(name="p", folder_trash="Papierkorb")
+
+    result = mailbox._bulk_sync(account, "INBOX", [1, 2, 3], "delete")
+
+    assert result == {"done": 3, "action": "delete", "target": "Papierkorb"}
+    assert fake.moved == [([1, 2, 3], "Papierkorb")]
+
+
+async def test_deleting_in_the_trash_is_final_here_too(monkeypatch):
+    fake = _FakeIMAP([])
+    _fake_imap(monkeypatch, fake)
+    account = MailAccount(name="p", folder_trash="Papierkorb")
+
+    result = mailbox._bulk_sync(account, "Papierkorb", [4, 5], "delete")
+
+    assert result["target"] == ""
+    assert fake.flagged == [([4, 5], [b"\\Deleted"])] and fake.expunged
+
+
+async def test_marking_many_read_and_unread(monkeypatch):
+    fake = _FakeIMAP([])
+    _fake_imap(monkeypatch, fake)
+
+    mailbox._bulk_sync(MailAccount(name="p"), "INBOX", [1, 2], "flag", flag="\\Seen", on=True)
+    mailbox._bulk_sync(MailAccount(name="p"), "INBOX", [3], "flag", flag="\\Seen", on=False)
+
+    assert fake.flagged == [([1, 2], [b"\\Seen"])]
+    assert fake.unflagged == [([3], [b"\\Seen"])]
+
+
+async def test_archiving_many_groups_by_year(monkeypatch):
+    """A pattern archive gives every message its own target. Thirty mails from three years
+    are three MOVE commands, not thirty."""
+    import datetime as dt
+
+    fake = _FakeIMAP([])
+    fake.envelopes = {
+        1: {b"INTERNALDATE": dt.datetime(2024, 3, 1)},
+        2: {b"INTERNALDATE": dt.datetime(2024, 7, 1)},
+        3: {b"INTERNALDATE": dt.datetime(2026, 1, 5)},
+    }
+    _fake_imap(monkeypatch, fake)
+    account = MailAccount(name="p", archive_mode="pattern", archive_pattern="Archiv/{year}",
+                          folder_archive="Archiv")
+
+    result = mailbox._bulk_sync(account, "INBOX", [1, 2, 3], "archive")
+
+    assert result["targets"] == ["Archiv.2024", "Archiv.2026"]
+    assert sorted(fake.moved) == [([1, 2], "Archiv.2024"), ([3], "Archiv.2026")]
+    assert sorted(fake.created) == ["Archiv.2024", "Archiv.2026"]
+
+
+async def test_an_empty_selection_asks_the_mailbox_nothing(db, client, monkeypatch):
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+
+    async def never(*a, **k):
+        raise AssertionError("das Postfach hatte hier nichts zu tun")
+    monkeypatch.setattr(mailbox, "bulk", never)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/messages/bulk", headers=auth(anna),
+                          json={"folder": "INBOX", "uids": [], "action": "delete"})
+    assert r.status_code == 200 and r.json()["done"] == 0
+
+
+async def test_an_unknown_action_is_refused(db, client):
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+
+    r = await client.post(f"/mailbox/accounts/{kid}/messages/bulk", headers=auth(anna),
+                          json={"uids": [1], "action": "verbrennen"})
+    assert r.status_code == 400
