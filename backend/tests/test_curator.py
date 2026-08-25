@@ -13,7 +13,7 @@ from conftest import make_user
 
 # Long enough for tidying up to be worth it at all (MINDEST_ZEICHEN), and this is what real
 # memory notes look like: one sentence per line, not two words.
-NOTE = "\n".join(f"- Erkenntnis {i}: Der Mensch möchte das dauerhaft so gehandhabt wissen."
+NOTE = "\n".join(f"- Insight {i}: the person wants this handled that way for good."
                   for i in range(40))
 PATH = "KI/Gedaechtnis/Mensch.md"
 
@@ -57,7 +57,7 @@ def test_answer_split():
     assert b == "- eins\n- zwei" and a == "- alt"
     assert _parts("### KEEP\n- eins\n### ARCHIVE\nnone")[1] == ""
     assert _parts("kein Format") is None
-    assert _parts("### KEEP\n\n### ARCHIVE\n- alles weg") is None   # nichts behalten
+    assert _parts("### KEEP\n\n### ARCHIVE\n- everything gone") is None   # nothing kept
 
 
 async def test_a_short_note_is_left_alone(db, monkeypatch):

@@ -32,7 +32,7 @@ async def test_the_password_never_comes_back(db, client):
     assert r.status_code == 201, r.text
     data = r.json()
     assert data["imap_password_set"] is True and data["smtp_password_set"] is True
-    assert "geheim" not in r.text, "das Kennwort darf die Oberfläche nie erreichen"
+    assert "geheim" not in r.text, "the password must never reach the interface"
 
     # And in the database it does not stand in the clear.
     account = (await db.execute(select(MailAccount))).scalars().one()
@@ -94,7 +94,7 @@ async def test_the_action_starts_a_flow_with_the_mail_in_the_context(db, client,
                                  "content_type": "application/pdf", "size": 1234}]}
     monkeypatch.setattr(mailbox, "message", fake_message)
 
-    d = WorkflowDefinition(project_id=None, key="anhang-paperless", name="Anhang nach Paperless",
+    d = WorkflowDefinition(project_id=None, key="anhang-paperless", name="Attachment to the archive",
                            created_by=anna.id, subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
     await db.flush()
@@ -632,7 +632,7 @@ async def test_emptying_moves_into_the_trash(monkeypatch):
 
     assert result == {"deleted": 3, "target": "Papierkorb"}
     assert fake.moved == [([1, 2, 3], "Papierkorb")]
-    assert not fake.flagged, "verschoben wird verschoben, nicht zusätzlich gelöscht"
+    assert not fake.flagged, "moved is moved, not deleted on top of it"
 
 
 async def test_emptying_the_trash_is_final(monkeypatch):
@@ -720,7 +720,7 @@ async def test_renaming_keeps_the_folder_where_it_hangs(db, client, monkeypatch)
     assert r.status_code == 200, r.text
     assert renamed == [("INBOX.Archiv", "INBOX.Ablage")]
 
-    # Mit `parent` ist dasselbe Kommando auch der Umzug.
+    # With `parent` the same command is the move as well.
     r = await client.post(f"/mailbox/accounts/{kid}/folders/rename", headers=auth(anna),
                           json={"folder": "INBOX.Archiv", "name": "Archiv", "parent": ""})
     assert r.status_code == 200, r.text
@@ -917,7 +917,7 @@ async def test_an_empty_selection_asks_the_mailbox_nothing(db, client, monkeypat
                              json=_account())).json()["id"]
 
     async def never(*a, **k):
-        raise AssertionError("das Postfach hatte hier nichts zu tun")
+        raise AssertionError("the mailbox had nothing to do here")
     monkeypatch.setattr(mailbox, "bulk", never)
 
     r = await client.post(f"/mailbox/accounts/{kid}/messages/bulk", headers=auth(anna),
@@ -935,10 +935,10 @@ async def test_an_unknown_action_is_refused(db, client):
     assert r.status_code == 400
 
 
-# ── Suche über das ganze Postfach ───────────────────────────────────────────
+# ── Search across the whole mailbox ─────────────────────────────────────────
 
 class _SearchIMAP(_FakeIMAP):
-    """Ein Postfach mit mehreren Ordnern, von denen zwei etwas finden."""
+    """A mailbox with several folders, two of which find something."""
 
     def __init__(self, hits: dict[str, list[int]], dates: dict[int, object]):
         super().__init__([])
@@ -969,10 +969,10 @@ async def test_the_search_across_the_mailbox_asks_every_folder(monkeypatch):
 
     result = mailbox._search_all_sync(MailAccount(name="p"), "Rechnung", 0, 50)
 
-    # Der Container-Ordner ist keiner: \\Noselect wird übersprungen.
+    # The container folder is not one: \\Noselect is skipped.
     assert fake.searched == ["INBOX", "Archiv", "Papierkorb"]
     assert result["total"] == 3
-    # Nach Datum sortiert, ordnerübergreifend, und jeder Treffer weiß, wo er liegt.
+    # Sorted by date across folders, and every hit knows where it lies.
     assert [(m["folder"], m["uid"]) for m in result["messages"]] == [
         ("Archiv", 3), ("INBOX", 1), ("Archiv", 2)]
 
@@ -1013,7 +1013,7 @@ async def test_a_folder_that_refuses_does_not_end_the_search(monkeypatch):
     assert result["total"] == 2
 
 
-# ── Was von einer fremden Mail übrig bleibt ─────────────────────────────────
+# ── What is left of a foreign mail ──────────────────────────────────────────
 
 async def test_a_style_block_survives_the_cleaning():
     """Half the senders put their table widths in a `<style>` block. Without it the table is
@@ -1061,7 +1061,7 @@ async def test_a_counting_pixel_never_comes_back():
         '<img src="https://shop.example.org/logo.png" width="200" height="80">')
 
     assert counted == 1
-    assert "abc123" not in html, "das Zählpixel darf nirgends mehr stehen"
+    assert "abc123" not in html, "the tracking pixel must not stand anywhere any more"
     assert 'data-fern="https://shop.example.org/logo.png"' in html
     assert remote is True
 
@@ -1170,16 +1170,16 @@ async def test_only_what_says_it_is_a_newsletter_turns_up(monkeypatch):
 
     listing = newsletters._scan_sync(MailAccount(name="p"), ["INBOX"])
 
-    assert [e["key"] for e in listing] == ["news@shop.de"], "der Kollege ist kein Abo"
+    assert [e["key"] for e in listing] == ["news@shop.de"], "a colleague is not a subscription"
     only = listing[0]
-    # Zwei Mails desselben Absenders sind ein Abo, auch mit anderer Schreibweise.
+    # Two mails from the same sender are a subscription, spelling differences included.
     assert only["count"] == 2
-    # Der Weg hinaus kommt aus der NEUESTEN Mail: eine Adresse von vor drei Jahren ist tot.
+    # The way out comes from the NEWEST mail: an address from three years ago is dead.
     assert only["mailto"] == "mailto:stop@shop.de"
 
 
 async def test_a_list_id_beats_the_sender(monkeypatch):
-    """Ein Haus kann mehrere Listen von einer Adresse betreiben."""
+    """One house can run several lists from one address."""
     import datetime as dt
 
     from app.services import newsletters
@@ -1211,13 +1211,13 @@ async def test_one_click_is_recognised(monkeypatch):
     listing = {e["sender"]: e for e in newsletters._scan_sync(MailAccount(name="p"), ["INBOX"])}
     assert listing["a@x.de"]["one_click"] is True
     assert listing["a@x.de"]["http"] == "https://x.de/u"
-    # Ohne die Post-Zeile ist die Adresse eine Seite für Menschen, kein Knopf für uns.
+    # Without the post line the address is a page for people, not a button for us.
     assert listing["b@y.de"]["one_click"] is False
 
 
 async def test_a_page_is_not_clicked_for_anybody(db, client):
-    """Eine Abmeldeseite hat oft eine Bestätigung darauf. Die ungelesen zu drücken ist kein
-    Abmelden, das ist Raten."""
+    """An unsubscribe page often carries a confirmation. Pressing that unread is not
+    unsubscribing, it is guessing."""
     anna = await make_user(db, "anna")
     kid = (await client.post("/mailbox/accounts", headers=auth(anna),
                              json=_account())).json()["id"]
@@ -1229,7 +1229,7 @@ async def test_a_page_is_not_clicked_for_anybody(db, client):
     assert r.json() == {"done": False, "way": "link", "detail": "https://shop.de/abmelden"}
 
 
-# ── Abgemeldet, und was davon bleibt ────────────────────────────────────────
+# ── Unsubscribed, and what is left of it ────────────────────────────────────
 
 async def test_an_unsubscribing_that_worked_is_written_down(db, client, monkeypatch):
     """Unsubscribing is a request, not a switch. Whoever still gets mail four weeks later
@@ -1255,7 +1255,7 @@ async def test_an_unsubscribing_that_worked_is_written_down(db, client, monkeypa
                                  headers=auth(anna))).json()
     assert len(listing) == 1
     assert listing[0]["way"] == "one_click" and listing[0]["detail"] == "HTTP 200"
-    assert listing[0]["when"], "ohne Zeitpunkt ist der Eintrag als Beleg wertlos"
+    assert listing[0]["when"], "without a moment the entry is worthless as a record"
 
 
 async def test_a_failed_attempt_is_no_unsubscribing(db, client, monkeypatch):
@@ -1421,10 +1421,10 @@ async def test_a_carried_picture_is_no_remote_picture():
     assert remote is False
 
 
-# ── Was aus einem Anhang wurde ──────────────────────────────────────────────
+# ── What became of an attachment ────────────────────────────────────────────
 
 async def _leerer_ablauf(db, user) -> tuple[int, int]:
-    """Eine veroeffentlichte Definition mit einer Version, mehr braucht ein Lauf nicht."""
+    """A published definition with one version, a run needs no more."""
     d = WorkflowDefinition(project_id=None, key=f"melder-{user.id}", name="Melder",
                             created_by=user.id, subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
@@ -1437,7 +1437,7 @@ async def _leerer_ablauf(db, user) -> tuple[int, int]:
 
 
 def _knoten(params: dict) -> dict:
-    """Ein Ablauf-Knoten mit der Aktion `mail_document`, wie ihn der Editor baut."""
+    """A flow node with the action `mail_document`, the way the editor builds it."""
     return {"id": "melden", "type": "auto_action",
             "data": {"config": {"action": "mail_document", **params}}}
 
@@ -1469,7 +1469,7 @@ async def test_the_archive_reports_back_which_document_it_became(db, client, mon
     doc = (await db.execute(select(MailDocument))).scalars().one()
     assert (doc.uid, doc.attachment, doc.doc_id) == (42, 3, "3464")
 
-    # Und die Nachricht weiß es, ohne dass jemand nachfragen muss.
+    # And the message knows it without anybody having to ask.
     async def fake_message(account, folder, uid):
         return {"subject": "x", "from": [], "attachments": [
             {"index": 3, "filename": "rechnung.pdf", "content_type": "application/pdf",

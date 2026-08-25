@@ -76,7 +76,7 @@ async def test_all_four_formats_land_in_the_same_series(client, db):
         {"geometry": {"coordinates": [10.59, 50.11]}, "properties": {}}]})
     assert r.json()["accepted"] == 2
 
-    # Traccar/OsmAnd (GET, alles in der Adresse)
+    # Tracker payloads that come as a GET with everything in the address
     r = await client.get(f"/ingest/{tok}?id=handy&lat=50.12&lon=10.60&timestamp=1787227200")
     assert r.json()["accepted"] == 1
 

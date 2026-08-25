@@ -962,9 +962,9 @@ def _brands_mail(**over) -> dict:
     return payload
 
 
-# Die Marken stehen seit 2026-08-25 in den Einstellungen und nicht mehr im Code. Für die
-# Regel selbst reichen drei: geprüft wird, dass ein Name ohne passende Domain auffällt, nicht
-# wie lang die Liste ist.
+# The brand names live in the settings and not in the code any more. Three are enough for
+# the rule itself: what is checked is that a name without a matching domain stands out, not
+# how long the list is.
 _TESTMARKEN = frozenset({"bank", "sparkasse", "shop"})
 
 
@@ -1046,7 +1046,7 @@ async def test_an_identity_without_backing_needs_no_brand_list():
     res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" in res.signals
-    assert "marke_im_anzeigenamen" not in res.signals      # steht auf keiner Liste
+    assert "marke_im_anzeigenamen" not in res.signals      # stands on no list
     assert res.is_newsletter is False
 
 
@@ -1221,7 +1221,7 @@ async def test_ones_own_address_decides_nothing(db):
 
     score, reasons, safe = await spam_learn.rate(
         db, user.id, ["to:paypal@meine.domain"])
-    assert safe is False, "die eigene Adresse darf nichts allein entscheiden"
+    assert safe is False, "one's own address must not decide anything on its own"
 
 
 async def test_agreement_means_without_contradiction(db):
@@ -1255,7 +1255,7 @@ async def test_a_known_sender_against_a_fraud_suspicion_gets_asked(db):
 
     assert verdict["score"] < 1.0
     assert verdict["score"] >= verdict["frage_ab"], "gezeigt wird sie trotzdem"
-    assert verdict["settled"] is False, "nichts ist geklärt, solange man sich streitet"
+    assert verdict["settled"] is False, "nothing is settled while the voices disagree"
     assert any("wanted" in g for g in verdict["reasons"])
 
 

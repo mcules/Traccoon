@@ -33,10 +33,10 @@ BAD = "a\udcc5b"
 
 def test_the_scrub_produces_something_that_can_be_encoded():
     with pytest.raises(UnicodeEncodeError):
-        BAD.encode("utf-8")          # so steht der Fehler im Chat
+        BAD.encode("utf-8")          # this is how the error reaches the chat
 
     clean = scrub_surrogates(BAD)
-    assert clean.encode("utf-8")     # und so nicht mehr
+    assert clean.encode("utf-8")     # and this is how it does not any more
     # The evidence stays readable: whoever sees this in the log can recognise a mojibake
     # filename. `errors="ignore"` would have swallowed the byte without a trace.
     assert "\\udcc5" in clean and clean.startswith("a") and clean.endswith("b")
@@ -56,7 +56,7 @@ def test_the_watch_reports_once_per_source():
     assert watch._seen == {"fs_list"}
 
 
-# ── 2. Ein Werkzeug-Ergebnis reisst den Lauf nicht mehr ab ───────────────────
+# ── 2. A tool result does not tear the run down any more ────────────────────
 
 class _BadMcp:
     """An MCP server that answers with a filename in the wrong encoding."""

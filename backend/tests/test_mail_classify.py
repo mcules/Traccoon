@@ -84,7 +84,7 @@ def test_features_are_normalised_and_capped():
         *[{"kennung": f"weiteres_{i}", "text": "x"} for i in range(6)],
     ])
     assert aus[0] == {"kennung": "marke_fremde_domain", "text": "gibt sich als Bank aus"}
-    assert len(aus) == 5, "höchstens fünf, sonst listet das Modell statt zu urteilen"
+    assert len(aus) == 5, "five at most, otherwise the model lists instead of judging"
     assert all(k["kennung"] for k in aus)
 
 

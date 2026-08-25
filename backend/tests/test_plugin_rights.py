@@ -75,8 +75,8 @@ async def test_a_grant_applies_and_can_be_withdrawn(client, db):
 
 
 async def test_an_unrequested_right_cannot_be_granted(client, db):
-    """Otherwise the list in the manifest would be mere decoration: whoever ticks the box should have read
-    haben, wonach gefragt wurde."""
+    """Otherwise the list in the manifest would be mere decoration: whoever ticks the box
+    should have read what was asked for."""
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin)
 

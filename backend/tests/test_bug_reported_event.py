@@ -1,17 +1,16 @@
-"""Eine eingegangene Meldung ist ein Anlass, nicht nur eine Zeile.
+"""An incoming report is an occasion, not just a row.
 
-`create_report` legte die Meldung an und war fertig. Wer davon erfahren wollte, musste sich
-merken, in die Liste zu schauen — und genau das tut niemand zuverlässig. Jetzt meldet
-Traccoon `bug.reported`, und jeder Ablauf mit dem passenden Auslöser hängt sich dran: eine
-Nachricht aufs Telefon, sofort ein Ticket, eine Notiz im Vault.
+`create_report` created the report and was done. Whoever wanted to hear about it had to
+remember to look in the list, and nobody does that reliably. Now Traccoon emits
+`bug.reported`, and every flow with the matching trigger hangs itself on it: a message to a
+phone, a ticket straight away, a note in the vault.
 
-Zwei Dinge sind hier festgenagelt, weil sie sonst still kaputtgehen:
+Two things are pinned down here, because otherwise they break silently:
 
-1. **Das Ereignis kommt NACH dem Commit.** Der Ablauf startet sofort und liest die Meldung;
-   stünde das Ereignis davor, läse er eine Zeile, die es noch nicht gibt.
-2. **Ein kaputter Ablauf darf die Meldung nicht fressen.** Der Absender ist das Programm
-   eines Fremden und hat genau einen Versuch. Lieber ein Ablauf, der nicht läuft, als eine
-   Meldung, die niemand je gesehen hat.
+1. **The event comes AFTER the commit.** The flow starts at once and reads the report; if
+   the event stood before it, the flow would read a row that does not exist yet.
+2. **A broken flow must not eat the report.** The sender is somebody else's program and has
+   exactly one attempt. Better a flow that does not run than a report nobody ever saw.
 """
 import pytest
 from sqlalchemy import select
@@ -35,7 +34,7 @@ async def _source(db, *, project=None) -> BugSource:
 
 
 async def _listener(db, *, key: str = "melder", trigger: dict | None = None) -> WorkflowDefinition:
-    """Ein freistehender Ablauf, der auf das Ereignis hört und sonst nichts tut."""
+    """A standalone flow that listens for the event and does nothing else."""
     graph = {
         "nodes": [
             {"id": "s", "type": "start", "position": {"x": 0, "y": 0},
@@ -75,8 +74,8 @@ async def test_a_report_starts_the_listening_flow(db):
     instances = await _instances(db)
     assert len(instances) == 1
     report = instances[0].context["report"]
-    # Was die Nachricht braucht, steht im Kontext — sonst müsste der Ablauf die Meldung
-    # erst nachschlagen, um sagen zu können, worum es geht.
+    # What the message needs stands in the context: otherwise the flow would first have to
+    # look the report up to be able to say what it is about.
     assert report["title"] == "Der Import bricht bei Kanal 200 ab"
     assert report["app"] == "devprog" and report["program"] == "Device programmer"
     assert report["kind"] == "bug" and report["version"] == "2.1.0"
@@ -86,8 +85,8 @@ async def test_a_report_starts_the_listening_flow(db):
 
 
 async def test_the_report_exists_when_the_flow_reads_it(db):
-    """Das Ereignis kommt nach dem Commit — sonst liest der Ablauf eine Zeile, die es noch
-    nicht gibt."""
+    """The event comes after the commit, otherwise the flow reads a row that does not exist
+    yet."""
     await _listener(db)
     source = await _source(db)
     artifact = await bugs.create_report(db, source, {"title": "Da fehlt was"})
@@ -98,9 +97,9 @@ async def test_the_report_exists_when_the_flow_reads_it(db):
 
 
 async def test_a_broken_flow_does_not_swallow_the_report(db, monkeypatch):
-    """Der Absender ist das Programm eines Fremden und hat genau einen Versuch."""
+    """The sender is somebody else's program and has exactly one attempt."""
     async def broken(*a, **kw):
-        raise RuntimeError("der Ablauf ist kaputt")
+        raise RuntimeError("the flow is broken")
 
     monkeypatch.setattr("app.services.events.emit", broken)
     source = await _source(db)
@@ -111,7 +110,7 @@ async def test_a_broken_flow_does_not_swallow_the_report(db, monkeypatch):
 
 
 async def test_a_flow_of_another_project_stays_out_of_it(db):
-    """Die Meldung eines Programms gehört dem Projekt, das das Programm bedient."""
+    """The report of a program belongs to the project that serves that program."""
     mine = await make_project(db, "AAA", "Meins")
     other = await make_project(db, "BBB", "Fremd")
     await _listener(db, key="nur_fremd",
@@ -125,8 +124,8 @@ async def test_a_flow_of_another_project_stays_out_of_it(db):
 
 
 async def test_the_event_is_in_the_picker():
-    """Ohne diesen Eintrag steht das Ereignis im Editor nicht zur Auswahl, und wer den Ablauf
-    baut, muss den Namen raten."""
+    """Without this entry the event does not appear in the editor, and whoever builds the flow
+    has to guess the name."""
     from app.services.events import BUILTIN_EVENTS
     assert dict(BUILTIN_EVENTS)["bug.reported"]
 
@@ -134,8 +133,8 @@ async def test_the_event_is_in_the_picker():
 # ── Filtern, ohne JSONLogic zu tippen ────────────────────────────────────────
 
 async def test_only_the_ticked_kinds_start_the_flow(db):
-    """Nicht jede Meldung ist ein Fehler. Wer nur die Fehler aufs Telefon will, hakt sie an
-    — und muss dafür keine Bedingung schreiben."""
+    """Not every report is a bug. Whoever only wants the bugs on their phone ticks them, and
+    does not have to write a condition for it."""
     await _listener(db, key="nur_fehler",
                     trigger={"event": "bug.reported", "where": {"report.kind": ["bug"]}})
     source = await _source(db)
@@ -161,8 +160,8 @@ async def test_several_ticked_kinds_are_an_or(db):
 
 
 async def test_nothing_ticked_means_everything(db):
-    """Ein leerer Eintrag darf den Ablauf nicht stumm schalten — sonst schaltet das
-    Wegnehmen des letzten Hakens den Ablauf ab, ohne dass jemand das gesagt hat."""
+    """An empty entry must not silence the flow: otherwise removing the last tick switches
+    the flow off without anybody having said so."""
     await _listener(db, key="alles",
                     trigger={"event": "bug.reported", "where": {"report.kind": []}})
     await bugs.create_report(db, await _source(db), {"title": "Egal", "kind": "feature"})
@@ -170,8 +169,8 @@ async def test_nothing_ticked_means_everything(db):
 
 
 async def test_the_selection_and_a_handwritten_condition_both_have_to_hold(db):
-    """`where` gehört dem Editor, `filter` dem Menschen. Eines darf das andere nicht
-    aushebeln."""
+    """`where` belongs to the editor, `filter` to the person. Neither may override the
+    other."""
     await _listener(db, key="beides", trigger={
         "event": "bug.reported",
         "where": {"report.kind": ["bug"]},
@@ -187,8 +186,8 @@ async def test_the_selection_and_a_handwritten_condition_both_have_to_hold(db):
 
 
 async def test_the_kinds_are_offered_in_the_editor(db, client):
-    """Ohne diesen Weg müsste man den Pfad `report.kind` raten — und ein falsch geratener
-    Filter ist still: der Ablauf startet einfach nie."""
+    """Without this route one would have to guess the path `report.kind`, and a wrongly
+    guessed filter is silent: the flow simply never starts."""
     anna = await make_user(db, "anna")
     r = await client.get("/workflow-events", headers=auth(anna))
     assert r.status_code == 200, r.text
@@ -196,5 +195,5 @@ async def test_the_kinds_are_offered_in_the_editor(db, client):
     field = entry["fields"][0]
     assert field["path"] == "report.kind"
     assert {o["value"] for o in field["options"]} == {"bug", "feature", "question"}
-    # Und ein Ereignis ohne Filterfelder liefert eine leere Liste statt gar nichts.
+    # And an event without filter fields delivers an empty list instead of nothing at all.
     assert next(e for e in r.json() if e["event"] == "issue.created")["fields"] == []

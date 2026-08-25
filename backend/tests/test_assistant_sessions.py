@@ -1,14 +1,13 @@
-"""Unterhaltungen (Sessions) des persönlichen Assistenten.
+"""Conversations (sessions) of the personal assistant.
 
-Der Faden war endlos: alles, was ein Mensch je in den Chat getippt hat, war EINE Unterhaltung,
-nur vom Kalender beschnitten. Ein neues Thema schleppte das gestrige mit, und ein
-weggelegtes Thema kam nie zurück.
+The thread used to be endless: everything a person had ever typed into the chat was ONE
+conversation, cut only by the calendar. A new subject dragged yesterday along, and a subject
+put aside never came back.
 
-Geprüft wird hier vor allem das, was man nicht sieht, wenn es kaputt ist: dass die
-verdichtete Erinnerung der einen Unterhaltung NICHT in die nächste gelesen wird (der
-schlimmste Fehler dieser Funktion, weil er unsichtbar ist), dass der Zeiger von Telegram über
-mehrere Nachrichten hält, und dass der Löschweg — der einzige zerstörende — seine Leitplanken
-wirklich hat.
+What is checked here is above all what nobody sees when it breaks: that the summarised
+memory of one conversation is NOT read into the next (the worst fault of this feature,
+because it is invisible), that the pointer from the messenger holds across several messages,
+and that the delete path, the only destructive one, really has its guard rails.
 """
 import datetime as dt
 import importlib.util
@@ -38,7 +37,7 @@ async def anna(db):
 
 @pytest.fixture(autouse=True)
 def no_real_model(monkeypatch):
-    """Kein Test spricht mit einem echten Modell; die Verdichtung wird je Test gesetzt."""
+    """No test talks to a real model; the summarising is set per test."""
     async def fake_load_agent(*a, **kw):
         class A:
             role = name = "assistent"
@@ -74,7 +73,7 @@ async def _msg(db, anna, session, question: str, answer: str = "ok", *,
     return t
 
 
-# ── 1. Der Titel kommt aus der ersten Nachricht ──────────────────────────────
+# ── 1. The title comes out of the first message ─────────────────────────────
 
 async def test_the_first_message_becomes_the_title(client, db, anna):
     r = await client.post("/assistant/chat", json={
@@ -86,7 +85,7 @@ async def test_the_first_message_becomes_the_title(client, db, anna):
 
     s = await db.get(AssistantSession, sid)
     assert s.title.startswith("Wann läuft die Kfz-Versicherung ab")
-    # An der Wortgrenze geschnitten, nicht mitten im Wort.
+    # Cut at the word boundary, not in the middle of a word.
     assert len(s.title) <= sessions.TITLE_MAX + 1 and not s.title.rstrip("…").endswith(" ")
 
 
@@ -103,7 +102,7 @@ async def test_an_explicit_title_wins_over_the_first_message(client, db, anna):
 
 
 async def test_a_long_first_word_is_truncated_not_dropped():
-    """Eine nackte URL hat keine Wortgrenze — dann lieber abgeschnitten als leer."""
+    """A bare URL has no word boundary, and then cut off beats empty."""
     title = sessions.title_from("https://example.com/" + "a" * 200)
     assert title.startswith("https://example.com/") and len(title) <= sessions.TITLE_MAX + 1
 
@@ -122,8 +121,8 @@ async def test_one_session_knows_nothing_of_the_other(db, anna, monkeypatch):
 
 
 async def test_the_summary_of_one_session_never_reaches_the_other(db, anna, monkeypatch):
-    """Der schlimmste Fehler dieser Funktion, weil er unsichtbar ist: der Agent „erinnert"
-    sich an etwas, das in DIESER Unterhaltung nie gesagt wurde."""
+    """The worst fault of this feature, because it is invisible: the agent "remembers"
+    something that was never said in THIS conversation."""
     _mock_aux(monkeypatch, "- Anna zieht nach Bremen um")
     a = await sessions.create(db, anna.id, title="Umzug")
     for i in range(16):
@@ -141,8 +140,8 @@ async def test_the_summary_of_one_session_never_reaches_the_other(db, anna, monk
 
 
 async def test_a_session_arrives_whole_even_after_weeks(db, anna, monkeypatch):
-    """Der Kalender schneidet nicht mehr: wer eine Unterhaltung nach drei Wochen wieder
-    aufnimmt, will sie ganz vorfinden — genau dafür lädt man sie."""
+    """The calendar does not cut any more: whoever picks a conversation up again after three
+    weeks wants to find all of it, which is exactly why one loads it."""
     _mock_aux(monkeypatch, "- egal")
     a = await sessions.create(db, anna.id, title="Lange her")
     old = await _msg(db, anna, a, "Das war vor einem Monat")
@@ -154,7 +153,7 @@ async def test_a_session_arrives_whole_even_after_weeks(db, anna, monkeypatch):
 
 
 async def test_a_task_without_a_session_keeps_the_old_window(db, anna, monkeypatch):
-    """Posteingang und Webhook-Läufe laufen NICHT über Unterhaltungen."""
+    """Inbox and webhook runs do NOT go through conversations."""
     _mock_aux(monkeypatch, "- egal")
     old = await _msg(db, anna, None, "Uralt")
     old.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=30)
@@ -222,7 +221,7 @@ async def test_a_foreign_session_is_not_found(client, db, anna):
 # ── 4. Der Backfill der Migration ────────────────────────────────────────────
 
 def _migration():
-    """Genau der Code, der in der Migration steht — nicht eine Nachbildung davon."""
+    """Exactly the code that stands in the migration, not a rebuild of it."""
     path = (pathlib.Path(__file__).resolve().parent.parent
             / "alembic" / "versions" / "c9d4b17a3e58_assistant_sessions.py")
     spec = importlib.util.spec_from_file_location("mig_sessions", path)
@@ -232,8 +231,8 @@ def _migration():
 
 
 async def test_the_backfill_puts_the_existing_history_where_people_expect_it(db, anna):
-    """Niemand verliert seine Historie, und sie landet dort, wo er sie sucht: als die
-    Unterhaltung, in der er stand."""
+    """Nobody loses their history, and it lands where they look for it: as the conversation
+    they were standing in."""
     berta = await make_user(db, "berta")
     for i in range(3):
         await _msg(db, anna, None, f"Assistent {i}")
@@ -259,7 +258,7 @@ async def test_the_backfill_puts_the_existing_history_where_people_expect_it(db,
     summary = (await db.execute(select(ChatSummary))).scalars().one()
     assert summary.session_id == annas_assistant.pop()
 
-    # Und die Zeiten stehen so, wie die Liste sie sortiert.
+    # And the times stand the way the list sorts by them.
     s = await db.get(AssistantSession, summary.session_id)
     assert s.last_message_at is not None and s.created_at is not None
 
@@ -271,7 +270,7 @@ async def test_sending_without_a_session_follows_the_pointer_and_creates_one(cli
                                headers=auth(anna))).json()
     assert first["session_id"]
 
-    # Zweite Nachricht ohne Angabe: dieselbe Unterhaltung, weil der Zeiger sie hält.
+    # Second message without a hint: the same conversation, because the pointer holds it.
     second = (await client.post("/assistant/chat", json={"text": "zwei"},
                                 headers=auth(anna))).json()
     assert second["session_id"] == first["session_id"]
@@ -289,7 +288,7 @@ async def test_switching_in_the_browser_moves_the_pointer(client, db, anna):
                       headers=auth(anna))
 
     assert (await sessions.pointer(db, anna.id, "web")).session_id == b
-    # Und die nächste Nachricht ohne Angabe landet in B, nicht wieder in A.
+    # And the next message without a hint lands in B, not in A again.
     assert (await client.post("/assistant/chat", json={"text": "noch in B"},
                               headers=auth(anna))).json()["session_id"] == b != a
 
@@ -372,7 +371,7 @@ async def test_the_delete_action_refuses_a_running_session(db, anna):
 
 
 async def test_a_sweep_never_touches_an_open_conversation(db, anna):
-    """Einen Ablauf, in dem gerade jemand sitzt, wegzufegen wäre unverzeihlich."""
+    """Sweeping away a flow somebody is sitting in right now would be unforgivable."""
     open_one = await _aged(db, anna, "offen und alt", 300, closed=False)
     closed_one = await _aged(db, anna, "geschlossen und alt", 300)
     inst = await _instance(db, anna)
@@ -424,7 +423,7 @@ async def test_create_and_close_as_an_action(db, anna):
     inst = await _instance(db, anna)
     result = await run_action(db, inst, _node(op="create", title="Aus dem Ablauf"))
     assert result["created"] is True
-    # Die Nummer steht im Kontext, damit ein folgender Knoten hineinschreiben kann.
+    # The number stands in the context so a following node can write into it.
     assert inst.context["session"]["id"] == result["session_id"]
 
     sid = result["session_id"]
@@ -450,10 +449,10 @@ async def test_the_session_events_are_reported(db, anna, monkeypatch):
     assert seen[0][1]["session"]["title"] == "Ereignisse"
 
 
-# ── 8. Der Token mit dem assistant-Scope erreicht alles davon ────────────────
+# ── 8. A token with the assistant scope reaches all of it ───────────────────
 
 async def test_an_assistant_token_reaches_every_session_endpoint(client, db, anna):
-    """Sie liegen alle unter `/assistant/*`, deshalb braucht es keinen neuen Scope."""
+    """They all sit under `/assistant/*`, so no new scope is needed."""
     minted = await client.post("/me/tokens", json={"name": "Obsidian",
                                                    "scopes": ["assistant"]},
                                headers=auth(anna))
@@ -477,11 +476,11 @@ async def test_an_assistant_token_reaches_every_session_endpoint(client, db, ann
                              headers=head)).status_code == 200
 
 
-# ── 9. Wie voll die nächste Nachricht wird ───────────────────────────────────
+# ── 9. How full the next message will be ────────────────────────────────────
 #
-# Ein Chat-Client hat keinen anderen Weg, danach zu fragen: die Zahlen liegen hinter
-# `/office/*` und den Modell-Endpunkten, die der `assistant`-Scope bewusst nicht erreicht.
-# Also stehen sie an der Unterhaltung.
+# A chat client has no other way to ask: the numbers sit behind `/office/*` and the model
+# endpoints, which the `assistant` scope deliberately does not reach. So they stand on the
+# conversation.
 
 async def _run(db, session, task, *, input_tokens: int, model: str = "claude-sonnet-5",
                provider: str = "claude_code", status: str = "success"):
@@ -512,8 +511,8 @@ async def test_a_session_that_never_ran_reports_nothing(client, db, anna):
 
 
 async def test_the_newest_run_counts_not_the_largest(client, db, anna):
-    """Die Frage ist „wie voll war es zuletzt". Ein Mittelwert glättete genau die Spitze weg,
-    auf die es ankommt — und der grösste Lauf ist nicht der letzte."""
+    """The question is "how full was it last time". An average would smooth away exactly the
+    peak that matters, and the biggest run is not the last one."""
     await _window(db)
     s = await sessions.create(db, anna.id, title="Läuft")
     await _run(db, s, await _msg(db, anna, s, "erste"), input_tokens=90000)
@@ -541,7 +540,7 @@ async def test_a_running_run_is_not_the_answer_yet(client, db, anna):
 
 
 async def test_an_unknown_model_leaves_the_window_empty(client, db, anna):
-    """Ein falscher Nenner ist schlimmer als gar kein Prozentwert — er sieht amtlich aus."""
+    """A wrong denominator is worse than no percentage at all: it looks official."""
     s = await sessions.create(db, anna.id, title="Fremdes Modell")
     await _run(db, s, await _msg(db, anna, s, "hallo"), input_tokens=4321,
                model="qwen3.6-irgendwas")
@@ -550,12 +549,13 @@ async def test_an_unknown_model_leaves_the_window_empty(client, db, anna):
                                             headers=auth(anna))).json() if r["id"] == s.id)
     ctx = row["context"]
     assert ctx["context_tokens"] is None and ctx["pct"] is None
-    # Der Rest der Zeile steht trotzdem.
+    # The rest of the line stands all the same.
     assert ctx["input_tokens"] == 4321 and ctx["model"] == "qwen3.6-irgendwas"
 
 
 async def test_a_short_conversation_travels_whole(client, db, anna):
-    """Solange nichts verdichtet ist, reist alles wörtlich — und die Zahl sagt genau das."""
+    """As long as nothing is summarised everything travels word for word, and the number says
+    exactly that."""
     await _window(db)
     s = await sessions.create(db, anna.id, title="Kurz")
     for i in range(5):
@@ -569,13 +569,13 @@ async def test_a_short_conversation_travels_whole(client, db, anna):
 
 
 async def test_a_long_conversation_shows_why_it_plateaus(client, db, anna, monkeypatch):
-    """Der Prozentwert allein verschweigt das Verfahren: dieser Kontext wird verdichtet, er
-    läuft also nicht voll, sondern läuft ein. Wer eine Zahl beobachtet, die nie 100 erreicht,
-    darf sehen, warum — deshalb stehen beide Zahlen da.
+    """The percentage on its own hides the method: this context gets summarised, so it does
+    not fill up, it shrinks in. Whoever watches a number that never reaches 100 may see why,
+    which is what both numbers are for.
 
-    `verbatim_exchanges` ist der GEDECKELTE Wert, also das, was wirklich in den Prompt geht.
-    Er fällt durch eine Verdichtung deshalb nicht: die Deckelung nimmt sie schon vorweg. Was
-    sich sichtbar bewegt, ist `summary_chars` — von nichts auf etwas."""
+    `verbatim_exchanges` is the CAPPED value, so what really goes into the prompt. It does
+    not drop when a summary happens: the cap has already anticipated it. What moves visibly
+    is `summary_chars`, from nothing to something."""
     _mock_aux(monkeypatch, "- was bisher geschah")
     await _window(db)
     s = await sessions.create(db, anna.id, title="Lang")
@@ -596,15 +596,15 @@ async def test_a_long_conversation_shows_why_it_plateaus(client, db, anna, monke
     after = next(r for r in (await client.get("/assistant/sessions",
                                               headers=auth(anna))).json()
                  if r["id"] == s.id)["context"]
-    # Danach steht die Erinnerung, und offen sind nur noch die jungen Wortwechsel. Die Zahl
-    # fällt dabei NICHT — sie sägt: vorher war sie gedeckelt (die Deckelung nimmt die
-    # Verdichtung vorweg), danach stehen wieder etwas mehr offen als der Deckel. Was sich
-    # eindeutig bewegt, ist die Erinnerung: von nichts auf etwas.
+    # Afterwards the memory stands there and only the young exchanges are open. The number
+    # does NOT fall in the process, it saws: before it was capped (the cap anticipates the
+    # summarising), afterwards slightly more stands open than the cap. What moves
+    # unmistakably is the memory: from nothing to something.
     from app.worker.__main__ import CHAT_SUMMARY_BLOCK
     assert after["summary_chars"] == len("- was bisher geschah")
     assert 0 < after["verbatim_exchanges"] <= CHAT_HISTORY_MAX + CHAT_SUMMARY_BLOCK
-    # Und die Erinnerung gehört DIESER Unterhaltung: ohne den Sitzungs-Schnitt läse die
-    # Zahl den Stand einer fremden mit.
+    # And the memory belongs to THIS conversation: without the session cut the number would
+    # read the state of a foreign one along with it.
     other = await sessions.create(db, anna.id, title="Andere")
     await _run(db, other, await _msg(db, anna, other, "hallo"), input_tokens=100)
     fremd = next(r for r in (await client.get("/assistant/sessions",
@@ -614,8 +614,8 @@ async def test_a_long_conversation_shows_why_it_plateaus(client, db, anna, monke
 
 
 async def test_the_list_does_not_query_per_session(client, db, anna):
-    """Diese Liste fragt jeder offene Chat im Sekundentakt ab. Eine Unterabfrage je Zeile
-    wäre bei zehn Unterhaltungen zehnmal dieselbe Arbeit."""
+    """Every open chat asks this list once a second. One subquery per row would be the same
+    work ten times over with ten conversations."""
     await _window(db)
     counted = {"n": 0}
     import sqlalchemy

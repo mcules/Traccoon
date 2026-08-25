@@ -201,7 +201,7 @@ async def test_a_silent_place_reports_nothing(db):
 
 
 async def test_foreign_places_do_not_count(db):
-    """Der Zaun eines anderen Menschen darf an meiner Spur nichts ausloesen."""
+    """Somebody else's fence must not trigger anything on my trail."""
     me = await make_user(db, "ich")
     different = await make_user(db, "andere")
     series = await _series(db, me, min_distance_m=0, min_interval_s=0)
@@ -233,7 +233,7 @@ async def test_the_fence_applies_even_when_the_point_rests(db):
         _p(50.0825308, 10.5663527, ts=start + dt.timedelta(minutes=2))])
     await db.commit()
     assert e["still"] == 0 or e["accepted"] == 1 or e["betreten"] == ["tuer"]
-    assert e["betreten"] == ["tuer"], "Ankunft muss sofort gelten, nicht erst beim naechsten Punkt"
+    assert e["betreten"] == ["tuer"], "arriving has to count at once, not at the next point"
 
 
 async def test_the_fence_applies_to_a_truly_standing_device(db):

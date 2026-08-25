@@ -266,7 +266,7 @@ async def _report_node_disable(db, node_id: str) -> None:
     old = await db.get(WorkflowVersion, d.current_version_id)
     graph = copy.deepcopy(old.graph)
     hits = [n for n in graph["nodes"] if n["id"] == node_id]
-    assert hits, f"Knoten {node_id} steht nicht im ausgelieferten Ablauf"
+    assert hits, f"node {node_id} does not stand in the delivered flow"
     hits[0]["data"]["config"].update(deaktiviert=True, deaktiviert_modus="ueberspringen")
     new = WorkflowVersion(definition_id=d.id, version=old.version + 1, graph=graph,
                           status=WorkflowVersionStatus.published)
@@ -291,7 +291,7 @@ async def test_reporting_can_be_switched_off_without_the_filing(db, owner, imap_
     assert inst.status == WorkflowInstanceStatus.completed
     assert imap_stub[0][0] == "mark_spam", "die Mail wird weiterhin weggeräumt"
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
-    assert verdict.status == "spam", "das Urteil entsteht und wird gelernt"
+    assert verdict.status == "spam", "the verdict comes about and is learned from"
     assert (await db.execute(select(Notification))).scalars().all() == [], "kein Ton"
 
 
@@ -322,7 +322,7 @@ async def test_the_setting_switches_off_the_notice_not_the_filing(db, owner, ima
     assert inst.status == WorkflowInstanceStatus.completed
     assert imap_stub[0][0] == "mark_spam", "die Mail wird weiterhin weggeräumt"
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
-    assert verdict.status == "spam", "das Urteil steht in der Übersicht und wird gelernt"
+    assert verdict.status == "spam", "the verdict stands in the overview and is learned from"
     assert (await db.execute(select(Notification))).scalars().all() == [], "kein Ton"
 
 
@@ -333,12 +333,12 @@ async def test_the_question_remains_despite_auto_reporting_being_off(db, owner, 
 
     inst = await _report(db, owner, _suspicious(uid=8201))
 
-    assert inst.status == WorkflowInstanceStatus.waiting, "die Frage steht noch offen"
+    assert inst.status == WorkflowInstanceStatus.waiting, "the question is still open"
     karte = (await db.execute(select(Notification))).scalars().one()
     assert karte.kind == "spam_review"
 
 
-# ── Das Urteil des lokalen Modells im Ablauf ─────────────────────────────────
+# ── The verdict of the local model inside the flow ──────────────────────────
 
 @pytest.fixture
 def model_stub(monkeypatch):

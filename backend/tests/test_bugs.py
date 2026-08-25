@@ -211,7 +211,7 @@ async def test_reporter_and_team_talk_to_each_other(client, db, helpers):
 
 @pytest.mark.asyncio
 async def test_an_internal_note_never_leaves_the_house(client, db, helpers):
-    """Der Grund, warum die Sichtbarkeit ein Parameter ist und kein nachtraeglicher Filter."""
+    """The reason visibility is a parameter and not a filter applied afterwards."""
     _, token = await make_source(db)
     app_kopf = {"X-Bug-Token": token}
     await client.post("/bugs/report", headers=app_kopf, json={**REPORT, "external_ref": "spieler-7"})
@@ -242,7 +242,7 @@ async def test_a_program_sees_only_its_own_users(client, db, helpers):
     fremd = await client.get(f"/bugs/app/reports/{bug_id}?external_ref=spieler-8",
                              headers=app_kopf)
 
-    assert fremd.status_code == 404          # wie ein Platz, den es nicht gibt
+    assert fremd.status_code == 404          # like a place that does not exist
     meine = await client.get("/bugs/app/reports?external_ref=spieler-7", headers=app_kopf)
     assert [t["id"] for t in meine.json()] == [bug_id]
     assert (await client.get("/bugs/app/reports?external_ref=spieler-8",

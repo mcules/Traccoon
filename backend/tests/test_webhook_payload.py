@@ -133,7 +133,7 @@ async def test_workflow_mode_recognises_repetitions(client, db):
     assert len(runs) == 1
 
 
-# ── Bearbeiten darf nichts verlieren ─────────────────────────────────────────
+# ── Editing must lose nothing ───────────────────────────────────────────────
 
 async def test_editing_keeps_the_context(client, db):
     """The answer did not carry the templates: the form filled them with defaults, and saving
