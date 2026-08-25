@@ -9,7 +9,7 @@ import { AccountDialog, type MailAccount, type MailIdentity } from "../component
 import {
   Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
   Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT,
-  Menu, MenuItem, MenuLine, Splitter, Busy, BUTTON_SMALL} from "../components/ui";
+  Menu, MenuItem, MenuLine, Splitter, Busy, BUTTON_SMALL, SortBar} from "../components/ui";
 
 /**
  * The mailbox.
@@ -870,15 +870,11 @@ function FolderManagement({ accountId, account, chosen, onClose, onGone, onError
  * nothing be loaded. Remote images hang in the mail as `data-fern` and become `src` only when
  * somebody says so, because a loaded image is a signal back to the sender that the mail was
  * read.
+ *
+ * Whether that has been said is decided one level up, in the row with the view tabs: this is
+ * the picture, not the switch beside it.
  */
-function HtmlView({ html, remoteimages, counters, allowed, sender, rules, onAllow, onForget }: {
-  html: string; remoteimages: boolean; counters: number; allowed: boolean; sender: string;
-  rules: ImageRule[]; onAllow: (remember: ImageRule["kind"] | null) => void;
-  onForget: (id: number) => void;
-}) {
-  const [images, setImages] = useState(false);
-  const [asking, setAsking] = useState(false);
-  const show = images || allowed;
+function HtmlView({ html, show }: { html: string; show: boolean }) {
   const content = show ? html.replace(/data-fern="/g, 'src="') : html;
   const policy = "default-src 'none'; style-src 'unsafe-inline'; font-src data:; "
     + (show ? "img-src data: https:;" : "img-src data:;");
@@ -900,42 +896,12 @@ function HtmlView({ html, remoteimages, counters, allowed, sender, rules, onAllo
       </style></head><body>${content}</body></html>`;
 
   return (
-    <div className="space-y-2">
-      {remoteimages && !show && (
-        <div className="flex flex-wrap items-center gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-          {tr("mail.remote_images_blocked")}
-          <Rowbutton onClick={() => setAsking(true)}>{tr("mail.load_images")}</Rowbutton>
-        </div>
-      )}
-      {/* A kept answer must be visible where it takes effect, not only in a settings page one
-          has to remember. Otherwise the pictures simply load one day and nobody knows why. */}
-      {allowed && (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          {tr("mail.images_allowed_by_rule")}
-          <Rowbutton onClick={() => setAsking(true)}>{tr("mail.change")}</Rowbutton>
-        </div>
-      )}
-      {/* What was thrown out for good is worth a line of its own: it is the difference
-          between "not yet loaded" and "will not be loaded". */}
-      {counters > 0 && (
-        <div className="text-xs text-muted">🎯 {tr("mail.counters_removed", { n: counters })}</div>
-      )}
-      <iframe
-        title={tr("mail.message")}
-        sandbox="allow-popups allow-popups-to-escape-sandbox"
-        srcDoc={document}
-        className="h-[60vh] w-full rounded border border-line bg-white"
-      />
-      {asking && (
-        <ImageDialog sender={sender} rules={rules} onClose={() => setAsking(false)}
-          onForget={(id) => { onForget(id); setImages(false); setAsking(false); }}
-          onLoad={(remember) => {
-            setAsking(false);
-            setImages(true);
-            if (remember) onAllow(remember);
-          }} />
-      )}
-    </div>
+    <iframe
+      title={tr("mail.message")}
+      sandbox="allow-popups allow-popups-to-escape-sandbox"
+      srcDoc={document}
+      className="h-[60vh] w-full rounded border border-line bg-white"
+    />
   );
 }
 
@@ -1389,6 +1355,10 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
 }) {
   const [moveOpen, setMoveOpen] = useState(false);
   const [attachmentOn, setAttachmentOn] = useState<number | null>(null);
+  // "This one time": belongs to THIS mail, so the next one asks again. A kept answer is a
+  // different thing and lives on the server.
+  const [thisTime, setThisTime] = useState(false);
+  const [asking, setAsking] = useState(false);
   const qc = useQueryClient();
   const [run, setRun] = useState("");
   const [view, setView] = useState<"html" | "text">("html");
@@ -1502,6 +1472,9 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     // over something nobody asked for would only be in the way.
     onError: () => {/* quiet */},
   });
+  // A new mail is a new question. Without this the permission would travel along through the
+  // list, and the next sender would get what the previous one was granted.
+  useEffect(() => { setThisTime(false); }, [uid, folder, accountId]);
   useEffect(() => {
     if (!m || m.seen) return;
     const clock = setTimeout(() => asRead.mutate(), 3000);
@@ -1557,6 +1530,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.rule_failed")),
   });
 
+  const pictures = thisTime || !!m?.images_allowed;
   const forMail = (actions || []).filter((a) => a.scope !== "attachment");
   const forAttachment = (actions || []).filter((a) => a.scope === "attachment");
 
@@ -1675,17 +1649,49 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
 
           {m.html ? (
             <div className="space-y-2">
-              <Tab active={view} onChoose={setView} selection={[
-                ["html", tr("mail.formatted")], ["text", tr("mail.text_only")],
-              ]} />
+              {/* One row for how the mail is shown: which view, and what of it is loaded.
+                  Both are the same question asked twice, and the answer to the second one
+                  used to stand as a banner over the mail, which pushed it down every time. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Tab active={view} onChoose={setView} selection={[
+                  ["html", tr("mail.formatted")], ["text", tr("mail.text_only")],
+                ]} />
+                {view === "html" && (
+                  <>
+                    <div className="flex-1" />
+                    {/* Short here, the long sentence sits in the tooltip and in the dialog:
+                        beside two tabs there is room for a state, not for a lecture. */}
+                    {m.counters > 0 && (
+                      <span className="text-xs text-muted"
+                            title={tr("mail.counters_removed", { n: m.counters })}>
+                        🎯 {m.counters}
+                      </span>
+                    )}
+                    {m.remote_images && !pictures && (
+                      <>
+                        <span className="text-xs text-amber-300"
+                              title={tr("mail.remote_images_blocked")}>
+                          🖼 {tr("mail.images_blocked_short")}
+                        </span>
+                        <Rowbutton onClick={() => setAsking(true)}>
+                          {tr("mail.load_images")}
+                        </Rowbutton>
+                      </>
+                    )}
+                    {m.images_allowed && (
+                      <>
+                        <span className="text-xs text-muted"
+                              title={tr("mail.images_allowed_by_rule")}>
+                          🖼 {tr("mail.images_always_short")}
+                        </span>
+                        <Rowbutton onClick={() => setAsking(true)}>{tr("mail.change")}</Rowbutton>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
               {view === "html"
-                ? <HtmlView html={m.html} remoteimages={m.remote_images}
-                    counters={m.counters} allowed={m.images_allowed}
-                    sender={m.from[0]?.addr || ""} rules={imageRules || []}
-                    onForget={(id) => forget.mutate(id)}
-                    onAllow={(kind) => kind && allow.mutate({ kind,
-                      value: kind === "domain" ? (m.from[0]?.addr || "").split("@")[1] || ""
-                            : kind === "sender" ? m.from[0]?.addr || "" : "" })} />
+                ? <HtmlView html={m.html} show={pictures} />
                 : <pre className={`max-h-[60vh] overflow-auto whitespace-pre-wrap ${PAPER}`}>
                     {m.text || tr("mail.no_text")}
                   </pre>}
@@ -1709,6 +1715,22 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           )}
           {run && <div className="text-xs text-green-400">{run}</div>}
         </>
+      )}
+
+      {asking && m && (
+        <ImageDialog sender={m.from[0]?.addr || ""} rules={imageRules || []}
+          onClose={() => setAsking(false)}
+          onForget={(id) => { forget.mutate(id); setThisTime(false); setAsking(false); }}
+          onLoad={(remember) => {
+            setAsking(false);
+            setThisTime(true);
+            if (remember) {
+              const from = m.from[0]?.addr || "";
+              allow.mutate({ kind: remember,
+                value: remember === "domain" ? from.split("@")[1] || ""
+                      : remember === "sender" ? from : "" });
+            }
+          }} />
       )}
 
       {attachmentOn !== null && m && (
@@ -1883,6 +1905,13 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
   // Which subscription has been opened up. One at a time: whoever opens the second one is
   // done with the first, and two open lists are a wall instead of an answer.
   const [open, setOpen] = useState("");
+  // Sorting and filtering happen here and not on the server: the whole list is already in
+  // the browser, and a second pass over the mailbox for a different order would be minutes
+  // of waiting for a question the answer to which is already lying here.
+  const [by, setBy] = useState<"count" | "name" | "last">("count");
+  const [dir, setDir] = useState<"asc" | "desc">("desc");
+  const [filter, setFilter] = useState("");
+  const [onlyEasy, setOnlyEasy] = useState(false);
 
   const { data: tree } = useQuery({
     queryKey: ["mail-folders", account.id],
@@ -1909,7 +1938,17 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
                                                                     { detail: "" })),
   });
 
-  const listing = data?.newsletters || [];
+  const word = filter.trim().toLowerCase();
+  const listing = (data?.newsletters || [])
+    .filter((n) => !onlyEasy || (n.one_click && n.http) || !!n.mailto)
+    .filter((n) => !word || `${n.name} ${n.sender} ${n.list_id}`.toLowerCase().includes(word))
+    .sort((a, b) => {
+      const back = dir === "asc" ? -1 : 1;
+      if (by === "name") return back * b.name.localeCompare(a.name, undefined,
+                                                             { sensitivity: "base" });
+      if (by === "last") return back * ((a.last || "") < (b.last || "") ? -1 : 1);
+      return back * (a.count - b.count);
+    });
   return (
     <Dialog huge title={tr("mail.newsletters_of", { name: account.name })} onClose={onClose}
       foot={<Button onClick={onClose}>{tr("common.close")}</Button>}>
@@ -1932,6 +1971,34 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
             ))}
           </div>
         </Field>
+
+        {/* Filter and order above the list, not in a menu: with a hundred subscriptions the
+            first question is "where is that one", and the second is "who sends the most". */}
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={filter} onChange={(e) => setFilter(e.target.value)}
+            placeholder={tr("mail.filter_newsletters")}
+            className={`${INPUT_VALUE} min-w-[10rem] max-w-xs flex-1`} />
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            <input type="checkbox" className="h-4 w-4 accent-brand"
+              checked={onlyEasy} onChange={() => setOnlyEasy(!onlyEasy)} />
+            {tr("mail.only_unsubscribable")}
+          </label>
+          <div className="flex-1" />
+          <SortBar fields={[
+            { key: "count", label: tr("mail.by_amount") },
+            { key: "name", label: tr("mail.by_name") },
+            { key: "last", label: tr("mail.by_last") },
+          ]} by={by} dir={dir} onSort={(key) => {
+            // Clicking the active field turns the direction round, a different one sorts by
+            // that: the same movement as in every list of this house.
+            if (key === by) setDir(dir === "asc" ? "desc" : "asc");
+            else { setBy(key as typeof by); setDir("desc"); }
+          }} />
+          <span className="text-xs text-muted">
+            {listing.length}{listing.length !== (data?.newsletters || []).length
+              ? ` ${tr("mail.of")} ${(data?.newsletters || []).length}` : ""}
+          </span>
+        </div>
 
         <Busy show={isFetching} text={tr("mail.looking_for_newsletters")}>
           <Listing>
@@ -1997,7 +2064,10 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
               </ListRow>
             ))}
             {!listing.length && !isFetching && (
-              <ListingEmpty>{tr("mail.no_newsletters")}</ListingEmpty>
+              <ListingEmpty>
+                {(data?.newsletters || []).length ? tr("mail.nothing_found")
+                                                   : tr("mail.no_newsletters")}
+              </ListingEmpty>
             )}
           </Listing>
         </Busy>

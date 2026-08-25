@@ -2944,5 +2944,12 @@
   "mail.unsub_failed": "Unsubscribing failed: {detail}",
   "mail.no_newsletters": "No subscriptions found in the chosen folders.",
   "mail.open_in_tab": "Open in a new tab",
-  "mail.and_older": "… and {n} older"
+  "mail.and_older": "… and {n} older",
+  "mail.images_blocked_short": "Pictures blocked",
+  "mail.images_always_short": "Pictures always",
+  "mail.filter_newsletters": "Filter (name, sender, list)",
+  "mail.only_unsubscribable": "only directly unsubscribable",
+  "mail.by_amount": "Amount",
+  "mail.by_name": "Name",
+  "mail.by_last": "Last"
 }

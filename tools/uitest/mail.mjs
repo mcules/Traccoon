@@ -166,8 +166,9 @@ if (await kandidat.count()) {
     const texte = await seite.locator("[role=dialog] label").allInnerTexts();
     console.log("BILDDIALOG", JSON.stringify({ auswahl: zeilen, texte }));
     await seite.screenshot({ path: "/w/mail-11-bilder.png" });
-    // Nichts merken: abbrechen, damit im echten Konto keine Regel entsteht.
-    await seite.getByText("Abbrechen").first().click();
+    // Über das ✕ schließen, nie über einen Knopf im Fuß: ein danebengegangener Klick auf
+    // „Bilder laden" legt im echten Konto eine Regel an, die niemand wollte.
+    await seite.keyboard.press("Escape");
     await seite.waitForTimeout(300);
   } else {
     console.log("BILDDIALOG kein Hinweis sichtbar");
@@ -238,6 +239,20 @@ if (await punkte2.count()) {
     const knoepfe = await seite.getByText("Abmelden", { exact: false }).count();
     console.log("ABOS", JSON.stringify({ zeilen, knoepfe }));
     await seite.screenshot({ path: "/w/mail-13-abos.png" });
+    // Filtern und umsortieren, beides ohne neue Anfrage ans Postfach.
+    const feldF = seite.getByPlaceholder("Filtern").first();
+    if (await feldF.count()) {
+      await feldF.fill("jetbrains");
+      await seite.waitForTimeout(400);
+      const nachFilter = await seite.locator("[role=dialog] [class*='divide-y'] > div").count();
+      await seite.getByText("Name", { exact: true }).first().click();
+      await seite.waitForTimeout(300);
+      await seite.screenshot({ path: "/w/mail-17-filter.png" });
+      console.log("FILTER", JSON.stringify({ nachFilter }));
+      await feldF.fill("");
+      await seite.waitForTimeout(400);
+    }
+
     // Ein Abo aufklappen: kommen die Mails, und führt ein Klick zu ihr?
     const pfeil = seite.locator("[role=dialog] button", { hasText: "▶" }).first();
     if (await pfeil.count()) {

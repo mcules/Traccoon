@@ -2944,5 +2944,12 @@
   "mail.unsub_failed": "Abmeldung fehlgeschlagen: {detail}",
   "mail.no_newsletters": "Keine Abos in den gewählten Ordnern gefunden.",
   "mail.open_in_tab": "In neuem Tab öffnen",
-  "mail.and_older": "… und {n} ältere"
+  "mail.and_older": "… und {n} ältere",
+  "mail.images_blocked_short": "Bilder blockiert",
+  "mail.images_always_short": "Bilder immer",
+  "mail.filter_newsletters": "Filtern (Name, Absender, Liste)",
+  "mail.only_unsubscribable": "nur direkt abmeldbare",
+  "mail.by_amount": "Menge",
+  "mail.by_name": "Name",
+  "mail.by_last": "Zuletzt"
 }
