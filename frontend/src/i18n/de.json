@@ -2450,7 +2450,6 @@
   "processes.edit": "Bearbeiten",
   "editor.draft_discarded": "Entwurf verworfen.",
   "editor.discard_failed": "Verwerfen fehlgeschlagen",
-  "mail.search_fulltext": "Suchen (Volltext)",
   "mail.nothing_unread": "Nichts war ungelesen",
   "mail.mark_all_read_q": "Alle als gelesen markieren?",
   "mail.message": "Nachricht",
@@ -2518,13 +2517,9 @@
   "inbox.approve_dots": "Freigeben…",
   "inbox.discard": "Verwerfen",
   "mail.accounts_in_account": "Konten und Identitäten stehen im Konto unter <b>Mail-Konten</b>.",
-  "mail.mailbox": "Postfach",
   "mail.off_short": "aus",
   "mail.new_short": "neu",
   "mail.look_now": "Jetzt nachsehen",
-  "mail.settings_of_mailbox": "Einstellungen dieses Postfachs",
-  "mail.switch_to": "Zu „{name}“ wechseln",
-  "mail.reset": "zurücksetzen",
   "mail.compose_button": "✉️ Verfassen",
   "mail.folders_loading": "Ordner werden geladen…",
   "mail.in_subfolders": "in Unterordnern",
@@ -2902,5 +2897,9 @@
   "mail.mark_unread_short": "Ungelesen",
   "mail.selection_off": "Auswahl aufheben",
   "mail.choose_all_on_page": "Alle auf dieser Seite",
-  "mail.drag_the_seam": "Ziehen ändert die Breite der Liste, Doppelklick setzt sie zurück"
+  "mail.drag_the_seam": "Ziehen ändert die Breite der Liste, Doppelklick setzt sie zurück",
+  "mail.search_in_folder": "In „{folder}“ suchen",
+  "mail.search_go": "Suchen",
+  "mail.mailbox_handles": "Was man mit dem Postfach „{name}“ machen kann",
+  "mail.mailbox_settings_short": "Einstellungen"
 }

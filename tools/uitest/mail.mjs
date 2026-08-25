@@ -33,8 +33,6 @@ const mass = await seite.evaluate(() => {
 console.log("SCROLL", JSON.stringify(mass));
 
 // Das Ordnermenü
-const zeile = seite.locator("li, [class*='px-3']").filter({ hasText: "Posteingang" }).first();
-await zeile.hover().catch(() => {});
 await seite.waitForTimeout(300);
 const punkte = seite.locator("button[title*='machen kann'], button[title*='can do with']").first();
 if (await punkte.count()) {
@@ -46,6 +44,20 @@ if (await punkte.count()) {
   await seite.waitForTimeout(300);
 } else {
   console.log("MENUE nicht gefunden");
+}
+
+// Ein zweites Postfach aufklappen: es muss seine Ordner nachladen, ohne dass das aktive
+// Postfach wechselt (das täte erst der Klick auf einen Ordner darin).
+const zweites = seite.getByText("Zweites Postfach", { exact: true }).first();
+const vorherOrdner = await seite.locator("[class*='grid-cols-']").count();
+if (await zweites.count()) {
+  await zweites.click({ force: true });
+  await seite.waitForTimeout(2500);
+  const nachher = await seite.locator("[class*='grid-cols-']").count();
+  console.log("AUFKLAPPEN", JSON.stringify({ vorherOrdner, nachher }));
+  await seite.screenshot({ path: "/w/mail-07-zweites.png" });
+  await zweites.click({ force: true });
+  await seite.waitForTimeout(400);
 }
 
 // Auswahl: die erste Zeile ankreuzen, nur ansehen, nichts auslösen

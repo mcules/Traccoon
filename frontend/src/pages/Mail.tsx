@@ -85,7 +85,6 @@ export default function Mail() {
   const [folder, setFolder] = useState("INBOX");
   const [uid, setUid] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [question, setQuestion] = useState("");
   const [err, setErr] = useState("");
   // What a folder command did. It stands until the next one, because "127 into the trash" is
   // exactly the sentence one wants to read again a moment later.
@@ -95,8 +94,9 @@ export default function Mail() {
   // The selection belongs to the page, not to the list: the handles above it and the folder
   // change below it both have to know about it.
   const [chosen, setChosen] = useState<number[]>([]);
-  const [command, setCommand] = useState<{ folder: Folder; kind: FolderCommand } | null>(null);
-  const [manage, setManage] = useState(false);
+  const [command, setCommand] = useState<
+    { accountId: number; folder: Folder; kind: FolderCommand } | null>(null);
+  const [manage, setManage] = useState<number | null>(null);
   const [listWidth, setListWidth] = useState(storedWidth);
   const listColumn = useRef<HTMLDivElement>(null);
   useEffect(() => { localStorage.setItem(WIDTH_KEY, String(listWidth)); }, [listWidth]);
@@ -121,33 +121,22 @@ export default function Mail() {
     setAccountId((noted || accounts.find((k) => k.enabled) || accounts[0]).id);
   }, [accounts, accountId, user]);
 
-  const accountSwitch = (id: number) => {
+  /** A folder was clicked. It knows which mailbox it belongs to, so both are set at once. */
+  const go = (id: number, name: string) => {
+    const switched = id !== accountId;
     setAccountId(id);
-    setFolder("INBOX");
-    setUid(null);
-    setChosen([]);
-    // The server notes it, and the browser has to hear about it: leaving the page throws the
-    // choice away (the component goes with it), and on coming back the person in the context
-    // is the one from the last login. Without the second look one landed in the mailbox one
-    // had chosen the day before, not in the one one had just left.
-    api.post(`/mailbox/accounts/${id}/last`, {})
-      .then(() => userAgain())
-      .catch(() => {/* Remembering is no must */});
-  };
-
-  const folderSwitch = (name: string) => {
     setFolder(name);
     setUid(null);
     setChosen([]);
     setSearch("");
-    setQuestion("");
+    if (!switched) return;
+    // The server notes it, and the browser has to hear about it: leaving the page throws the
+    // choice away (the component goes with it), and on coming back the person in the context
+    // is the one from the last login.
+    api.post(`/mailbox/accounts/${id}/last`, {})
+      .then(() => userAgain())
+      .catch(() => {/* Remembering is no must */});
   };
-
-  const { data: folderListing } = useQuery({
-    queryKey: ["mail-folders", accountId], enabled: !!accountId,
-    queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${accountId}/folders?counts=true`),
-    refetchInterval: 60_000, refetchOnWindowFocus: true,
-  });
 
   if (!accounts?.length) {
     return (
@@ -168,72 +157,33 @@ export default function Mail() {
     <div className="flex h-full min-h-0 w-full flex-col gap-3 overflow-y-auto sm:overflow-hidden">
       <Errorrow text={err} />
       {notice && <div className="shrink-0 text-xs text-green-400">{notice}</div>}
-      {/* One row for everything that belongs to the mailbox: which one, its settings, and
-          the only action that does not start from a message. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <span className="text-xs text-muted">{tr("mail.mailbox")}</span>
-        <select value={accountId ?? ""} onChange={(e) => accountSwitch(Number(e.target.value))}
-          className={`${INPUT_VALUE} max-w-[16rem]`}>
-          {accounts.map((k) => {
-            const open = unread?.accounts.find((a) => a.account_id === k.id)?.unseen;
-            return (
-              <option key={k.id} value={k.id}>
-                {k.name}{k.enabled ? "" : ` (${tr("mail.off_short")})`}{open ? ` — ${open} ${tr("mail.new_short")}` : ""}
-              </option>
-            );
-          })}
-        </select>
-        <IconButton icon="⟳" title={tr("mail.look_now")}
-          onClick={() => {
-            qc.invalidateQueries({ queryKey: ["mail-unread"] });
-            qc.invalidateQueries({ queryKey: ["mail-folders"] });
-            qc.invalidateQueries({ queryKey: ["mail-list"] });
-          }} />
-        <IconButton icon="⚙" title={tr("mail.settings_of_mailbox")}
-          onClick={() => setSettings(accounts.find((k) => k.id === accountId) || null)} />
-        {/* The other mailboxes with new mail — visible without opening the select, and one
-            click jumps there. Whoever has nothing waiting does not turn up here: a
-            row of zeroes would be no information but wallpaper. */}
-        {accounts.filter((k) => {
-          const open = unread?.accounts.find((a) => a.account_id === k.id)?.unseen;
-          return k.id !== accountId && !!open;
-        }).map((k) => (
-          <button key={k.id} onClick={() => accountSwitch(k.id)}
-            title={tr("mail.switch_to", { name: k.name })}
-            className="flex shrink-0 items-center gap-1.5 rounded border border-brand/40 bg-brand/15 px-2 py-1 text-xs text-brand transition-colors hover:bg-brand/25">
-            {k.name}
-            <span className="rounded-full bg-brand px-1.5 text-[11px] text-white tabular-nums">
-              {unread?.accounts.find((a) => a.account_id === k.id)?.unseen}
-            </span>
-          </button>
-        ))}
-        {/* The search belongs to the mailbox, not to the list below it: it applies to the whole
-            folder and stays visible even when a message is open on the right. */}
-        <form onSubmit={(e) => { e.preventDefault(); setSearch(question); setUid(null); setChosen([]); }}
-              className="flex min-w-0 flex-1 items-center gap-2">
-          <input value={question} onChange={(e) => setQuestion(e.target.value)}
-            placeholder={tr("mail.search_fulltext")} className={`${INPUT_VALUE} min-w-0 max-w-md flex-1`} />
-          {search && (
-            <Rowbutton onClick={() => { setQuestion(""); setSearch(""); }}>
-              {tr("mail.reset")}
-            </Rowbutton>
-          )}
-        </form>
-        <button onClick={() => setCompose({})}
-          className={BUTTON.primary}>
-          {tr("mail.compose_button")}
-        </button>
-      </div>
 
       {/* Three columns from `xl` on, as in every mail program: folders change rarely, the list
           often, the message with every click. Below that the reading pane takes the place of
-          the list, because two columns of 300 pixels each are two columns nobody can read in. */}
+          the list, because two columns of 300 pixels each are two columns nobody can read in.
+
+          There is no bar above them any more. What stood in it belongs to something on the
+          page: the mailboxes are the roots of the tree, their handles hang on their row, and
+          the search belongs over the list it searches. That was a whole line of screen for
+          decisions one makes twice a day. */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 sm:flex-row">
-        <div className="flex min-h-0 flex-col sm:w-56 sm:shrink-0">
-          <FolderTree folder={folderListing} active={folder} account={account}
-            onChoose={folderSwitch}
-            onCommand={(o, kind) => setCommand({ folder: o, kind })}
-            onManage={() => setManage(true)} />
+        <div className="flex min-h-0 flex-col sm:w-60 sm:shrink-0">
+          <Area fills tools={
+            <Button variant="primary" wide onClick={() => setCompose({})}>
+              {tr("mail.compose_button")}
+            </Button>
+          }>
+            <AccountTree accounts={accounts} unread={unread?.accounts} accountId={accountId}
+              folder={folder} onChoose={go}
+              onCommand={(id, o, kind) => setCommand({ accountId: id, folder: o, kind })}
+              onManage={setManage}
+              onAccountCommand={(k, kind) => {
+                if (kind === "settings") { setSettings(k); return; }
+                qc.invalidateQueries({ queryKey: ["mail-unread"] });
+                qc.invalidateQueries({ queryKey: ["mail-folders", k.id] });
+                qc.invalidateQueries({ queryKey: ["mail-list"] });
+              }} />
+          </Area>
         </div>
 
         {/* The width is a variable, because it only applies from `xl` on: below that the list
@@ -244,7 +194,7 @@ export default function Mail() {
             uid !== null ? "hidden sm:hidden xl:flex" : "flex flex-1"}`}>
           <MessagesListing accountId={accountId!} folder={folder} search={search}
             account={account} onOpen={setUid} onError={setErr} open={uid}
-            chosen={chosen} onChosen={setChosen} />
+            chosen={chosen} onChosen={setChosen} onSearch={(q) => { setSearch(q); setUid(null); }} />
         </div>
 
         <Splitter leftOf={listColumn} value={listWidth} onChange={setListWidth}
@@ -275,16 +225,19 @@ export default function Mail() {
         <AccountSettings account={settings} onClose={() => setSettings(null)}
           onError={setErr} />
       )}
-      {command && accountId && (
-        <FolderCommands accountId={accountId} account={account} folder={command.folder}
-          kind={command.kind} onClose={() => setCommand(null)}
-          onGone={() => { setCommand(null); folderSwitch("INBOX"); }}
+      {command && (
+        <FolderCommands accountId={command.accountId}
+          account={accounts.find((k) => k.id === command.accountId)}
+          folder={command.folder} kind={command.kind} onClose={() => setCommand(null)}
+          onGone={() => { setCommand(null); go(command.accountId, "INBOX"); }}
           onEmptied={() => { setUid(null); setChosen([]); }}
           onDone={setNotice} onError={setErr} />
       )}
-      {manage && accountId && (
-        <FolderManagement accountId={accountId} account={account} chosen={folder}
-          onClose={() => setManage(false)} onGone={() => folderSwitch("INBOX")}
+      {manage !== null && (
+        <FolderManagement accountId={manage}
+          account={accounts.find((k) => k.id === manage)}
+          chosen={manage === accountId ? folder : "INBOX"}
+          onClose={() => setManage(null)} onGone={() => go(manage, "INBOX")}
           onError={setErr} />
       )}
     </div>
@@ -318,7 +271,120 @@ function AccountSettings({ account, onClose, onError: onError }: {
 }
 
 /**
- * The folders as a tree, with indentation, expanding and unread counts.
+ * Mailboxes and their folders in one tree.
+ *
+ * Formerly the mailbox was picked from a dropdown above everything else, and the tree showed
+ * the folders of that one. That is one line of screen for a decision one makes twice a day,
+ * and it hides the other mailboxes behind a click: whether something is waiting in the second
+ * one was a question one had to ask.
+ *
+ * Here every mailbox is a root, as in Outlook and Thunderbird and for the same reason: the
+ * folders belong to a mailbox, so they stand under it. A collapsed mailbox costs nothing but
+ * its own line, and it carries its unread count, so one sees where something waits without
+ * opening anything.
+ *
+ * The folders are only fetched for an expanded mailbox: behind every one sits an IMAP
+ * connection and one STATUS per folder, and three mailboxes with thirty folders each would be
+ * ninety questions for a picture nobody is looking at.
+ */
+function AccountTree({ accounts, unread, accountId, folder: folder, onChoose, onCommand,
+                       onManage, onAccountCommand }: {
+  accounts: MailAccount[];
+  unread: { account_id: number; unseen: number | null }[] | undefined;
+  accountId: number | null; folder: string;
+  onChoose: (accountId: number, folder: string) => void;
+  onCommand: (accountId: number, folder: Folder, kind: FolderCommand) => void;
+  onManage: (accountId: number) => void;
+  onAccountCommand: (account: MailAccount, kind: "refresh" | "settings") => void;
+}) {
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  // The mailbox one is standing in is always open. Otherwise a click in the message list
+  // would fold away the folder one is reading in.
+  useEffect(() => {
+    if (accountId === null) return;
+    setOpen((old) => (old.has(accountId) ? old : new Set([...old, accountId])));
+  }, [accountId]);
+
+  return (
+    <Listing>
+      {accounts.map((k) => (
+        <AccountBranch key={k.id} account={k}
+          unseen={unread?.find((a) => a.account_id === k.id)?.unseen ?? null}
+          open={open.has(k.id)} active={k.id === accountId}
+          folder={k.id === accountId ? folder : ""}
+          onToggle={() => setOpen((old) => {
+            const fresh = new Set(old);
+            fresh.has(k.id) ? fresh.delete(k.id) : fresh.add(k.id);
+            return fresh;
+          })}
+          onChoose={(name) => onChoose(k.id, name)}
+          onCommand={(o, kind) => onCommand(k.id, o, kind)}
+          onManage={() => onManage(k.id)}
+          onAccountCommand={(kind) => onAccountCommand(k, kind)} />
+      ))}
+    </Listing>
+  );
+}
+
+/** One mailbox with its folders. Its own component because its folders are its own query. */
+function AccountBranch({ account, unseen, open, active, folder: folder, onToggle, onChoose,
+                         onCommand, onManage, onAccountCommand }: {
+  account: MailAccount; unseen: number | null; open: boolean; active: boolean; folder: string;
+  onToggle: () => void; onChoose: (name: string) => void;
+  onCommand: (folder: Folder, kind: FolderCommand) => void;
+  onManage: () => void;
+  onAccountCommand: (kind: "refresh" | "settings") => void;
+}) {
+  const { data: folders } = useQuery({
+    queryKey: ["mail-folders", account.id],
+    queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${account.id}/folders?counts=true`),
+    enabled: open && account.enabled,
+    refetchInterval: 60_000, refetchOnWindowFocus: true,
+  });
+
+  return (
+    <>
+      <ListRow dense onClick={onToggle}>
+        <div className="group flex items-center gap-1.5">
+          <span className={BUTTON_TEXT.secondary}>{open ? "▼" : "▶"}</span>
+          <span className={`min-w-0 flex-1 truncate font-semibold ${
+            active ? "text-brand" : "text-ink"}`}>
+            {account.name}
+          </span>
+          {!account.enabled && <Tag>{tr("mail.off_short")}</Tag>}
+          {/* A mailbox that does not answer right now says so instead of showing a zero:
+              "nothing new" and "I do not know" are two different pieces of information. */}
+          {unseen === null && account.enabled
+            ? <span className="text-xs text-muted" title={tr("mail.mailbox_unreachable")}>?</span>
+            : !!unseen && <Tag color="brand">{unseen}</Tag>}
+          <Menu title={tr("mail.mailbox_handles", { name: account.name })} quiet={!active}>
+            {(close) => (
+              <>
+                <MenuItem onClick={() => { close(); onAccountCommand("refresh"); }}>
+                  ⟳ {tr("mail.look_now")}
+                </MenuItem>
+                <MenuItem onClick={() => { close(); onManage(); }}>
+                  🗂 {tr("mail.manage_all_folders")}
+                </MenuItem>
+                <MenuLine />
+                <MenuItem onClick={() => { close(); onAccountCommand("settings"); }}>
+                  ⚙ {tr("mail.mailbox_settings_short")}
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </div>
+      </ListRow>
+      {open && (
+        <FolderRows folders={folders} account={account} active={folder}
+          onChoose={onChoose} onCommand={onCommand} onManage={onManage} />
+      )}
+    </>
+  );
+}
+
+/**
+ * The folders of one mailbox, with indentation, expanding and unread counts.
  *
  * A flat list is enough as long as somebody has five folders. With a grown mailbox that
  * archives by year, project and mailing list it is a wall: one looks for the folder one is
@@ -330,8 +396,8 @@ function AccountSettings({ account, onClose, onError: onError }: {
  * button. The sign keeps quiet until the row is under the pointer, so that thirty folders do
  * not become thirty signs.
  */
-function FolderTree({ folder: folder, active, account, onChoose, onCommand, onManage }: {
-  folder: Folder[] | undefined; active: string; account: MailAccount | undefined;
+function FolderRows({ folders: folder, account, active, onChoose, onCommand, onManage }: {
+  folders: Folder[] | undefined; account: MailAccount; active: string;
   onChoose: (name: string) => void;
   onCommand: (folder: Folder, kind: FolderCommand) => void;
   onManage: () => void;
@@ -341,7 +407,8 @@ function FolderTree({ folder: folder, active, account, onChoose, onCommand, onMa
   // special folders, the rest is one click away.
   const [on, setOn] = useState<Set<string>>(new Set());
   if (!folder) {
-    return <Area fills><Listing><ListingEmpty>{tr("mail.folders_loading")}</ListingEmpty></Listing></Area>;
+    return <ListRow dense><span className="pl-6 text-xs text-muted">
+      {tr("mail.folders_loading")}</span></ListRow>;
   }
 
   const hasChildren = (o: Folder) => folder.some((k) => k.parent === o.name);
@@ -376,89 +443,87 @@ function FolderTree({ folder: folder, active, account, onChoose, onCommand, onMa
   const role = (o: Folder): string => {
     if (o.name.toUpperCase() === "INBOX") return tr("mail.role_inbox");
     const roles: [string | undefined, string][] = [
-      [account?.folder_sent, tr("mail.role_sent")], [account?.folder_drafts, tr("mail.role_drafts")],
-      [account?.folder_trash, tr("mail.role_trash")], [account?.folder_junk, tr("mail.role_junk")],
-      [account?.folder_archive, tr("mail.role_archive")]];
+      [account.folder_sent, tr("mail.role_sent")], [account.folder_drafts, tr("mail.role_drafts")],
+      [account.folder_trash, tr("mail.role_trash")], [account.folder_junk, tr("mail.role_junk")],
+      [account.folder_archive, tr("mail.role_archive")]];
     return roles.find(([n]) => n && n === o.name)?.[1] || "";
   };
 
   return (
-    <Area fills>
-      <Listing>
-        {folder.filter(visible).map((o) => {
-          const fixed = role(o);
-          return (
-            <ListRow key={o.name} dense onClick={() => onChoose(o.name)}>
-              {/* Fixed columns instead of flex with placeholders: only that way does the folder
-                  icon of every line sit in the same place, whether or not a fold arrow stands
-                  in front of it. */}
-              <div className="group grid grid-cols-[0.75rem_1.25rem_minmax(0,1fr)_auto_auto] items-center gap-1.5"
-                   style={{ paddingLeft: `${o.level * 0.85}rem` }}>
-                {hasChildren(o) ? (
-                  <button onClick={(e) => { e.stopPropagation(); toggle(o.name); }}
-                    className={BUTTON_TEXT.secondary}
-                    title={on.has(o.name) ? tr("mail.collapse") : tr("mail.expand")}>
-                    {on.has(o.name) ? "▼" : "▶"}
-                  </button>
-                ) : <span />}
-                <span className="text-center leading-none">{SPECIAL[o.special] || "📁"}</span>
-                <span className={`min-w-0 truncate ${
-                  o.name === active ? "font-medium text-brand"
-                    : sum_total(o) ? "font-medium text-ink" : ""}`}>
-                  {o.display}
-                </span>
-                {(() => {
-                  const to = hasChildren(o) && !on.has(o.name);
-                  const number = to ? sum_total(o) : o.unseen;
-                  if (!number) return <span />;
-                  // Collapsed and something only in the children: the count belongs to the
-                  // branch, not to the folder, shown more quietly so one sees the difference.
-                  const onlyChildren = to && !o.unseen;
-                  return (
-                    <Tag color={onlyChildren ? "neutral" : "brand"}
-                      title={onlyChildren ? tr("mail.in_subfolders") : tr("mail.unread")}>
-                      {number}
-                    </Tag>
-                  );
-                })()}
-                <Menu title={tr("mail.folder_handles", { folder: o.display })}
-                      quiet={o.name !== active}>
-                  {(close) => (
-                    <>
-                      <MenuItem onClick={() => { close(); onCommand(o, "read"); }}>
-                        ✓ {tr("mail.mark_all_read")}
-                      </MenuItem>
-                      <MenuItem onClick={() => { close(); onCommand(o, "empty"); }}>
-                        🧹 {tr("mail.empty_folder_plain")}
-                      </MenuItem>
-                      <MenuLine />
-                      <MenuItem onClick={() => { close(); onCommand(o, "child"); }}>
-                        {tr("mail.new_subfolder")}
-                      </MenuItem>
-                      {/* Switched off, not gone: a handle that is missing looks like one that
-                          does not exist, and the reason belongs where one reaches for it. */}
-                      <MenuItem disabled={!!fixed} title={fixed ? tr("mail.is_role_folder", { role: fixed }) : undefined}
-                        onClick={() => { close(); onCommand(o, "rename"); }}>
-                        {tr("mail.rename_dots")}
-                      </MenuItem>
-                      <MenuItem danger disabled={!!fixed}
-                        title={fixed ? tr("mail.is_role_folder", { role: fixed }) : undefined}
-                        onClick={() => { close(); onCommand(o, "delete"); }}>
-                        {tr("mail.delete_folder_plain")}
-                      </MenuItem>
-                      <MenuLine />
-                      <MenuItem onClick={() => { close(); onManage(); }}>
-                        ⚙ {tr("mail.manage_all_folders")}
-                      </MenuItem>
-                    </>
-                  )}
-                </Menu>
-              </div>
-            </ListRow>
-          );
-        })}
-      </Listing>
-    </Area>
+    <>
+      {folder.filter(visible).map((o) => {
+        const fixed = role(o);
+        return (
+          <ListRow key={o.name} dense onClick={() => onChoose(o.name)}>
+            {/* Fixed columns instead of flex with placeholders: only that way does the folder
+                icon of every line sit in the same place, whether or not a fold arrow stands
+                in front of it. The first column is the indentation under the mailbox. */}
+            <div className="group grid grid-cols-[0.75rem_1.25rem_minmax(0,1fr)_auto_auto] items-center gap-1.5"
+                 style={{ paddingLeft: `${0.9 + o.level * 0.85}rem` }}>
+              {hasChildren(o) ? (
+                <button onClick={(e) => { e.stopPropagation(); toggle(o.name); }}
+                  className={BUTTON_TEXT.secondary}
+                  title={on.has(o.name) ? tr("mail.collapse") : tr("mail.expand")}>
+                  {on.has(o.name) ? "▼" : "▶"}
+                </button>
+              ) : <span />}
+              <span className="text-center leading-none">{SPECIAL[o.special] || "📁"}</span>
+              <span className={`min-w-0 truncate ${
+                o.name === active ? "font-medium text-brand"
+                  : sum_total(o) ? "font-medium text-ink" : ""}`}>
+                {o.display}
+              </span>
+              {(() => {
+                const to = hasChildren(o) && !on.has(o.name);
+                const number = to ? sum_total(o) : o.unseen;
+                if (!number) return <span />;
+                // Collapsed and something only in the children: the count belongs to the
+                // branch, not to the folder, shown more quietly so one sees the difference.
+                const onlyChildren = to && !o.unseen;
+                return (
+                  <Tag color={onlyChildren ? "neutral" : "brand"}
+                    title={onlyChildren ? tr("mail.in_subfolders") : tr("mail.unread")}>
+                    {number}
+                  </Tag>
+                );
+              })()}
+              <Menu title={tr("mail.folder_handles", { folder: o.display })}
+                    quiet={o.name !== active}>
+                {(close) => (
+                  <>
+                    <MenuItem onClick={() => { close(); onCommand(o, "read"); }}>
+                      ✓ {tr("mail.mark_all_read")}
+                    </MenuItem>
+                    <MenuItem onClick={() => { close(); onCommand(o, "empty"); }}>
+                      🧹 {tr("mail.empty_folder_plain")}
+                    </MenuItem>
+                    <MenuLine />
+                    <MenuItem onClick={() => { close(); onCommand(o, "child"); }}>
+                      {tr("mail.new_subfolder")}
+                    </MenuItem>
+                    {/* Switched off, not gone: a handle that is missing looks like one that
+                        does not exist, and the reason belongs where one reaches for it. */}
+                    <MenuItem disabled={!!fixed} title={fixed ? tr("mail.is_role_folder", { role: fixed }) : undefined}
+                      onClick={() => { close(); onCommand(o, "rename"); }}>
+                      {tr("mail.rename_dots")}
+                    </MenuItem>
+                    <MenuItem danger disabled={!!fixed}
+                      title={fixed ? tr("mail.is_role_folder", { role: fixed }) : undefined}
+                      onClick={() => { close(); onCommand(o, "delete"); }}>
+                      {tr("mail.delete_folder_plain")}
+                    </MenuItem>
+                    <MenuLine />
+                    <MenuItem onClick={() => { close(); onManage(); }}>
+                      ⚙ {tr("mail.manage_all_folders")}
+                    </MenuItem>
+                  </>
+                )}
+              </Menu>
+            </div>
+          </ListRow>
+        );
+      })}
+    </>
   );
 }
 
@@ -817,14 +882,20 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
  * newsletters means thirty clicks, which is exactly the moment one stops using a selection.
  */
 function MessagesListing({ accountId, folder: folder, search, account, onOpen: onOpen_it,
-                           onError: onError, open: open, chosen, onChosen }: {
+                           onError: onError, open: open, chosen, onChosen, onSearch }: {
   accountId: number; folder: string; search: string; account: MailAccount | undefined;
   onOpen: (uid: number) => void; onError: (m: string) => void;
   open: number | null; chosen: number[]; onChosen: (uids: number[]) => void;
+  onSearch: (q: string) => void;
 }) {
   const qc = useQueryClient();
   const [page, setPage] = useState(0);
   const [moveOpen, setMoveOpen] = useState(false);
+  // The search field only takes the row when it is wanted. It searches THIS folder, which is
+  // why it stands over it and not in a bar above the whole page.
+  const [asking, setAsking] = useState(false);
+  const [question, setQuestion] = useState(search);
+  useEffect(() => { setQuestion(search); if (!search) setAsking(false); }, [search, folder]);
   // Where the last tick sat, for the range that shift asks for.
   const [anchor, setAnchor] = useState<number | null>(null);
   const limit = 50;
@@ -893,12 +964,26 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
       // One row above the list, not three. The folder name, the tick for all of them and the
       // count fit beside each other, and every line that goes is a line of mail that stays.
       tools={<>
-        {messages.length > 0 && (
+        {messages.length > 0 && chosen.length > 0 && (
           <input type="checkbox" checked={allTicked} className="h-4 w-4 accent-brand"
             title={tr("mail.choose_all_on_page")} aria-label={tr("mail.choose_all_on_page")}
             onChange={() => onChosen(allTicked ? [] : messages.map((m) => m.uid))} />
         )}
-        {chosen.length > 0 ? (
+        {asking || search ? (
+          // Searching takes the row over, as the selection does: while typing, how many
+          // messages the folder holds is not the question of the moment.
+          <form className="flex min-w-0 flex-1 items-center gap-2"
+                onSubmit={(e) => { e.preventDefault(); onSearch(question.trim()); }}>
+            <input value={question} autoFocus placeholder={tr("mail.search_in_folder", { folder })}
+              className={`${INPUT_VALUE} min-w-0 flex-1`}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { setAsking(false); onSearch(""); } }} />
+            <Rowbutton onClick={() => onSearch(question.trim())}>{tr("mail.search_go")}</Rowbutton>
+            <Rowbutton onClick={() => { setQuestion(""); setAsking(false); onSearch(""); }}>
+              {tr("common.close")}
+            </Rowbutton>
+          </form>
+        ) : chosen.length > 0 ? (
         // The selection takes the row over: with something ticked, how many messages the
         // folder holds is not the question of the moment.
         <>
@@ -925,16 +1010,28 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
         </>
       ) : (
         <>
-          <span className="text-sm font-semibold text-ink">{folder}</span>
-          {search && <Tag color="brand">{tr("mail.search_label")}: {search}</Tag>}
+          {messages.length > 0 && (
+            <input type="checkbox" checked={allTicked} className="h-4 w-4 accent-brand"
+              title={tr("mail.choose_all_on_page")} aria-label={tr("mail.choose_all_on_page")}
+              onChange={() => onChosen(allTicked ? [] : messages.map((m) => m.uid))} />
+          )}
+          <span className="min-w-0 truncate text-sm font-semibold text-ink">{folder}</span>
           <div className="flex-1" />
           <span className="text-xs text-muted">
-            {data?.total ?? 0} {search ? tr("mail.hits") : tr("mail.messages")}
+            {data?.total ?? 0} {tr("mail.messages")}
           </span>
+          <IconButton icon="🔍" title={tr("mail.search_in_folder", { folder })}
+            onClick={() => setAsking(true)} />
         </>
       )}
       </>}
     >
+      {search && (
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <Tag color="brand">{tr("mail.search_label")}: {search}</Tag>
+          {data?.total ?? 0} {tr("mail.hits")}
+        </div>
+      )}
       <Listing>
         {messages.map((m, index) => (
           <ListRow key={m.uid} dense onClick={() => onOpen_it(m.uid)}>

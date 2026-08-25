@@ -2450,7 +2450,6 @@
   "processes.edit": "Edit",
   "editor.draft_discarded": "Draft discarded.",
   "editor.discard_failed": "Discarding failed",
-  "mail.search_fulltext": "Search (full text)",
   "mail.nothing_unread": "Nothing was unread",
   "mail.mark_all_read_q": "Mark everything as read?",
   "mail.message": "Message",
@@ -2518,13 +2517,9 @@
   "inbox.approve_dots": "Approve…",
   "inbox.discard": "Discard",
   "mail.accounts_in_account": "Accounts and identities live in your account under <b>Mail accounts</b>.",
-  "mail.mailbox": "Mailbox",
   "mail.off_short": "off",
   "mail.new_short": "new",
   "mail.look_now": "Look now",
-  "mail.settings_of_mailbox": "Settings of this mailbox",
-  "mail.switch_to": "Switch to “{name}”",
-  "mail.reset": "reset",
   "mail.compose_button": "✉️ Compose",
   "mail.folders_loading": "The folders are loading…",
   "mail.in_subfolders": "in subfolders",
@@ -2902,5 +2897,9 @@
   "mail.mark_unread_short": "Unread",
   "mail.selection_off": "Clear selection",
   "mail.choose_all_on_page": "All on this page",
-  "mail.drag_the_seam": "Drag to change the width of the list, double click puts it back"
+  "mail.drag_the_seam": "Drag to change the width of the list, double click puts it back",
+  "mail.search_in_folder": "Search in '{folder}'",
+  "mail.search_go": "Search",
+  "mail.mailbox_handles": "What one can do with the mailbox '{name}'",
+  "mail.mailbox_settings_short": "Settings"
 }
