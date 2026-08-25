@@ -24,9 +24,34 @@ The repository holds code, tests, `README.md` and comments on the code.
 
 ## Language: English in the code
 
-Comments, docstrings and strings are English, even though we talk German around it. Do not
-translate technical terms that are more common in English (pull request, docker compose).
-No em dashes anywhere: use a comma, a colon, parentheses or a full stop.
+Comments, docstrings, strings **and commit messages** are English, even though we talk German
+around it. Do not translate technical terms that are more common in English (pull request,
+docker compose). No em dashes anywhere: use a comma, a colon, parentheses or a full stop.
+
+Four things stay German on purpose, and none of them is a leftover:
+
+- `frontend/src/i18n/de.json`, the German message catalog. That is what it is for.
+- What the messenger bot writes to a person. It has no catalog yet, and English there would
+  change what somebody reads on their phone, not what a developer reads in the source.
+- Test DATA: mail subjects, chat texts, spam samples. Language material, not prose.
+- Signal identifiers and context keys that already stand in stored data (the memory note
+  names, `auftrag`/`ablage`/`still_wenn` in the job parameters). Renaming those is a data
+  migration, not a translation.
+
+## No names in the repository
+
+This repository is public. Nothing in it names a person, a company, or a project that is not
+this one:
+
+- **No ticket keys.** A comment may keep its reasoning and its date, but not `ABC-32`: the
+  number means nothing outside the installation that issued it. Write "one ticket", "a
+  reviewer run", or just the date.
+- **No neighbouring systems.** Other services of the same household are "the predecessor",
+  "another program", "a game bot". Third party products that this genuinely talks to keep
+  their names, because the tool names depend on them.
+- **Neutral fixtures.** Test projects are `ABC`/`XYZ`, sample keys are `ABC-7`. They only
+  ever had to be *some* key.
+- Traccoon's own name, its `traccoon_*` tools and its repository URL stay.
 
 ## Comments explain the why
 
