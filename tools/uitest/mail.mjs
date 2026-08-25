@@ -46,6 +46,27 @@ if (await punkte.count()) {
   console.log("MENUE nicht gefunden");
 }
 
+// Ordner auf- und zuklappen: was passiert wirklich?
+const baum = async () => seite.evaluate(() => [...document.querySelectorAll(
+  "[class*='grid-cols-[0.75rem']")].map((d) => {
+    const t = (d.innerText || "").split("\n").filter(Boolean);
+    return (d.previousElementSibling ? "" : "") + t.slice(0, 2).join(" ");
+  }));
+console.log("BAUM-VORHER", JSON.stringify(await baum()));
+const archiv = seite.getByText("Archives", { exact: true }).first();
+if (await archiv.count()) {
+  // Erst der Pfeil davor, nicht der Name: der Name wechselt den Ordner.
+  const zeile = archiv.locator("xpath=ancestor::div[contains(@class,'grid-cols-')][1]");
+  const pfeil = zeile.locator("button").first();
+  await pfeil.click({ force: true });
+  await seite.waitForTimeout(1200);
+  console.log("BAUM-AUF", JSON.stringify(await baum()));
+  await pfeil.click({ force: true });
+  await seite.waitForTimeout(800);
+  console.log("BAUM-ZU", JSON.stringify(await baum()));
+  await seite.screenshot({ path: "/w/mail-18-baum.png" });
+}
+
 // Enter im Suchfeld muss die Suche auslösen. Geprüft wird die Anfrage, nicht ihr Ergebnis:
 // eine Volltextsuche über zweitausend Mails dauert auf dem Server, und die Frage hier ist,
 // ob sie überhaupt gestellt wird.
@@ -131,6 +152,15 @@ if (await kandidat.count()) {
   await kandidat.click({ force: true }).catch(() => {});
   await seite.waitForTimeout(2500);
   await seite.screenshot({ path: "/w/mail-04-lesen.png" });
+  // Nimmt die Mail die Höhe, die die Spalte hergibt?
+  const hoehen = await seite.evaluate(() => {
+    const f = document.querySelector("main iframe");
+    const karte = f && f.closest("[class*=\"bg-card\"]");
+    return f && karte ? { rahmen: Math.round(f.getBoundingClientRect().height),
+                          karte: Math.round(karte.getBoundingClientRect().height),
+                          fenster: window.innerHeight } : null;
+  });
+  console.log("HOEHE", JSON.stringify(hoehen));
   // Wie breit steht die Mail wirklich im Rahmen, und bricht irgendwo ein Wort in Buchstaben?
   const rahmen = seite.frameLocator("iframe").first();
   const mass = await rahmen.locator("body").evaluate((b) => {

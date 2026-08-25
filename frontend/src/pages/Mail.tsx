@@ -1,5 +1,5 @@
 import { tr } from "../i18n";
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, fetchFile } from "../api";
 import { usePageChrome } from "../pageChrome";
@@ -143,6 +143,13 @@ export default function Mail() {
     setAccountId((noted || accounts.find((k) => k.enabled) || accounts[0]).id);
   }, [accounts, accountId, user]);
 
+  /** Opening a message keeps its identity over renders, otherwise every row of the list
+   *  would be a new one every minute and `MessageRow`'s `memo` would be for nothing. */
+  const openMessage = useCallback((id: number, name: string) => {
+    setUid(id);
+    setReadFolder(name);
+  }, []);
+
   /** A folder was clicked. It knows which mailbox it belongs to, so both are set at once. */
   const go = (id: number, name: string) => {
     const switched = id !== accountId;
@@ -217,8 +224,7 @@ export default function Mail() {
           className={`min-h-0 flex-col xl:flex xl:w-[var(--list)] xl:shrink-0 xl:grow-0 ${
             uid !== null ? "hidden sm:hidden xl:flex" : "flex flex-1"}`}>
           <MessagesListing accountId={accountId!} folder={folder} search={search} scope={scope}
-            account={account} onError={setErr} open={uid}
-            onOpen={(id, name) => { setUid(id); setReadFolder(name); }}
+            account={account} onError={setErr} open={uid} onOpen={openMessage}
             chosen={chosen} onChosen={setChosen}
             onSearch={(q, wide) => { setSearch(q); setScope(wide); setUid(null); }} />
         </div>
@@ -440,6 +446,21 @@ function FolderRows({ folders: folder, account, active, onChoose, onCommand, onM
   // does not want to see all of those when opening it. What one needs daily are the six
   // special folders, the rest is one click away.
   const [on, setOn] = useState<Set<string>>(new Set());
+  // The way to the open folder is open. Formerly the folder simply appeared between its
+  // strangers (`visible` let it through), indented but without the branch it belongs to, and
+  // clicking it shut afterwards was impossible because its parents were never open.
+  useEffect(() => {
+    if (!active || !folder) return;
+    const way: string[] = [];
+    let parent = folder.find((k) => k.name === active)?.parent || "";
+    while (parent) {
+      way.push(parent);
+      parent = folder.find((k) => k.name === parent)?.parent || "";
+    }
+    if (!way.length) return;
+    setOn((old) => (way.every((n) => old.has(n)) ? old : new Set([...old, ...way])));
+  }, [active, folder]);
+
   if (!folder) {
     return <ListRow dense><span className="pl-6 text-xs text-muted">
       {tr("mail.folders_loading")}</span></ListRow>;
@@ -457,10 +478,10 @@ function FolderRows({ folders: folder, account, active, onChoose, onCommand, onM
   const sum_total = (o: Folder): number => folder
     .filter((k) => k.parent === o.name)
     .reduce((number, k) => number + sum_total(k), o.unseen || 0);
-  // Visible is whatever has all its ancestors expanded. The active folder always stays so,
-  // otherwise what one is currently reading in would vanish from under one's feet.
+  // Visible is whatever has all its ancestors expanded. The one being read in is among them,
+  // because the effect above opens its way.
   const visible = (o: Folder) => {
-    if (o.name === active || !o.parent) return true;
+    if (!o.parent) return true;
     let parent = o.parent;
     while (parent) {
       if (!on.has(parent)) return false;
@@ -900,7 +921,9 @@ function HtmlView({ html, show }: { html: string; show: boolean }) {
       title={tr("mail.message")}
       sandbox="allow-popups allow-popups-to-escape-sandbox"
       srcDoc={document}
-      className="h-[60vh] w-full rounded border border-line bg-white"
+      // Takes what the column has left instead of a fixed 60vh: on a tall screen that left
+      // a hole below the mail, on a short one it made a letterbox out of it.
+      className="min-h-[16rem] w-full flex-1 rounded border border-line bg-white"
     />
   );
 }
@@ -922,8 +945,16 @@ function ImageDialog({ sender, rules, onClose, onLoad, onForget }: {
   onLoad: (remember: ImageRule["kind"] | null) => void;
   onForget: (id: number) => void;
 }) {
-  const [remember, setRemember] = useState<ImageRule["kind"] | "">("");
   const domain = sender.split("@")[1] || "";
+  // Preselected with what already applies. A dialog that opens on "this one time" although
+  // "always" is switched on tells the reader something untrue about their own mailbox.
+  const [remember, setRemember] = useState<ImageRule["kind"] | "">(() =>
+    rules.find((r) => r.kind === "all") ? "all"
+      : rules.find((r) => r.kind === "domain" && r.value.toLowerCase() === domain.toLowerCase())
+        ? "domain"
+      : rules.find((r) => r.kind === "sender" && r.value.toLowerCase() === sender.toLowerCase())
+        ? "sender"
+      : "");
   /** The kept answers that apply to THIS sender. Only they can be taken back here. */
   const applies = rules.filter((r) => r.kind === "all"
     || (r.kind === "sender" && r.value.toLowerCase() === sender.toLowerCase())
@@ -1000,7 +1031,7 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
   const limit = 50;
   useEffect(() => { setPage(0); }, [folder, search]);
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isPlaceholderData, error } = useQuery({
     queryKey: ["mail-list", accountId, folder, search, scope, page],
     queryFn: () => api.get<{ total: number; capped?: boolean; messages: Header[] }>(
       `/mailbox/accounts/${accountId}/messages?folder=${encodeURIComponent(folder)}`
@@ -1026,25 +1057,35 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
   const ticked = new Set(chosen);
   const allTicked = messages.length > 0 && messages.every((m) => ticked.has(m.uid));
 
-  const tick = (m: Header, index: number, shift: boolean) => {
-    if (shift && anchor !== null) {
-      const from = messages.findIndex((k) => k.uid === anchor);
+  /**
+   * The current state, in a box that stays the same.
+   *
+   * The two handles below have to keep their identity, otherwise every row would be a new one
+   * on every render and `memo` would be decoration. What they need to know changes constantly
+   * (the selection, the list, the anchor), so it does not travel through the closure but
+   * through this box.
+   */
+  const now = useRef({ chosen, messages, anchor });
+  now.current = { chosen, messages, anchor };
+
+  const tick = useCallback((uid: number, index: number, shift: boolean) => {
+    const { chosen: had, messages: rows, anchor: from_uid } = now.current;
+    const set = new Set(had);
+    if (shift && from_uid !== null) {
+      const from = rows.findIndex((k) => k.uid === from_uid);
       if (from >= 0) {
         const [a, b] = from < index ? [from, index] : [index, from];
-        const range = messages.slice(a, b + 1).map((k) => k.uid);
         // The range follows what the anchor did: ticking it ticks, unticking unticks.
-        const set = new Set(chosen);
-        const add = !ticked.has(m.uid);
-        range.forEach((uid) => (add ? set.add(uid) : set.delete(uid)));
+        const add = !set.has(uid);
+        rows.slice(a, b + 1).forEach((k) => (add ? set.add(k.uid) : set.delete(k.uid)));
         onChosen([...set]);
         return;
       }
     }
-    const set = new Set(chosen);
-    ticked.has(m.uid) ? set.delete(m.uid) : set.add(m.uid);
-    setAnchor(m.uid);
+    set.has(uid) ? set.delete(uid) : set.add(uid);
+    setAnchor(uid);
     onChosen([...set]);
-  };
+  }, [onChosen]);
 
   const after = () => {
     onChosen([]);
@@ -1092,7 +1133,7 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
           </form>
           {/* While a new answer is on its way the old number is not wrong, it is stale.
               Dimmed it says so, and it keeps its place so the row does not jump. */}
-          <span className={`shrink-0 text-xs text-muted ${isFetching ? "opacity-40" : ""}`}>
+          <span className={`shrink-0 text-xs text-muted ${isPlaceholderData ? "opacity-40" : ""}`}>
             {data?.total ?? 0}{data?.capped ? "+" : ""}{" "}
             {search ? tr("mail.hits") : tr("mail.messages")}
           </span>
@@ -1141,40 +1182,18 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
         )}
       </>}
     >
-      <Busy text={isFetching && search ? tr("mail.searching_now")
-                                        : isFetching ? tr("mail.loading") : undefined}
-            show={isFetching}>
+      {/* The veil goes over a CHANGE, not over every background check. `isPlaceholderData`
+          is exactly that: what is on screen belongs to a different question than the one
+          being asked. Hung on `isFetching` it flickered every sixty seconds over a list
+          that was not moving at all. */}
+      <Busy show={isLoading || isPlaceholderData}
+            text={search ? tr("mail.searching_now") : tr("mail.loading")}>
       <Listing>
         {messages.map((m, index) => (
-          <ListRow key={`${m.folder || folder}:${m.uid}`} dense
-                   onClick={() => onOpen_it(m.uid, m.folder || folder)}>
-            <div className="flex items-start gap-2">
-              {/* Its own click target, and it must not open the mail: a tick is a decision
-                  about the row, not a way into it. */}
-              <input type="checkbox" checked={ticked.has(m.uid)}
-                className="mt-1 h-4 w-4 shrink-0 accent-brand"
-                onClick={(e) => { e.stopPropagation(); tick(m, index, (e as any).shiftKey); }}
-                onChange={() => {/* der Klick oben entscheidet */}} />
-              <div className="min-w-0 flex-1">
-                <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 ${
-                  m.uid === open ? "text-brand" : ""}`}>
-                  <span className={`min-w-0 flex-1 truncate ${
-                    m.uid === open ? "font-medium" : m.seen ? "text-ink" : "font-semibold text-ink"}`}>
-                    {m.subject || tr("mail.no_subject")}
-                  </span>
-                  {scope === "all" && search && m.folder && m.folder !== folder && (
-                    <Tag title={tr("mail.lies_in", { folder: m.folder })}>📁 {m.folder}</Tag>
-                  )}
-                  {!m.seen && <Tag color="brand">{tr("mail.new_short")}</Tag>}
-                  {m.has_attachment && <span title={tr("mail.has_attachment")}>📎</span>}
-                  {m.flagged && <span title={tr("mail.flagged")}>⭐</span>}
-                  {m.answered && <span title={tr("mail.answered")}>↩</span>}
-                  <span className="shrink-0 text-xs text-muted">{formatDateTime(m.date)}</span>
-                </div>
-                <div className="mt-0.5 truncate text-xs text-muted">{m.from}</div>
-              </div>
-            </div>
-          </ListRow>
+          <MessageRow key={`${m.folder || folder}:${m.uid}`} m={m} index={index}
+            folder={folder} showFolder={scope === "all" && !!search}
+            open={m.uid === open} ticked={ticked.has(m.uid)}
+            onOpen={onOpen_it} onTick={tick} />
         ))}
         {isLoading && <ListingEmpty>{tr("mail.loading")}</ListingEmpty>}
         {!isLoading && !messages.length && (
@@ -1199,6 +1218,52 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
     </Area>
   );
 }
+
+/**
+ * One line of the message list, and it only draws itself again when it has changed.
+ *
+ * The list checks with the mailbox every minute. Without this every one of fifty rows would
+ * be rebuilt for it, and what one saw of that was a flicker over a list in which nothing had
+ * happened. `memo` compares the properties, and since react-query keeps the identity of
+ * unchanged messages (structural sharing), an unchanged row really is unchanged: what gets
+ * redrawn is the mail that arrived and the one that was read.
+ */
+const MessageRow = memo(function MessageRow({ m, index, folder: folder, showFolder, open,
+                                              ticked, onOpen: onOpen_it, onTick }: {
+  m: Header; index: number; folder: string; showFolder: boolean; open: boolean;
+  ticked: boolean; onOpen: (uid: number, folder: string) => void;
+  onTick: (uid: number, index: number, shift: boolean) => void;
+}) {
+  return (
+    <ListRow dense onClick={() => onOpen_it(m.uid, m.folder || folder)}>
+      <div className="flex items-start gap-2">
+        {/* Its own click target, and it must not open the mail: a tick is a decision about
+            the row, not a way into it. */}
+        <input type="checkbox" checked={ticked} className="mt-1 h-4 w-4 shrink-0 accent-brand"
+          onClick={(e) => { e.stopPropagation(); onTick(m.uid, index, (e as any).shiftKey); }}
+          onChange={() => {/* der Klick oben entscheidet */}} />
+        <div className="min-w-0 flex-1">
+          <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 ${
+            open ? "text-brand" : ""}`}>
+            <span className={`min-w-0 flex-1 truncate ${
+              open ? "font-medium" : m.seen ? "text-ink" : "font-semibold text-ink"}`}>
+              {m.subject || tr("mail.no_subject")}
+            </span>
+            {showFolder && m.folder && m.folder !== folder && (
+              <Tag title={tr("mail.lies_in", { folder: m.folder })}>📁 {m.folder}</Tag>
+            )}
+            {!m.seen && <Tag color="brand">{tr("mail.new_short")}</Tag>}
+            {m.has_attachment && <span title={tr("mail.has_attachment")}>📎</span>}
+            {m.flagged && <span title={tr("mail.flagged")}>⭐</span>}
+            {m.answered && <span title={tr("mail.answered")}>↩</span>}
+            <span className="shrink-0 text-xs text-muted">{formatDateTime(m.date)}</span>
+          </div>
+          <div className="mt-0.5 truncate text-xs text-muted">{m.from}</div>
+        </div>
+      </div>
+    </ListRow>
+  );
+});
 
 /**
  * "Move to…": the tree as in the folder column, only without counters.
@@ -1648,7 +1713,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           )}
 
           {m.html ? (
-            <div className="space-y-2">
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
               {/* One row for how the mail is shown: which view, and what of it is loaded.
                   Both are the same question asked twice, and the answer to the second one
                   used to stand as a banner over the mail, which pushed it down every time. */}
@@ -1692,12 +1757,12 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               </div>
               {view === "html"
                 ? <HtmlView html={m.html} show={pictures} />
-                : <pre className={`max-h-[60vh] overflow-auto whitespace-pre-wrap ${PAPER}`}>
+                : <pre className={`min-h-[16rem] flex-1 overflow-auto whitespace-pre-wrap ${PAPER}`}>
                     {m.text || tr("mail.no_text")}
                   </pre>}
             </div>
           ) : (
-            <pre className={`max-h-[60vh] overflow-auto whitespace-pre-wrap ${PAPER}`}>
+            <pre className={`min-h-[16rem] flex-1 overflow-auto whitespace-pre-wrap ${PAPER}`}>
               {m.text || tr("mail.no_text")}
             </pre>
           )}

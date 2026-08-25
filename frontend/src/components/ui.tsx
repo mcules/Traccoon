@@ -388,7 +388,12 @@ export function Area({ title: title, subtitle, hint: hint, tools: tools, fills =
       {tools && (
         <div className="flex flex-wrap items-center gap-3 text-sm">{tools}</div>
       )}
-      {fills ? <div className="min-h-0 flex-1 overflow-y-auto">{children}</div> : children}
+      {/* A column, so that a child may say "I take what is left" (`flex-1`): a mail is meant
+          to fill the space it has, and a fixed 60vh leaves a hole below it on a tall screen.
+          What does not fit still scrolls. */}
+      {fills
+        ? <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">{children}</div>
+        : children}
     </div>
   );
 }
