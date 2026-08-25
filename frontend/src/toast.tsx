@@ -50,12 +50,22 @@ function close(id: number): void {
   announce();
 }
 
-/** The four tones, in the colours the rest of the house uses for the same meanings. */
+/**
+ * The four tones, opaque.
+ *
+ * Everywhere else in this house a colour is a wash over the surface it lies on, because there
+ * it belongs to a row or a card. Here it lies over the page: a mail list shining through the
+ * message makes it hard to read exactly where one reads it in passing. So: full colour, light
+ * writing, and the same four meanings as everywhere else.
+ *
+ * Dark tones in both themes on purpose. A message is not part of the page, it is a note stuck
+ * on top of it, and it may look the same in a light and a dark one.
+ */
 const TONE: Record<ToastKind, string> = {
-  success: "border-emerald-500/50 bg-emerald-500/20 text-emerald-200",
-  error: "border-red-500/50 bg-red-500/20 text-red-200",
-  warning: "border-amber-500/50 bg-amber-500/20 text-amber-200",
-  info: "border-brand/50 bg-brand/20 text-ink",
+  success: "border-emerald-500 bg-emerald-700 text-white",
+  error: "border-red-500 bg-red-700 text-white",
+  warning: "border-amber-400 bg-amber-600 text-white",
+  info: "border-brand bg-brand text-white",
 };
 
 export function Toasts() {
@@ -78,7 +88,7 @@ export function Toasts() {
           // Stronger than the tags in a list: this thing stands over the page and has to be
           // read in passing, so it may carry its colour and not just hint at it.
           className={`toast-in pointer-events-auto w-full rounded-lg border px-3 py-2 text-left
-            text-sm shadow-2xl transition-opacity hover:opacity-80 ${TONE[e.kind]}`}>
+            text-sm shadow-2xl transition-[filter] hover:brightness-110 ${TONE[e.kind]}`}>
           {e.text}
         </button>
       ))}
