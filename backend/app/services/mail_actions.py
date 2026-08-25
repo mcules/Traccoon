@@ -57,7 +57,7 @@ async def classify(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     from .assistant_policy import agent_running_local, match_policy, note_hit, parse_sender
     from .mail_classify import classify_email
     from .spam_rules import evaluate, mail_text
-    from .spam_review import nonbusiness_domains, my_addresses
+    from .spam_review import brands, nonbusiness_domains, my_addresses
     from .vault_contacts import known_domains
 
     payload = _mail(ctx)
@@ -73,6 +73,7 @@ async def classify(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
         rule = evaluate(payload, my_addresses=await my_addresses(db),
                          known_domains=await known_domains(db, owner_id),
                          nonbusiness_domains=await nonbusiness_domains(db),
+                         brands=await brands(db),
                          body=body)
         classification = await classify_email(db, owner_id, account=account, sender=sender,
                                       subject=subject, body=body,

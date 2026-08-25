@@ -55,6 +55,9 @@ MY_ADDRESSES_KEY = "spam_meine_adressen"   # eigene Empfangsadressen, Komma-getr
 # Domains over which demonstrably no contractual business runs. There, every "invoice" is a
 # claim, regardless of what the address in front of it is called.
 NO_GESCHAEFTSDOMAINS_KEY = "spam_keine_geschaeftsdomains"
+# Which houses get impersonated depends on where one banks and shops. That is local knowledge,
+# not a rule, and it has no place in the code: what stands there stands in the repository.
+BRANDS_KEY = "spam_marken"
 
 _DEFAULT = {
     ACTIVE_KEY: "1",
@@ -67,6 +70,7 @@ _DEFAULT = {
     AUTO_REPORT_KEY: "1",
     MY_ADDRESSES_KEY: "",
     NO_GESCHAEFTSDOMAINS_KEY: "",
+    BRANDS_KEY: "",
 }
 
 IMAP_MCP_URL = os.getenv("IMAP_MCP_URL", "http://imap-mcp:3010/mcp")
@@ -90,6 +94,17 @@ async def nonbusiness_domains(db: AsyncSession) -> frozenset[str]:
     raw = await get_setting(db, NO_GESCHAEFTSDOMAINS_KEY, "")
     return frozenset(t.strip().lstrip("@").lower()
                      for t in raw.replace(";", ",").split(",") if t.strip())
+
+
+async def brands(db: AsyncSession) -> frozenset[str]:
+    """Brand names that get impersonated (setting), lower case.
+
+    Empty by default, and that is on purpose: a list of companies is local knowledge and
+    belongs where the mailbox stands, not in the code. Without it the one check for a brand in
+    the display name does not fire; every other rule works as before.
+    """
+    raw = await get_setting(db, BRANDS_KEY, "")
+    return frozenset(t.strip().lower() for t in raw.replace(";", ",").split(",") if t.strip())
 
 
 def _mix(rule: float, model: float, learned: float | None) -> float:
@@ -165,6 +180,7 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
         rule = evaluate(payload, my_addresses=await my_addresses(db),
                          known_domains=await known_domains(db, owner_id),
                          nonbusiness_domains=await nonbusiness_domains(db),
+                         brands=await brands(db),
                          body=mail_text(payload))
     subject = str(payload.get("subject") or "")
 

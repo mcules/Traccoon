@@ -29,6 +29,10 @@ async def owner(db):
     # So that the question comes as a card of its own immediately in the test instead of
     # waiting for the digest beat: what is checked is the path, not the height of the threshold.
     await set_setting(db, spam_review.IMMEDIATE_FROM_KEY, "0.5")
+    # The brand names live in the settings since 2026-08-25. The mails of these tests carry a
+    # brand in the display name, so without this the rule about it cannot fire and the whole
+    # chain lands on a different verdict.
+    await set_setting(db, spam_review.BRANDS_KEY, "bank,sparkasse,shop")
     return user
 
 

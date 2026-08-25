@@ -458,7 +458,7 @@ async def test_addresses_from_a_note_keep_their_origin_apart():
     note = (
         "---\n"
         "tags:\n  - kontakt\n"
-        "email: rainer@example.net\n"
+        "email: rainer@privatpost.de\n"
         "email_afu:\n"
         "  - dl1abc@verband.de\n"
         "telefon: '+49123'\n"
@@ -466,7 +466,7 @@ async def test_addresses_from_a_note_keep_their_origin_apart():
         "# Rainer\n\nSchrieb mir von buero@firma.de aus.\n"
     )
     found = dict(addresses_from_note(note))
-    assert found["rainer@example.net"] == "frontmatter"
+    assert found["rainer@privatpost.de"] == "frontmatter"
     assert found["dl1abc@verband.de"] == "frontmatter"
     assert found["buero@firma.de"] == "body"
 
@@ -479,26 +479,26 @@ async def test_example_addresses_are_left_out():
 async def test_the_vault_reconcile_mirrors(db, tmp_path):
     folder = tmp_path / "03 Bereiche" / "Kontakte"
     folder.mkdir(parents=True)
-    (folder / "Rainer.md").write_text("---\nemail: rainer@example.net\n---\n", encoding="utf-8")
+    (folder / "Rainer.md").write_text("---\nemail: rainer@privatpost.de\n---\n", encoding="utf-8")
     user = await make_user(db, "dennis")
 
     await sync_contacts(db, user.id, str(tmp_path))
     rows = (await db.execute(select(AssistantContact))).scalars().all()
-    assert [r.email for r in rows] == ["rainer@example.net"]
-    assert rows[0].domain == "t-online.de"
+    assert [r.email for r in rows] == ["rainer@privatpost.de"]
+    assert rows[0].domain == "privatpost.de"
 
     # The note is gone, so the entry is gone (a mirror, not a stock of its own).
-    (folder / "Rainer.md").write_text("---\nemail: neu@example.net\n---\n", encoding="utf-8")
+    (folder / "Rainer.md").write_text("---\nemail: neu@privatpost.de\n---\n", encoding="utf-8")
     await sync_contacts(db, user.id, str(tmp_path))
     rows = (await db.execute(select(AssistantContact))).scalars().all()
-    assert [r.email for r in rows] == ["neu@example.net"]
+    assert [r.email for r in rows] == ["neu@privatpost.de"]
 
 
 async def test_an_empty_vault_does_not_clear_anything(db, tmp_path):
     """A vault that is not mounted or half synchronised must not delete the acquittal list;
     otherwise half the family counts as foreign after a sync hiccup."""
     user = await make_user(db, "dennis")
-    db.add(AssistantContact(owner_user_id=user.id, email="opa@example.net",
+    db.add(AssistantContact(owner_user_id=user.id, email="opa@privatpost.de",
                             domain="t-online.de"))
     await db.commit()
     await sync_contacts(db, user.id, str(tmp_path))
@@ -518,20 +518,20 @@ async def test_a_known_name_from_a_foreign_address(db):
     """No link, no attachment, no technical forgery: only a borrowed name. Only the contact
     stock gives that away."""
     user = await make_user(db, "dennis")
-    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@privatpost.de")
     assert await named_collision(db, user.id, "Rainer Beispiel", "r.beispiel@gmx-mail.top") \
         == "Rainer Beispiel"
 
 
 async def test_the_same_person_is_no_collision(db):
     user = await make_user(db, "dennis")
-    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
-    assert await named_collision(db, user.id, "Rainer Beispiel", "r.beispiel@example.net") == ""
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@privatpost.de")
+    assert await named_collision(db, user.id, "Rainer Beispiel", "r.beispiel@privatpost.de") == ""
 
 
 async def test_salutation_and_reversed_spelling(db):
     user = await make_user(db, "dennis")
-    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@privatpost.de")
     assert await named_collision(db, user.id, "Herr Dr. Rainer Beispiel", "x@fremd.top")
     assert await named_collision(db, user.id, "Beispiel, Rainer", "x@fremd.top")
 
@@ -563,7 +563,7 @@ async def test_the_boss_scam_raises_suspicion(db):
     does it become a question.
     """
     user = await _owner(db)
-    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@privatpost.de")
     verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "Rainer Beispiel", "addr": "r.beispiel.buero@gmail.com"}],
            "reply_to": [{"name": "", "addr": "kasse@zahlung-xy.top"}],
@@ -579,9 +579,9 @@ async def test_a_borrowed_name_alone_carries_no_verdict(db):
     """An acquaintance writing from their second address must not pass as fraud: the vault
     never knows all the addresses of a person."""
     user = await _owner(db)
-    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
+    await _contact(db, user.id, "Rainer Beispiel", "r.beispiel@privatpost.de")
     verdict = await spam_review.judge(db, user.id, _mail(
-        **{"from": [{"name": "Rainer Beispiel", "addr": "rainer.beispiel@example.org"}],
+        **{"from": [{"name": "Rainer Beispiel", "addr": "rainer.beispiel@zweitpost.de"}],
            "subject": "Bilder von gestern"}),
         cls={"spam_score": 0.1, "category": "privat"})
     assert verdict["score"] < verdict["frage_ab"]
@@ -962,8 +962,15 @@ def _brands_mail(**over) -> dict:
     return payload
 
 
+# Die Marken stehen seit 2026-08-25 in den Einstellungen und nicht mehr im Code. Für die
+# Regel selbst reichen drei: geprüft wird, dass ein Name ohne passende Domain auffällt, nicht
+# wie lang die Liste ist.
+_TESTMARKEN = frozenset({"bank", "sparkasse", "shop"})
+
+
 async def test_a_brand_in_the_display_name_without_backing():
-    res = evaluate(_brands_mail(), my_addresses=frozenset({"vorstand@verein.example"}))
+    res = evaluate(_brands_mail(), my_addresses=frozenset({"vorstand@verein.example"}),
+                   brands=_TESTMARKEN)
     assert "marke_im_anzeigenamen" in res.signals
     # The unsubscribe footer must not save it: whoever forges the name is not a newsletter.
     assert res.is_newsletter is False
@@ -975,7 +982,8 @@ async def test_a_brand_with_backing_stays_quiet():
                        ("Beispielshop", "versand@shopmailer.example"),
                        ("Sparkasse Bamberg", "news@sparkasse-musterstadt.de")):
         res = evaluate(_brands_mail(**{"from": [{"name": name, "addr": addr}]}),
-                       my_addresses=frozenset({"vorstand@verein.example"}))
+                       my_addresses=frozenset({"vorstand@verein.example"}),
+                       brands=_TESTMARKEN)
         assert "marke_im_anzeigenamen" not in res.signals, name
 
 
@@ -1008,7 +1016,8 @@ async def test_phishing_passes_the_asking_threshold():
     """All three findings together: the mail has to become a question, not pass silently."""
     mail = _brands_mail()
     res = evaluate(mail, my_addresses=frozenset({"vorstand@verein.example"}),
-                   nonbusiness_domains=frozenset({"verein.example"}), body=mail_text(mail))
+                   nonbusiness_domains=frozenset({"verein.example"}),
+                   brands=_TESTMARKEN, body=mail_text(mail))
     assert {"marke_im_anzeigenamen", "server_blockliste",
             "geschaeft_an_domain_ohne_geschaeft"} <= set(res.signals)
     assert res.score >= 0.9
@@ -1080,7 +1089,7 @@ async def test_without_links_no_verdict_about_the_target():
     mail = _claim("Bank Support", "support@fremd.example", "Ihr Konto",
                      "Melden Sie sich bei support@bank.example.", [])
     res = evaluate(mail, my_addresses=frozenset({"ich@meine-domain.de"}),
-                   body=mail_text(mail))
+                   brands=_TESTMARKEN, body=mail_text(mail))
     assert "identitaet_ohne_deckung" in res.signals or "marke_im_anzeigenamen" in res.signals
 
 

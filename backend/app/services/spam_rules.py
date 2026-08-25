@@ -35,8 +35,8 @@ from urllib.parse import urlsplit
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
 # Addresses at these providers say nothing about the domain: an honest neighbour and a
-# fraudster both hang on gmx.de. Domain signals (whitelist as well as suspicion) have to pause
-# here, otherwise one rule acquits half the countryside.
+# fraudster both hang on a freemailer. Domain signals (whitelist as well as suspicion) have to
+# pause here, otherwise one rule acquits half the countryside.
 FREEMAIL_DOMAINS = frozenset({
     "gmail.com", "googlemail.com", "gmx.de", "gmx.net", "gmx.at", "gmx.ch",
     "web.de", "t-online.de", "freenet.de", "yahoo.com", "yahoo.de", "outlook.com",
@@ -45,37 +45,13 @@ FREEMAIL_DOMAINS = frozenset({
     "posteo.de", "mailbox.org", "arcor.de", "online.de", "gmx.com",
 })
 
-# Brands worth forging. Whoever writes under one of these names and does not send from the
-# matching domain claims a relationship they cannot keep.
+# The brand names live in the settings (`spam_marken`), not here.
 #
-# This list is the fallback, not the mechanism. The mechanism is `identitaet_ohne_deckung`
-# further down: it takes the comparison value out of the mail itself and therefore also works
-# for a house nobody wrote down here. The list catches what is left over, the mail that names
-# the brand only in its display name and nowhere else ("DPD Logistik
-# <info@fremde-firma.example>", 2026-08-18). It stays short on purpose, and ambiguous
-# tokens stay out ("ing" would fire on every "Dipl.-Ing.", "ups" on every "Ups!", "wise" and
-# "booking" are ordinary English words).
-BRANDS = frozenset({
-    # Geld
-    "n26", "paypal", "klarna", "sparkasse", "volksbank", "raiffeisen", "commerzbank",
-    "postbank", "dkb", "comdirect", "targobank", "santander", "revolut", "mastercard",
-    "consorsbank", "norisbank", "hypovereinsbank", "unicredit", "apobank", "sparda", "diba",
-    "bunq", "amex", "giropay", "paydirekt", "payoneer", "skrill", "moneygram",
-    "binance", "coinbase", "bitpanda", "metamask",
-    # Pakete
-    "dhl", "predecessor", "dpd", "gls", "fedex",
-    # Konten und Abos
-    "amazon", "apple", "microsoft", "google", "youtube", "netflix", "ebay", "telekom",
-    "vodafone", "congstar", "whatsapp", "spotify", "instagram", "facebook", "linkedin",
-    "tiktok", "adobe", "dropbox", "github", "playstation", "nintendo", "disney", "dazn",
-    "ionos", "strato", "godaddy", "gmx",
-    # Handel und Reise
-    "zalando", "mediamarkt", "lidl", "aldi", "rewe", "edeka", "ikea", "hornbach", "shein",
-    "temu", "alibaba", "aliexpress", "etsy", "airbnb", "expedia", "ryanair", "lufthansa",
-    "payback",
-    # Security software and public authorities
-    "mcafee", "norton", "kaspersky", "avast", "elster",
-})
+# They are the one list in this file that is not a rule but a piece of local knowledge: which
+# houses get impersonated depends on where one banks and shops. And what stands in the code
+# stands in the repository, which is no place for a list of companies. Whoever wants the rule
+# to work fills the setting; empty, this one check simply does not fire and every other one
+# still does.
 
 # Hits in DNS blacklists, as SpamAssassin names them in `tests=`. Only the hard lists: the
 # similar looking RCVD_IN_DNSWL_* is the opposite, a whitelist.
@@ -600,7 +576,7 @@ _NO_MARK = frozenset({
 })
 
 
-def _mark_without_backing(name: str, domain: str) -> str:
+def _mark_without_backing(name: str, domain: str, brands: frozenset[str]) -> str:
     """The brand from the display name that the sender domain does not carry, or ''.
 
     Contained is enough, not equal: a mailer domain sends for the shop and
@@ -609,12 +585,13 @@ def _mark_without_backing(name: str, domain: str) -> str:
     if not name or not domain:
         return ""
     for word in re.findall(r"[a-z0-9]{2,}", name.lower()):
-        if word in BRANDS and word not in domain.lower():
+        if word in brands and word not in domain.lower():
             return word
     return ""
 
 
-def _check_namespoofing(res: RuleResult, known_domains: frozenset[str]) -> None:
+def _check_namespoofing(res: RuleResult, known_domains: frozenset[str],
+                          brands: frozenset[str]) -> None:
     """Punycode, mixed scripts, invisible characters, a brand as a foreign subdomain."""
     if any(label.startswith("xn--") for label in res.sender_domain.split(".")):
         res.hits("punycode_absender",
@@ -641,7 +618,7 @@ def _check_namespoofing(res: RuleResult, known_domains: frozenset[str]) -> None:
     # <support@fremde-firma.example>". Mail programs show the name and hide the address, which
     # is why this is the cheapest disguise there is, and why it needs no technical flaw: the
     # sender owns their throwaway domain and signs it properly.
-    mark = _mark_without_backing(res.sender_name, res.sender_domain)
+    mark = _mark_without_backing(res.sender_name, res.sender_domain, brands)
     if mark:
         res.hits("marke_im_anzeigenamen",
                     f"Anzeigename nennt „{mark}“, gesendet von {res.sender_domain}")
@@ -937,6 +914,7 @@ def _check_attachments(res: RuleResult, payload: dict, body: str) -> None:
 def evaluate(payload: dict, *, my_addresses: frozenset[str] = frozenset(),
              known_domains: frozenset[str] = frozenset(),
              nonbusiness_domains: frozenset[str] = frozenset(),
+             brands: frozenset[str] = frozenset(),
              body: str = "") -> RuleResult:
     """Mail-Payload → Regelurteil.
 
@@ -977,7 +955,7 @@ def evaluate(payload: dict, *, my_addresses: frozenset[str] = frozenset(),
     _check_serververdict(res, headers, payload)
     _check_authenticity(res, headers, payload, is_listing=is_listing,
                      my_domains=my_domains, my_addresses=my_addresses)
-    _check_namespoofing(res, known_domains)
+    _check_namespoofing(res, known_domains, brands)
     _check_headerhygiene(res, headers, payload)
     _check_links(res, payload, is_listing=is_listing, known_domains=known_domains)
     targets = {_host(l.get("href")) for l in (payload.get("links") or [])

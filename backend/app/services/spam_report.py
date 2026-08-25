@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .mcp_client import McpError, call_tool, result_json
 from .spam_rules import evaluate, is_forgery_suspicion, mail_text
-from .spam_review import nonbusiness_domains, my_addresses
+from .spam_review import brands, my_addresses, nonbusiness_domains
 from .vault_contacts import known_domains, contact_hits
 
 log = logging.getLogger("traccoon.spam")
@@ -109,6 +109,7 @@ async def review(db: AsyncSession, owner_id: int | None, *, sample: int = 40,
     my = await my_addresses(db)
     domains = await known_domains(db, owner_id)
     without_business = await nonbusiness_domains(db)
+    marken = await brands(db)
 
     for account in (accounts if accounts is not None else await all_accounts(db)):
         alias = account["alias"]
@@ -128,7 +129,7 @@ async def review(db: AsyncSession, owner_id: int | None, *, sample: int = 40,
                 if payload is None:
                     continue
                 rule = evaluate(payload, my_addresses=my, known_domains=domains,
-                                 nonbusiness_domains=without_business,
+                                 nonbusiness_domains=without_business, brands=marken,
                                  body=mail_text(payload))
                 # Known senders are not assessed at all in live operation: they do not belong
                 # in the distribution but are counted separately.
