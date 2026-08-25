@@ -22,6 +22,7 @@ Supported actions:
   assistant_session   {op, ...}                 conversations of the assistant: create, close,
                                                 delete (the ONLY way one is deleted)
   mail_anhang         {index?, context_key?, max_mb?}  fetch a mail attachment as base64
+  mail_document       {filename, doc_id, doc_url, title?}  report back what an attachment became
   antwort             {text | fielder}           the answer of this run (a waiting webhook reads it)
   noop                (default)                 nothing, a placeholder
 
@@ -1026,6 +1027,74 @@ async def _mail_attachment(db, inst: WorkflowInstance, params: dict, ctx: dict) 
             "context_key": key}
 
 
+async def _mail_document(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Report back which document grew out of a filed attachment.
+
+    Filing is a one way street with a gap in the middle: the upload answers with a task
+    number, and which document comes of it is decided minutes later by the other side. This
+    action is where the answer arrives when it comes back, usually from a webhook the archive
+    calls once it is done.
+
+    Parameters, all with `{{path}}` from the context:
+      filename     the name of the file that was filed. That is the connection.
+      doc_id       the number over there
+      doc_url      the address one can open it at
+      title        optional, what the archive called it
+      system       optional, which archive (default `paperless`)
+
+    The attachment is found through the run that filed it: it carries the file in its context
+    and knows which message it hung on. Two runs with the same file name are possible (an
+    `invoice.pdf` arrives twice a month), so the most recent one without a document wins,
+    which is the one just filed.
+    """
+    from sqlalchemy import select
+
+    from ..models.mail import MailDocument
+    from ..models.workflow import WorkflowInstance as Instance
+
+    name = str(_interp(params.get("filename") or "", ctx)).strip()
+    doc_id = str(_interp(params.get("doc_id") or "", ctx)).strip()
+    doc_url = str(_interp(params.get("doc_url") or "", ctx)).strip()
+    if not name or not (doc_id or doc_url):
+        return {"action": "mail_document", "noted": False,
+                "reason": "without a file name and a document there is nothing to connect"}
+
+    system = str(_interp(params.get("system") or "paperless", ctx)).strip() or "paperless"
+    rows = (await db.execute(select(Instance).where(
+        Instance.source.like("mail:%"),
+        Instance.source_ref.isnot(None))
+        .order_by(Instance.id.desc()).limit(300))).scalars().all()
+
+    for run in rows:
+        attachment = (run.context or {}).get("attachment") or {}
+        if str(attachment.get("filename") or "").strip() != name:
+            continue
+        mail = (run.context or {}).get("mail") or {}
+        account_id, uid = mail.get("account_id"), mail.get("uid")
+        if account_id is None or uid is None:
+            continue
+        folder = str(mail.get("folder") or "INBOX")
+        index = int(attachment.get("index", -1))
+        exists = (await db.execute(select(MailDocument).where(
+            MailDocument.account_id == int(account_id), MailDocument.folder == folder,
+            MailDocument.uid == int(uid),
+            MailDocument.attachment == index))).scalar_one_or_none()
+        if exists is not None:
+            # Already reported. The second message about the same file is a repetition, and
+            # the first answer is the one that counts.
+            continue
+        db.add(MailDocument(account_id=int(account_id), folder=folder, uid=int(uid),
+                             attachment=index, filename=name, system=system,
+                             doc_id=doc_id[:80], doc_url=doc_url[:1000],
+                             title=str(_interp(params.get("title") or "", ctx))[:500]))
+        await db.flush()
+        return {"action": "mail_document", "noted": True, "uid": int(uid),
+                 "attachment": index, "doc_id": doc_id}
+
+    return {"action": "mail_document", "noted": False,
+            "reason": f"no filed attachment named {name!r} found"}
+
+
 def _yes(value, ctx: dict) -> bool:
     """A switch that may also come from the run.
 
@@ -1661,6 +1730,9 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
 
     if action == "mail_attachment":
         return await _mail_attachment(db, inst, params, ctx)
+
+    if action == "mail_document":
+        return await _mail_document(db, inst, params, ctx)
 
     if action == "agent_run":
         return await _agent_run(db, inst, params, ctx, str(node.get("id") or ""))

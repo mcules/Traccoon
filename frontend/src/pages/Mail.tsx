@@ -40,6 +40,9 @@ interface Message {
   /** Which actions have already run on this mail, and on which attachment. */
   runs: { definition_id: number; instance_id: number; attachment: number | null;
           status: string; when: string }[];
+  /** What an attachment became, once the archive has reported back. */
+  documents: { attachment: number; system: string; doc_id: string; doc_url: string;
+               title: string; when: string }[];
   attachments: Attachment[]; seen: boolean; flagged: boolean;
 }
 interface ImageRule { id: number; kind: "sender" | "domain" | "all"; value: string }
@@ -1851,8 +1854,10 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               {forAttachment.length > 0 && m.attachments.length > 1 && forAttachment.map((act) => {
                 // Over all of them only makes sense while there is something left over: with
                 // every file already filed the button would be a way to file them twice.
-                const open_ones = m.attachments.filter((a) => !(m.runs || []).some((r) =>
-                  r.definition_id === act.definition_id && r.attachment === a.index));
+                const open_ones = m.attachments.filter((a) =>
+                  !(m.runs || []).some((r) => r.definition_id === act.definition_id
+                                              && r.attachment === a.index)
+                  && !(m.documents || []).some((d) => d.attachment === a.index));
                 if (!open_ones.length) return null;
                 return (
                   <Rowbutton key={act.definition_id} title={act.description}
@@ -1875,26 +1880,47 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                       title={tr("mail.view")}>
                       {tr("mail.view")}
                     </Rowbutton>
-                    {forAttachment.map((act) => {
-                      // An action that files a document is not one to press twice: the second
-                      // time makes a second document, and nobody notices until they tidy up.
-                      const ran = (m.runs || []).find((r) =>
-                        r.definition_id === act.definition_id && r.attachment === a.index);
-                      return ran ? (
-                        <Tag key={act.definition_id} color="green"
-                          title={tr("mail.ran_already", {
-                            name: act.name, date: formatDateTime(ran.when),
-                            id: String(ran.instance_id) })}>
-                          ✓ {act.name}
-                        </Tag>
-                      ) : (
-                        <Rowbutton key={act.definition_id}
-                          onClick={() => start.mutate({ definition_id: act.definition_id,
-                                                          attachment: a.index })}>
-                          {act.name}
-                        </Rowbutton>
-                      );
-                    })}
+                    {(() => {
+                      // Three states, and they are three different sentences: not filed yet,
+                      // sent off, and arrived. Only the last one has an address one can open.
+                      const doc = (m.documents || []).find((d) => d.attachment === a.index);
+                      if (doc) {
+                        return doc.doc_url ? (
+                          <a href={doc.doc_url} target="_blank" rel="noopener noreferrer"
+                             className={BUTTON_SMALL.secondary}
+                             title={tr("mail.filed_at", { system: doc.system,
+                               date: formatDateTime(doc.when) })}>
+                            {tr("mail.open_in", { system: doc.system })} ↗
+                          </a>
+                        ) : (
+                          <Tag color="green" title={tr("mail.filed_at", { system: doc.system,
+                            date: formatDateTime(doc.when) })}>
+                            ✓ {doc.system}
+                          </Tag>
+                        );
+                      }
+                      return forAttachment.map((act) => {
+                        // An action that files a document is not one to press twice: the
+                        // second time makes a second document, and nobody notices until they
+                        // tidy up.
+                        const ran = (m.runs || []).find((r) =>
+                          r.definition_id === act.definition_id && r.attachment === a.index);
+                        return ran ? (
+                          <Tag key={act.definition_id}
+                            title={tr("mail.ran_already", {
+                              name: act.name, date: formatDateTime(ran.when),
+                              id: String(ran.instance_id) })}>
+                            ⏳ {act.name}
+                          </Tag>
+                        ) : (
+                          <Rowbutton key={act.definition_id}
+                            onClick={() => start.mutate({ definition_id: act.definition_id,
+                                                            attachment: a.index })}>
+                            {act.name}
+                          </Rowbutton>
+                        );
+                      });
+                    })()}
                   </div>
                 </ListRow>
               ))}

@@ -143,3 +143,34 @@ class MailUnsubscribe(TimestampMixin, Base):
     way: Mapped[str] = mapped_column(String(20), default="")
     # What the other side said. `HTTP 200`, or the address the mail went to.
     detail: Mapped[str] = mapped_column(String(500), default="")
+
+
+class MailDocument(TimestampMixin, Base):
+    """An attachment that has become a document somewhere else.
+
+    Filing is a one way street with a gap in the middle: the upload answers with a task
+    number, and which document grows out of it is decided by the other side, minutes later.
+    Whoever asks the mail afterwards therefore knows only that something was sent off, not
+    what came of it. This is where the answer arrives when it comes back.
+
+    Why that is worth a table: without it the button offers to file the same invoice a second
+    time, and nobody notices until they tidy up the archive.
+    """
+    __tablename__ = "mail_documents"
+    __table_args__ = (UniqueConstraint("account_id", "folder", "uid", "attachment",
+                                        name="uq_mail_document"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("mail_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    folder: Mapped[str] = mapped_column(String(255), nullable=False)
+    uid: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Which attachment of the message. -1 means the message itself.
+    attachment: Mapped[int] = mapped_column(Integer, default=-1)
+    filename: Mapped[str] = mapped_column(String(500), default="")
+    # Where it landed. `system` says in which one, so that a second archive later does not
+    # have to guess whether the number belongs to it.
+    system: Mapped[str] = mapped_column(String(40), default="paperless")
+    doc_id: Mapped[str] = mapped_column(String(80), default="")
+    doc_url: Mapped[str] = mapped_column(String(1000), default="")
+    title: Mapped[str] = mapped_column(String(500), default="")

@@ -1419,3 +1419,110 @@ async def test_a_carried_picture_is_no_remote_picture():
 
     _, remote, _ = clean(_lay_in('<img src="cid:l">', msg))
     assert remote is False
+
+
+# ── Was aus einem Anhang wurde ──────────────────────────────────────────────
+
+async def _leerer_ablauf(db, user) -> tuple[int, int]:
+    """Eine veroeffentlichte Definition mit einer Version, mehr braucht ein Lauf nicht."""
+    d = WorkflowDefinition(project_id=None, key=f"melder-{user.id}", name="Melder",
+                            created_by=user.id, subject_kind=WorkflowSubjectKind.standalone)
+    db.add(d)
+    await db.flush()
+    v = WorkflowVersion(definition_id=d.id, version=1, status=WorkflowVersionStatus.published,
+                         graph={"nodes": [], "edges": []})
+    db.add(v)
+    await db.flush()
+    return d.id, v.id
+
+
+def _knoten(params: dict) -> dict:
+    """Ein Ablauf-Knoten mit der Aktion `mail_document`, wie ihn der Editor baut."""
+    return {"id": "melden", "type": "auto_action",
+            "data": {"config": {"action": "mail_document", **params}}}
+
+async def test_the_archive_reports_back_which_document_it_became(db, client, monkeypatch):
+    """Filing is a one way street with a gap in the middle: the upload answers with a task
+    number, the document number comes minutes later. This is where it arrives."""
+    from app.models.mail import MailDocument
+    from app.models.workflow import WorkflowInstance
+    from app.services.workflow_actions import run_action
+
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+
+    def_id, ver_id = await _leerer_ablauf(db, anna)
+    lauf = WorkflowInstance(
+        definition_id=def_id, version_id=ver_id, subject_kind=WorkflowSubjectKind.standalone,
+        source="mail:privat", source_ref="INBOX:42:3", started_by=anna.id,
+        context={"mail": {"account_id": kid, "folder": "INBOX", "uid": 42},
+                  "attachment": {"index": 3, "filename": "rechnung.pdf"}})
+    db.add(lauf)
+    await db.flush()
+
+    out = await run_action(db, lauf, _knoten({
+        "filename": "rechnung.pdf", "doc_id": "3464",
+        "doc_url": "https://paperless.example/documents/3464/"}))
+    assert out["noted"] is True
+
+    doc = (await db.execute(select(MailDocument))).scalars().one()
+    assert (doc.uid, doc.attachment, doc.doc_id) == (42, 3, "3464")
+
+    # Und die Nachricht weiß es, ohne dass jemand nachfragen muss.
+    async def fake_message(account, folder, uid):
+        return {"subject": "x", "from": [], "attachments": [
+            {"index": 3, "filename": "rechnung.pdf", "content_type": "application/pdf",
+             "size": 1}]}
+    monkeypatch.setattr(mailbox, "message", fake_message)
+    r = (await client.get(f"/mailbox/accounts/{kid}/messages/42?folder=INBOX",
+                          headers=auth(anna))).json()
+    assert r["documents"][0]["doc_url"].endswith("/3464/")
+
+
+async def test_a_second_report_about_the_same_file_is_a_repetition(db, client):
+    """The archive may call twice. The first answer is the one that counts, otherwise a
+    tidied up document number would be overwritten by an older one."""
+    from app.models.mail import MailDocument
+    from app.models.workflow import WorkflowInstance
+    from app.services.workflow_actions import run_action
+
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+    def_id, ver_id = await _leerer_ablauf(db, anna)
+    lauf = WorkflowInstance(
+        definition_id=def_id, version_id=ver_id, subject_kind=WorkflowSubjectKind.standalone,
+        source="mail:privat", source_ref="INBOX:42:3", started_by=anna.id,
+        context={"mail": {"account_id": kid, "folder": "INBOX", "uid": 42},
+                  "attachment": {"index": 3, "filename": "rechnung.pdf"}})
+    db.add(lauf)
+    await db.flush()
+
+    for nummer in ("3464", "9999"):
+        await run_action(db, lauf, _knoten({
+            "filename": "rechnung.pdf", "doc_id": nummer,
+            "doc_url": f"https://paperless.example/documents/{nummer}/"}))
+
+    rows = (await db.execute(select(MailDocument))).scalars().all()
+    assert [d.doc_id for d in rows] == ["3464"]
+
+
+async def test_a_report_about_an_unknown_file_connects_nothing(db, client):
+    """Better an entry that is missing than one on the wrong mail: a document number on the
+    wrong attachment is a wrong link nobody checks."""
+    from app.models.mail import MailDocument
+    from app.models.workflow import WorkflowInstance
+    from app.services.workflow_actions import run_action
+
+    anna = await make_user(db, "anna")
+    def_id, ver_id = await _leerer_ablauf(db, anna)
+    lauf = WorkflowInstance(
+        definition_id=def_id, version_id=ver_id, subject_kind=WorkflowSubjectKind.standalone,
+        source="mail:privat", source_ref="INBOX:1", started_by=anna.id, context={})
+    db.add(lauf)
+    await db.flush()
+
+    out = await run_action(db, lauf, _knoten({"filename": "gibtsnicht.pdf", "doc_id": "1"}))
+    assert out["noted"] is False
+    assert (await db.execute(select(MailDocument))).scalars().all() == []

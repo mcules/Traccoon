@@ -134,6 +134,10 @@ ACTIONS: dict[str, list[dict]] = {
         _f("attachment.size", "number", "ctx.size_bytes"),
         _f("attachment.base64", "text", "ctx.the_content_as_tools_expect_it"),
     ],
+    "mail_document": [
+        _f("document.noted", "boolean", "ctx.was_the_document_connected_to_an_attachment"),
+        _f("document.doc_id", "text", "ctx.the_number_over_there"),
+    ],
     "answer": [
         _f("answer", "text|object", "ctx.what_this_run_returns_to_whoever_started_it"),
     ],

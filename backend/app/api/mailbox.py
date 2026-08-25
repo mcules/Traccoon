@@ -18,7 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.error import Error
 from ..core.security import encrypt_secret
 from ..db import get_session
-from ..models.mail import MailAccount, MailIdentity, MailImageRule, MailUnsubscribe
+from ..models.mail import (MailAccount, MailDocument, MailIdentity, MailImageRule,
+                            MailUnsubscribe)
 from ..models.user import User
 from ..services import mailbox
 from ..services import mailbox_cache as cache
@@ -529,6 +530,14 @@ async def message(kid: int, uid: int, folder: str = "INBOX",
     sender = (found.get("from") or [{}])[0].get("addr", "") if found.get("from") else ""
     found["images_allowed"] = _images_allowed(await _image_rules(db, user), sender)
     found["runs"] = await _runs_of(db, account, folder, uid)
+    # What an attachment became, if the archive has reported back by now.
+    found["documents"] = [
+        {"attachment": d.attachment, "system": d.system, "doc_id": d.doc_id,
+         "doc_url": d.doc_url, "title": d.title,
+         "when": d.created_at.isoformat() if d.created_at else ""}
+        for d in (await db.execute(select(MailDocument).where(
+            MailDocument.account_id == account.id, MailDocument.folder == folder,
+            MailDocument.uid == uid))).scalars().all()]
     return found
 
 
