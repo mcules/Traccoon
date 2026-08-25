@@ -44,7 +44,7 @@ const SPECIAL: Record<string, string> = {
 export default function Mail() {
   usePageChrome("Mail", []);
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, refresh: userAgain } = useAuth();
   const [accountId, setAccountId] = useState<number | null>(null);
   const [folder, setFolder] = useState("INBOX");
   const [uid, setUid] = useState<number | null>(null);
@@ -68,7 +68,7 @@ export default function Mail() {
   });
   useEffect(() => {
     if (accountId !== null || !accounts?.length) return;
-    // The mailbox opened last comes first — it is stored on the person and therefore applies
+    // The mailbox opened last comes first, it is stored on the person and therefore applies
     // after a new login and on another machine as well.
     const noted = accounts.find((k) => k.id === user?.mail_last_account_id);
     setAccountId((noted || accounts.find((k) => k.enabled) || accounts[0]).id);
@@ -78,7 +78,13 @@ export default function Mail() {
     setAccountId(id);
     setFolder("INBOX");
     setUid(null);
-    api.post(`/mailbox/accounts/${id}/last`, {}).catch(() => {/* Remembering is no must */});
+    // The server notes it, and the browser has to hear about it: leaving the page throws the
+    // choice away (the component goes with it), and on coming back the person in the context
+    // is the one from the last login. Without the second look one landed in the mailbox one
+    // had chosen the day before, not in the one one had just left.
+    api.post(`/mailbox/accounts/${id}/last`, {})
+      .then(() => userAgain())
+      .catch(() => {/* Remembering is no must */});
   };
 
   const { data: folderListing } = useQuery({
