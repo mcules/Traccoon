@@ -195,7 +195,7 @@ export function Dialog({ title: title, onClose, children, foot, wide = false, ho
           wide ? "max-w-3xl" : "max-w-lg"}`}>
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 className="text-base font-semibold text-ink">{title}</h2>
-          <button onClick={onClose} title={tr("common.close")} aria-label={tr("common.close")}
+          <button type="button" onClick={onClose} title={tr("common.close")} aria-label={tr("common.close")}
             className="text-muted hover:text-ink">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
@@ -404,7 +404,7 @@ export function Tab<T extends string>({ active, selection: selection, onChoose, 
       ? "flex shrink-0 flex-row flex-wrap gap-1 sm:w-40 sm:flex-col sm:flex-nowrap sm:border-r sm:border-line sm:pr-3"
       : "flex flex-wrap gap-1 border-b border-line pb-2"}>
       {selection.map(([value, label]) => (
-        <button key={value} onClick={() => onChoose(value)}
+        <button type="button" key={value} onClick={() => onChoose(value)}
           className={`rounded-md px-2.5 py-1.5 text-sm transition-colors ${
             vertical ? "text-left" : ""} ${
             active === value
@@ -451,7 +451,11 @@ export function Rowbutton({ onClick, title: title, danger = false, children }: {
 }) {
   return (
     // The row button is a button too: blue, not grey (see DESIGN.md).
-    <button onClick={(e) => { e.stopPropagation(); onClick(); }} title={title}
+    //
+    // `type="button"` is not decoration: without it HTML makes every button in a form an
+    // submit button. The ✕ beside the mail search was one, so pressing Enter emptied the
+    // field instead of searching with it.
+    <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} title={title}
       className={danger ? BUTTON_SMALL.danger : BUTTON_SMALL.secondary}>
       {children}
     </button>
@@ -479,7 +483,7 @@ export function SortBar({ fields, by, dir, onSort }: {
       {fields.map((f) => {
         const active = f.key === by;
         return (
-          <button key={f.key} onClick={() => onSort(f.key)}
+          <button type="button" key={f.key} onClick={() => onSort(f.key)}
             title={tr(active && dir === "asc" ? "sort.descending" : "sort.ascending")}
             className={active
               ? "rounded bg-surface px-1.5 py-0.5 text-xs font-medium text-brand"
@@ -562,7 +566,7 @@ export function Menu({ title: title, sign = "⋯", quiet = false, children }: {
 
   return (
     <>
-      <button ref={button}
+      <button type="button" ref={button}
         onClick={(e) => { e.stopPropagation(); at ? setAt(null) : open(); }}
         title={title} aria-label={title}
         // Quiet means quiet where there is a pointer. On a touch screen there is no hover, and

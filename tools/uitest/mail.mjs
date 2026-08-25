@@ -46,6 +46,25 @@ if (await punkte.count()) {
   console.log("MENUE nicht gefunden");
 }
 
+// Enter im Suchfeld muss die Suche auslösen. Geprüft wird die Anfrage, nicht ihr Ergebnis:
+// eine Volltextsuche über zweitausend Mails dauert auf dem Server, und die Frage hier ist,
+// ob sie überhaupt gestellt wird.
+const feld = seite.getByPlaceholder("suchen").first();
+if (await feld.count()) {
+  await feld.fill("Rechnung");
+  const kommt = seite.waitForRequest((r) => r.url().includes("q=Rechnung"), { timeout: 6000 })
+    .then(() => "ja").catch(() => "nein");
+  await feld.press("Enter");
+  console.log("ENTER-SUCHE", await kommt);
+  await seite.waitForTimeout(500);
+  await seite.screenshot({ path: "/w/mail-08-suche.png" });
+  await feld.fill("");
+  await feld.press("Escape");
+  await seite.waitForTimeout(800);
+} else {
+  console.log("SUCHFELD nicht gefunden");
+}
+
 // Ein zweites Postfach aufklappen: es muss seine Ordner nachladen, ohne dass das aktive
 // Postfach wechselt (das täte erst der Klick auf einen Ordner darin).
 const zweites = seite.getByText("Zweites Postfach", { exact: true }).first();
