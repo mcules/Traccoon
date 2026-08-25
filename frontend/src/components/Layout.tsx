@@ -147,6 +147,27 @@ function useMailCounter(): number {
   return data?.total ?? 0;
 }
 
+// The title as it stands in `index.html`. Read once while the module loads, because from the
+// first unread mail on it is ours and no longer says what it said.
+const BASE_TITLE = document.title || "Traccoon";
+
+/**
+ * Unread mail in the tab title.
+ *
+ * The counter in the rail is only worth something as long as one is looking at this tab, and
+ * that is exactly when one does not need it: the mailbox is right there. It earns its keep in
+ * the other tab, and the browser has one place for that, the title.
+ *
+ * `(3) Traccoon`, the way every mail program writes it, so that the number is legible even
+ * where the tab is two centimetres wide and the name is gone.
+ */
+function useMailInTitle(count: number): void {
+  useEffect(() => {
+    document.title = count > 0 ? `(${count}) ${BASE_TITLE}` : BASE_TITLE;
+    return () => { document.title = BASE_TITLE; };
+  }, [count]);
+}
+
 /**
  * The areas as a narrow rail on the left, from the medium width on.
  *
@@ -278,6 +299,9 @@ function UserMenu() {
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { chrome } = useChrome();
+  // Here and not in the rail: the rail is not drawn on a phone, and the tab title is the one
+  // place that has nothing to do with how wide the window is.
+  useMailInTitle(useMailCounter());
   const loc = useLocation();
   const current = loc.pathname + loc.search;
   const isActive = (t: ChromeTab) => chrome.active ? t.key === chrome.active
