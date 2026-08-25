@@ -46,7 +46,7 @@ await seite.waitForTimeout(6000);
 const danach = await zeilen();
 const wiederDa = (await seite.locator("main").innerText()).includes(erste.split("\n")[0]);
 
-console.log(JSON.stringify({ betreff: erste.split("\n")[0].slice(0, 40), versucht,
-  vorher, sofort, danach, sofortNochSichtbar: nochDa, danachWiederDa: wiederDa }));
+console.log(JSON.stringify({ versucht, vorher, sofort, danach,
+  sofortNochSichtbar: nochDa, danachWiederDa: wiederDa }));
 await seite.screenshot({ path: "/w/loeschen.png" });
 await browser.close();

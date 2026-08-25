@@ -98,8 +98,8 @@ class MailImageRule(TimestampMixin, Base):
     twenty times is not a question, it is a toll.
 
     Three reaches, from narrow to wide: one sender, one domain, everything. Whoever trusts
-    `notifications@github.com` does not thereby trust every shop, and whoever trusts
-    `@github.com` says something about a house, not about the world.
+    `news@example.org` does not thereby trust every shop, and whoever trusts `@example.org`
+    says something about a house, not about the world.
 
     Deliberately not on the account but on the person: mail from the same sender arrives in
     both mailboxes, and the answer would be the same in both.

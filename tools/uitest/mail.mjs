@@ -76,10 +76,11 @@ const baum = async () => seite.evaluate(() => [...document.querySelectorAll(
     return (d.previousElementSibling ? "" : "") + t.slice(0, 2).join(" ");
   }));
 console.log("BAUM-VORHER", JSON.stringify(await baum()));
-const archiv = seite.getByText("Archives", { exact: true }).first();
-if (await archiv.count()) {
-  // Erst der Pfeil davor, nicht der Name: der Name wechselt den Ordner.
-  const zeile = archiv.locator("xpath=ancestor::div[contains(@class,'grid-cols-')][1]");
+// Der erste Ordner, der einen Aufklapp-Pfeil hat. Kein Name aus einem echten Postfach: die
+// Sonde soll überall laufen, und was hier steht, landet im Repo.
+const zeile = seite.locator("[class*='grid-cols-[0.75rem']")
+  .filter({ has: seite.locator("button", { hasText: "▶" }) }).first();
+if (await zeile.count()) {
   const pfeil = zeile.locator("button").first();
   await pfeil.click({ force: true });
   await seite.waitForTimeout(1200);
@@ -136,7 +137,8 @@ if (await feld.count()) {
 
 // Ein zweites Postfach aufklappen: es muss seine Ordner nachladen, ohne dass das aktive
 // Postfach wechselt (das täte erst der Klick auf einen Ordner darin).
-const zweites = seite.getByText("Zweites Postfach", { exact: true }).first();
+const zweites = seite.locator("[role=main], main").locator("span.font-semibold")
+  .nth(1);
 const vorherOrdner = await seite.locator("[class*='grid-cols-']").count();
 if (await zweites.count()) {
   await zweites.click({ force: true });
@@ -169,7 +171,8 @@ const gelesen = await seite.evaluate(() => {
 });
 console.log("ZEILEN", gelesen);
 // Eine Zeile aus der LISTE, nicht aus dem Ordnerbaum: der Betreff steht darin.
-const kandidat = seite.getByText("Ein Betreff").first();
+const kandidat = seite.locator("main .divide-y > div")
+  .filter({ has: seite.locator("input[type=checkbox]") }).nth(1);
 console.log("KANDIDAT", await kandidat.count());
 if (await kandidat.count()) {
   await kandidat.click({ force: true }).catch(() => {});
@@ -192,8 +195,12 @@ if (await kandidat.count()) {
       return { text: (z.innerText || "").trim().slice(0, 12), breite: Math.round(r.width),
                hoehe: Math.round(r.height) };
     }).filter((z) => z.text);
-    const eng = [...b.querySelectorAll("th, td")].find((z) =>
-      (z.innerText || "").trim().startsWith("Status"));
+    // Die erste Zelle, die schmal und hoch ist: so sieht ein Wort aus, das buchstabenweise
+    // umbricht. Ohne den Inhalt zu kennen.
+    const eng = [...b.querySelectorAll("th, td")].find((z) => {
+      const r = z.getBoundingClientRect();
+      return r.height > 60 && r.width < 60;
+    }) || b.querySelector("th");
     const s = eng ? getComputedStyle(eng) : null;
     const bloecke = [...b.parentElement.querySelectorAll("style")].map((x) =>
       x.textContent.slice(0, 400));
@@ -252,7 +259,9 @@ if (await naht.count()) {
 }
 
 // Eine Mail mit Anhang: geht die Vorschau auf, und was zeigt sie?
-const mitAnhang = seite.getByText("Ein Betreff").first();
+const mitAnhang = seite.locator("main .divide-y > div")
+  .filter({ has: seite.locator("input[type=checkbox]") })
+  .filter({ hasText: "📎" }).first();
 if (await mitAnhang.count()) {
   await mitAnhang.click({ force: true });
   await seite.waitForTimeout(2500);
@@ -278,7 +287,8 @@ if (await mitAnhang.count()) {
 }
 
 // Die Newsletter-Übersicht: Menü am Postfach, dann durchsehen lassen.
-const punkte2 = seite.locator("button[title*='privat']").first();
+// Das ⋯ des aufgeklappten Postfachs, ohne seinen Namen zu kennen.
+const punkte2 = seite.locator("button[title]").filter({ hasText: "⋯" }).first();
 if (await punkte2.count()) {
   await punkte2.click({ force: true });
   await seite.waitForTimeout(300);
@@ -295,7 +305,10 @@ if (await punkte2.count()) {
     // Filtern und umsortieren, beides ohne neue Anfrage ans Postfach.
     const feldF = seite.getByPlaceholder("Filtern").first();
     if (await feldF.count()) {
-      await feldF.fill("jetbrains");
+      // Als Filter das erste Wort des ersten Eintrags: was hier steht, landet im Repo.
+      const ersterName = (await seite.locator("[role=dialog] [class*='divide-y'] > div")
+        .nth(0).innerText()).split("\n")[0].split(/[\s.@]/)[0];
+      await feldF.fill(ersterName);
       await seite.waitForTimeout(400);
       const nachFilter = await seite.locator("[role=dialog] [class*='divide-y'] > div").count();
       await seite.getByText("Name", { exact: true }).first().click();

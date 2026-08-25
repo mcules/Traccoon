@@ -19,7 +19,8 @@ await seite.route("**/newsletters/unsubscribe", async (route) => {
 
 await seite.goto(`${BASIS}/mail`, { waitUntil: "networkidle" });
 await seite.waitForTimeout(2500);
-await seite.locator("button[title*='privat']").first().click({ force: true });
+await seite.locator("button[title]").filter({ hasText: "⋯" }).first()
+  .click({ force: true });
 await seite.waitForTimeout(300);
 await seite.getByText("Newsletter-Abos").first().click();
 await seite.waitForTimeout(18000);
@@ -39,6 +40,7 @@ await seite.getByText("Abgemeldet", { exact: false }).first().click();
 await seite.waitForTimeout(800);
 const historie = await seite.locator("[role=dialog] [class*='divide-y'] > div").allInnerTexts();
 await seite.screenshot({ path: "/w/abos-02-historie.png" });
+// Nur Zahlen ins Protokoll, keine Namen: was eine Sonde ausgibt, wandert in Notizen.
 console.log(JSON.stringify({ gefragt, vorher, nachher, nochInListe: nochDa,
-  historie: historie.slice(0, 3).map((t) => t.replace(/\n/g, " · ").slice(0, 80)) }));
+  historieZeilen: historie.length }));
 await browser.close();

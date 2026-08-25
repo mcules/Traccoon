@@ -1092,13 +1092,13 @@ async def test_the_kept_answer_is_looked_up_by_sender_and_by_house(db, client):
     from app.api.mailbox import _images_allowed
     from app.models.mail import MailImageRule
 
-    only_sender = [MailImageRule(kind="sender", value="notifications@github.com")]
-    assert _images_allowed(only_sender, "notifications@github.com") is True
-    assert _images_allowed(only_sender, "billing@github.com") is False
+    only_sender = [MailImageRule(kind="sender", value="news@example.org")]
+    assert _images_allowed(only_sender, "news@example.org") is True
+    assert _images_allowed(only_sender, "billing@example.org") is False
 
-    house = [MailImageRule(kind="domain", value="github.com")]
-    assert _images_allowed(house, "billing@github.com") is True
-    assert _images_allowed(house, "billing@example.org") is False
+    house = [MailImageRule(kind="domain", value="example.org")]
+    assert _images_allowed(house, "billing@example.org") is True
+    assert _images_allowed(house, "billing@example.net") is False
 
     everything = [MailImageRule(kind="all", value="")]
     assert _images_allowed(everything, "wer@auch.immer") is True

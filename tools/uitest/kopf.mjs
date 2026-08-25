@@ -10,8 +10,10 @@ await seite.addInitScript((t) => localStorage.setItem("traccoon_token", t), toke
 await seite.goto(`${BASIS}/mail`, { waitUntil: "networkidle" });
 await seite.waitForTimeout(2500);
 
-// Die Mail mit den zehn eingebetteten Bildern.
-const mit = seite.getByText("Ein Betreff").first();
+// Irgendeine Mail: welche, ist für diese Frage gleich, und ein echter Betreff hätte hier
+// nichts zu suchen.
+const mit = seite.locator("main .divide-y > div")
+  .filter({ has: seite.locator("input[type=checkbox]") }).first();
 if (await mit.count()) {
   await mit.click({ force: true });
   await seite.waitForTimeout(2500);
