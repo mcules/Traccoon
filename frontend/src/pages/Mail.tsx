@@ -859,9 +859,15 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
       <base target="_blank">
       <style>
         body { font: 14px/1.5 system-ui, sans-serif; color: #1c1c1c; background: #ffffff;
-               margin: 12px; word-break: break-word; }
+               margin: 12px; overflow-wrap: break-word; overflow-x: auto; }
         a { color: #0645ad; } img { max-width: 100%; height: auto; }
-        table { max-width: 100%; } blockquote { border-left: 2px solid #d0d7de;
+        /* A table keeps the width it was laid out for, and what does not fit scrolls.
+           Squeezing it into the frame was the old way and it cost the mail its shape: the
+           column that was left with ten pixels broke the word Status into a column of single
+           letters, and the one beside it wrapped after every word. Unreadable sideways beats
+           unreadable downwards, and a mail is usually laid out for 600 pixels anyway. */
+        th, td { overflow-wrap: normal; word-break: normal; }
+        blockquote { border-left: 2px solid #d0d7de;
                margin: 0; padding-left: 12px; color: #57606a; }
       </style></head><body>${content}</body></html>`;
 

@@ -131,6 +131,31 @@ if (await kandidat.count()) {
   await kandidat.click({ force: true }).catch(() => {});
   await seite.waitForTimeout(2500);
   await seite.screenshot({ path: "/w/mail-04-lesen.png" });
+  // Wie breit steht die Mail wirklich im Rahmen, und bricht irgendwo ein Wort in Buchstaben?
+  const rahmen = seite.frameLocator("iframe").first();
+  const mass = await rahmen.locator("body").evaluate((b) => {
+    const zellen = [...b.querySelectorAll("th, td")].map((z) => {
+      const r = z.getBoundingClientRect();
+      return { text: (z.innerText || "").trim().slice(0, 12), breite: Math.round(r.width),
+               hoehe: Math.round(r.height) };
+    }).filter((z) => z.text);
+    const eng = [...b.querySelectorAll("th, td")].find((z) =>
+      (z.innerText || "").trim().startsWith("Status"));
+    const s = eng ? getComputedStyle(eng) : null;
+    const bloecke = [...b.parentElement.querySelectorAll("style")].map((x) =>
+      x.textContent.slice(0, 400));
+    const tab = eng ? eng.closest("table") : null;
+    const zeile = tab ? [...tab.querySelectorAll("tr")].map((r) => ({
+      html: r.outerHTML.slice(0, 300),
+      zellen: [...r.children].map((c) => Math.round(c.getBoundingClientRect().width)),
+    })) : [];
+    return { style: bloecke.length, tabelle: tab ? Math.round(tab.getBoundingClientRect().width) : 0,
+             zeilen: zeile,
+             zelle: s ? { wordBreak: s.wordBreak, overflowWrap: s.overflowWrap,
+                          width: s.width, whiteSpace: s.whiteSpace } : null,
+             schmal: zellen.filter((z) => z.hoehe > 60 && z.breite < 40) };
+  }).catch((e) => ({ fehler: String(e).slice(0, 80) }));
+  console.log("RAHMEN", JSON.stringify(mass));
 }
 
 // Die Naht zwischen Liste und Nachricht ziehen, und sie muss den Neuladen überleben.

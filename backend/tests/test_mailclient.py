@@ -996,3 +996,37 @@ async def test_a_folder_that_refuses_does_not_end_the_search(monkeypatch):
     result = mailbox._search_all_sync(MailAccount(name="p"), "a", 0, 50)
 
     assert result["total"] == 2
+
+
+# ── Was von einer fremden Mail übrig bleibt ─────────────────────────────────
+
+async def test_a_style_block_survives_the_cleaning():
+    """Half the senders put their table widths in a `<style>` block. Without it the table is
+    squeezed into nothing, and "Status" arrives as a column of single letters.
+
+    It cannot do any harm: the frame it is shown in forbids loading anything.
+    """
+    from app.services.mailbox import clean
+
+    html, _ = clean('<style>th { width: 1% }</style><table><tr><th>Status</th></tr></table>')
+    assert "<style>" in html and "width: 1%" in html
+
+
+async def test_a_script_goes_with_its_content():
+    """Without that the code would be gone and its text would stand in the mail."""
+    from app.services.mailbox import clean
+
+    html, _ = clean('<p>Hallo</p><script>alert("hallo")</script>')
+    assert "alert" not in html and "Hallo" in html
+
+
+async def test_a_picture_in_the_style_block_counts_as_a_remote_one():
+    """A tracking pixel can hide in the CSS. The frame blocks it like any other, so the notice
+    above the mail has to say so."""
+    from app.services.mailbox import clean
+
+    _, remote = clean('<style>body { background: url(https://tracker.example.org/p.gif) }</style>')
+    assert remote is True
+
+    _, own = clean('<style>body { background: url(data:image/gif;base64,AA) }</style>')
+    assert own is False

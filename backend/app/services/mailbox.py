@@ -173,11 +173,18 @@ def _text_from(msg: email.message.Message) -> tuple[str, str]:
 # What may survive from a foreign mail. Everything else goes: scripts of course, but forms
 # too (a login mask inside the mailbox is exactly the trick phishing is about),
 # eingebettete Rahmen und Objekte.
+#
+# `style` is in here, and that was a decision. Without it a mail keeps only what stands in its
+# `style=` attributes, and half the senders put their table widths in a block: what arrived
+# was a table squeezed into nothing, with the word "Status" broken into a column of single
+# letters. The block cannot do any harm here because the frame it is shown in forbids loading
+# anything (`default-src 'none'`, see `HtmlView` in the interface): no fonts, no background
+# images, no `@import`. What is left for it to do is lay out the mail it belongs to.
 _ALLOWED_TAGS = {
     "a", "abbr", "b", "blockquote", "br", "caption", "code", "col", "colgroup", "dd", "div",
     "dl", "dt", "em", "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i",
-    "img", "li", "ol", "p", "pre", "s", "small", "span", "strong", "sub", "sup", "table",
-    "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul",
+    "img", "li", "ol", "p", "pre", "s", "small", "span", "strong", "style", "sub", "sup",
+    "table", "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul",
 }
 _ALLOWED_ATTRIBUTE = {
     "*": {"style", "title", "align", "width", "height", "colspan", "rowspan", "dir"},
@@ -223,8 +230,14 @@ def clean(html: str) -> tuple[str, bool]:
 
     clean = nh3.clean(html or "", tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRIBUTE,
                        url_schemes={"http", "https", "mailto", "cid", "data"},
+                       # A script goes with its content. Without this line the code would be
+                       # gone but its text would stand in the mail as a wall of characters.
+                       clean_content_tags={"script"},
                        link_rel="noopener noreferrer nofollow")
-    fern = False
+    # A mail can pull pictures through CSS as well (`background: url(...)`). The frame blocks
+    # those like any other, so the notice above the mail should say so: otherwise it would
+    # keep quiet exactly where a tracking pixel hides in a style block.
+    fern = bool(re.search(r"url\(\s*['\"]?https?://", clean, re.I))
 
     def um(hits):
         nonlocal fern
