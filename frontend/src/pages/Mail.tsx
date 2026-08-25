@@ -43,6 +43,8 @@ interface ImageRule { id: number; kind: "sender" | "domain" | "all"; value: stri
 interface Newsletter {
   key: string; name: string; sender: string; list_id: string; folder: string; uid: number;
   count: number; last: string; http: string; mailto: string; one_click: boolean;
+  /** What arrived, newest first, so that "seven mails" is not a number one has to believe. */
+  mails: { folder: string; uid: number; subject: string; date: string }[];
 }
 interface Folder {
   name: string; display: string; level: number; parent: string; delimiter: string;
@@ -258,7 +260,8 @@ export default function Mail() {
           onDone={setNotice} onError={setErr} />
       )}
       {papers && (
-        <NewsletterOverview account={papers} onClose={() => setPapers(null)} onError={setErr} />
+        <NewsletterOverview account={papers} onClose={() => setPapers(null)} onError={setErr}
+          onOpen={(id, name, mail) => { go(id, name); setUid(mail); setReadFolder(name); }} />
       )}
       {manage !== null && (
         <FolderManagement accountId={manage}
@@ -1869,12 +1872,17 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
  *   a human often has a confirmation on it, and pressing that unread is not unsubscribing,
  *   it is guessing.
  */
-function NewsletterOverview({ account, onClose, onError: onError }: {
-  account: MailAccount; onClose: () => void; onError: (m: string) => void;
+function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onError }: {
+  account: MailAccount; onClose: () => void;
+  onOpen: (accountId: number, folder: string, uid: number) => void;
+  onError: (m: string) => void;
 }) {
   const qc = useQueryClient();
   const [folders, setFolders] = useState<string[]>(["INBOX"]);
   const [done, setDone] = useState<Record<string, string>>({});
+  // Which subscription has been opened up. One at a time: whoever opens the second one is
+  // done with the first, and two open lists are a wall instead of an answer.
+  const [open, setOpen] = useState("");
 
   const { data: tree } = useQuery({
     queryKey: ["mail-folders", account.id],
@@ -1930,7 +1938,15 @@ function NewsletterOverview({ account, onClose, onError: onError }: {
             {listing.map((n) => (
               <ListRow key={n.key}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="min-w-0 flex-1">
+                  {/* The whole row opens it: a count one may click is an invitation to look,
+                      and the arrow says that there is something to see. */}
+                  <button type="button" className={BUTTON_TEXT.secondary}
+                    title={open === n.key ? tr("mail.collapse") : tr("mail.expand")}
+                    onClick={() => setOpen(open === n.key ? "" : n.key)}>
+                    {open === n.key ? "▼" : "▶"}
+                  </button>
+                  <div className="min-w-0 flex-1 cursor-pointer"
+                       onClick={() => setOpen(open === n.key ? "" : n.key)}>
                     <div className="truncate text-sm font-medium text-ink">{n.name}</div>
                     <div className="truncate text-xs text-muted">
                       {n.list_id || n.sender}
@@ -1952,6 +1968,32 @@ function NewsletterOverview({ account, onClose, onError: onError }: {
                     <Tag color="yellow">{tr("mail.unsub_none")}</Tag>
                   )}
                 </div>
+
+                {open === n.key && (
+                  <div className="mt-2 space-y-0.5 border-l-2 border-line pl-3">
+                    {n.mails.map((m) => (
+                      <button key={`${m.folder}:${m.uid}`} type="button"
+                        onClick={() => { onOpen_it(account.id, m.folder, m.uid); onClose(); }}
+                        className="flex w-full items-baseline gap-2 rounded px-1 py-0.5 text-left
+                          hover:bg-surface">
+                        <span className="shrink-0 text-xs text-muted tabular-nums">
+                          {formatDateTime(m.date)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                          {m.subject || tr("mail.no_subject")}
+                        </span>
+                        {m.folder !== "INBOX" && <Tag>{m.folder}</Tag>}
+                      </button>
+                    ))}
+                    {/* Honest about what is missing: the count above is the whole truth, this
+                        list is only its front. */}
+                    {n.count > n.mails.length && (
+                      <div className="px-1 pt-1 text-xs text-muted">
+                        {tr("mail.and_older", { n: n.count - n.mails.length })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </ListRow>
             ))}
             {!listing.length && !isFetching && (

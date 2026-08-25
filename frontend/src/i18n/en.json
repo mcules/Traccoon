@@ -2943,5 +2943,6 @@
   "mail.unsub_mail_sent": "Unsubscribe sent. Some lists take a day.",
   "mail.unsub_failed": "Unsubscribing failed: {detail}",
   "mail.no_newsletters": "No subscriptions found in the chosen folders.",
-  "mail.open_in_tab": "Open in a new tab"
+  "mail.open_in_tab": "Open in a new tab",
+  "mail.and_older": "… and {n} older"
 }

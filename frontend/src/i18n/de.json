@@ -2943,5 +2943,6 @@
   "mail.unsub_mail_sent": "Abmeldung verschickt. Manche Listen brauchen einen Tag.",
   "mail.unsub_failed": "Abmeldung fehlgeschlagen: {detail}",
   "mail.no_newsletters": "Keine Abos in den gewählten Ordnern gefunden.",
-  "mail.open_in_tab": "In neuem Tab öffnen"
+  "mail.open_in_tab": "In neuem Tab öffnen",
+  "mail.and_older": "… und {n} ältere"
 }

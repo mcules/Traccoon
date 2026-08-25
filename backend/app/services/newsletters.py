@@ -13,6 +13,7 @@ here, and that is honest: for those the way out is not a button but the junk fol
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import email.utils
 import logging
 import re
@@ -27,6 +28,11 @@ log = logging.getLogger("traccoon.newsletters")
 # How far back to look. A newsletter that has not arrived in a year is not a subscription one
 # is troubled by, and every mail costs a line in the FETCH.
 LOOK_AT = 800
+
+# How many mails of ONE subscription travel along with the overview. Whoever has been getting
+# a newsletter for four years does not read the four hundredth entry, and the number beside
+# the row already says how many there were.
+PER_SUBSCRIPTION = 25
 
 FIELDS = "BODY.PEEK[HEADER.FIELDS (FROM LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST LIST-ID SUBJECT)]"
 
@@ -116,12 +122,19 @@ def _scan_sync(account: MailAccount, folders: list[str]) -> list[dict]:
                 shown = list_name or (list_id if list_id else (name or address))
                 http, mail = _addresses(out.group(1))
                 when = entry.get(b"INTERNALDATE")
+                subject_line = re.search(r"^Subject:\s*(.+?)(?=^\S|\Z)", text, re.I | re.M | re.S)
                 sitting = found.setdefault(key, {
                     "key": key, "name": shown, "sender": address, "list_id": list_id,
                     "folder": folder, "uid": uid, "count": 0, "last": None,
-                    "http": http, "mailto": mail, "one_click": False,
+                    "http": http, "mailto": mail, "one_click": False, "mails": [],
                 })
                 sitting["count"] += 1
+                # What arrived, so that "seven mails" is not a number one has to believe.
+                sitting["mails"].append({
+                    "folder": folder, "uid": uid,
+                    "subject": _header(subject_line.group(1).strip()) if subject_line else "",
+                    "date": when,
+                })
                 if when and (sitting["last"] is None or when > sitting["last"]):
                     # The newest mail of a subscription carries the way out that counts: an
                     # address from three years ago may be dead.
@@ -135,6 +148,11 @@ def _scan_sync(account: MailAccount, folders: list[str]) -> list[dict]:
     listing = sorted(found.values(), key=lambda e: e["count"], reverse=True)
     for entry in listing:
         entry["last"] = entry["last"].isoformat() if entry["last"] else ""
+        # Newest first, and only the front of it: the count beside the row says how many
+        # there were, this is what one looks at to recognise the subscription.
+        entry["mails"].sort(key=lambda m: m["date"] or dt.datetime.min, reverse=True)
+        entry["mails"] = [{**m, "date": m["date"].isoformat() if m["date"] else ""}
+                           for m in entry["mails"][:PER_SUBSCRIPTION]]
     return listing
 
 

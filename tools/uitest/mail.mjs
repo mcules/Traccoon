@@ -238,6 +238,24 @@ if (await punkte2.count()) {
     const knoepfe = await seite.getByText("Abmelden", { exact: false }).count();
     console.log("ABOS", JSON.stringify({ zeilen, knoepfe }));
     await seite.screenshot({ path: "/w/mail-13-abos.png" });
+    // Ein Abo aufklappen: kommen die Mails, und führt ein Klick zu ihr?
+    const pfeil = seite.locator("[role=dialog] button", { hasText: "▶" }).first();
+    if (await pfeil.count()) {
+      await pfeil.click();
+      await seite.waitForTimeout(500);
+      const eintraege = await seite.locator("[role=dialog] button.w-full").count();
+      console.log("ABO-MAILS", eintraege);
+      await seite.screenshot({ path: "/w/mail-15-abo-mails.png" });
+      if (eintraege > 1) {
+        await seite.locator("[role=dialog] button.w-full").nth(1).click();
+        await seite.waitForTimeout(2500);
+        const offen = await seite.locator("[role=dialog]").count();
+        const titel = await seite.locator("main").innerText().catch(() => "");
+        console.log("SPRUNG", JSON.stringify({ dialogZu: offen === 0,
+          zeigtMail: titel.includes("Antworten") }));
+        await seite.screenshot({ path: "/w/mail-16-sprung.png" });
+      }
+    }
     await seite.getByText("Schließen").first().click().catch(() => {});
     await seite.waitForTimeout(300);
   } else {
