@@ -96,6 +96,8 @@ export default function MailAccountsPanel() {
         {ICON.fresh} {tr("mail_accounts.add_mailbox")}
       </button>
 
+      <ImageRules onError={fail} />
+
       <McpAccess onError={fail} />
 
       {dialog && (
@@ -109,6 +111,57 @@ export default function MailAccountsPanel() {
           onDelete={() => remove.mutate(deleteAccount.id)} />
       )}
     </Area>
+  );
+}
+
+/**
+ * The kept answers to "may the pictures be fetched?".
+ *
+ * They come into being where they are needed, in the mail beside the question, and they have
+ * to be undoable somewhere else: a decision one cannot take back is not a decision one takes
+ * lightly, and this one should be light. Whoever finds the list empty here has never said
+ * "stop asking" — which is the state everybody starts in.
+ */
+function ImageRules({ onError }: { onError: (e: unknown) => void }) {
+  const qc = useQueryClient();
+  const { data: rules } = useQuery({
+    queryKey: ["mail-image-rules"],
+    queryFn: () => api.get<{ id: number; kind: string; value: string }[]>("/mailbox/image-rules"),
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) => api.del(`/mailbox/image-rules/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mail-image-rules"] });
+      // The open mail asks the server again whether it may show its pictures.
+      qc.invalidateQueries({ queryKey: ["mail-message"] });
+    },
+    onError,
+  });
+  if (!rules?.length) return null;
+
+  const what = (kind: string, value: string) =>
+    kind === "all" ? tr("mail_accounts.images_everywhere")
+      : kind === "domain" ? tr("mail_accounts.images_domain", { domain: value })
+      : tr("mail_accounts.images_sender", { sender: value });
+
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-semibold text-ink">{tr("mail_accounts.images_title")}</div>
+      <p className="text-xs text-muted">{tr("mail_accounts.images_hint")}</p>
+      <Listing>
+        {rules.map((r) => (
+          <ListRow key={r.id}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-sm">{what(r.kind, r.value)}</span>
+              <Actions>
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger
+                  onClick={() => remove.mutate(r.id)} />
+              </Actions>
+            </div>
+          </ListRow>
+        ))}
+      </Listing>
+    </div>
   );
 }
 

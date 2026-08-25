@@ -156,6 +156,22 @@ if (await kandidat.count()) {
              schmal: zellen.filter((z) => z.hoehe > 60 && z.breite < 40) };
   }).catch((e) => ({ fehler: String(e).slice(0, 80) }));
   console.log("RAHMEN", JSON.stringify(mass));
+
+  // Der Bilder-Dialog: fragt er, und bietet er die drei Reichweiten an?
+  const laden = seite.getByText("Bilder laden").first();
+  if (await laden.count()) {
+    await laden.click();
+    await seite.waitForTimeout(400);
+    const zeilen = await seite.locator("input[type=radio]").count();
+    const texte = await seite.locator("[role=dialog] label").allInnerTexts();
+    console.log("BILDDIALOG", JSON.stringify({ auswahl: zeilen, texte }));
+    await seite.screenshot({ path: "/w/mail-11-bilder.png" });
+    // Nichts merken: abbrechen, damit im echten Konto keine Regel entsteht.
+    await seite.getByText("Abbrechen").first().click();
+    await seite.waitForTimeout(300);
+  } else {
+    console.log("BILDDIALOG kein Hinweis sichtbar");
+  }
 }
 
 // Die Naht zwischen Liste und Nachricht ziehen, und sie muss den Neuladen überleben.

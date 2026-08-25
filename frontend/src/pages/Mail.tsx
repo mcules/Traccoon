@@ -33,8 +33,13 @@ interface Message {
   uid: number; folder: string; subject: string; from: Address[]; to: Address[]; cc: Address[];
   reply_to: Address[];
   date: string; message_id: string; text: string; html: string; remote_images: boolean;
+  /** How many counting pixels were thrown out. They never come back, not even on "load". */
+  counters: number;
+  /** Was this already decided for this sender? Then nothing is asked and nothing is blocked. */
+  images_allowed: boolean;
   attachments: Attachment[]; seen: boolean; flagged: boolean;
 }
+interface ImageRule { id: number; kind: "sender" | "domain" | "all"; value: string }
 interface Folder {
   name: string; display: string; level: number; parent: string; delimiter: string;
   special: string; unseen: number; total: number;
@@ -846,14 +851,20 @@ function FolderManagement({ accountId, account, chosen, onClose, onGone, onError
  *
  * Three locks on top of each other: the server has already cleaned up (nh3), the frame here is
  * a `sandbox` iframe without script rights, and a content policy in the document itself lets
- * nothing be loaded. Remote images hang in the mail as `data-fern` and become `src` only on a
- * click — a loaded image is a signal back to the sender that it was read.
+ * nothing be loaded. Remote images hang in the mail as `data-fern` and become `src` only when
+ * somebody says so, because a loaded image is a signal back to the sender that the mail was
+ * read.
  */
-function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean }) {
+function HtmlView({ html, remoteimages, counters, allowed, sender, onAllow }: {
+  html: string; remoteimages: boolean; counters: number; allowed: boolean; sender: string;
+  onAllow: (remember: ImageRule["kind"] | null) => void;
+}) {
   const [images, setImages] = useState(false);
-  const content = images ? html.replace(/data-fern="/g, 'src="') : html;
+  const [asking, setAsking] = useState(false);
+  const show = images || allowed;
+  const content = show ? html.replace(/data-fern="/g, 'src="') : html;
   const policy = "default-src 'none'; style-src 'unsafe-inline'; font-src data:; "
-    + (images ? "img-src data: https:;" : "img-src data:;");
+    + (show ? "img-src data: https:;" : "img-src data:;");
   const document = `<!doctype html><html><head>
       <meta http-equiv="Content-Security-Policy" content="${policy}">
       <base target="_blank">
@@ -873,11 +884,16 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
 
   return (
     <div className="space-y-2">
-      {remoteimages && !images && (
+      {remoteimages && !show && (
         <div className="flex flex-wrap items-center gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
           {tr("mail.remote_images_blocked")}
-          <Rowbutton onClick={() => setImages(true)}>{tr("mail.load_images")}</Rowbutton>
+          <Rowbutton onClick={() => setAsking(true)}>{tr("mail.load_images")}</Rowbutton>
         </div>
+      )}
+      {/* What was thrown out for good is worth a line of its own: it is the difference
+          between "not yet loaded" and "will not be loaded". */}
+      {counters > 0 && (
+        <div className="text-xs text-muted">🎯 {tr("mail.counters_removed", { n: counters })}</div>
       )}
       <iframe
         title={tr("mail.message")}
@@ -885,21 +901,68 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
         srcDoc={document}
         className="h-[60vh] w-full rounded border border-line bg-white"
       />
+      {asking && (
+        <ImageDialog sender={sender} onClose={() => setAsking(false)}
+          onLoad={(remember) => {
+            setAsking(false);
+            setImages(true);
+            if (remember) onAllow(remember);
+          }} />
+      )}
     </div>
   );
 }
 
 /**
- * The list of a folder, and what one can do with several of them at once.
+ * "May the pictures be fetched?" — asked once, and then only if one wants to be asked.
  *
- * The checkbox is the second way to touch a row: a click still opens the mail, because that
- * is what one comes for. Only when something is ticked does the list turn into a work
- * surface, and then the handles stand where the counter stood, not in a bar that was there
- * all along waiting for a use.
+ * The question is not a formality: a fetched picture tells the sender the mail was opened,
+ * when, and roughly from where. But for a newsletter one reads daily the answer is the same
+ * every time, and a question answered the same way twenty times is not a question, it is a
+ * toll. So the answer may be kept, with the reach one chooses: this sender, this house, or
+ * everything.
  *
- * Shift takes a range, as in every list in the world. Without it, tidying up thirty
- * newsletters means thirty clicks, which is exactly the moment one stops using a selection.
+ * What is NOT covered by any of that: the pictures that exist only to count. Those are gone
+ * before anybody is asked, and they stay gone.
  */
+function ImageDialog({ sender, onClose, onLoad }: {
+  sender: string; onClose: () => void;
+  onLoad: (remember: ImageRule["kind"] | null) => void;
+}) {
+  const [remember, setRemember] = useState<ImageRule["kind"] | "">("");
+  const domain = sender.split("@")[1] || "";
+
+  const choice = (value: ImageRule["kind"] | "", label: string, hint?: string) => (
+    <label className="flex items-start gap-2 rounded px-1 py-1.5 hover:bg-surface">
+      <input type="radio" name="merken" className="mt-1 h-4 w-4 accent-brand"
+        checked={remember === value} onChange={() => setRemember(value)} />
+      <span className="min-w-0">
+        <span className="text-sm text-ink">{label}</span>
+        {hint && <span className="block text-xs text-muted">{hint}</span>}
+      </span>
+    </label>
+  );
+
+  return (
+    <Dialog title={tr("mail.images_q_title")} onClose={onClose} foot={
+      <DialogFoot onCancel={onClose} saveText={tr("mail.load_images")}
+        onSave={() => onLoad(remember || null)} />
+    }>
+      <div className="space-y-3">
+        <p className="text-sm text-ink">{tr("mail.images_q_text")}</p>
+        <p className="text-xs text-muted">🎯 {tr("mail.trackers_stay_blocked")}</p>
+        <div className="space-y-1">
+          {choice("", tr("mail.only_this_time"))}
+          {sender && choice("sender", tr("mail.always_for_sender", { sender }))}
+          {domain && choice("domain", tr("mail.always_for_domain", { domain }))}
+          {choice("all", tr("mail.always_everywhere"), tr("mail.always_everywhere_hint"))}
+        </div>
+        <p className="text-xs text-muted">{tr("mail.rules_in_settings")}</p>
+      </div>
+    </Dialog>
+  );
+}
+
 function MessagesListing({ accountId, folder: folder, search, scope, account,
                            onOpen: onOpen_it, onError: onError, open: open, chosen, onChosen,
                            onSearch }: {
@@ -1377,6 +1440,17 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     mutationFn: () => api.post(`${basis}/delete`, { folder: folder }),
     onSuccess: after, onError: gonewrong(tr("mail.delete_2")),
   });
+  // A kept answer about pictures. It belongs to the person, so the next mail from the same
+  // sender does not ask again, in this mailbox or in the other one.
+  const allow = useMutation({
+    mutationFn: (v: { kind: ImageRule["kind"]; value: string }) =>
+      api.post("/mailbox/image-rules", v),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mail-image-rules"] });
+      qc.invalidateQueries({ queryKey: ["mail-message"] });
+    },
+    onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.rule_failed")),
+  });
 
   const forMail = (actions || []).filter((a) => a.scope !== "attachment");
   const forAttachment = (actions || []).filter((a) => a.scope === "attachment");
@@ -1499,7 +1573,12 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                 ["html", tr("mail.formatted")], ["text", tr("mail.text_only")],
               ]} />
               {view === "html"
-                ? <HtmlView html={m.html} remoteimages={m.remote_images} />
+                ? <HtmlView html={m.html} remoteimages={m.remote_images}
+                    counters={m.counters} allowed={m.images_allowed}
+                    sender={m.from[0]?.addr || ""}
+                    onAllow={(kind) => kind && allow.mutate({ kind,
+                      value: kind === "domain" ? (m.from[0]?.addr || "").split("@")[1] || ""
+                            : kind === "sender" ? m.from[0]?.addr || "" : "" })} />
                 : <pre className={`max-h-[60vh] overflow-auto whitespace-pre-wrap ${PAPER}`}>
                     {m.text || tr("mail.no_text")}
                   </pre>}

@@ -216,8 +216,44 @@ def has_content(html: str) -> bool:
     return bool(text.strip())
 
 
-def clean(html: str) -> tuple[str, bool]:
-    """Returns (cleaned HTML, whether there are remote images).
+# What a counting pixel looks like. Two signs, and both of them are the sender's own doing:
+# a picture one pixel across is not there to be seen, and these paths are what the big
+# dispatch houses call their open-tracker. The list is not complete and cannot be: it is the
+# handful that covers most mail, and everything it misses stays blocked until somebody says
+# otherwise, which is the safe direction to be wrong in.
+TRACKER_PATHS = (
+    "/wf/open", "/o/", "/open.aspx", "/trk", "/track/open", "/track.gif", "/opened",
+    "/pixel", "/beacon", "/imp?", "/impression", "/read.png", "/mail_open",
+)
+TRACKER_HOSTS = (
+    "list-manage.com", "sendgrid.net", "mailgun.org", "sparkpostmail.com", "mandrillapp.com",
+    "hubspotemail.net", "sendinblue.com", "cmail19.com", "createsend.com", "exct.net",
+    "rs6.net", "mailchimp.com", "klaviyomail.com", "braze.eu", "customeriomail.com",
+)
+
+
+def _is_tracker(tag: str, address: str) -> bool:
+    """Is this picture there to be looked at, or to report that it was?
+
+    A picture of one pixel is the classic and still the most common: it says nothing, it only
+    goes out. The second sign is where it comes from, because a handful of dispatch houses put
+    their open-tracker on a fixed path.
+    """
+    import re as _re
+
+    lower = address.lower()
+    if any(part in lower for part in TRACKER_PATHS):
+        return True
+    host = lower.split("//", 1)[-1].split("/", 1)[0]
+    if any(host.endswith(known) for known in TRACKER_HOSTS):
+        return True
+    # width="1" height="1", and the same thing written in the style attribute.
+    numbers = _re.findall(r'(?:width|height)\s*[=:]\s*["\']?\s*(\d+)', tag, _re.I)
+    return bool(numbers) and all(int(n) <= 2 for n in numbers[:2]) and len(numbers) >= 2
+
+
+def clean(html: str) -> tuple[str, bool, int]:
+    """Returns (cleaned HTML, whether there are remote images, how many counters were removed).
 
     Remote images are not removed but **rehung**: the address moves to `data-fern`, `src`
     disappears. That way the message stays complete but loads nothing afterwards — a loaded
@@ -239,16 +275,28 @@ def clean(html: str) -> tuple[str, bool]:
     # keep quiet exactly where a tracking pixel hides in a style block.
     fern = bool(re.search(r"url\(\s*['\"]?https?://", clean, re.I))
 
+    counted = 0
+
     def um(hits):
-        nonlocal fern
+        nonlocal fern, counted
         address = hits.group(2)
         if address.startswith("data:"):
             return hits.group(0)
+        if _is_tracker(hits.group(0), address):
+            # Thrown out, not rehung: it must not come back even when somebody presses "load
+            # pictures". Whoever wants to see the mail wants to see the mail, not report
+            # having read it.
+            counted += 1
+            return f'{hits.group(1)}data-counted="1"'
         fern = True
         return f'{hits.group(1)}data-fern="{address}"'
 
     clean = re.sub(r'(<img\b[^>]*?)src="([^"]*)"', um, clean, flags=re.I)
-    return clean, fern
+    # The pictures that were only there to count go entirely: an empty frame in the middle of
+    # the text is a hole nobody can explain.
+    if counted:
+        clean = re.sub(r'<img\b[^>]*\bdata-counted="1"[^>]*>', "", clean, flags=re.I)
+    return clean, fern, counted
 
 
 def _kind(part, name: str) -> str:
@@ -552,11 +600,11 @@ def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
             raise LookupError("Nachricht nicht gefunden")
         msg = email.message_from_bytes(entry[b"RFC822"], policy=email.policy.default)
         text, html = _text_from(msg)
-        html_clean, remoteimages = clean(html) if html else ("", False)
+        html_clean, remoteimages, counters = clean(html) if html else ("", False, 0)
         # A part that carries nothing is no part: without this the reader gets a choice
         # between an empty page and the text, with the empty one preselected.
         if html_clean and not has_content(html_clean):
-            html_clean, remoteimages = "", False
+            html_clean, remoteimages, counters = "", False, 0
         flags = {f.decode().lower() for f in entry.get(b"FLAGS", ())}
         return {
             "uid": uid, "folder": folder,
@@ -568,6 +616,7 @@ def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
             "date": _header(msg.get("Date")),
             "message_id": str(msg.get("Message-ID") or ""),
             "text": text, "html": html_clean, "remote_images": remoteimages,
+            "counters": counters,
             "attachments": _attachments(msg),
             "seen": "\\seen" in flags, "flagged": "\\flagged" in flags,
         }

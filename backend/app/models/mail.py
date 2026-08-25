@@ -87,3 +87,30 @@ class MailIdentity(TimestampMixin, Base):
     reply_to: Mapped[str] = mapped_column(String(320), default="")
     signature: Mapped[str] = mapped_column(Text, default="")
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class MailImageRule(TimestampMixin, Base):
+    """Whose pictures may be fetched without asking again.
+
+    Loading a picture from a foreign server tells the sender that the mail was read, which is
+    why nothing is fetched by itself. But the question "may this one?" has the same answer
+    every time for a newsletter one reads daily, and a question one answers the same way
+    twenty times is not a question, it is a toll.
+
+    Three reaches, from narrow to wide: one sender, one domain, everything. Whoever trusts
+    `notifications@github.com` does not thereby trust every shop, and whoever trusts
+    `@github.com` says something about a house, not about the world.
+
+    Deliberately not on the account but on the person: mail from the same sender arrives in
+    both mailboxes, and the answer would be the same in both.
+    """
+    __tablename__ = "mail_image_rules"
+    __table_args__ = (UniqueConstraint("owner_user_id", "kind", "value",
+                                        name="uq_mail_image_rule"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # sender | domain | all. With `all` the value stays empty.
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    value: Mapped[str] = mapped_column(String(320), default="")

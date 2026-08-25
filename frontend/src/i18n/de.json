@@ -2907,5 +2907,21 @@
   "mail.nothing_found": "Nichts gefunden.",
   "mail.lies_in": "Liegt in „{folder}“",
   "mail.capped": "erste {n}",
-  "mail.capped_hint": "Die Suche hat bei {n} Treffern aufgehört. Enger fragen zeigt den Rest."
+  "mail.capped_hint": "Die Suche hat bei {n} Treffern aufgehört. Enger fragen zeigt den Rest.",
+  "mail.counters_removed": "{n} Zählpixel entfernt, die bleiben auch beim Laden draußen",
+  "mail.images_q_title": "Bilder von fremden Servern laden?",
+  "mail.images_q_text": "Ein geladenes Bild verrät dem Absender, dass du die Mail geöffnet hast, wann das war und ungefähr von wo.",
+  "mail.trackers_stay_blocked": "Erkannte Zählpixel werden nie geladen, auch mit dieser Erlaubnis nicht.",
+  "mail.only_this_time": "Nur dieses eine Mal",
+  "mail.always_for_sender": "Bei „{sender}“ nicht mehr fragen",
+  "mail.always_for_domain": "Bei allen Absendern von „{domain}“ nicht mehr fragen",
+  "mail.always_everywhere": "Nie mehr fragen",
+  "mail.always_everywhere_hint": "Bilder werden dann in jeder Mail geladen, egal von wem.",
+  "mail.rules_in_settings": "Gemerkte Antworten stehen im Konto unter Mail-Konten und lassen sich dort löschen.",
+  "mail.rule_failed": "Die Antwort konnte nicht gemerkt werden",
+  "mail_accounts.images_title": "Bilder von fremden Servern",
+  "mail_accounts.images_hint": "Hier stehen die Antworten, die du beim Lesen gemerkt hast. Löschen heißt: es wird wieder gefragt.",
+  "mail_accounts.images_everywhere": "Überall laden, ohne zu fragen",
+  "mail_accounts.images_domain": "Alle Absender von „{domain}“",
+  "mail_accounts.images_sender": "„{sender}“"
 }

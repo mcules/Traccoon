@@ -161,12 +161,17 @@ async def test_the_action_does_not_know_the_attachment(db, client, monkeypatch):
 # ── HTML einer fremden Mail ─────────────────────────────────────────────────
 
 async def test_html_is_cleaned_and_remote_images_stay():
-    """Three things at once: no script, no form, no silent image fetch."""
+    """Three things at once: no script, no form, no silent image fetch.
+
+    The picture in here is an ordinary one on purpose. It used to be called `pixel.gif`, and
+    that name means something now: it would be thrown out as a counter, and this test would
+    then be checking the counting rule instead of the cleaning.
+    """
     from app.services.mailbox import clean
 
-    clean, fern = clean(
+    clean, fern, _ = clean(
         '<p onclick="alert(1)">Hallo<script>alert(2)</script>'
-        '<img src="https://tracker.example/pixel.gif">'
+        '<img src="https://cdn.example/header.jpg" width="600">'
         '<img src="data:image/png;base64,AAA">'
         '<form action="https://phish"><input name="pw"></form>'
         '<a href="javascript:evil()">klick</a></p>')
@@ -175,7 +180,7 @@ async def test_html_is_cleaned_and_remote_images_stay():
     assert "<form" not in clean and "<input" not in clean
     assert "javascript:" not in clean
     # The remote image stays visible but loads nothing.
-    assert 'data-fern="https://tracker.example/pixel.gif"' in clean
+    assert 'data-fern="https://cdn.example/header.jpg"' in clean
     assert fern is True
     # An embedded image is no remote image and stays as it is.
     assert 'src="data:image/png;base64,AAA"' in clean
@@ -184,7 +189,7 @@ async def test_html_is_cleaned_and_remote_images_stay():
 async def test_no_warning_without_remote_images():
     from app.services.mailbox import clean
 
-    clean, fern = clean('<p>Nur <b>Text</b> und <img src="data:image/gif;base64,AA">.</p>')
+    clean, fern, _ = clean('<p>Nur <b>Text</b> und <img src="data:image/gif;base64,AA">.</p>')
     assert fern is False and "<b>Text</b>" in clean
 
 
@@ -1008,7 +1013,7 @@ async def test_a_style_block_survives_the_cleaning():
     """
     from app.services.mailbox import clean
 
-    html, _ = clean('<style>th { width: 1% }</style><table><tr><th>Status</th></tr></table>')
+    html, _, _ = clean('<style>th { width: 1% }</style><table><tr><th>Status</th></tr></table>')
     assert "<style>" in html and "width: 1%" in html
 
 
@@ -1016,7 +1021,7 @@ async def test_a_script_goes_with_its_content():
     """Without that the code would be gone and its text would stand in the mail."""
     from app.services.mailbox import clean
 
-    html, _ = clean('<p>Hallo</p><script>alert("hallo")</script>')
+    html, _, _ = clean('<p>Hallo</p><script>alert("hallo")</script>')
     assert "alert" not in html and "Hallo" in html
 
 
@@ -1025,8 +1030,91 @@ async def test_a_picture_in_the_style_block_counts_as_a_remote_one():
     above the mail has to say so."""
     from app.services.mailbox import clean
 
-    _, remote = clean('<style>body { background: url(https://tracker.example.org/p.gif) }</style>')
+    _, remote, _ = clean('<style>body { background: url(https://tracker.example.org/p.gif) }</style>')
     assert remote is True
 
-    _, own = clean('<style>body { background: url(data:image/gif;base64,AA) }</style>')
+    _, own, _ = clean('<style>body { background: url(data:image/gif;base64,AA) }</style>')
     assert own is False
+
+
+# ── Bilder von fremden Servern ──────────────────────────────────────────────
+
+async def test_a_counting_pixel_never_comes_back():
+    """A picture one pixel across is not there to be seen. It goes before anybody is asked,
+    and it stays gone even when somebody presses "load pictures": whoever wants to see the
+    mail wants to see the mail, not report having read it."""
+    from app.services.mailbox import clean
+
+    html, remote, counted = clean(
+        '<p>Hallo</p>'
+        '<img src="https://shop.example.org/o/abc123.gif" width="1" height="1">'
+        '<img src="https://shop.example.org/logo.png" width="200" height="80">')
+
+    assert counted == 1
+    assert "abc123" not in html, "das Zählpixel darf nirgends mehr stehen"
+    assert 'data-fern="https://shop.example.org/logo.png"' in html
+    assert remote is True
+
+
+async def test_a_dispatch_house_tracker_is_recognised_by_its_address():
+    """The big dispatch houses put their open-tracker on a fixed path. Size alone would not
+    catch it: plenty of them ship it at 20 by 20."""
+    from app.services.mailbox import clean
+
+    _, _, counted = clean('<img src="https://x.list-manage.com/track/open.php?u=1&id=2" '
+                           'width="20" height="20">')
+    assert counted == 1
+
+
+async def test_an_ordinary_picture_stays_an_ordinary_picture():
+    """The recognition must not eat the logo. Wrong in this direction is the loud kind of
+    wrong: a hole in the middle of the mail that nobody can explain."""
+    from app.services.mailbox import clean
+
+    html, remote, counted = clean(
+        '<img src="https://cdn.example.org/newsletter/header.jpg" width="600" height="200">')
+    assert counted == 0 and remote is True
+    assert "header.jpg" in html
+
+
+async def test_the_kept_answer_is_looked_up_by_sender_and_by_house(db, client):
+    """Three reaches, and the widest wins."""
+    from app.api.mailbox import _images_allowed
+    from app.models.mail import MailImageRule
+
+    only_sender = [MailImageRule(kind="sender", value="notifications@github.com")]
+    assert _images_allowed(only_sender, "notifications@github.com") is True
+    assert _images_allowed(only_sender, "billing@github.com") is False
+
+    house = [MailImageRule(kind="domain", value="github.com")]
+    assert _images_allowed(house, "billing@github.com") is True
+    assert _images_allowed(house, "billing@example.org") is False
+
+    everything = [MailImageRule(kind="all", value="")]
+    assert _images_allowed(everything, "wer@auch.immer") is True
+    # A broken header names no house. It falls through, which is the careful direction.
+    assert _images_allowed(house, "") is False
+
+
+async def test_a_rule_is_only_stored_once(db, client):
+    anna = await make_user(db, "anna")
+
+    for _ in range(2):
+        r = await client.post("/mailbox/image-rules", headers=auth(anna),
+                              json={"kind": "sender", "value": "Post@Beispiel.DE"})
+        assert r.status_code in (200, 201), r.text
+
+    rows = (await client.get("/mailbox/image-rules", headers=auth(anna))).json()
+    # Stored in lower case: mail addresses are not case sensitive where it matters, and two
+    # rules for the same sender would be one to delete twice.
+    assert [(r["kind"], r["value"]) for r in rows] == [("sender", "post@beispiel.de")]
+
+
+async def test_foreign_rules_stay_foreign(db, client):
+    anna, bert = await make_user(db, "anna"), await make_user(db, "bert")
+    made = (await client.post("/mailbox/image-rules", headers=auth(anna),
+                              json={"kind": "all"})).json()
+
+    r = await client.delete(f"/mailbox/image-rules/{made['id']}", headers=auth(bert))
+    assert r.status_code == 204
+    assert len((await client.get("/mailbox/image-rules", headers=auth(anna))).json()) == 1

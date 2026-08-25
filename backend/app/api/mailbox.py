@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.error import Error
 from ..core.security import encrypt_secret
 from ..db import get_session
-from ..models.mail import MailAccount, MailIdentity
+from ..models.mail import MailAccount, MailIdentity, MailImageRule
 from ..models.user import User
 from ..services import mailbox
 from ..services import mailbox_cache as cache
@@ -441,14 +441,93 @@ async def messages(kid: int, folder: str = "INBOX", q: str = "", scope: str = "f
                                lambda: mailbox.listing(account, folder, "", offset, capped))
 
 
+# ── Pictures from foreign servers ───────────────────────────────────────────
+
+class ImageRuleIn(BaseModel):
+    kind: str            # sender | domain | all
+    value: str = ""
+
+
+class ImageRuleOut(BaseModel):
+    id: int
+    kind: str
+    value: str
+
+
+async def _image_rules(db: AsyncSession, user: User) -> list[MailImageRule]:
+    return list((await db.execute(select(MailImageRule).where(
+        MailImageRule.owner_user_id == user.id)
+        .order_by(MailImageRule.kind, MailImageRule.value))).scalars().all())
+
+
+def _images_allowed(rules: list[MailImageRule], sender: str) -> bool:
+    """Does an answer already exist for this sender?
+
+    Three reaches, and the widest wins: whoever said "always" is not asked about a domain any
+    more. A sender without an address (a broken header) falls through to the general rule,
+    which is the careful direction: it says nothing about a house one cannot name.
+    """
+    sender = (sender or "").strip().lower()
+    domain = sender.rpartition("@")[2]
+    for rule in rules:
+        if rule.kind == "all":
+            return True
+        if rule.kind == "sender" and sender and rule.value.lower() == sender:
+            return True
+        if rule.kind == "domain" and domain and rule.value.lower().lstrip("@") == domain:
+            return True
+    return False
+
+
+@router.get("/image-rules", response_model=list[ImageRuleOut])
+async def image_rules(user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    return await _image_rules(db, user)
+
+
+@router.post("/image-rules", response_model=ImageRuleOut, status_code=201)
+async def image_rule_create(data: ImageRuleIn, user: User = Depends(get_current_user),
+                              db: AsyncSession = Depends(get_session)):
+    if data.kind not in ("sender", "domain", "all"):
+        raise Error(400, "err.unknown_reach", "Unknown reach '{name}'", name=data.kind)
+    value = "" if data.kind == "all" else data.value.strip().lower().lstrip("@")
+    if data.kind != "all" and not value:
+        raise Error(400, "err.rule_without_sender", "The rule needs a sender or a domain")
+    exists = (await db.execute(select(MailImageRule).where(
+        MailImageRule.owner_user_id == user.id, MailImageRule.kind == data.kind,
+        MailImageRule.value == value))).scalar_one_or_none()
+    if exists is not None:
+        return exists
+    rule = MailImageRule(owner_user_id=user.id, kind=data.kind, value=value)
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return rule
+
+
+@router.delete("/image-rules/{rid}", status_code=204)
+async def image_rule_delete(rid: int, user: User = Depends(get_current_user),
+                              db: AsyncSession = Depends(get_session)):
+    rule = await db.get(MailImageRule, rid)
+    if rule is None or rule.owner_user_id != user.id:
+        return
+    await db.delete(rule)
+    await db.commit()
+
+
 @router.get("/accounts/{kid}/messages/{uid}")
 async def message(kid: int, uid: int, folder: str = "INBOX",
                     user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
     try:
-        return await mailbox.message(await _account(db, kid, user), folder, uid)
+        found = await mailbox.message(await _account(db, kid, user), folder, uid)
     except LookupError:
         raise Error(404, "err.mail_not_found", "Message not found")
+    # Whether the pictures of THIS sender may be fetched without asking again. The decision
+    # was made once, here it is only looked up.
+    sender = (found.get("from") or [{}])[0].get("addr", "") if found.get("from") else ""
+    found["images_allowed"] = _images_allowed(await _image_rules(db, user), sender)
+    return found
 
 
 @router.get("/accounts/{kid}/messages/{uid}/attachments/{index}")

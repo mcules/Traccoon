@@ -2907,5 +2907,21 @@
   "mail.nothing_found": "Nothing found.",
   "mail.lies_in": "Lies in '{folder}'",
   "mail.capped": "first {n}",
-  "mail.capped_hint": "The search stopped at {n} hits. A narrower question shows the rest."
+  "mail.capped_hint": "The search stopped at {n} hits. A narrower question shows the rest.",
+  "mail.counters_removed": "{n} counting pixels removed, and they stay out even when loading",
+  "mail.images_q_title": "Load pictures from foreign servers?",
+  "mail.images_q_text": "A loaded picture tells the sender that you opened the mail, when that was, and roughly from where.",
+  "mail.trackers_stay_blocked": "Recognised counting pixels are never loaded, not even with this permission.",
+  "mail.only_this_time": "This one time only",
+  "mail.always_for_sender": "Stop asking for '{sender}'",
+  "mail.always_for_domain": "Stop asking for every sender at '{domain}'",
+  "mail.always_everywhere": "Stop asking altogether",
+  "mail.always_everywhere_hint": "Pictures are then loaded in every mail, whoever it is from.",
+  "mail.rules_in_settings": "Kept answers stand in the account under mail accounts and can be deleted there.",
+  "mail.rule_failed": "The answer could not be kept",
+  "mail_accounts.images_title": "Pictures from foreign servers",
+  "mail_accounts.images_hint": "The answers you kept while reading. Deleting one means the question comes back.",
+  "mail_accounts.images_everywhere": "Load everywhere, without asking",
+  "mail_accounts.images_domain": "Every sender at '{domain}'",
+  "mail_accounts.images_sender": "'{sender}'"
 }
