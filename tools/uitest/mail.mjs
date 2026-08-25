@@ -197,6 +197,54 @@ if (await naht.count()) {
   console.log("NAHT nicht gefunden");
 }
 
+// Eine Mail mit Anhang: geht die Vorschau auf, und was zeigt sie?
+const mitAnhang = seite.getByText("Ein Betreff").first();
+if (await mitAnhang.count()) {
+  await mitAnhang.click({ force: true });
+  await seite.waitForTimeout(2500);
+  const ansehen = seite.getByText("Ansehen").first();
+  if (await ansehen.count()) {
+    await ansehen.click();
+    await seite.waitForTimeout(3000);
+    const was = await seite.evaluate(() => {
+      const d = document.querySelector("[role=dialog]");
+      if (!d) return { dialog: false };
+      return { dialog: true, titel: (d.getAttribute("aria-label") || "").slice(0, 40),
+               pdf: !!d.querySelector("iframe"), bild: !!d.querySelector("img"),
+               text: !!d.querySelector("pre"),
+               breite: Math.round(d.querySelector("div").getBoundingClientRect().width) };
+    });
+    console.log("ANHANG", JSON.stringify(was));
+    await seite.screenshot({ path: "/w/mail-14-anhang.png" });
+    await seite.getByText("Schließen").first().click().catch(() => {});
+    await seite.waitForTimeout(300);
+  } else {
+    console.log("ANHANG kein Ansehen-Knopf");
+  }
+}
+
+// Die Newsletter-Übersicht: Menü am Postfach, dann durchsehen lassen.
+const punkte2 = seite.locator("button[title*='privat']").first();
+if (await punkte2.count()) {
+  await punkte2.click({ force: true });
+  await seite.waitForTimeout(300);
+  const eintrag = seite.getByText("Newsletter-Abos").first();
+  if (await eintrag.count()) {
+    await eintrag.click();
+    await seite.waitForTimeout(1500);
+    await seite.screenshot({ path: "/w/mail-12-abos-laedt.png" });
+    await seite.waitForTimeout(20000);
+    const zeilen = await seite.locator("[role=dialog] [class*='divide-y'] > div").count();
+    const knoepfe = await seite.getByText("Abmelden", { exact: false }).count();
+    console.log("ABOS", JSON.stringify({ zeilen, knoepfe }));
+    await seite.screenshot({ path: "/w/mail-13-abos.png" });
+    await seite.getByText("Schließen").first().click().catch(() => {});
+    await seite.waitForTimeout(300);
+  } else {
+    console.log("ABOS Menüeintrag fehlt");
+  }
+}
+
 // Schmaler: zwei Spalten
 await seite.setViewportSize({ width: 1100, height: 900 });
 await seite.waitForTimeout(600);

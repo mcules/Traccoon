@@ -723,6 +723,86 @@ async def bulk(kid: int, data: BulkIn, user: User = Depends(get_current_user),
     return result
 
 
+# ── Newsletters ─────────────────────────────────────────────────────────────
+
+@router.get("/accounts/{kid}/newsletters")
+async def newsletters(kid: int, folders: str = "", user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    """Which subscriptions arrive in this mailbox.
+
+    Not a guess: a newsletter says of itself that it is one (`List-Unsubscribe`, RFC 2369).
+    Whoever sends without that header does not turn up here, and that is honest, because for
+    those the way out is not a button but the junk folder.
+
+    Which folders are looked at is up to the caller; without a word it is the inbox. Every
+    folder costs its own pass over up to eight hundred mails.
+    """
+    from ..services import newsletters as service
+
+    account = await _account(db, kid, user)
+    wanted = [f.strip() for f in folders.split(",") if f.strip()] or ["INBOX"]
+    return {"newsletters": await cache.cached(
+        account.id, f"newsletters:{','.join(wanted)}", 300,
+        lambda: service.scan(account, wanted))}
+
+
+class UnsubscribeIn(BaseModel):
+    http: str = ""
+    mailto: str = ""
+    one_click: bool = False
+    identity_id: int | None = None
+    name: str = ""
+
+
+@router.post("/accounts/{kid}/newsletters/unsubscribe")
+async def unsubscribe(kid: int, data: UnsubscribeIn, user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    """Out of a subscription, the way the sender named themselves.
+
+    Two ways, and the order is not arbitrary. `one_click` (RFC 8058) is a POST and done, no
+    page, no login. Without it a mail goes out, which every list understands but which takes
+    its time.
+
+    A plain HTTP address without one-click is NOT called here: it is a page meant for a human,
+    often with a confirmation on it, and a POST from us into it would at best do nothing and
+    at worst confirm something nobody read. It goes back to the caller as a link.
+    """
+    from ..services import newsletters as service
+
+    account = await _account(db, kid, user)
+    if data.one_click and data.http:
+        ok, said = await service.one_click(data.http)
+        return {"done": ok, "way": "one_click", "detail": said}
+
+    if data.mailto:
+        ident = await db.get(MailIdentity, data.identity_id) if data.identity_id else None
+        if ident is None:
+            ident = (await db.execute(select(MailIdentity).where(
+                MailIdentity.account_id == account.id)
+                .order_by(MailIdentity.is_default.desc(), MailIdentity.id))).scalars().first()
+        if ident is None:
+            raise Error(400, "err.account_without_identity",
+                         "This account has no identity, so no mail can go out")
+        # Everything after the question mark is what the list wants to read: mostly a subject
+        # and now and then a body. Taken as it stands, because it is their key, not our text.
+        address, _, query = data.mailto[len("mailto:"):].partition("?")
+        from urllib.parse import parse_qs, unquote
+
+        fields = parse_qs(query)
+        await mailbox.send(account, ident, {
+            "to": [unquote(address)], "cc": [], "bcc": [],
+            "subject": (fields.get("subject") or ["unsubscribe"])[0],
+            "text": (fields.get("body") or ["unsubscribe"])[0],
+            "in_reply_to": "", "attachments": [],
+        })
+        return {"done": True, "way": "mail", "detail": unquote(address)}
+
+    if data.http:
+        # A page for a person. We do not click it for them.
+        return {"done": False, "way": "link", "detail": data.http}
+    raise Error(400, "err.no_unsubscribe_way", "This subscription names no way out")
+
+
 # ── Sending and drafts ──────────────────────────────────────────────────────
 
 class AttachmentIn(BaseModel):

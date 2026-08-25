@@ -170,8 +170,12 @@ export function Actions({ children }: { children: ReactNode }) {
  * Escape closes, a click beside it closes, and the body does not scroll underneath while it
  * is open. The heading says what is being edited, because the row it came from is covered.
  */
-export function Dialog({ title: title, onClose, children, foot, wide = false, hold = false }: {
+export function Dialog({ title: title, onClose, children, foot, wide = false, huge = false,
+                        hold = false }: {
   title: string; onClose: () => void; children: ReactNode; foot?: ReactNode; wide?: boolean;
+  /** Nearly the whole window. For things one LOOKS at rather than fills in: a PDF in a column
+   *  of 768 pixels is a PDF one reads with the zoom, which is no reading. */
+  huge?: boolean;
   /** No escape, no click beside it — only its own buttons close it.
    *
    *  For dialogs in which something comes into being: a misplaced click has cost a half
@@ -191,8 +195,8 @@ export function Dialog({ title: title, onClose, children, foot, wide = false, ho
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
       onClick={hold ? undefined : onClose} role="dialog" aria-modal="true" aria-label={title}>
       <div onClick={(e) => e.stopPropagation()}
-        className={`flex max-h-[88vh] w-full flex-col rounded-xl border border-line bg-card shadow-2xl ${
-          wide ? "max-w-3xl" : "max-w-lg"}`}>
+        className={`flex w-full flex-col rounded-xl border border-line bg-card shadow-2xl ${
+          huge ? "max-h-[94vh] max-w-6xl" : "max-h-[88vh] " + (wide ? "max-w-3xl" : "max-w-lg")}`}>
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 className="text-base font-semibold text-ink">{title}</h2>
           <button type="button" onClick={onClose} title={tr("common.close")} aria-label={tr("common.close")}

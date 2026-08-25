@@ -603,6 +603,16 @@ class _FakeIMAP:
         return {uid: self.envelopes.get(uid, {}) for uid in uids}
 
 
+def _fake_imap_maker(client):
+    """Derselbe Leih-Kontext, aber als Wert: `newsletters` hat sein eigenes `_imap`."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def borrow(account):
+        yield client
+    return borrow
+
+
 def _fake_imap(monkeypatch, client) -> None:
     import contextlib
 
@@ -1118,3 +1128,102 @@ async def test_foreign_rules_stay_foreign(db, client):
     r = await client.delete(f"/mailbox/image-rules/{made['id']}", headers=auth(bert))
     assert r.status_code == 204
     assert len((await client.get("/mailbox/image-rules", headers=auth(anna))).json()) == 1
+
+
+# ── Newsletter-Abos ─────────────────────────────────────────────────────────
+
+def _newsletter_head(sender: str, out: str, post: str = "", list_id: str = "") -> bytes:
+    zeilen = [f"From: {sender}", f"List-Unsubscribe: {out}"]
+    if post:
+        zeilen.append(f"List-Unsubscribe-Post: {post}")
+    if list_id:
+        zeilen.append(f"List-Id: {list_id}")
+    return ("\r\n".join(zeilen) + "\r\n\r\n").encode()
+
+
+class _NewsIMAP(_FakeIMAP):
+    """Ein Ordner voller Kopfzeilen, mehr braucht die Abo-Sicht nicht."""
+
+    def __init__(self, mails: dict[int, bytes], dates: dict[int, object]):
+        super().__init__(list(mails))
+        self.mails, self.dates = mails, dates
+
+    def fetch(self, uids, what):
+        key = b"BODY[HEADER.FIELDS (FROM LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST LIST-ID SUBJECT)]"
+        return {uid: {key: self.mails[uid], b"INTERNALDATE": self.dates[uid]} for uid in uids}
+
+
+async def test_only_what_says_it_is_a_newsletter_turns_up(monkeypatch):
+    """No guessing: a subscription declares itself (RFC 2369). Whoever sends without the
+    header does not appear, and for those the way out is the junk folder, not a button."""
+    import datetime as dt
+
+    from app.services import newsletters
+
+    fake = _NewsIMAP({
+        1: _newsletter_head("Shop <news@shop.de>", "<https://shop.de/u?a=1>",
+                             post="List-Unsubscribe=One-Click"),
+        2: b"From: Kollege <kollege@firma.de>\r\n\r\n",
+        3: _newsletter_head("Shop <News@Shop.de>", "<mailto:stop@shop.de>"),
+    }, {1: dt.datetime(2026, 1, 1), 2: dt.datetime(2026, 2, 1), 3: dt.datetime(2026, 3, 1)})
+    monkeypatch.setattr(newsletters, "_imap", _fake_imap_maker(fake))
+
+    listing = newsletters._scan_sync(MailAccount(name="p"), ["INBOX"])
+
+    assert [e["key"] for e in listing] == ["news@shop.de"], "der Kollege ist kein Abo"
+    only = listing[0]
+    # Zwei Mails desselben Absenders sind ein Abo, auch mit anderer Schreibweise.
+    assert only["count"] == 2
+    # Der Weg hinaus kommt aus der NEUESTEN Mail: eine Adresse von vor drei Jahren ist tot.
+    assert only["mailto"] == "mailto:stop@shop.de"
+
+
+async def test_a_list_id_beats_the_sender(monkeypatch):
+    """Ein Haus kann mehrere Listen von einer Adresse betreiben."""
+    import datetime as dt
+
+    from app.services import newsletters
+
+    fake = _NewsIMAP({
+        1: _newsletter_head("Verein <post@verein.de>", "<mailto:a@verein.de>",
+                             list_id="<technik.verein.de>"),
+        2: _newsletter_head("Verein <post@verein.de>", "<mailto:b@verein.de>",
+                             list_id="<vorstand.verein.de>"),
+    }, {1: dt.datetime(2026, 1, 1), 2: dt.datetime(2026, 1, 2)})
+    monkeypatch.setattr(newsletters, "_imap", _fake_imap_maker(fake))
+
+    listing = newsletters._scan_sync(MailAccount(name="p"), ["INBOX"])
+    assert sorted(e["key"] for e in listing) == ["technik.verein.de", "vorstand.verein.de"]
+
+
+async def test_one_click_is_recognised(monkeypatch):
+    import datetime as dt
+
+    from app.services import newsletters
+
+    fake = _NewsIMAP({
+        1: _newsletter_head("A <a@x.de>", "<https://x.de/u>, <mailto:u@x.de>",
+                             post="List-Unsubscribe=One-Click"),
+        2: _newsletter_head("B <b@y.de>", "<https://y.de/seite>"),
+    }, {1: dt.datetime(2026, 1, 1), 2: dt.datetime(2026, 1, 1)})
+    monkeypatch.setattr(newsletters, "_imap", _fake_imap_maker(fake))
+
+    listing = {e["sender"]: e for e in newsletters._scan_sync(MailAccount(name="p"), ["INBOX"])}
+    assert listing["a@x.de"]["one_click"] is True
+    assert listing["a@x.de"]["http"] == "https://x.de/u"
+    # Ohne die Post-Zeile ist die Adresse eine Seite für Menschen, kein Knopf für uns.
+    assert listing["b@y.de"]["one_click"] is False
+
+
+async def test_a_page_is_not_clicked_for_anybody(db, client):
+    """Eine Abmeldeseite hat oft eine Bestätigung darauf. Die ungelesen zu drücken ist kein
+    Abmelden, das ist Raten."""
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+
+    r = await client.post(f"/mailbox/accounts/{kid}/newsletters/unsubscribe",
+                          headers=auth(anna),
+                          json={"http": "https://shop.de/abmelden", "one_click": False})
+    assert r.status_code == 200
+    assert r.json() == {"done": False, "way": "link", "detail": "https://shop.de/abmelden"}

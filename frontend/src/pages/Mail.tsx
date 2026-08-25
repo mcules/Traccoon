@@ -9,7 +9,7 @@ import { AccountDialog, type MailAccount, type MailIdentity } from "../component
 import {
   Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
   Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT,
-  Menu, MenuItem, MenuLine, Splitter, Busy} from "../components/ui";
+  Menu, MenuItem, MenuLine, Splitter, Busy, BUTTON_SMALL} from "../components/ui";
 
 /**
  * The mailbox.
@@ -40,6 +40,10 @@ interface Message {
   attachments: Attachment[]; seen: boolean; flagged: boolean;
 }
 interface ImageRule { id: number; kind: "sender" | "domain" | "all"; value: string }
+interface Newsletter {
+  key: string; name: string; sender: string; list_id: string; folder: string; uid: number;
+  count: number; last: string; http: string; mailto: string; one_click: boolean;
+}
 interface Folder {
   name: string; display: string; level: number; parent: string; delimiter: string;
   special: string; unseen: number; total: number;
@@ -112,6 +116,7 @@ export default function Mail() {
   const [command, setCommand] = useState<
     { accountId: number; folder: Folder; kind: FolderCommand } | null>(null);
   const [manage, setManage] = useState<number | null>(null);
+  const [papers, setPapers] = useState<MailAccount | null>(null);
   const [listWidth, setListWidth] = useState(storedWidth);
   const listColumn = useRef<HTMLDivElement>(null);
   useEffect(() => { localStorage.setItem(WIDTH_KEY, String(listWidth)); }, [listWidth]);
@@ -195,6 +200,7 @@ export default function Mail() {
               onManage={setManage}
               onAccountCommand={(k, kind) => {
                 if (kind === "settings") { setSettings(k); return; }
+                if (kind === "newsletters") { setPapers(k); return; }
                 qc.invalidateQueries({ queryKey: ["mail-unread"] });
                 qc.invalidateQueries({ queryKey: ["mail-folders", k.id] });
                 qc.invalidateQueries({ queryKey: ["mail-list"] });
@@ -250,6 +256,9 @@ export default function Mail() {
           onGone={() => { setCommand(null); go(command.accountId, "INBOX"); }}
           onEmptied={() => { setUid(null); setChosen([]); }}
           onDone={setNotice} onError={setErr} />
+      )}
+      {papers && (
+        <NewsletterOverview account={papers} onClose={() => setPapers(null)} onError={setErr} />
       )}
       {manage !== null && (
         <FolderManagement accountId={manage}
@@ -313,7 +322,8 @@ function AccountTree({ accounts, unread, accountId, folder: folder, onChoose, on
   onChoose: (accountId: number, folder: string) => void;
   onCommand: (accountId: number, folder: Folder, kind: FolderCommand) => void;
   onManage: (accountId: number) => void;
-  onAccountCommand: (account: MailAccount, kind: "refresh" | "settings") => void;
+  onAccountCommand: (account: MailAccount,
+                      kind: "refresh" | "settings" | "newsletters") => void;
 }) {
   const [open, setOpen] = useState<Set<number>>(new Set());
   // The mailbox one is standing in is always open. Otherwise a click in the message list
@@ -351,7 +361,7 @@ function AccountBranch({ account, unseen, open, active, folder: folder, onToggle
   onToggle: () => void; onChoose: (name: string) => void;
   onCommand: (folder: Folder, kind: FolderCommand) => void;
   onManage: () => void;
-  onAccountCommand: (kind: "refresh" | "settings") => void;
+  onAccountCommand: (kind: "refresh" | "settings" | "newsletters") => void;
 }) {
   const { data: folders } = useQuery({
     queryKey: ["mail-folders", account.id],
@@ -383,6 +393,9 @@ function AccountBranch({ account, unseen, open, active, folder: folder, onToggle
                 </MenuItem>
                 <MenuItem onClick={() => { close(); onManage(); }}>
                   🗂 {tr("mail.manage_all_folders")}
+                </MenuItem>
+                <MenuItem onClick={() => { close(); onAccountCommand("newsletters"); }}>
+                  📰 {tr("mail.newsletters")}
                 </MenuItem>
                 <MenuLine />
                 <MenuItem onClick={() => { close(); onAccountCommand("settings"); }}>
@@ -855,9 +868,10 @@ function FolderManagement({ accountId, account, chosen, onClose, onGone, onError
  * somebody says so, because a loaded image is a signal back to the sender that the mail was
  * read.
  */
-function HtmlView({ html, remoteimages, counters, allowed, sender, onAllow }: {
+function HtmlView({ html, remoteimages, counters, allowed, sender, rules, onAllow, onForget }: {
   html: string; remoteimages: boolean; counters: number; allowed: boolean; sender: string;
-  onAllow: (remember: ImageRule["kind"] | null) => void;
+  rules: ImageRule[]; onAllow: (remember: ImageRule["kind"] | null) => void;
+  onForget: (id: number) => void;
 }) {
   const [images, setImages] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -890,6 +904,14 @@ function HtmlView({ html, remoteimages, counters, allowed, sender, onAllow }: {
           <Rowbutton onClick={() => setAsking(true)}>{tr("mail.load_images")}</Rowbutton>
         </div>
       )}
+      {/* A kept answer must be visible where it takes effect, not only in a settings page one
+          has to remember. Otherwise the pictures simply load one day and nobody knows why. */}
+      {allowed && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          {tr("mail.images_allowed_by_rule")}
+          <Rowbutton onClick={() => setAsking(true)}>{tr("mail.change")}</Rowbutton>
+        </div>
+      )}
       {/* What was thrown out for good is worth a line of its own: it is the difference
           between "not yet loaded" and "will not be loaded". */}
       {counters > 0 && (
@@ -902,7 +924,8 @@ function HtmlView({ html, remoteimages, counters, allowed, sender, onAllow }: {
         className="h-[60vh] w-full rounded border border-line bg-white"
       />
       {asking && (
-        <ImageDialog sender={sender} onClose={() => setAsking(false)}
+        <ImageDialog sender={sender} rules={rules} onClose={() => setAsking(false)}
+          onForget={(id) => { onForget(id); setImages(false); setAsking(false); }}
           onLoad={(remember) => {
             setAsking(false);
             setImages(true);
@@ -925,12 +948,17 @@ function HtmlView({ html, remoteimages, counters, allowed, sender, onAllow }: {
  * What is NOT covered by any of that: the pictures that exist only to count. Those are gone
  * before anybody is asked, and they stay gone.
  */
-function ImageDialog({ sender, onClose, onLoad }: {
-  sender: string; onClose: () => void;
+function ImageDialog({ sender, rules, onClose, onLoad, onForget }: {
+  sender: string; rules: ImageRule[]; onClose: () => void;
   onLoad: (remember: ImageRule["kind"] | null) => void;
+  onForget: (id: number) => void;
 }) {
   const [remember, setRemember] = useState<ImageRule["kind"] | "">("");
   const domain = sender.split("@")[1] || "";
+  /** The kept answers that apply to THIS sender. Only they can be taken back here. */
+  const applies = rules.filter((r) => r.kind === "all"
+    || (r.kind === "sender" && r.value.toLowerCase() === sender.toLowerCase())
+    || (r.kind === "domain" && r.value.toLowerCase() === domain.toLowerCase()));
 
   const choice = (value: ImageRule["kind"] | "", label: string, hint?: string) => (
     <label className="flex items-start gap-2 rounded px-1 py-1.5 hover:bg-surface">
@@ -951,6 +979,25 @@ function ImageDialog({ sender, onClose, onLoad }: {
       <div className="space-y-3">
         <p className="text-sm text-ink">{tr("mail.images_q_text")}</p>
         <p className="text-xs text-muted">🎯 {tr("mail.trackers_stay_blocked")}</p>
+
+        {/* What already applies here, and the way back out of it. A decision one cannot undo
+            where one meets it is one people stop making. */}
+        {applies.length > 0 && (
+          <div className="space-y-1 rounded border border-line bg-surface p-2">
+            <div className="text-xs text-muted">{tr("mail.applies_here")}</div>
+            {applies.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">
+                  {r.kind === "all" ? tr("mail_accounts.images_everywhere")
+                    : r.kind === "domain" ? tr("mail_accounts.images_domain", { domain: r.value })
+                    : tr("mail_accounts.images_sender", { sender: r.value })}
+                </span>
+                <Rowbutton danger onClick={() => onForget(r.id)}>{tr("mail.ask_again")}</Rowbutton>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="space-y-1">
           {choice("", tr("mail.only_this_time"))}
           {sender && choice("sender", tr("mail.always_for_sender", { sender }))}
@@ -1216,34 +1263,40 @@ function FolderChoice({ accountId, without, onClose, onChoose }: {
 }
 
 /**
- * Ein Anhang zum Ansehen.
+ * An attachment, looked at instead of downloaded.
  *
- * Before, a link to the API address stood there — and the browser does not send along a token
- * it does not know. What arrived was "Not authenticated". Now the file is fetched with the
- * login and shown here; what cannot be shown can still be
- * speichern.
+ * Before this there was a link to the API address, and the browser does not send along a token
+ * it does not know: what arrived was "Not authenticated". So the file is fetched with the
+ * login and shown here, and what cannot be shown can still be saved.
  *
- * The blob address is released again on closing: otherwise every viewed attachment keeps its
- * memory until the page reloads.
+ * The blob address is released again on closing, otherwise every viewed attachment keeps its
+ * memory until the page is reloaded.
+ *
+ * Whoever has five invoices in one mail wants to look at five, not open five dialogs, which
+ * is why one can page through them here.
  */
-function AttachmentDialog({ path: path, attachment: attachment, onClose }: {
-  path: string; attachment: Attachment; onClose: () => void;
+function AttachmentDialog({ basis, folder: folder, attachments, at, onAt, onClose }: {
+  basis: string; folder: string; attachments: Attachment[]; at: number;
+  onAt: (index: number) => void; onClose: () => void;
 }) {
+  const attachment = attachments[at];
   const [source, setSource] = useState("");
   const [kind, setKind] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const path = `${basis}/attachments/${attachment.index}?folder=${encodeURIComponent(folder)}`;
 
   useEffect(() => {
     let address = "";
     let alive = true;
+    setSource(""); setText(""); setError(""); setKind("");
     fetchFile(path)
       .then(async ({ blob, kind: t }) => {
         if (!alive) return;
         setKind(t);
         // Text is read, not embedded: inside a frame it would stand without wrapping and in
         // the font of the page, which is not the one it means.
-        if (t.startsWith("text/") || t.includes("json")) setText(await blob.text());
+        if (readable(t, attachment.filename)) setText(await blob.text());
         else {
           address = URL.createObjectURL(blob);
           setSource(address);
@@ -1256,37 +1309,74 @@ function AttachmentDialog({ path: path, attachment: attachment, onClose }: {
   const image = kind.startsWith("image/");
   const pdf = kind.includes("pdf");
   return (
-    <Dialog wide title={`📎 ${attachment.filename}`} onClose={onClose} foot={
-      <>
+    <Dialog huge title={`📎 ${attachment.filename}`} onClose={onClose} foot={
+      <div className="flex w-full flex-wrap items-center gap-2">
+        {/* Paging belongs at the foot beside "save": it is a way through the mail, not a
+            handle on the file one is looking at. */}
+        {attachments.length > 1 && (
+          <>
+            <Rowbutton onClick={() => onAt((at - 1 + attachments.length) % attachments.length)}>
+              ←
+            </Rowbutton>
+            <span className="text-xs text-muted">
+              {at + 1} {tr("mail.of")} {attachments.length}
+            </span>
+            <Rowbutton onClick={() => onAt((at + 1) % attachments.length)}>→</Rowbutton>
+          </>
+        )}
+        <div className="flex-1" />
         <Button onClick={onClose}>{tr("common.close")}</Button>
+        {/* The way out for everything the browser shows better than we do, and for the ones
+            that bring no viewer for PDF at all: its own tab, its own program. */}
+        {source && (
+          <a href={source} target="_blank" rel="noopener noreferrer"
+             className={BUTTON.secondary}>{tr("mail.open_in_tab")}</a>
+        )}
         {source && (
           <a href={source} download={attachment.filename} className={BUTTON.primary}>
             {tr("mail.save")}
           </a>
         )}
-      </>
+      </div>
     }>
       <Errorrow text={error} />
       {!error && !source && !text && (
         <div className="p-6 text-center text-sm text-muted">{tr("common.loading")}</div>
       )}
       {image && source && (
-        <img src={source} alt={attachment.filename} className="mx-auto max-h-[70vh] rounded" />
+        <img src={source} alt={attachment.filename} className="mx-auto max-h-[80vh] rounded" />
       )}
       {pdf && source && (
-        <iframe src={source} title={attachment.filename} className="h-[70vh] w-full rounded bg-white" />
+        <iframe src={source} title={attachment.filename}
+          className="h-[80vh] w-full rounded bg-white" />
       )}
       {text && (
-        <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap rounded bg-surface p-3
-          text-xs text-ink">{text}</pre>
+        <pre className={`max-h-[80vh] overflow-auto whitespace-pre-wrap ${PAPER} font-mono text-xs`}>
+          {text}
+        </pre>
       )}
       {source && !image && !pdf && (
-        <div className="p-6 text-center text-sm text-muted">
-          {tr("mail.no_preview_kind_here", { kind: kind })}
+        <div className="space-y-2 p-6 text-center text-sm text-muted">
+          <div>{tr("mail.no_preview_kind_here", { kind: kind })}</div>
         </div>
       )}
     </Dialog>
   );
+}
+
+/**
+ * Can this file be read as text?
+ *
+ * The declared type decides where it says something (`text/…`, JSON, XML), and the file name
+ * decides where it does not: `.log`, `.csv` and a forwarded mail arrive as
+ * `application/octet-stream` often enough, and a wall of characters is still better than
+ * "no preview" for a file that is nothing but characters.
+ */
+function readable(kind: string, filename: string): boolean {
+  if (kind.startsWith("text/") || kind.startsWith("message/")) return true;
+  if (/json|xml|yaml|csv|calendar|x-sh|javascript/.test(kind)) return true;
+  return /\.(txt|log|csv|tsv|md|json|ya?ml|xml|ini|cfg|conf|sql|eml|ics|vcf|py|js|ts|sh)$/i
+    .test(filename);
 }
 
 function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onReplies, onError: onError }: {
@@ -1295,7 +1385,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   onError: (m: string) => void;
 }) {
   const [moveOpen, setMoveOpen] = useState(false);
-  const [attachmentOn, setAttachmentOn] = useState<Attachment | null>(null);
+  const [attachmentOn, setAttachmentOn] = useState<number | null>(null);
   const qc = useQueryClient();
   const [run, setRun] = useState("");
   const [view, setView] = useState<"html" | "text">("html");
@@ -1307,6 +1397,10 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   const { data: actions } = useQuery({
     queryKey: ["mail-actions"], queryFn: () => api.get<Action[]>("/mailbox/actions"),
     staleTime: 5 * 60_000,
+  });
+  const { data: imageRules } = useQuery({
+    queryKey: ["mail-image-rules"],
+    queryFn: () => api.get<ImageRule[]>("/mailbox/image-rules"),
   });
   const { data: identities } = useQuery({
     queryKey: ["mail-identities", accountId],
@@ -1451,6 +1545,14 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     },
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.rule_failed")),
   });
+  const forget = useMutation({
+    mutationFn: (id: number) => api.del(`/mailbox/image-rules/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mail-image-rules"] });
+      qc.invalidateQueries({ queryKey: ["mail-message"] });
+    },
+    onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.rule_failed")),
+  });
 
   const forMail = (actions || []).filter((a) => a.scope !== "attachment");
   const forAttachment = (actions || []).filter((a) => a.scope === "attachment");
@@ -1549,7 +1651,8 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 flex-1 truncate">📎 {a.filename}</span>
                     <Tag>{Math.max(1, Math.round(a.size / 1024))} kB</Tag>
-                    <Rowbutton onClick={() => setAttachmentOn(a)}
+                    <Rowbutton onClick={() => setAttachmentOn(
+                      m.attachments.findIndex((x) => x.index === a.index))}
                       title={tr("mail.view")}>
                       {tr("mail.view")}
                     </Rowbutton>
@@ -1575,7 +1678,8 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               {view === "html"
                 ? <HtmlView html={m.html} remoteimages={m.remote_images}
                     counters={m.counters} allowed={m.images_allowed}
-                    sender={m.from[0]?.addr || ""}
+                    sender={m.from[0]?.addr || ""} rules={imageRules || []}
+                    onForget={(id) => forget.mutate(id)}
                     onAllow={(kind) => kind && allow.mutate({ kind,
                       value: kind === "domain" ? (m.from[0]?.addr || "").split("@")[1] || ""
                             : kind === "sender" ? m.from[0]?.addr || "" : "" })} />
@@ -1604,10 +1708,9 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
         </>
       )}
 
-      {attachmentOn && (
-        <AttachmentDialog
-          path={`${basis}/attachments/${attachmentOn.index}?folder=${encodeURIComponent(folder)}`}
-          attachment={attachmentOn} onClose={() => setAttachmentOn(null)} />
+      {attachmentOn !== null && m && (
+        <AttachmentDialog basis={basis} folder={folder} attachments={m.attachments}
+          at={attachmentOn} onAt={setAttachmentOn} onClose={() => setAttachmentOn(null)} />
       )}
 
       {moveOpen && (
@@ -1744,6 +1847,118 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
             </label>
           </div>
         </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+
+/**
+ * The subscriptions of a mailbox, and the way out of them.
+ *
+ * A newsletter says of itself that it is one: since RFC 2369 it carries `List-Unsubscribe`,
+ * and often a `List-Unsubscribe-Post` beside it, which means one click and it is done. So
+ * this list is not a guess about what might be a subscription. It is the senders who
+ * declared themselves, sorted by how much they send.
+ *
+ * Three ways out, and which one a subscription offers is the sender's doing:
+ *
+ * * **One click** (RFC 8058): a POST goes out and it is over.
+ * * **A mail**: goes out from this mailbox, works everywhere, takes a moment.
+ * * **A page**: opens in a new tab. We do not click it for anybody, because a page meant for
+ *   a human often has a confirmation on it, and pressing that unread is not unsubscribing,
+ *   it is guessing.
+ */
+function NewsletterOverview({ account, onClose, onError: onError }: {
+  account: MailAccount; onClose: () => void; onError: (m: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [folders, setFolders] = useState<string[]>(["INBOX"]);
+  const [done, setDone] = useState<Record<string, string>>({});
+
+  const { data: tree } = useQuery({
+    queryKey: ["mail-folders", account.id],
+    queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${account.id}/folders?counts=true`),
+  });
+  const { data, isFetching } = useQuery({
+    queryKey: ["mail-newsletters", account.id, folders.join(",")],
+    queryFn: () => api.get<{ newsletters: Newsletter[] }>(
+      `/mailbox/accounts/${account.id}/newsletters?folders=${encodeURIComponent(folders.join(","))}`),
+    placeholderData: (before) => before,
+  });
+
+  const out = useMutation({
+    mutationFn: (n: Newsletter) => api.post<{ done: boolean; way: string; detail: string }>(
+      `/mailbox/accounts/${account.id}/newsletters/unsubscribe`,
+      { http: n.http, mailto: n.mailto, one_click: n.one_click, name: n.name }),
+    onSuccess: (r, n) => {
+      setDone((old) => ({ ...old, [n.key]: r.done
+        ? (r.way === "mail" ? tr("mail.unsub_mail_sent") : tr("mail.unsub_done"))
+        : tr("mail.unsub_failed", { detail: r.detail }) }));
+      qc.invalidateQueries({ queryKey: ["mail-newsletters"] });
+    },
+    onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.unsub_failed",
+                                                                    { detail: "" })),
+  });
+
+  const listing = data?.newsletters || [];
+  return (
+    <Dialog huge title={tr("mail.newsletters_of", { name: account.name })} onClose={onClose}
+      foot={<Button onClick={onClose}>{tr("common.close")}</Button>}>
+      <div className="space-y-3">
+        <p className="text-sm text-muted">{tr("mail.newsletters_hint")}</p>
+
+        {/* Which folders are looked at. Every one costs its own pass over up to eight hundred
+            mails, so it is a choice and not a sweep over the whole mailbox. */}
+        <Field label={tr("mail.look_in_folders")}>
+          <div className="flex flex-wrap gap-2">
+            {(tree || []).slice(0, 12).map((o) => (
+              <label key={o.name}
+                className="flex items-center gap-1.5 rounded border border-line px-2 py-1 text-xs">
+                <input type="checkbox" className="h-3.5 w-3.5 accent-brand"
+                  checked={folders.includes(o.name)}
+                  onChange={() => setFolders((old) => old.includes(o.name)
+                    ? old.filter((n) => n !== o.name) : [...old, o.name])} />
+                {o.display}
+              </label>
+            ))}
+          </div>
+        </Field>
+
+        <Busy show={isFetching} text={tr("mail.looking_for_newsletters")}>
+          <Listing>
+            {listing.map((n) => (
+              <ListRow key={n.key}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-ink">{n.name}</div>
+                    <div className="truncate text-xs text-muted">
+                      {n.list_id || n.sender}
+                      {n.last ? ` · ${tr("mail.last_on", { date: formatDateTime(n.last) })}` : ""}
+                    </div>
+                    {done[n.key] && (
+                      <div className="mt-0.5 text-xs text-green-400">{done[n.key]}</div>
+                    )}
+                  </div>
+                  <Tag title={tr("mail.n_mails", { n: n.count })}>{n.count}</Tag>
+                  {n.one_click && n.http ? (
+                    <Rowbutton onClick={() => out.mutate(n)}>{tr("mail.unsub_one_click")}</Rowbutton>
+                  ) : n.mailto ? (
+                    <Rowbutton onClick={() => out.mutate(n)}>{tr("mail.unsub_by_mail")}</Rowbutton>
+                  ) : n.http ? (
+                    <a href={n.http} target="_blank" rel="noopener noreferrer"
+                       className={BUTTON_SMALL.secondary}>{tr("mail.unsub_page")}</a>
+                  ) : (
+                    <Tag color="yellow">{tr("mail.unsub_none")}</Tag>
+                  )}
+                </div>
+              </ListRow>
+            ))}
+            {!listing.length && !isFetching && (
+              <ListingEmpty>{tr("mail.no_newsletters")}</ListingEmpty>
+            )}
+          </Listing>
+        </Busy>
       </div>
     </Dialog>
   );
