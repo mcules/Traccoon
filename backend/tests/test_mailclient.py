@@ -1321,3 +1321,52 @@ async def test_what_is_unsubscribed_leaves_the_overview(db, client, monkeypatch)
     back = (await client.get(f"/mailbox/accounts/{kid}/newsletters",
                               headers=auth(anna))).json()
     assert len(back["newsletters"]) == 2
+
+
+# ── Was ein Anhang ist ──────────────────────────────────────────────────────
+
+def _mit_teilen(teile) -> object:
+    """Eine mehrteilige Mail aus (maintype, subtype, name, cid, disposition)."""
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = "Newsletter"
+    msg.set_content("Text")
+    for main, sub, name, cid, disposition in teile:
+        msg.add_attachment(b"x" * 100, maintype=main, subtype=sub, filename=name,
+                            disposition=disposition,
+                            **({"cid": cid} if cid else {}))
+    return msg
+
+
+async def test_a_picture_the_mail_shows_itself_is_no_attachment():
+    """A newsletter builds its layout out of a dozen of them. As attachments they are a wall
+    in front of the mail, and the list beside it says "no paperclip" for the same message."""
+    from app.services.mailbox import _attachments
+
+    found = _attachments(_mit_teilen([
+        ("image", "png", "mailingassets_2d386b.png", "<logo1>", "inline"),
+        ("image", "png", "mailingassets_256810.png", "<logo2>", "inline"),
+        ("application", "pdf", "rechnung.pdf", None, "attachment"),
+    ]))
+    assert [a["filename"] for a in found] == ["rechnung.pdf"]
+
+
+async def test_an_invoice_marked_inline_stays_an_attachment():
+    """Being wrong in this direction leaves a file lying around, in the other one loses it."""
+    from app.services.mailbox import _attachments
+
+    found = _attachments(_mit_teilen([
+        ("application", "pdf", "rechnung.pdf", "<beleg>", "inline"),
+    ]))
+    assert [a["filename"] for a in found] == ["rechnung.pdf"]
+
+
+async def test_a_picture_without_a_content_id_stays_an_attachment():
+    """Whoever sends a photo sends a photo, whether their program writes `inline` or not."""
+    from app.services.mailbox import _attachments
+
+    found = _attachments(_mit_teilen([
+        ("image", "jpeg", "urlaub.jpg", None, "inline"),
+    ]))
+    assert [a["filename"] for a in found] == ["urlaub.jpg"]

@@ -1375,6 +1375,58 @@ function FolderChoice({ accountId, without, onClose, onChoose }: {
 }
 
 /**
+ * The head of a message, raw.
+ *
+ * Everything the mail programs otherwise fold away: which stations it passed through
+ * (`Received`), whether the signatures check out (`Authentication-Results`), what a filter
+ * thought of it (`X-Spam-…`), who really answers on a reply. When a mail is odd, that is
+ * where it says so.
+ *
+ * Deliberately unformatted. A form would mean deciding beforehand which lines are allowed to
+ * be interesting, and it is always the one that was left out. What helps instead: the name of
+ * a line stands out from its content, and the whole thing can be copied in one go, because
+ * the next place it goes is usually a mail to someone who knows more.
+ */
+function HeaderDialog({ path: path, onClose }: { path: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const { data, error } = useQuery({
+    queryKey: ["mail-headers", path],
+    queryFn: () => api.get<{ headers: string }>(path),
+  });
+  const text = data?.headers || "";
+
+  return (
+    <Dialog wide title={tr("mail.headers_title")} onClose={onClose} foot={
+      <>
+        <Button onClick={onClose}>{tr("common.close")}</Button>
+        <Button variant="primary" disabled={!text} state={copied ? "good" : "open"}
+          onClick={() => {
+            navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => {});
+          }}>{tr("mail.copy_all")}</Button>
+      </>
+    }>
+      <Errorrow text={error ? tr("mail.headers_unreadable") : ""} />
+      {!text && !error && <div className="p-6 text-center text-sm text-muted">{tr("common.loading")}</div>}
+      {text && (
+        <pre className={`max-h-[70vh] overflow-auto whitespace-pre-wrap ${PAPER} font-mono text-xs`}>
+          {text.split("\n").map((line, i) => {
+            // A line that starts with a space is the continuation of the one above, and the
+            // name before the colon is what one is looking for.
+            const head = /^[^\s:]+:/.exec(line);
+            return (
+              <div key={i} className={head ? "" : "pl-4"}>
+                {head ? <><span className="font-semibold text-neutral-600">{head[0]}</span>
+                          {line.slice(head[0].length)}</> : line}
+              </div>
+            );
+          })}
+        </pre>
+      )}
+    </Dialog>
+  );
+}
+
+/**
  * An attachment, looked at instead of downloaded.
  *
  * Before this there was a link to the API address, and the browser does not send along a token
@@ -1501,6 +1553,10 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   // "This one time": belongs to THIS mail, so the next one asks again. A kept answer is a
   // different thing and lives on the server.
   const [thisTime, setThisTime] = useState(false);
+  // Attachments open when there are few. A newsletter that ships a dozen files would
+  // otherwise push the mail itself off the screen, and one comes here for the mail.
+  const [clipsOpen, setClipsOpen] = useState(true);
+  const [headOpen, setHeadOpen] = useState(false);
   const [asking, setAsking] = useState(false);
   const qc = useQueryClient();
   const [run, setRun] = useState("");
@@ -1618,6 +1674,9 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   // A new mail is a new question. Without this the permission would travel along through the
   // list, and the next sender would get what the previous one was granted.
   useEffect(() => { setThisTime(false); }, [uid, folder, accountId]);
+  useEffect(() => {
+    setClipsOpen((m?.attachments.length ?? 0) <= 3);
+  }, [uid, folder, accountId, m?.attachments.length]);
   useEffect(() => {
     if (!m || m.seen) return;
     const clock = setTimeout(() => asRead.mutate(), 3000);
@@ -1750,33 +1809,44 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                 {formatDateTime(m.date)}
               </span>
             </div>
-            <div className="truncate text-xs text-muted"
-                 title={[`${tr("mail.to_label")}: ${m.to.map((a) => a.addr).join(", ") || "—"}`,
-                         m.cc.length ? `${tr("mail.cc_label")}: ${m.cc.map((a) => a.addr).join(", ")}` : ""]
-                        .filter(Boolean).join("\n")}>
-              {tr("mail.to_label")} {m.to.map((a) => a.addr).join(", ") || "—"}
-              {m.cc.length > 0 && <> · {tr("mail.cc_label")} {m.cc.map((a) => a.addr).join(", ")}</>}
+            <div className="flex items-baseline gap-2">
+              <div className="min-w-0 flex-1 truncate text-xs text-muted"
+                   title={[`${tr("mail.to_label")}: ${m.to.map((a) => a.addr).join(", ") || "—"}`,
+                           m.cc.length ? `${tr("mail.cc_label")}: ${m.cc.map((a) => a.addr).join(", ")}` : ""]
+                          .filter(Boolean).join("\n")}>
+                {tr("mail.to_label")} {m.to.map((a) => a.addr).join(", ") || "—"}
+                {m.cc.length > 0 && <> · {tr("mail.cc_label")} {m.cc.map((a) => a.addr).join(", ")}</>}
+              </div>
+              {/* Beside the sender, because that is what the head is the small print of. */}
+              <button type="button" onClick={() => setHeadOpen(true)}
+                title={tr("mail.headers_hint")}
+                className="shrink-0 text-xs text-muted underline decoration-dotted hover:text-ink">
+                {tr("mail.headers")}
+              </button>
             </div>
           </div>
 
           {m.attachments.length > 0 && (
             <div className="space-y-2">
-            {/* The same action over all files at once. Only from the second attachment on:
-                with one file the row below it says the same thing, and two buttons for one
-                click are one too many. */}
-            {forAttachment.length > 0 && m.attachments.length > 1 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted">
-                  {tr("mail.all_attachments", { n: m.attachments.length })}
-                </span>
-                {forAttachment.map((act) => (
-                  <Rowbutton key={act.definition_id} title={act.description}
-                    onClick={() => start.mutate({ definition_id: act.definition_id, all: true })}>
-                    {act.name}
-                  </Rowbutton>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* The heading is the handle: it says how many there are and opens them. */}
+              <button type="button" onClick={() => setClipsOpen(!clipsOpen)}
+                className="flex items-center gap-1.5 text-xs text-muted hover:text-ink">
+                <span className={BUTTON_TEXT.secondary}>{clipsOpen ? "▼" : "▶"}</span>
+                📎 {m.attachments.length === 1 ? tr("mail.one_attachment")
+                    : tr("mail.n_attachments", { n: m.attachments.length })}
+              </button>
+              {/* The same action over all files at once. Only from the second attachment on:
+                  with one file the row below it says the same thing, and two buttons for one
+                  click are one too many. */}
+              {forAttachment.length > 0 && m.attachments.length > 1 && forAttachment.map((act) => (
+                <Rowbutton key={act.definition_id} title={act.description}
+                  onClick={() => start.mutate({ definition_id: act.definition_id, all: true })}>
+                  {act.name}
+                </Rowbutton>
+              ))}
+            </div>
+            {clipsOpen && (
             <Listing>
               {m.attachments.map((a) => (
                 <ListRow key={a.index}>
@@ -1799,6 +1869,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                 </ListRow>
               ))}
             </Listing>
+            )}
             </div>
           )}
 
@@ -1870,6 +1941,11 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           )}
           {run && <div className="text-xs text-green-400">{run}</div>}
         </>
+      )}
+
+      {headOpen && (
+        <HeaderDialog path={`${basis}/headers?folder=${encodeURIComponent(folder)}`}
+          onClose={() => setHeadOpen(false)} />
       )}
 
       {asking && m && (
@@ -2056,6 +2132,8 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
 }) {
   const qc = useQueryClient();
   const [folders, setFolders] = useState<string[]>(["INBOX"]);
+  // Nur, was schiefging: ein Erfolg zeigt sich daran, dass die Zeile geht und im anderen
+  // Reiter wieder auftaucht.
   const [done, setDone] = useState<Record<string, string>>({});
   // Which subscription has been opened up. One at a time: whoever opens the second one is
   // done with the first, and two open lists are a wall instead of an answer.
@@ -2207,7 +2285,7 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
                       {n.last ? ` · ${tr("mail.last_on", { date: formatDateTime(n.last) })}` : ""}
                     </div>
                     {done[n.key] && (
-                      <div className="mt-0.5 text-xs text-green-400">{done[n.key]}</div>
+                      <div className="mt-0.5 text-xs text-red-400">{done[n.key]}</div>
                     )}
                   </div>
                   <Tag title={tr("mail.n_mails", { n: n.count })}>{n.count}</Tag>

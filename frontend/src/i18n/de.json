@@ -2867,7 +2867,6 @@
   "mail.role_junk": "Spam",
   "mail.role_archive": "Archiv",
   "mail.folder_disappears_with": "Der Ordner und die {n} Nachrichten darin verschwinden, auf dem Server, nicht nur hier.",
-  "mail.all_attachments": "Alle {n} Anhänge:",
   "mail.run_started": "Ablauf gestartet (Vorgang {id})",
   "mail.runs_started": "{n} Abläufe gestartet, einer je Anhang",
   "mail.action_failed": "Aktion fehlgeschlagen",
@@ -2937,8 +2936,6 @@
   "mail.unsub_by_mail": "Abmelden (Mail)",
   "mail.unsub_page": "Abmeldeseite ↗",
   "mail.unsub_none": "kein Weg genannt",
-  "mail.unsub_done": "Abgemeldet.",
-  "mail.unsub_mail_sent": "Abmeldung verschickt. Manche Listen brauchen einen Tag.",
   "mail.unsub_failed": "Abmeldung fehlgeschlagen: {detail}",
   "mail.no_newsletters": "Keine Abos in den gewählten Ordnern gefunden.",
   "mail.open_in_tab": "In neuem Tab öffnen",
@@ -2960,5 +2957,12 @@
   "mail.way_click": "ein Klick",
   "mail.way_mail_hint": "Eine Abmeldung ging aus diesem Postfach an die Liste.",
   "mail.way_click_hint": "Ein Klick nach RFC 8058, der Server hat bestätigt.",
-  "mail.show_again": "Wieder anzeigen"
+  "mail.show_again": "Wieder anzeigen",
+  "mail.n_attachments": "{n} Anhänge",
+  "mail.headers": "Kopfzeilen",
+  "mail.headers_title": "Kopfzeilen der Nachricht",
+  "mail.headers_hint": "Alles, was die Mail über ihren Weg verrät: Stationen, Prüfergebnisse, Filterurteile.",
+  "mail.headers_unreadable": "Kopfzeilen nicht lesbar",
+  "mail.copy_all": "Alles kopieren",
+  "mail.one_attachment": "1 Anhang"
 }

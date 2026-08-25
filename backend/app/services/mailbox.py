@@ -319,11 +319,27 @@ def _kind(part, name: str) -> str:
 
 def _attachments(msg: email.message.Message) -> list[dict]:
     """Index of the attachments: name, type, size. The content is fetched only on demand, a
-    list of twenty mails must not drag twenty PDFs across the network."""
+    list of twenty mails must not drag twenty PDFs across the network.
+
+    A picture that the mail shows in its own text is no attachment. A newsletter builds its
+    layout out of a dozen of them, and they arrived here as `mailingassets_2d386b3f.png` and
+    eleven siblings, which is a wall in front of the mail and not a single file anybody wants.
+    The list beside it already knew better (`_has_attachment` skips them), so the open mail
+    was giving a different answer to the same question.
+
+    Only pictures are dropped, and only those the mail refers to by `Content-ID`. An invoice
+    that a sender marks as `inline` stays: being wrong in that direction leaves a file lying
+    around, being wrong in the other one loses it.
+    """
     out = []
     for i, part in enumerate(msg.walk()):
         name = part.get_filename()
         if not name:
+            continue
+        laid_in = (part.get_content_maintype() == "image"
+                    and part.get("Content-ID")
+                    and (part.get_content_disposition() or "inline") != "attachment")
+        if laid_in:
             continue
         raw = part.get_payload(decode=True) or b""
         readable = _header(name)
@@ -620,6 +636,27 @@ def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
             "attachments": _attachments(msg),
             "seen": "\\seen" in flags, "flagged": "\\flagged" in flags,
         }
+
+
+def _headers_sync(account: MailAccount, folder: str, uid: int) -> str:
+    """The head of the message, raw, as it arrived.
+
+    Everything the mail programs otherwise fold away: which stations it passed through
+    (`Received`), whether the signatures check out (`Authentication-Results`), what a filter
+    thought of it (`X-Spam-*`), who really answers on a reply. When a mail is odd, that is
+    where it says so, and reading it through a form would mean deciding beforehand which
+    lines are allowed to be interesting.
+
+    `PEEK` and read-only, twice on purpose: looking at the head is not reading the mail.
+    """
+    with _imap(account) as client:
+        client.select_folder(folder, readonly=True)
+        raw = client.fetch([uid], ["BODY.PEEK[HEADER]"])
+        entry = raw.get(uid) or {}
+        for name, value in entry.items():
+            if isinstance(name, bytes) and name.startswith(b"BODY[HEADER"):
+                return (value or b"").decode("utf-8", "replace")
+        raise LookupError("keine Kopfzeilen")
 
 
 def _attachment_sync(account: MailAccount, folder: str, uid: int, index: int) -> tuple[str, str, bytes]:
@@ -1060,6 +1097,10 @@ async def search_all(account: MailAccount, search: str, offset: int = 0,
 
 async def message(account: MailAccount, folder_name: str, uid: int) -> dict:
     return await asyncio.to_thread(_message_sync, account, folder_name, uid)
+
+
+async def headers(account: MailAccount, folder_name: str, uid: int) -> str:
+    return await asyncio.to_thread(_headers_sync, account, folder_name, uid)
 
 
 async def attachment(account: MailAccount, folder_name: str, uid: int,

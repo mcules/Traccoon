@@ -2867,7 +2867,6 @@
   "mail.role_junk": "Junk",
   "mail.role_archive": "Archive",
   "mail.folder_disappears_with": "The folder and the {n} messages in it disappear, on the server, not only here.",
-  "mail.all_attachments": "All {n} attachments:",
   "mail.run_started": "Flow started (run {id})",
   "mail.runs_started": "{n} flows started, one per attachment",
   "mail.action_failed": "The action failed",
@@ -2937,8 +2936,6 @@
   "mail.unsub_by_mail": "Unsubscribe (mail)",
   "mail.unsub_page": "Unsubscribe page ↗",
   "mail.unsub_none": "no way named",
-  "mail.unsub_done": "Unsubscribed.",
-  "mail.unsub_mail_sent": "Unsubscribe sent. Some lists take a day.",
   "mail.unsub_failed": "Unsubscribing failed: {detail}",
   "mail.no_newsletters": "No subscriptions found in the chosen folders.",
   "mail.open_in_tab": "Open in a new tab",
@@ -2960,5 +2957,12 @@
   "mail.way_click": "one click",
   "mail.way_mail_hint": "An unsubscribe went from this mailbox to the list.",
   "mail.way_click_hint": "One click under RFC 8058, and the server confirmed.",
-  "mail.show_again": "Show again"
+  "mail.show_again": "Show again",
+  "mail.n_attachments": "{n} attachments",
+  "mail.headers": "Headers",
+  "mail.headers_title": "Headers of the message",
+  "mail.headers_hint": "Everything the mail says about its way here: stations, check results, filter verdicts.",
+  "mail.headers_unreadable": "Headers not readable",
+  "mail.copy_all": "Copy all",
+  "mail.one_attachment": "1 attachment"
 }

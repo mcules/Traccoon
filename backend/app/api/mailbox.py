@@ -530,6 +530,17 @@ async def message(kid: int, uid: int, folder: str = "INBOX",
     return found
 
 
+@router.get("/accounts/{kid}/messages/{uid}/headers")
+async def headers(kid: int, uid: int, folder: str = "INBOX",
+                    user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)):
+    """The head of the message, raw. Where a mail explains itself when it looks odd."""
+    try:
+        return {"headers": await mailbox.headers(await _account(db, kid, user), folder, uid)}
+    except LookupError:
+        raise Error(404, "err.mail_not_found", "Message not found")
+
+
 @router.get("/accounts/{kid}/messages/{uid}/attachments/{index}")
 async def attachment(kid: int, uid: int, index: int, folder: str = "INBOX",
                  user: User = Depends(get_current_user),
