@@ -168,7 +168,7 @@ async def unread(user: User = Depends(get_current_user),
             return {"account_id": account.id, "name": account.name, "unseen": None}
 
     # Side by side instead of one after another: with three mailboxes that is the difference
-    # zwischen einer und drei Wartezeiten.
+    # between one wait and three.
     result = await asyncio.gather(*(one(k) for k in rows))
     return {"accounts": list(result),
             "total": sum(e["unseen"] or 0 for e in result)}

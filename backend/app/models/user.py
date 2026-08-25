@@ -71,7 +71,7 @@ class User(TimestampMixin, Base):
     mcp_token_enc: Mapped[str] = mapped_column(String, default="")           # Fernet, Client-Token
     mcp_servers: Mapped[list] = mapped_column(JSON, default=list)            # erlaubte Server (Doku/UI)
 
-    # Memory folder in the Obsidian vault (ABC-30): below it the agents file their learned
+    # Memory folder in the Obsidian vault: below it the agents file their learned
     # insights as notes (Mensch.md, Agent-<rolle>.md, Projekt-<KEY>.md) and read them again at
     # the beginning of every run. Access runs over the MCP group of THIS user, so the memory
     # is necessarily personal. Empty = no memory (the function is off).
@@ -98,7 +98,7 @@ class User(TimestampMixin, Base):
     # sortable list must not cost a migration.
     list_sort: Mapped[dict] = mapped_column(JSON, default=dict)
     # Presentation of the PM chat: bubbles or cli (terminal look like the Claude Code CLI).
-    # Applies globally to the user across all projects (ABC-21).
+    # Applies globally to the user across all projects.
     pm_chat_style: Mapped[str] = mapped_column(String(10), default="bubbles")
 
     # Night window (Europe/Berlin) for night_task tickets

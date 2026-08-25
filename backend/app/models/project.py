@@ -39,7 +39,7 @@ class Project(TimestampMixin, Base):
     # Instead of merging directly: push the branch and open a pull request (GitHub).
     use_pull_request: Mapped[bool] = mapped_column(Boolean, default=False)
     # Test environments: compose.preview.yml (default) or a Dockerfile build
-    # On: a finished implementation lands on "testing" instead of being merged directly (ABC-18).
+    # On: a finished implementation lands on "testing" instead of being merged directly.
     testenv_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     testenv_mode: Mapped[str] = mapped_column(String(20), default="compose")
     testenv_compose_file: Mapped[str] = mapped_column(String(255), default="compose.preview.yml")

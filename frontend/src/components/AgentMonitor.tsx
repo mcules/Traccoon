@@ -20,7 +20,7 @@ interface RunGroup {
 
 export default function AgentMonitor({ project }: { project: Project }) {
   const qc = useQueryClient();
-  // Archived runs (the ticket is archived) are hidden by default (ABC-29).
+  // Archived runs (the ticket is archived) are hidden by default.
   const [showArchive, setShowArchive] = useState(false);
   const [to, setTo] = useState<Record<string, boolean>>({});
   const { data: grouped } = useQuery({

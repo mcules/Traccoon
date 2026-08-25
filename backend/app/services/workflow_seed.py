@@ -286,7 +286,7 @@ def build_ticket_lifecycle() -> dict:
 def build_acceptance() -> dict:
     """What `/issues/{key}/complete` used to do: clear the test environment, merge, deploy.
 
-    The order is binding (ABC-18): first the test environment goes (container, volumes,
+    The order is binding: first the test environment goes (container, volumes,
     worktree, port), then the merge, and only on a clean merge does it continue.
     """
     nodes = [

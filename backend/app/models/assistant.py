@@ -18,9 +18,9 @@ class AssistantSession(TimestampMixin, Base):
     cut, and from here on it is the ONLY one: the history reads by session, not by a time
     window.
 
-    A session belongs to exactly ONE agent. The GameProj operator keeps a conversation of its
-    own, and mixing the two would poison both — the assistant would answer out of a game and
-    the operator out of the post.
+    A session belongs to exactly ONE agent. A specialist agent keeps a conversation of its
+    own, and mixing the two would poison both: the assistant would answer out of the
+    specialist's subject and the specialist out of the post.
 
     Closed is not deleted: it drops out of the default list, stays loadable and can be
     carried on. Deleting is deliberately not a button but a workflow action

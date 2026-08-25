@@ -39,7 +39,7 @@ async def _missing_still(conn, ddl: str) -> bool:
     an AccessExclusiveLock on the table and ONLY THEN looks whether the column is already
     there. With 83 statements per backend start that means 83 exclusive locks on tables an
     agent is writing to next door. On 2026-08-07 at 18:00 exactly that killed run 753
-    (ABC-31, 37 turns): the lock on `run_steps` against the running INSERT, Postgres broke
+    (37 turns): the lock on `run_steps` against the running INSERT, Postgres broke
     the deadlock, and the victim was the agent.
 
     Looking first costs a cheap catalog read and, in the normal case (the column has long
@@ -81,7 +81,7 @@ async def lifespan(app: FastAPI):
             # DDL dragged all the others down with it: the exception was caught, but the
             # transaction was dead from then on, every following statement ran into
             # "current transaction is aborted", and on leaving the block everything rolled
-            # zurueck — waehrend der Start erfolgreich aussah.
+            # back while the start still looked successful.
             for _ddl in (
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cap_baseline_run_id INTEGER",
                 # Correction rounds spent at the review gate: on the ticket instead of in
@@ -94,7 +94,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE provider_models ADD COLUMN IF NOT EXISTS speed_tps DOUBLE PRECISION",
                 # Eigene Base-URL je Provider-Token (OpenAI-kompatibler Endpoint, z. B. litellm).
                 "ALTER TABLE provider_tokens ADD COLUMN IF NOT EXISTS base_url VARCHAR(500)",
-                # Person assignment (ABC-20): placeholder accounts without a login.
+                # Person assignment: placeholder accounts without a login.
                 # create_all/ADD COLUMN does not add enum values, so ADD VALUE explicitly
                 # (PG 12+ allows that in a transaction as long as the value is not used in it).
                 "ALTER TYPE userstatus ADD VALUE IF NOT EXISTS 'placeholder'",
@@ -138,25 +138,25 @@ async def lifespan(app: FastAPI):
                 # User specific block arrangement of the ticket page.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS ticket_layout JSON DEFAULT '{}'::json NOT NULL",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS list_sort JSON DEFAULT '{}'::json NOT NULL",
-                # PM-Chat-Darstellung je Nutzer (ABC-21).
+                # PM-Chat-Darstellung je Nutzer.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS pm_chat_style VARCHAR(10) "
                 "DEFAULT 'bubbles' NOT NULL",
-                # Sub-Projekte (ABC-8/22): Vererbungs-Schalter + optionaler Projektbezug am Ort.
+                # Sub-Projekte: Vererbungs-Schalter + optionaler Projektbezug am Ort.
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS inherit_members BOOLEAN "
                 "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE locations ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE SET NULL",
-                # Agent runs follow the ticket into the archive (ABC-29).
+                # Agent runs follow the ticket into the archive.
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE NOT NULL",
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
                 # Catch up existing data: archive runs of already archived tickets too.
                 "UPDATE runs SET archived = TRUE, archived_at = COALESCE(issues.archived_at, now()) "
                 "FROM issues WHERE runs.issue_id = issues.id AND issues.archived "
                 "AND NOT runs.archived",
-                # Responsible person per procurement step (ABC-26).
+                # Responsible person per procurement step.
                 "ALTER TABLE hardware_workflow_steps ADD COLUMN IF NOT EXISTS assignee "
                 "JSON DEFAULT '{}'::json NOT NULL",
-                # Testumgebungs-Lebenszyklus je Projekt (ABC-18).
+                # Testumgebungs-Lebenszyklus je Projekt.
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS testenv_enabled BOOLEAN "
                 "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS testenv_compose_file "
@@ -187,7 +187,7 @@ async def lifespan(app: FastAPI):
                 # collides with the old place of "done".
                 "UPDATE board_columns c SET \"order\" = s.\"order\" FROM workflow_statuses s "
                 "WHERE s.id = c.status_id AND c.\"order\" <> s.\"order\"",
-                # Attach a ticket to a hardware unit (ABC-25).
+                # Attach a ticket to a hardware unit.
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS asset_id INTEGER "
                 "REFERENCES hardware_assets(id) ON DELETE SET NULL",
                 # Process sets: slot and archive on the definitions, set reference on
@@ -325,12 +325,12 @@ async def lifespan(app: FastAPI):
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'loop'",
                 # Timer node: waits a while without anyone having to report anything.
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'timer'",
-                # Memory in the vault (ABC-30): folder on the user, learning switch on the agent.
+                # Memory in the vault: folder on the user, learning switch on the agent.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS vault_memory_path VARCHAR(500) "
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE agent_definitions ADD COLUMN IF NOT EXISTS learns BOOLEAN "
                 "DEFAULT TRUE NOT NULL",
-                # Response limit per destination (ABC-31): counterparts that deliberately
+                # Response limit per destination: counterparts that deliberately
                 # deliver their whole state in one call need more than the flat 4000 characters.
                 "ALTER TABLE destinations ADD COLUMN IF NOT EXISTS max_response_chars "
                 "INTEGER DEFAULT 4000 NOT NULL",
@@ -452,7 +452,7 @@ async def lifespan(app: FastAPI):
                 # What a mail was classified as, and the findings behind it. The kind is what
                 # the statistics group by, the findings are what the knowledge note is fed
                 # from; both used to exist only inside one log line.
-                # Drei weitere Attribute wurden englisch — dieselbe Regel wie oben:
+                # Three further attributes became English, same rule as above:
                 # A renamed attribute means a renamed column, and only Postgres sees it.
                 "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS kind VARCHAR(40) "
                 "DEFAULT '' NOT NULL",
@@ -518,8 +518,8 @@ async def lifespan(app: FastAPI):
         # missing and never overwritten — the job templates hand out its number.
         from .services.research_flow import ensure as ensure_research_flow
         await ensure_research_flow(db)
-        # Der Aufräum-Ablauf für alte Unterhaltungen. Gleiche Art: einmal angelegt, danach
-        # gehört er dem, der ihn bearbeitet.
+        # The cleanup flow for old conversations. Same kind: created once, from then on it
+        # belongs to whoever edits it.
         from .services.assistant_cleanup_flow import ensure as ensure_cleanup_flow
         await ensure_cleanup_flow(db)
         # The same for the job kinds: prompt, script and HTTP are nodes in the flow.
@@ -536,7 +536,7 @@ async def lifespan(app: FastAPI):
         from .services.workflow_terms import migrate_all as terms_convert
         count = await terms_convert(db)
         if count:
-            log.info("%s Ablauf-Fassung(en) auf englische Begriffe umgeschrieben", count)
+            log.info("%s flow version(s) rewritten to the English terms", count)
         # Artifact register (ticket, hardware): maintainable in the admin area, missing
         # states are added, existing labels stay.
         from .services.artifacts import backfill_hardware_artifacts, ensure_builtin_types

@@ -3,7 +3,7 @@
 The watcher waiting for the result of an agent run lives in the backend process. If it is lost, nobody waits any more: on 2026-08-07 one hung in a half dead Redis connection (the
 er verloren, wartet niemand mehr: am 2026-08-07 hing einer in einer halb toten
 client had neither keepalive nor socket_timeout, and the worker warns about that in its own
-code). The finished result for ABC-31 lay unfetched in Redis from 19:54, the ticket stood
+code). A finished result lay unfetched in Redis from 19:54, the ticket stood
 still for an hour, and from the outside it looked as if the agent were still working.
 
 Reattaching used to happen only at the backend start. Now it happens in every tick, and at most once per step.

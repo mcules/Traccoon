@@ -1,6 +1,6 @@
 """The review gate must not invent findings.
 
-ABC-31 on 2026-08-07: the reviewer run died on "answer truncated at max_tokens". The gate
+On 2026-08-07 a reviewer run died on "answer truncated at max_tokens". The gate
 only checked whether `<review-ok/>` stood in the text, and if it did not, the text counted
 as a list of findings. The developer was then sent off to "fix" a provider error message: an
 invented task that costs one of the two correction rounds and afterwards ends in the review hold.
@@ -95,7 +95,7 @@ async def test_a_passed_review_leaves_everything_standing(db, monkeypatch):
 async def test_used_rounds_survive_the_restart(db, monkeypatch):
     """The round counter belongs on the ticket, not in the loop.
 
-    ABC-32 on 2026-08-07: the worker was restarted in the middle of correction round 2, and
+    On 2026-08-07 the worker was restarted in the middle of correction round 2, and
     the gate began at round 1 again: check, correct, restart, check, correct. The limit that
     is supposed to fetch the human was never reached.
     """
@@ -118,7 +118,7 @@ async def test_a_started_round_is_booked_at_once(db, monkeypatch):
 async def test_open_findings_land_on_the_ticket(db, monkeypatch):
     """Whoever has to decide needs the reason in the same place as the decision.
 
-    ABC-32 on 2026-08-07: the gate handed the ticket to the human after two rounds, and on
+    On 2026-08-07 the gate handed the ticket to the human after two rounds, and on
     the ticket stood "hold: review" and nothing else. The findings sat in the run.
     """
     from sqlalchemy import select

@@ -31,8 +31,8 @@ drag the foreign keys from `issues`, `hardware_assets` and `workflow_instances` 
     artifact type       ArtifactType / artifact_types           ticket, hardware
     field               ArtifactField / artifact_fields         priority
     value (list)        ArtifactFieldOption / …_field_options   low, medium, high
-    assigned value      ArtifactValue / artifact_values         ABC-29 → high
-    the thing itself    Artifact / artifacts                    ABC-29, ABC-4
+    assigned value      ArtifactValue / artifact_values         a ticket -> high
+    the thing itself    Artifact / artifacts                    a ticket, a unit
 """
 import datetime as dt
 

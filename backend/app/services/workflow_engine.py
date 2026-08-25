@@ -1007,7 +1007,7 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
         from ..models.enums import TicketAgentStatus
         from .artifacts import set_ticket_status
         # `hold` and `failed` belong in here explicitly: once an agent runs again, the
-        # old reason is obsolete. Without it ABC-31 showed "hold, merge" for hours while
+        # old reason is obsolete. Without it a ticket showed "hold, merge" for hours while
         # the developer had long been working again. The label lied, not the process.
         if issue.agent_status in (TicketAgentStatus.approved, TicketAgentStatus.plan_review,
                                   TicketAgentStatus.open, TicketAgentStatus.hold,
@@ -1256,7 +1256,7 @@ async def _await_agent_inner(instance_id: int, token_id: int, step_id: int, task
         step.decision = handle
         step.result = replacement
         # Without a result write down the REASON, not just "agent status: failed". This
-        # very line sent the investigation of ABC-2 and ABC-6 down the wrong path.
+        # very line sent two investigations down the wrong path.
         step.error = (None if status in ("done", "planned")
                       else f"Agent-Status: {status}" if result else replacement["output"])
         step.completed_at = _now()
@@ -1958,7 +1958,7 @@ async def _engine_tick() -> None:
 
     # Pick up tickets without a process instance. This used to run ONLY at backend start,
     # so a ticket orphaned in between was dead until the next restart, the nastiest kind of
-    # bug because the restart fixes it and hides the cause (ABC-32 on 2026-08-07: assigned
+    # bug because the restart fixes it and hides the cause (2026-08-07: assigned
     # by the assistant, never started).
     try:
         from .lifecycle_flow import adopt_orphans

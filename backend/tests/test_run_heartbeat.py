@@ -1,6 +1,6 @@
 """Waiting on the sign of life instead of on the clock.
 
-On 2026-08-05 ABC-2 and ABC-6 stood on "failed: unknown error" although both agents
+On 2026-08-05 two tickets stood on "failed: unknown error" although both agents
 finished cleanly and committed: the watcher in the backend had given up after 30 minutes
 while the exec step (implementation plus two review rounds in ONE assignment) was still
 running. These tests record the three promises:
@@ -109,7 +109,7 @@ async def test_a_lost_run_is_called_by_its_name(db, seeded, redis_stub):
 
     texts = [c.body for c in (await db.execute(select(Comment).where(
         Comment.issue_id == issue.id))).scalars().all()]
-    assert any("verschwunden" in t for t in texts)
+    assert any("vanished" in t for t in texts)
     assert not any("unbekannter Fehler" in t for t in texts)
 
 

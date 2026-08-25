@@ -204,7 +204,7 @@ async def test_planning_does_not_run_in_endless_circles(db, seeded, redis_stub):
 
     The back edge "keep planning" led back to `plan` unbraked: an architect that tears its
     iteration limit every time started the next run every ninety seconds, and nobody counted
-    that (ABC-31 on 2026-08-07). After `PLAN_FORTSETZUNGEN` attempts it stops, and then a
+    that (seen on 2026-08-07). After `PLAN_FORTSETZUNGEN` attempts it stops, and then a
     human is needed, not the eleventh attempt.
     """
     from app.services.workflow_seed import PLAN_CONTINUATIONS
@@ -251,7 +251,7 @@ async def test_an_approval_resets_the_continuation_count(db, seeded, redis_stub)
 async def test_assigning_through_the_assistant_starts_the_flow(db, seeded, redis_stub):
     """The assistant operates Traccoon over native tools, not over the API. If it only set
     fields, the ticket would lie there with an agent and a status without a process running,
-    and only a backend restart would ever catch it again (ABC-32 on 2026-08-07)."""
+    and only a backend restart would ever catch it again (seen on 2026-08-07)."""
     from app.services.lifecycle_flow import live_instance, start_lifecycle
 
     owner, proj, issue, _ = await _project_with_ticket(db, TicketAgentStatus.planning)

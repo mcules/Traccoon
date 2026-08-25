@@ -44,7 +44,7 @@ def _require_write(access: Access) -> None:
 
 
 async def _assert_asset_in_project(asset_id: int, project_id: int, db: AsyncSession) -> None:
-    """The hardware reference (ABC-25) may only point at units of one's own project;
+    """The hardware reference may only point at units of one's own project;
     otherwise a ticket would reference a foreign unit and leak its existence."""
     from ..models.hardware import HardwareAsset
     asset = await db.get(HardwareAsset, asset_id)
@@ -193,11 +193,11 @@ async def archive_issue(
     now = dt.datetime.now(tz=dt.timezone.utc)
     issue.archived = True
     issue.archived_at = now
-    # Clear away an orphaned test environment as well (ABC-18): container, volumes, port.
+    # Clear away an orphaned test environment as well: container, volumes, port.
     if issue.testenv_status:
         from ..services.testenv import stop_testenv
         await stop_testenv(db, issue, access.project.key)
-    # Agent runs follow the ticket (ABC-29).
+    # Agent runs follow the ticket.
     from ..models.agents import Run
     await db.execute(
         sa_update(Run).where(Run.issue_id == issue.id, Run.archived.is_(False))
@@ -486,7 +486,7 @@ RANK_STEP = 1000
 async def _guard_done_transition(issue: Issue, target: WorkflowStatus, db: AsyncSession) -> None:
     """In the test environment flow, "done" may ONLY be set over POST /issues/{key}/complete
     (stop, merge, done). A direct board move there would skip the merge and show a silently
-    unmerged ticket as finished (ABC-18)."""
+    unmerged ticket as finished."""
     from ..models.enums import StatusCategory
     if target.category != StatusCategory.done:
         return

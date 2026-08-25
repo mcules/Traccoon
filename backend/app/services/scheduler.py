@@ -255,7 +255,7 @@ _vault_after = 0.0
 
 
 async def _purge_archived_runs() -> None:
-    """Delete archived agent runs after the retention period (ABC-29).
+    """Delete archived agent runs after the retention period.
 
     The period in days comes from the AppSetting `run_retention_days` (default 30, 0 = never
     delete). RunSteps hang off it over ON DELETE CASCADE.

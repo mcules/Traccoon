@@ -1,4 +1,4 @@
-"""Test environments per project (ABC-18): branch environments, overview, logs.
+"""Test environments per project: branch environments, overview, logs.
 
 The ticket environment is still controlled on the ticket (`lifecycle.py`); here lies
 everything that hangs off the project: free branches, the combined overview and log fetching.

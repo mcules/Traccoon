@@ -33,7 +33,7 @@ measured, not guessed:
    of that: a computed 0 would be an invented duration.
 
 `ok` follows the same rule as `services/office.tool_ok`: **never a guessed result**.
-Belegter Erfolg `True`, belegter Fehlschlag `False`, alles andere `None`.
+Proven success is `True`, proven failure `False`, everything else `None`.
 """
 from __future__ import annotations
 
@@ -442,7 +442,7 @@ async def create_deployment(
     1. **Empty `workspace_dir` → 400.** An empty stack directory aims at the host and
        maintenance project itself. The deployer rejects that anyway ("implicit host deploy
        … is locked"), but the row would come into being regardless, and in the auto-deploy
-       path exactly that was a deploy storm once (ABC-19, commented in
+       path exactly that was a deploy storm once (commented in
        `worker/__main__.py`). A button that is guaranteed to fail is not a button.
     2. **At most one open deploy per project → 409.** Two `docker compose up` in the same
        directory are a data race over containers and networks, not a second deploy. The

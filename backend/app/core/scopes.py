@@ -9,7 +9,7 @@ mistake would be invisible (nothing to see in the diff, no failing test).
 
 The table is keyed by the **route template** (`/issues/{key}`), not by the request path.
 FastAPI puts the matched route into `request.scope["route"]`, so `/issues/ABC-7` and
-`/issues/ABC-3` are the same entry here and a token cannot be widened by a clever path.
+`/issues/XYZ-3` are the same entry here and a token cannot be widened by a clever path.
 
 A JWT session is never measured against this: the web interface would otherwise have to
 learn scopes it does not need. `scopes is None` means "logged in as a human", full stop.

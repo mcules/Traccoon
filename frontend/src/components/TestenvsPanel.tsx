@@ -16,7 +16,7 @@ const BADGE: Record<string, "green" | "yellow" | "red"> = {
   running: "green", starting: "yellow", error: "red",
 };
 
-/** Overview of all test environments of the project (ticket plus branch) with logs and stop (ABC-18). */
+/** Overview of all test environments of the project (ticket plus branch) with logs and stop. */
 export default function TestenvsPanel({ project }: { project: Project }) {
   const qc = useQueryClient();
   const can = project.my_role !== "viewer";

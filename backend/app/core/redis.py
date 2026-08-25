@@ -47,7 +47,7 @@ def get_redis() -> Redis:
     worker has always known that (`_REDIS_KW`), the backend did not, and the watchers waiting
     for the result of an agent run hang there.
 
-    On 2026-08-07 that cost an hour of standstill: the result for ABC-31 lay finished in
+    On 2026-08-07 that cost an hour of standstill: a finished result lay in
     Redis at 19:54, the watcher hung in a `get` that never came back, and nobody fetched it.
     From the outside it looked as if the agent were still working; it had long finished.
     """

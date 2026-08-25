@@ -81,7 +81,7 @@ async def test_vocabulary_travels_as_the_initial_prompt(monkeypatch):
 
     Measured on this host on 2026-08-07, the same sentence, the same model (large-v3-turbo):
     without a vocabulary list "Ticket Terra 1 und 30 in Trakon … Digist … Univer", with the
-    list word for word "Ticket ABC-31 in Traccoon … Digest … GameProj".
+    list word for word "Ticket ABC-31 in Traccoon … Digest … a game".
     """
     import app.bot.__main__ as bot
 
@@ -112,11 +112,11 @@ async def test_vocabulary_travels_as_the_initial_prompt(monkeypatch):
 
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
-    monkeypatch.setattr(bot, "VOICE_VOCABULARY", "Traccoon, GameProj, ABC-31.")
+    monkeypatch.setattr(bot, "VOICE_VOCABULARY", "Traccoon, GameProj.")
     monkeypatch.setattr(bot, "_vocabulary_cache", (0.0, ""))
 
     assert await bot._transcribe(b"x", "voice", None) == "fertig"
-    assert seen[0]["initial_prompt"] == "Traccoon, GameProj, ABC-31."
+    assert seen[0]["initial_prompt"] == "Traccoon, GameProj."
 
 
 async def test_no_field_without_a_vocabulary(monkeypatch):

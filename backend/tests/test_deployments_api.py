@@ -81,7 +81,7 @@ async def test_a_foreign_project_is_404_not_403(db, client):
     Deployment-Liste niemandem schuldet."""
     owner = await make_user(db, "besitzer")
     foreign = await make_user(db, "fremder")
-    project = await make_project(db, "TRA", "Traccoon", inherit_members=False)
+    project = await make_project(db, "ABC", "A project", inherit_members=False)
     await add_member(db, project, owner, ProjectRole.owner)
     await deploy(db, project=project)
 
@@ -94,7 +94,7 @@ async def test_viewer_is_enough(db, client):
     """Whoever merged wants to know whether it is out there, and is not necessarily a
     `maintainer`. The lowest role is enough for the list and the detail."""
     seer = await make_user(db, "seher")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, seer, ProjectRole.viewer)
     d = await deploy(db, project=project, log="fertig")
 
@@ -114,7 +114,7 @@ async def test_detail_for_a_non_member_is_404(db, client):
     "is not yours" and "does not exist" answer identically."""
     owner = await make_user(db, "besitzer")
     foreign = await make_user(db, "fremder")
-    project = await make_project(db, "TRA", "Traccoon", inherit_members=False)
+    project = await make_project(db, "ABC", "A project", inherit_members=False)
     await add_member(db, project, owner, ProjectRole.owner)
     d = await deploy(db, project=project)
 
@@ -132,7 +132,7 @@ async def test_a_project_less_line_is_admin_only(db, client):
     rows). An ownerless deployment therefore belongs to nobody."""
     admin = await make_user(db, "admin", admin=True)
     member = await make_user(db, "mitglied")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, member, ProjectRole.owner)
     own = await deploy(db, project=project)
     ownerless = await deploy(db, project=None, stack_dir="")
@@ -155,7 +155,7 @@ async def test_the_project_id_filter_narrows_and_does_not_authorise(db, client):
     place. Entering a foreign project yields an empty list: no access and explicitly no 403,
     which would be a proof of existence."""
     user = await make_user(db, "nutzer")
-    mine = await make_project(db, "TRA", "Traccoon")
+    mine = await make_project(db, "ABC", "A project")
     foreign = await make_project(db, "UNI", "GameProj", inherit_members=False)
     await add_member(db, mine, user, ProjectRole.owner)
     own = await deploy(db, project=mine)
@@ -183,7 +183,7 @@ async def test_the_log_only_in_the_detail_header_capped_exactly(db, client):
     outside regardless: an `ok` log is around 1 kB, and with 200 rows the list would be
     twenty times as large for no reason."""
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     long_log = "x" * 1000
     d = await deploy(db, project=project, status="failed", log=long_log)
@@ -205,7 +205,7 @@ async def test_the_log_only_in_the_detail_header_capped_exactly(db, client):
 async def test_a_short_log_is_not_padded(db, client):
     """The head is a truncation, not a fixed width: shorter than 240 stays shorter."""
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     await deploy(db, project=project, status="ok", log="kurz")
     await deploy(db, project=project, status="cancelled", log="",
@@ -229,7 +229,7 @@ async def test_ok_has_three_values(db, client, status, phase, ok):
     wrote, and counting as `done` would mean claiming something had come to an end.
     """
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     await deploy(db, project=project, status=status)
 
@@ -245,7 +245,7 @@ async def test_an_unknown_status_counts_as_aborted(db, client):
     """A status this file does not know is not a finished deploy but one about which nothing
     is known: `aborted`, not `done`."""
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     await deploy(db, project=project, status="wasauchimmer")
 
@@ -263,7 +263,7 @@ async def test_durations_are_none_without_timestamps(db, client):
     would claim a deploy that took no time instead of one whose time nobody wrote down.
     """
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     whole = await deploy(db, project=project, status="ok",
                         waits_seconds=3.0, duration_seconds=12.5)
@@ -296,7 +296,7 @@ async def test_row_shape_and_empty_origin(db, client):
     `requested_by`/`chat_id` turn up nowhere: they are filled on 0 of 186 rows.
     """
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     t = await ticket(db, project, 7)
     await deploy(db, project=project, issue=t, status="ok")
@@ -308,7 +308,7 @@ async def test_row_shape_and_empty_origin(db, client):
         "ok", "source", "kind", "stack_dir", "created_at", "started_at", "finished_at",
         "wait_ms", "duration_ms", "log_bytes", "log_head",
     }
-    assert line["project_key"] == "TRA"
+    assert line["project_key"] == "ABC"
     assert line["issue_key"] == "ABC-7"
     assert line["source"] == "unbekannt"
 
@@ -318,7 +318,7 @@ async def test_kind_tells_self_check_and_stack_apart(db, client):
     """`self` beats `check`: a self-deploy is never a mere check, and `check_only` alone says
     nothing about whose stack is meant."""
     admin = await make_user(db, "admin", admin=True)
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await deploy(db, project=project, self_deploy=True, status="ok")
     await deploy(db, project=project, check_only=True, status="ok")
     await deploy(db, project=project, status="ok")
@@ -330,7 +330,7 @@ async def test_kind_tells_self_check_and_stack_apart(db, client):
 @pytest.mark.asyncio
 async def test_the_issue_filter_narrows(db, client):
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     t = await ticket(db, project, 7)
     mit = await deploy(db, project=project, issue=t, status="ok")
@@ -348,7 +348,7 @@ async def test_the_limit_is_clamped_and_truncation_reported(db, client):
     """Truncation happens at the newest end (`id DESC`), and the truncation is reported; a
     silent truncation would let the view believe it saw everything."""
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     ids = [(await deploy(db, project=project, status="ok")).id for _ in range(5)]
 
@@ -378,7 +378,7 @@ async def test_since_hours_is_clamped(db, client):
     an end (69 of 186) would fall out of every window and be reachable over no route any
     more. The upper bound is one year, even when more is requested."""
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     fresh = await deploy(db, project=project, status="ok", age_hours=1)
     halfyear = await deploy(db, project=project, status="ok", age_hours=24 * 180)
@@ -403,7 +403,7 @@ async def test_by_status_counts_the_window_not_the_listing(db, client):
     poisoning the list. It therefore counts against the **window**, not against the filtered
     list; otherwise it would be a tautology with `?status=ok`."""
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     for _ in range(3):
         await deploy(db, project=project, status="ok")
@@ -431,7 +431,7 @@ async def test_status_filter(db, client):
     picked the row up. `other` is the rest, today exactly the aborted ones.
     """
     user = await make_user(db, "nutzer")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, user, ProjectRole.owner)
     for status, _phase, _ok in STATUS_ERWARTUNG:
         await deploy(db, project=project, status=status)
@@ -477,7 +477,7 @@ async def test_the_button_needs_a_maintainer(db, client):
     seer = await make_user(db, "seher")
     member = await make_user(db, "mitglied")
     tender = await make_user(db, "pfleger")
-    project = await make_project(db, "TRA", "Traccoon", inherit_members=False)
+    project = await make_project(db, "ABC", "A project", inherit_members=False)
     await with_stack(db, project)
     await add_member(db, project, seer, ProjectRole.viewer)
     await add_member(db, project, member, ProjectRole.member)
@@ -499,10 +499,10 @@ async def test_the_button_needs_a_maintainer(db, client):
 async def test_400_without_a_stack_directory(db, client):
     """An empty `workspace_dir` aims at the host and maintenance project itself. The deployer
     rejects that anyway, but the row would come into being regardless, and in the auto-deploy
-    path exactly that was a deploy storm once (ABC-19). The button must not lead there in the
+    path exactly that was a deploy storm once. The button must not lead there in the
     first place: **no row**, a 400, and the message says where to enter the directory."""
     tender = await make_user(db, "pfleger")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await add_member(db, project, tender, ProjectRole.maintainer)
 
     r = await client.post(f"/projects/{project.id}/deployments", json={},
@@ -521,7 +521,7 @@ async def test_a_second_deploy_while_one_is_open_is_409(db, client):
     next attempt, because otherwise the button is dead after the first problem.
     """
     tender = await make_user(db, "pfleger")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await with_stack(db, project)
     await add_member(db, project, tender, ProjectRole.maintainer)
     path = f"/projects/{project.id}/deployments"
@@ -560,7 +560,7 @@ async def test_a_queued_line_is_pending_and_manual(db, client):
     from the body. The answer has the shape of the list, so that the frontend can sort it in
     without a second fetch."""
     tender = await make_user(db, "pfleger")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await with_stack(db, project)
     await add_member(db, project, tender, ProjectRole.maintainer)
 
@@ -579,7 +579,7 @@ async def test_a_queued_line_is_pending_and_manual(db, client):
     assert line["source"] == "manual"
     assert line["kind"] == "stack", "no self deploy and no mere check"
     assert line["stack_dir"] == STACK
-    assert line["project_key"] == "TRA"
+    assert line["project_key"] == "ABC"
     assert line["issue_id"] is None and line["issue_key"] == ""
     assert line["started_at"] is None and line["finished_at"] is None
 
@@ -602,7 +602,7 @@ async def test_the_issue_id_is_taken_over_a_foreign_ticket_is_404(db, client):
     otherwise a row would stand in the list whose `issue_key` points at a project where it
     has no business."""
     tender = await make_user(db, "pfleger")
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await with_stack(db, project)
     await add_member(db, project, tender, ProjectRole.maintainer)
     t = await ticket(db, project, 7)

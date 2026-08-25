@@ -52,7 +52,7 @@ async def _ingest(db: AsyncSession, token: str, payload, query: dict) -> dict:
 
 @router.post("/ingest/{token}", status_code=202)
 async def ingest_post(token: str, request: Request, db: AsyncSession = Depends(get_session)):
-    """OwnTracks, Overland, Home Assistant und alles Flache."""
+    """The common tracker payloads plus everything with a flat lat/lon pair."""
     try:
         payload = await request.json()
     except Exception:  # noqa: BLE001 - an empty body is allowed (Traccar over POST)

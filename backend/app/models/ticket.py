@@ -152,7 +152,7 @@ class Issue(TimestampMixin, Base):
     sprint_id: Mapped[int | None] = mapped_column(
         ForeignKey("sprints.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Hardware reference (ABC-25): the ticket hangs off a unit. A unit collects several
+    # Hardware reference: the ticket hangs off a unit. A unit collects several
     # tickets over its lifetime (defect, maintenance, rebuild), hence n:1, not 1:1.
     asset_id: Mapped[int | None] = mapped_column(
         ForeignKey("hardware_assets.id", ondelete="SET NULL"), nullable=True, index=True
@@ -191,7 +191,7 @@ class Issue(TimestampMixin, Base):
     # accept-conflict-approved-redispatch loop: after too many rounds it goes to hold (human).
     merge_conflict_rounds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # Correction rounds of the review gate used up. Until now it stood only as a loop counter
-    # in the worker process, and a restart in the middle of round 2 began at 1 again (ABC-32
+    # in the worker process, and a restart in the middle of round 2 began at 1 again (seen
     # on 2026-08-07: check, correct, restart, check, correct …, with no end in sight). A
     # counter that is meant to enforce a limit belongs on the ticket.
     review_rounds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

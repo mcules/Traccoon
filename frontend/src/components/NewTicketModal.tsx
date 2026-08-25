@@ -6,7 +6,7 @@ import { BUTTON, BUTTON_TEXT} from "./ui";
 
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
 
-// Modal for creating a ticket with all the relevant fields plus attachments (ABC-5).
+// Modal for creating a ticket with all the relevant fields plus attachments.
 export default function NewTicketModal({
   project, meta, onClose, onCreated,
 }: {

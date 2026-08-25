@@ -1,4 +1,4 @@
-"""Responsible person per procurement step: hardware_workflow_steps.assignee (ABC-26)
+"""Responsible person per procurement step: hardware_workflow_steps.assignee
 
 Revision ID: e2c8b5d31f47
 Revises: d9a3f6c14b72

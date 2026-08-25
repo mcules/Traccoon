@@ -522,7 +522,7 @@ async def _accept_merge(db, inst: WorkflowInstance, params: dict) -> dict:
 
 async def _deploy(db, inst: WorkflowInstance, params: dict) -> dict:
     """Queue a deployment. Without `force` only when the project has auto deploy enabled
-    and a real stack directory (never the maintenance or host project itself, ABC-19)."""
+    and a real stack directory (never the maintenance or host project itself)."""
     from ..models.ops import Deployment
     from ..models.project import Project
     issue = await _issue_of(db, inst)

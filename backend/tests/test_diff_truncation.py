@@ -1,6 +1,6 @@
 """A truncated diff has to give itself away as truncated.
 
-ABC-32 on 2026-08-07, review round 2: the reviewer saw a compose block that "breaks off in
+On 2026-08-07, review round 2: the reviewer saw a compose block that "breaks off in
 the middle (`v` as the last line)" and reported an incomplete service definition. The code
 was complete; `diff_text` had truncated it at 20 000 characters, silently and in the middle
 of a word. That cost one of the two correction rounds and sent the ticket to the human with
@@ -98,7 +98,7 @@ async def test_the_base_is_the_branch_point_even_with_a_base_commit(monkeypatch)
     """`git_base_sha` is the main state at the last preparation, NOT the branching point.
 
     `prepare` rewrites it on every reuse of the worktree. A two dot diff against that state
-    shows everything main has gained since the real branching as "deleted": with ABC-31 on
+    shows everything main has gained since the real branching as "deleted": on
     2026-08-07 that was 1993 lines, and the reviewer reported that the agent had removed the
     `may_plan_continue` node, which it had never touched.
     """

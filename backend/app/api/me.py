@@ -96,7 +96,7 @@ async def list_timezones(_: User = Depends(get_current_user)) -> list[str]:
 @router.put("/me/vault-memory-path", status_code=204)
 async def set_vault_memory_path(d: StrIn, u: User = Depends(get_current_user),
                                 db: AsyncSession = Depends(get_session)):
-    """Memory folder in the Obsidian vault (ABC-30). The agents file their learned rules
+    """Memory folder in the Obsidian vault. The agents file their learned rules
     below it and read them again on every run. Empty = no memory."""
     u.vault_memory_path = (d.value or "").strip().strip("/")[:500]
     await db.commit()

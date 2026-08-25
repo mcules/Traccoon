@@ -6,8 +6,8 @@ protocol is deliberately served by hand instead of with a library: three methods
 own into an existing FastAPI for that would be more scaffolding than benefit.
 
 Logging in happens with a token of the person (`Authorization: Bearer …`). It is no login:
-whoever has it may do exactly what this person has released on their mailboxes — not
-mehr, und nichts anderes in Traccoon.
+whoever has it may do exactly what this person has released on their mailboxes, no more,
+and nothing else in Traccoon.
 """
 import hashlib
 import hmac

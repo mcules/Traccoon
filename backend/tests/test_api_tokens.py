@@ -224,7 +224,7 @@ async def test_an_endpoint_no_scope_names_needs_full(client, db):
 
 
 async def test_the_table_is_keyed_by_the_route_template_not_the_path():
-    """`/issues/ABC-7` and `/issues/ABC-3` are one entry, so no clever path widens a token."""
+    """`/issues/ABC-7` and `/issues/XYZ-3` are one entry, so no clever path widens a token."""
     assert scopes_mod.allowed({"tickets"}, "GET", "/issues/{key}")
     assert not scopes_mod.allowed({"tickets"}, "GET", "/issues/ABC-7")
     assert not scopes_mod.allowed({"tickets"}, "DELETE", "/issues/{key}")

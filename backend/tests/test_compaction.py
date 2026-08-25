@@ -133,7 +133,7 @@ async def test_a_large_history_is_summarised_in_chunks(db, monkeypatch):
 
 
 async def test_a_pure_tool_history_keeps_the_header_and_the_newest(db, monkeypatch):
-    """The ABC-4 case: 60 rounds of nothing but tool calls, without a single user or system
+    """The runaway case: 60 rounds of nothing but tool calls, without a single user or system
     message in between. Formerly the truncation only knew "everything" here: the history down
     to three messages, the agent without memory, starting from the front and writing not a line of code in two runs."""
     async def fake_aux(*a, **kw):
@@ -164,7 +164,7 @@ async def test_a_pure_tool_history_keeps_the_header_and_the_newest(db, monkeypat
 
 async def test_the_handover_carries_the_thread_on(db, monkeypatch):
     """The continuation gets insights, what is done and the next step, not the last sentence.
-    ABC-12 began three runs in a row with the same search query on 2026-08-07, because the
+    One ticket began three runs in a row with the same search query on 2026-08-07, because the
     handover consisted of "time limit reached … (no text)"."""
     seen = []
 

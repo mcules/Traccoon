@@ -61,7 +61,7 @@ export default function Account() {
   );
 }
 
-/** Presentation of the PM chat; applies globally across all projects (ABC-21). */
+/** Presentation of the PM chat; applies globally across all projects. */
 function PmChatStylePanel() {
   const { user, refresh } = useAuth();
   const current = user?.pm_chat_style === "cli" ? "cli" : "bubbles";

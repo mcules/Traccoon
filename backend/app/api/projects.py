@@ -49,7 +49,7 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
         ("To Do", StatusCategory.todo),
         ("In Progress", StatusCategory.in_progress),
         ("Waiting", StatusCategory.in_progress),
-        # Test environment flow (ABC-18): a finished implementation waits here for acceptance.
+        # Test environment flow: a finished implementation waits here for acceptance.
         ("Testing", StatusCategory.in_progress),
         ("Done", StatusCategory.done),
     ]

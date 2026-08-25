@@ -1,4 +1,4 @@
-"""Lifecycle of the test environments (ABC-18), the parts checkable without Docker: the
+"""Lifecycle of the test environments, the parts checkable without Docker: the
 board column "testing", the 409 lock against the direct jump to "done", and that `/complete`
 sets no "done" without a clean merge.
 """

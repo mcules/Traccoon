@@ -1,4 +1,4 @@
-"""Testumgebungs-Lebenszyklus: Projekt-Settings + branch_testenvs (ABC-18)
+"""Testumgebungs-Lebenszyklus: Projekt-Settings + branch_testenvs
 
 Revision ID: f4b9d2e60a18
 Revises: e2c8b5d31f47

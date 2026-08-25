@@ -180,7 +180,7 @@ async def test_a_finished_run_does_not_touch_the_state(db):
 async def test_a_stale_column_is_pulled_along(db):
     """The state can be right and the COLUMN still stand wrongly.
 
-    ABC-32 on 2026-08-07: the ticket was continued out of the disturbance branch, the agent
+    On 2026-08-07 a ticket was continued out of the disturbance branch, the agent
     ran with `in_progress`, and the board column stayed on "waiting" because it was set while
     parking and never touched again. A reconciliation that only checks `agent_status` sees nothing wrong.
     """

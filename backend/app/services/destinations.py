@@ -33,7 +33,7 @@ METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 BODYLESS = ("GET", "HEAD", "DELETE", "OPTIONS")
 AUTH_TYPES = ("none", "basic", "bearer", "api_key", "hmac", "oauth2_cc")
 # Fallback when a destination carries no limit of its own. The authoritative limit has stood
-# on the destination since ABC-31 (`Destination.max_response_chars`).
+# on the destination (`Destination.max_response_chars`).
 MAX_RESPONSE_CHARS = 4000
 # Renew the access token this long before the real expiry (clock drift, runtime).
 TOKEN_SKEW_SECONDS = 60
@@ -221,7 +221,7 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
         "ok": 200 <= resp.status_code < 300,
     }
     text = resp.text or ""
-    # The limit comes from the destination (ABC-31). It stands in the result as well, so that
+    # The limit comes from the destination. It stands in the result as well, so that
     # the caller does not truncate a second time and thereby revoke the permission again.
     limit = dest.max_response_chars or MAX_RESPONSE_CHARS
     result["max_chars"] = limit

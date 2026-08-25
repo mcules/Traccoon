@@ -209,7 +209,7 @@ export default function StartConfig({
             />
             <span className="mt-1 block">
               {tr(subjectKind === "issue"
-                ? "start_config.ticket_key_tra_31" : "start_config.number_item")}{" "}
+                ? "start_config.ticket_key_or_number" : "start_config.number_item")}{" "}
               {tr("start_config.without_flow_does_not")}
             </span>
           </label>

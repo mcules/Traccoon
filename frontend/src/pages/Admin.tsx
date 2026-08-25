@@ -171,7 +171,7 @@ function WorkflowLayout() {
   );
 }
 
-/** Global limits of the test environments, effective at runtime (ABC-18). */
+/** Global limits of the test environments, effective at runtime. */
 function TestenvConfig() {
   const qc = useQueryClient();
   const { data } = useQuery({
@@ -227,7 +227,7 @@ function TestenvConfig() {
   );
 }
 
-/** Retention of archived agent runs (ABC-29). */
+/** Retention of archived agent runs. */
 function RunRetention() {
   const qc = useQueryClient();
   const { data } = useQuery({

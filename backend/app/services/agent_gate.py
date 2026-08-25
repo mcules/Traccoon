@@ -2,7 +2,7 @@
 
 These rules are **policy, not a graph**: they apply to every agent run, no matter how the
 process is drawn. A process designer therefore cannot click them away accidentally (or
-deliberately), which was exactly the lesson of ABC-19 (41 runs, 11.9M input tokens, because
+deliberately), which was exactly the lesson of one runaway (41 runs, 11.9M input tokens, because
 the cap check hung in one place only).
 
 Origin: lifted one to one out of `dispatcher._gate_ok` and the runaway and warning block in

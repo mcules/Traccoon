@@ -171,7 +171,7 @@ export interface Project {
   id: number; key: string; name: string; description: string;
   parent_id?: number | null; inherit_members?: boolean;
   managed: boolean; pm_chat_enabled: boolean; has_hardware: boolean; git_enabled?: boolean;
-  testenv_enabled?: boolean;   // Testumgebungs-Schritt vor „Fertig“ (ABC-18)
+  testenv_enabled?: boolean;   // Testumgebungs-Schritt vor „Fertig“
   my_role: string; my_ai_assign: boolean; my_role_inherited?: boolean;
   is_member: boolean; is_new: boolean;
 }

@@ -2,7 +2,7 @@
 
 Docker sends SIGTERM on a restart and kills after the grace period. Without a handler the
 worker died immediately, together with every run that was working. The follow-up rescues the
-assignment, not the conversation: ABC-31 lost almost 40 turns twice on 2026-08-07, both
+assignment, not the conversation: one ticket lost almost 40 turns twice on 2026-08-07, both
 times through a deploy by hand.
 
 It cannot be solved completely: a run may take hours, and a deploy must not wait hours. The

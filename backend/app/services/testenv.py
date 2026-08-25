@@ -1,6 +1,6 @@
 """Test environments: port allocation (Redis SET) plus the deployer as the runner.
 
-Two variants (ABC-18), with identical build mechanics:
+Two variants, with identical build mechanics:
   * ticket test environment: state in fields on the `Issue`, container `test-<ticket-id>`
   * branch test environment: state in `branch_testenvs`, container `test-b<env-id>`
 

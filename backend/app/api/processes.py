@@ -354,7 +354,7 @@ async def trigger(
         if d.id in with_trigger or not d.current_version_id:
             continue
         out.append(TriggerOut(**header(d), kind="manual", source="",
-                                label="Nur manuell bzw. aus dem Programm",
+                                label="Only manually or out of the program",
                                 enabled=bool(d.enabled)))
 
     return sorted(out, key=lambda a: (a.kind != "event", a.definition_name, a.label))

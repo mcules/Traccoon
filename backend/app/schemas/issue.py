@@ -17,7 +17,7 @@ class IssueCreate(BaseModel):
     parent_id: int | None = None
     sprint_id: int | None = None
     story_points: int | None = None
-    asset_id: int | None = None     # Hardware-Bezug (ABC-25)
+    asset_id: int | None = None     # Hardware-Bezug
 
 
 class IssueUpdate(BaseModel):
@@ -30,7 +30,7 @@ class IssueUpdate(BaseModel):
     parent_id: int | None = None
     sprint_id: int | None = None
     story_points: int | None = None
-    asset_id: int | None = None     # Hardware-Bezug (ABC-25)
+    asset_id: int | None = None     # Hardware-Bezug
 
 
 class AssignAgentIn(BaseModel):

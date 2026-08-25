@@ -231,7 +231,7 @@ export default function Hardware({ project }: { project: Project }) {
   );
 }
 
-/** Tickets that hang off this unit (ABC-25), the opposite direction to the hardware field in the ticket. */
+/** Tickets that hang off this unit, the opposite direction to the hardware field in the ticket. */
 function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: string }) {
   const navigate = useNavigate();
   const { data } = useQuery({

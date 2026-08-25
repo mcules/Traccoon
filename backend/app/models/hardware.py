@@ -95,7 +95,7 @@ class HardwareWorkflowStep(Base):
     workflow_id: Mapped[int] = mapped_column(ForeignKey("hardware_workflows.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     order: Mapped[int] = mapped_column(Integer, default=0)
-    # Who is responsible for this step (ABC-26)? Same shape as the workflow AssigneeSpec.
+    # Who is responsible for this step? Same shape as the workflow AssigneeSpec.
     # {"mode": user|role|context|reporter, ...}. Empty = nobody prefilled.
     assignee: Mapped[dict] = mapped_column(JSON, default=dict)
 

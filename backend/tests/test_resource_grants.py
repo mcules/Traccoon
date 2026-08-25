@@ -1,5 +1,5 @@
-"""Security relevant paths of the granular grants (ABC-23) and of the project role
-inheritance along the parent_id tree (ABC-22).
+"""Security relevant paths of the granular grants and of the project role
+inheritance along the parent_id tree.
 
 Covers the caretaker case: a user without a project membership sees and manages exclusively
 the pump house granted to them including the masts below it.

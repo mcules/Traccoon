@@ -98,7 +98,7 @@ async def decide_open_approval(
     The assistant operates Traccoon over native tools in the worker, not over the API.
     Without this path `traccoon_approve_plan` only set `agent_status = approved` and left the
     process standing at its approval node: the ticket looked approved and nobody started. The
-    same trap as with the assignment (ABC-32 on 2026-08-07).
+    same trap as with the assignment (seen on 2026-08-07).
 
     Advancing deliberately does NOT happen here: `advance` belongs in the backend process,
     whose 30 s tick finds an active token anyway. An `advance` out of the worker would hang

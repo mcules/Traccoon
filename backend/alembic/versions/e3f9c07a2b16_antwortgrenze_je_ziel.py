@@ -1,4 +1,4 @@
-"""A response limit per destination instead of a flat upper bound (ABC-31)
+"""A response limit per destination instead of a flat upper bound
 
 `MAX_RESPONSE_CHARS = 4000` applied to every destination alike. For counterparts that
 deliberately deliver their state in ONE call that is too little: the GameProj bot API answers

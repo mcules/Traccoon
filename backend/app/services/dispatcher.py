@@ -41,7 +41,7 @@ _AGENT_STATUS_TO_BOARD = {
     TicketAgentStatus.failed: "waiting",
     TicketAgentStatus.hold: "waiting",
     TicketAgentStatus.plan_review: "waiting",
-    # Test environment flow (ABC-18): a column of its own between "in progress" and "done".
+    # Test environment flow: a column of its own between "in progress" and "done".
     # If it is missing in the project, the fallback to "waiting" applies (see sync_board_status).
     TicketAgentStatus.to_test: "testing",
     TicketAgentStatus.testing: "testing",

@@ -1,7 +1,7 @@
 """The approved plan belongs in the execution.
 
 `_process` passed `plan` through to `run_agent`, but it was used only in planning mode: the
-developer worked from the ticket description. With ABC-31 that was a symptom report ("find
+developer worked from the ticket description. On one ticket that was a symptom report ("find
 the cause, evaluate `job_runs`") while the approved plan had long named the cause, with the
 file and the line number. On 2026-08-07 that cost three runs and 155 turns without a line of
 code: the agent worked the finished analysis out a second time itself. The planning phase is

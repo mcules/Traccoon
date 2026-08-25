@@ -43,7 +43,7 @@ async def project_runs_grouped(
     access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session),
     limit: int = 200, archived: bool = False,
 ):
-    """Agent runs grouped by ticket (ABC-29): one group per ticket, the most recent first.
+    """Agent runs grouped by ticket: one group per ticket, the most recent first.
 
     `limit` limits the runs considered (not the groups); when it is reached, `truncated`
     reports that older runs were left out.

@@ -366,7 +366,7 @@ async def delete_asset(
 async def asset_issues(
     asset_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)
 ):
-    """Tickets that hang off this unit (ABC-25), the opposite direction to Issue.asset_id."""
+    """Tickets that hang off this unit, the opposite direction to Issue.asset_id."""
     from ..models.ticket import Issue, WorkflowStatus
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
@@ -435,7 +435,7 @@ async def set_workflow(
                                     assignee=step.assignee or {}))
     await db.commit()
     # If a generic procurement definition already exists, publish a new version from it;
-    # otherwise the process would keep running with the old steps (ABC-26).
+    # otherwise the process would keep running with the old steps.
     from ..services.hardware_workflow import sync_hardware_definition
     await sync_hardware_definition(db, access.project.id, access.user.id)
 
@@ -457,7 +457,7 @@ async def _instantiate_steps(asset: HardwareAsset, db: AsyncSession) -> None:
     ).scalars().all()
     for s in steps:
         # Prefill the responsible person from the template when a concrete user stands there
-        # (role and context assignment is only resolved by the workflow engine), ABC-26.
+        # (role and context assignment is only resolved by the workflow engine).
         spec = s.assignee or {}
         assignee_id = spec.get("user_id") if spec.get("mode") == "user" else None
         db.add(HardwareAssetStep(asset_id=asset.id, name=s.name, order=s.order,

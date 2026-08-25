@@ -1,4 +1,4 @@
-"""Memory of the agents in the Obsidian vault (ABC-30)
+"""Memory of the agents in the Obsidian vault
 
 The agents could keep nothing until now: permanent were only the learned mail rule
 (`assistant_policies.action_hint`) and the learned tool approval. Every rule of the human

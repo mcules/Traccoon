@@ -38,7 +38,7 @@ class AgentDefinition(TimestampMixin, Base):
     allowed_skills: Mapped[list] = mapped_column(JSON, default=list)  # available skill keys
     autoload_skills: Mapped[list] = mapped_column(JSON, default=list) # subset: always in the prompt
     delegate_to: Mapped[list] = mapped_column(JSON, default=list)     # Sub-Agenten-Rollen
-    # Learns (ABC-30): reads the memory from the vault of the owner at the beginning and looks
+    # Learns: reads the memory from the vault of the owner at the beginning and looks
     # back after a successful run in order to file what is permanently valid there. Needs a
     # set User.vault_memory_path; without it nothing happens.
     learns: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -91,7 +91,7 @@ class Run(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Runs follow the ticket (ABC-29): archiving a ticket archives its runs. Archived runs
+    # Runs follow the ticket: archiving a ticket archives its runs. Archived runs
     # disappear from the monitor and are finally deleted after the retention period
     # (AppSetting run_retention_days).
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

@@ -1,4 +1,4 @@
-"""Memory of the agents in the Obsidian vault (ABC-30).
+"""Memory of the agents in the Obsidian vault.
 
 The most important test here is `test_remember_builds_the_target_as_an_object`: the obsidian MCP
 describes `target` as a `oneOf` without a `type`, and older models send a string for it

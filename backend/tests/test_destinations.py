@@ -233,7 +233,7 @@ async def test_a_system_wide_destination_is_admin_only(client, db):
     assert r.status_code == 403
 
 
-# ── Antwortgrenze je Ziel (ABC-31) ───────────────────────────────────────────
+# ── Antwortgrenze je Ziel ───────────────────────────────────────────
 
 LARGE_ANSWER = json.dumps({"lage": "z" * 9000})
 

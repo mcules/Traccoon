@@ -1,4 +1,4 @@
-"""Ticket zu Hardware: issues.asset_id (ABC-25)
+"""Ticket zu Hardware: issues.asset_id
 
 Revision ID: b5e2a7c31d08
 Revises: a3d7c9b12f56

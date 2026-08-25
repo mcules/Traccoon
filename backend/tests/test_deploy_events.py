@@ -96,7 +96,7 @@ async def deploy_steps(db, run_id: int) -> list[RunStep]:
 # ── Idempotenz ───────────────────────────────────────────────────────────────
 
 async def test_watching_twice_tells_it_once(db):
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     run = await make_run(db, issue=issue, status="running")
     dep = await deployment(db, issue_id=issue.id, project_id=project.id, status="building")
@@ -142,7 +142,7 @@ def test_states_for(announced, status, expected):
 async def test_the_anchor_for_an_agent_tool_is_the_waiting_run(db):
     """`worktree <> ''` means: an agent called `deploy` and is waiting inline. The row
     belongs to ITS run, not to the most recent one, which may long be a review."""
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     waiting = await make_run(db, issue=issue, status="running")
     younger = await make_run(db, issue=issue, status="success", agent="reviewer")
@@ -157,7 +157,7 @@ async def test_the_anchor_for_an_agent_tool_is_the_waiting_run(db):
 async def test_the_anchor_for_a_merge_is_the_newest_run(db):
     """Without a worktree no agent waited (merge, workflow), and then the most recent run of
     the ticket tells it, because it is the one the room is showing right now."""
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     older = await make_run(db, issue=issue, status="running")
     younger = await make_run(db, issue=issue, status="success", agent="reviewer")
@@ -174,7 +174,7 @@ async def test_a_maintenance_update_raises_no_event(db, no_redis):
     supplies the stage: the WebSocket falls in the middle of the animation, and the process
     that would draw it dies of it. Animating a process that kills the animator is a category
     error; these rows live in the list, not in the room."""
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     run = await make_run(db, project=project)           # there WOULD be a run to hang it off
     dep = await deployment(db, project_id=project.id, self_deploy=True, stack_dir="",
                            source="maintenance", status="building")
@@ -190,7 +190,7 @@ async def test_a_maintenance_update_raises_no_event(db, no_redis):
 async def test_no_event_without_a_run(db):
     """A ticket without a single run has no anchor. Better a gap than a row in a run that has
     nothing to do with the deploy."""
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     await deployment(db, issue_id=issue.id, project_id=project.id, status="ok")
     assert await dw.tick(db) == 0
@@ -199,7 +199,7 @@ async def test_no_event_without_a_run(db):
 async def test_existing_stock_stays_silent(db):
     """The 186 existing rows have `announced_status=''` and would otherwise all be "new": the
     first beat would tell three months of history as if it had just happened."""
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     run = await make_run(db, issue=issue)
     await deployment(db, issue_id=issue.id, project_id=project.id, status="ok",
@@ -211,7 +211,7 @@ async def test_existing_stock_stays_silent(db):
 async def test_a_started_story_is_told_to_its_end(db):
     """The opening was told, the outcome only after a long backend outage: the window must
     not drop the row now, because otherwise the rack would stay building forever."""
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     run = await make_run(db, issue=issue, status="running")
     await deployment(db, issue_id=issue.id, project_id=project.id, status="ok",
@@ -234,7 +234,7 @@ async def test_deployment_finished_fires_once(db, monkeypatch):
 
     monkeypatch.setattr(eventsmod, "emit", fake_emit)
 
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     await make_run(db, issue=issue, status="running")
     dep = await deployment(db, issue_id=issue.id, project_id=project.id, status="building")
@@ -266,7 +266,7 @@ async def test_deployment_finished_even_without_a_stage(db, monkeypatch):
 
     monkeypatch.setattr(eventsmod, "emit", fake_emit)
 
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     await deployment(db, project_id=project.id, self_deploy=True, stack_dir="",
                      source="maintenance", status="ok")
     await dw.tick(db)
@@ -335,7 +335,7 @@ def test_stock_without_a_showable_status_stays_silent(status):
 
 async def test_the_api_shows_a_stock_deployment_in_its_place(client, db):
     user = await make_user(db, "anna", admin=True)
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     run = await make_run(db, issue=issue)
     lines = await steps(db, run, 3)
@@ -360,7 +360,7 @@ async def test_the_api_shows_a_stock_deployment_in_its_place(client, db):
 async def test_the_api_does_not_tell_it_twice(client, db):
     """What the watcher wrote as a real row is not borrowed a second time."""
     user = await make_user(db, "anna", admin=True)
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     run = await make_run(db, issue=issue, status="running")
     await steps(db, run, 2)
@@ -376,7 +376,7 @@ async def test_the_api_does_not_tell_it_twice(client, db):
 # ── The live path ────────────────────────────────────────────────────────────
 
 async def test_the_watcher_sends_into_the_channel(db, no_redis):
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     await make_run(db, issue=issue, status="running")
     await deployment(db, issue_id=issue.id, project_id=project.id, status="building")
@@ -394,7 +394,7 @@ async def test_the_publish_step_swallows_a_redis_outage(db, monkeypatch):
             raise RuntimeError("Redis weg")
 
     monkeypatch.setattr(redismod, "get_redis", lambda: _Dead())
-    project = await make_project(db, "TRA", "Traccoon")
+    project = await make_project(db, "ABC", "A project")
     issue = await ticket(db, project)
     run = await make_run(db, issue=issue, status="running")
     await deployment(db, issue_id=issue.id, project_id=project.id, status="building")

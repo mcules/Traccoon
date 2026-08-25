@@ -1,4 +1,4 @@
-"""Test environment for an arbitrary branch (ABC-18).
+"""Test environment for an arbitrary branch.
 
 Ticket test environments live in fields on the `Issue` (testenv_status/url/container/port/error);
 there is no carrier for freely chosen branches, hence this table. It holds only active

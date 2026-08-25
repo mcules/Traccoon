@@ -572,7 +572,7 @@ async def update_workflow(
     if data.name is not None:
         name = data.name.strip()
         if not name:
-            raise Error(400, "err.name_required", "Der Ablauf braucht einen Namen")
+            raise Error(400, "err.name_required", "The flow needs a name")
         d.name = name
     if data.key is not None:
         await _key_set(db, d, data.key)

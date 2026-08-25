@@ -33,7 +33,7 @@ BASIS = [
 # What a trigger brings along. Key = event name (see events.BUILTIN_EVENTS).
 TRIGGER: dict[str, list[dict]] = {
     "issue.created": [
-        _f("issue.key", "text", "ctx.ticket_key_e_g_tra_31"),
+        _f("issue.key", "text", "ctx.ticket_key_example"),
         _f("issue.summary", "text", "ctx.title_ticket"),
         _f("issue.type", "text", "ctx.kind_process"),
         _f("issue.reporter_id", "number", "ctx.who_reported_it"),

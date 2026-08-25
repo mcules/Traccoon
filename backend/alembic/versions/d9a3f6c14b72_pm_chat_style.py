@@ -1,4 +1,4 @@
-"""PM-Chat-Darstellung je Nutzer: users.pm_chat_style (ABC-21)
+"""PM-Chat-Darstellung je Nutzer: users.pm_chat_style
 
 Revision ID: d9a3f6c14b72
 Revises: c7f1b4e29a35

@@ -96,7 +96,7 @@ async def test_the_hourly_ceiling_holds(client, db):
 
 @pytest.mark.asyncio
 async def test_a_report_becomes_a_ticket_and_says_so(client, db, helpers):
-    project = await helpers.make_project(db, "AFU", "other.example")
+    project = await helpers.make_project(db, "ABC", "A project")
     await make_board(db, project)
     person = await helpers.make_user(db, "chef", admin=True)
     _, token = await make_source(db, project=project)
@@ -121,7 +121,7 @@ async def test_without_rights_no_ticket_in_a_foreign_project(client, db, helpers
     """A project one has no part in does not even exist: that is the house rule of
     `build_access` (strict isolation, a 404 instead of a 403), and a report must not become a
     keyhole into it."""
-    project = await helpers.make_project(db, "AFU", "other.example")
+    project = await helpers.make_project(db, "ABC", "A project")
     await make_board(db, project)
     stranger = await helpers.make_user(db, "fremd")
     _, token = await make_source(db, project=project)

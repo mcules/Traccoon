@@ -1,4 +1,4 @@
-"""Agent runs can be archived: runs.archived/archived_at (ABC-29)
+"""Agent runs can be archived: runs.archived/archived_at
 
 Revision ID: c7f1b4e29a35
 Revises: b5e2a7c31d08

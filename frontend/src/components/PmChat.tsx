@@ -13,7 +13,7 @@ export default function PmChat({ project }: { project: Project }) {
   const [text, setText] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-  // The presentation is a user setting (profile) and applies across projects (ABC-21).
+  // The presentation is a user setting (profile) and applies across projects.
   const { user } = useAuth();
   const cli = user?.pm_chat_style === "cli";
 

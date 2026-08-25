@@ -69,7 +69,7 @@ export default function TicketDrawer({
     queryFn: () => api.get<IssueCosts>(`/issues/${issueKey}/costs`),
     refetchInterval: 10000,
   });
-  // Hardware reference (ABC-25): load units and model names only in hardware projects.
+  // Hardware reference: load units and model names only in hardware projects.
   const hwAssets = useQuery({
     queryKey: ["hw-assets", project.id],
     queryFn: () => api.get<{ id: number; model_id: number; serial_number: string | null }[]>(
@@ -155,7 +155,7 @@ export default function TicketDrawer({
     });
   };
 
-  // Buffered editing: changes are taken over only on a click on "save" (ABC-2).
+  // Buffered editing: changes are taken over only on a click on "save".
   const [draft, setDraft] = useState<Draft | null>(null);
   const seed = (i: Issue): Draft => ({
     summary: i.summary, description: i.description || "", priority: i.priority,
@@ -614,7 +614,7 @@ export default function TicketDrawer({
     </div>
   );
 
-  // Person assignment, independent of the AI processing (ABC-20)
+  // Person assignment, independent of the AI processing
   const bPerson = (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <label className="text-xs text-muted">Zugewiesen an
@@ -649,7 +649,7 @@ export default function TicketDrawer({
     </div>
   );
 
-  // Hardware reference (ABC-25): hang the ticket off a unit of the project.
+  // Hardware reference: hang the ticket off a unit of the project.
   const bHardware = project.has_hardware && (
     <div className="mb-3 rounded-lg border border-line p-3">
       <div className="mb-2 text-sm font-medium">{tr("ticket_drawer.hardware")}</div>

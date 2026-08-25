@@ -1,6 +1,6 @@
 """Following up while it still helps.
 
-On 2026-08-07 ABC-12 read around 190 files in three runs and wrote not a line. Tools and
+On 2026-08-07 one ticket read around 190 files in three runs and wrote not a line. Tools and
 rights were there and no call failed; the agent simply never got to the point. The only
 reminder in the run came at round 78 of 80, long after the time was gone. These tests record
 when and how following up happens earlier.

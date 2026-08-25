@@ -111,7 +111,7 @@ async def test_visible_people(client, db):
     foreign = await make_user(db, "fremder")
     placeholder = await make_user(db, "platzhalter")
     placeholder.status = UserStatus.placeholder
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     await add_member(db, p, anna, ProjectRole.owner)
     await add_member(db, p, colleague, ProjectRole.member)
     await db.commit()

@@ -84,7 +84,7 @@ async def test_two_sessions_yield_one_ascending_sequence(db):
     into being under parallel workers. If a block of its own came out per session, the
     figures in the film would jump back and forth.
     """
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     a = await make_run(db, issue=await ticket(db, p, 1, "Erstes"))
     b = await make_run(db, issue=await ticket(db, p, 2, "Zweites"))
     for i, run in enumerate((a, b, a, b)):
@@ -112,7 +112,7 @@ async def test_consecutive_runs_do_not_collide_on_the_same_seq(db):
     recorder deduplicates over `seq` and would discard the second event, so an agent would
     never come in or never leave, without a single error message.
     """
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     last = None
     for n in range(1, 6):
         r = await make_run(db, issue=await ticket(db, p, n),
@@ -141,7 +141,7 @@ async def test_a_run_before_the_window_clamps_the_start_to_the_window_begin(db):
     the HUD clock in the opening would show the previous day, and the error would look like
     an engine bug.
     """
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     r = await make_run(db, issue=await ticket(db, p, 1),
                    start=FROM - dt.timedelta(hours=4), end=MITTAG)
     await step(db, r, when=MITTAG)
@@ -157,7 +157,7 @@ async def test_a_run_before_the_window_clamps_the_start_to_the_window_begin(db):
 
 async def test_a_start_inside_the_window_stays_untouched(db):
     """Only what lies outside is clamped; otherwise every run would begin at midnight."""
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     r = await make_run(db, issue=await ticket(db, p, 1), start=MITTAG, end=MITTAG + dt.timedelta(minutes=5))
     await step(db, r, when=MITTAG + dt.timedelta(minutes=1))
 
@@ -172,7 +172,7 @@ async def test_a_run_past_the_window_loses_its_end(db):
     producing: beforehand it is not even settled whether a boundary comes into being (a
     running run gets none). The run in the window beside it keeps its own.
     """
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     over = await make_run(db, issue=await ticket(db, p, 1), start=MITTAG,
                        end=TO + dt.timedelta(hours=9))
     inside = await make_run(db, issue=await ticket(db, p, 2), start=MITTAG,
@@ -190,7 +190,7 @@ async def test_a_run_past_the_window_loses_its_end(db):
 
 async def test_steps_outside_the_window_are_missing(db):
     """The window cuts the steps, not the runs."""
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     r = await make_run(db, issue=await ticket(db, p, 1), start=FROM - dt.timedelta(days=1),
                    end=MITTAG)
     await step(db, r, when=FROM - dt.timedelta(hours=2), text="gestern")
@@ -204,7 +204,7 @@ async def test_steps_outside_the_window_are_missing(db):
 
 async def test_the_balance_counts_failures_questions_and_cost(db):
     """Failure and question are two things: an open question is not a failure."""
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     bad = await make_run(db, issue=await ticket(db, p, 1), status="failed")
     question = await make_run(db, issue=await ticket(db, p, 2), status="blocked")
     good = await make_run(db, issue=await ticket(db, p, 3), status="success")
@@ -356,7 +356,7 @@ async def test_the_film_is_built_and_stored_as_media(db, filmer, monkeypatch, tm
     """The good case: a GIF on disk, the caption on the notification, media kind `animation`
     (not `video`, not `photo`: Telegram shows only those as an animation)."""
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     r = await make_run(db, issue=await ticket(db, p, 412, "Büro aufräumen"))
     await step(db, r)
     job, jr = await film_job(db)
@@ -395,7 +395,7 @@ async def test_an_unreachable_filmer_does_not_topple_the_tick(db, filmer, monkey
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
     monkeypatch.setattr(of, "_window", lambda opt: (FROM, TO))
     filmer["fehler"] = httpx.ConnectError("Verbindung abgelehnt")
-    p = await make_project(db, "TRA", "Traccoon")
+    p = await make_project(db, "ABC", "A project")
     await step(db, await make_run(db, issue=await ticket(db, p, 1)))
     await film_job(db)
 

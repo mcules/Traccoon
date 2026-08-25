@@ -97,7 +97,7 @@ class TestenvConfigIn(BaseModel):
 
 @router.get("/admin/testenv-config")
 async def get_testenv_config(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """Global limits of the test environments, effective at runtime with no restart needed (ABC-18)."""
+    """Global limits of the test environments, effective at runtime with no restart needed."""
     from ..services.testenv import get_config
     return await get_config(db)
 
@@ -137,7 +137,7 @@ class RunRetentionIn(BaseModel):
 
 @router.get("/admin/run-retention")
 async def get_run_retention(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """How many days archived agent runs are kept (ABC-29)."""
+    """How many days archived agent runs are kept."""
     from ..services.scheduler import RUN_RETENTION_DEFAULT, RUN_RETENTION_KEY
     raw = await get_setting(db, RUN_RETENTION_KEY, str(RUN_RETENTION_DEFAULT))
     return {"days": int(raw) if raw.isdigit() else RUN_RETENTION_DEFAULT}

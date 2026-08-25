@@ -48,9 +48,9 @@ WHISPER_URL = os.getenv("WHISPER_URL", "http://whisper:9000")
 # First choice: Qwen3-ASR on the integrated GPU (llama.cpp/Vulkan). Not a pure transcriber but
 # a language model with audio input: it understands proper names you name in the prompt instead
 # of merely brushing them. Measured on this host on 2026-08-07, 7 s of German speech:
-#   faster-whisper (CPU, large-v3-turbo)  3,1 s  „ABC-31 in Traccoon"      ✅
-#   whisper.cpp    (GPU, large-v3-turbo)  0,7 s  „ABC-31 in Trakong"       ✗
-#   Qwen3-ASR      (GPU, 1.7B Q8_0)       0,5 s  „ABC-31 in Traccoon"      ✅
+#   faster-whisper (CPU, large-v3-turbo)  3.1 s  "ABC-31 in Traccoon"      ok
+#   whisper.cpp    (GPU, large-v3-turbo)  0.7 s  "ABC-31 in Trakong"       wrong
+#   Qwen3-ASR      (GPU, 1.7B Q8_0)       0.5 s  "ABC-31 in Traccoon"      ok
 # Empty means off, and then everything runs through Whisper as before.
 ASR_URL = os.getenv("ASR_URL", "").strip().rstrip("/")
 # Ten minutes as the default limit: longer is unusual on a phone and would block the CPU
@@ -81,7 +81,7 @@ _vocabulary_cache: tuple[float, str] = (0.0, "")
 async def _vocabulary() -> str:
     """The proper names of this house, from the database instead of a maintained list.
 
-    Whisper hears "Trakon" instead of "Traccoon" and "Terra 1 and 30" instead of "ABC-31",
+    Whisper hears "Trakon" instead of "Traccoon" and "Terra 1 and 30" instead of a ticket key,
     because no language model can know these words. One has to tell it, but nobody should have
     to maintain a list for that: projects, ticket prefixes, agent roles and people are in the
     database already, and a new project brings its word along by itself.
@@ -272,7 +272,7 @@ async def _transcribe(audio: bytes, mediakind: str = "voice",
                 # Whisper takes `initial_prompt` as priming text and aligns its word
                 # expectations with it. For proper names that is THE lever, measured on this
                 # host on 2026-08-07 with the same sentence and the same model:
-                #   with:    "Ticket ABC-31 in Traccoon … Digest … GameProj"
+                #   with:    "Ticket ABC-31 in Traccoon … Digest … a game"
                 params["initial_prompt"] = vocabulary
             # A technical error (unreachable, rejected format, 4xx/5xx) is NOT caught but
             # passed through to the caller: a second attempt would only repeat the same error
@@ -712,12 +712,15 @@ async def run_bot() -> None:
                                    agent=name)
         await m.answer("\U0001f6f0 \u2026")
 
-    # ── Unterhaltungen (Sessions) ────────────────────────────────────────────
+    # ── Conversations (sessions) ─────────────────────────────────────────────
     #
-    # Eine Chat-Nachricht traegt keinen Parameter, deshalb merkt sich der Bot ueber den
-    # Zeiger (`assistant_channel_sessions`, Kanal `telegram`), in welcher Unterhaltung er
-    # steht. Laden heisst genau das: den Zeiger schreiben, sonst nichts. Jede folgende
-    # Nachricht dieser Person landet dort, bis eine andere geladen wird.
+    # A chat message carries no parameter, so the bot remembers over the pointer
+    # (`assistant_channel_sessions`, channel `telegram`) which conversation it is standing
+    # in. Loading means exactly that: write the pointer, nothing else. Every following
+    # message of this person lands there until another one is loaded.
+    #
+    # The replies below stay German on purpose: they are what a person reads in their
+    # messenger, and the bot has no message catalog of its own yet.
 
     def _session_kb(rows, current_id: int | None) -> InlineKeyboardMarkup:
         buttons = []
@@ -773,7 +776,7 @@ async def run_bot() -> None:
 
     @dp.message(Command("neu"))
     async def _session_new(m: Message):
-        """Anlegen und laden in einem Schritt."""
+        """Create and load in one step."""
         if not await _allowed(m.from_user.id):
             return
         parts = (m.text or "").split(maxsplit=1)
@@ -804,8 +807,8 @@ async def run_bot() -> None:
                 await m.answer("Gerade ist keine Unterhaltung geladen.")
                 return
             await sessions.close(db, s)
-            # Den Zeiger mit loesen: sonst schriebe die naechste Nachricht weiter in die
-            # geschlossene hinein, und "schliessen" haette nichts geschlossen.
+            # Release the pointer as well: otherwise the next message would carry on
+            # writing into the closed one, and "close" would have closed nothing.
             await sessions.load(db, user.id, "telegram", None)
             line = await _session_line(s)
         await m.answer(f"\U0001f512 Geschlossen. {line}\n"
@@ -981,7 +984,7 @@ async def run_bot() -> None:
                     await cq.answer("already decided")
                     await _done(cq, "⏭ already decided")
             elif data.startswith("sess:"):
-                # Tippen laedt. Mehr passiert hier nicht: der Zeiger IST das Laden.
+                # Tapping loads. Nothing more happens here: the pointer IS the loading.
                 user = await _acting_user(db, cq.from_user.id)
                 s = await sessions.get_owned(db, int(data.split(":", 1)[1]),
                                              user.id if user else None)
