@@ -2964,5 +2964,6 @@
   "mail.headers_hint": "Everything the mail says about its way here: stations, check results, filter verdicts.",
   "mail.headers_unreadable": "Headers not readable",
   "mail.copy_all": "Copy all",
-  "mail.one_attachment": "1 attachment"
+  "mail.one_attachment": "1 attachment",
+  "mail.ran_already": "'{name}' ran on {date} (run {id}). A second run makes a second document."
 }

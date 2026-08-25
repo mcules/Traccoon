@@ -37,6 +37,9 @@ interface Message {
   counters: number;
   /** Was this already decided for this sender? Then nothing is asked and nothing is blocked. */
   images_allowed: boolean;
+  /** Which actions have already run on this mail, and on which attachment. */
+  runs: { definition_id: number; instance_id: number; attachment: number | null;
+          status: string; when: string }[];
   attachments: Attachment[]; seen: boolean; flagged: boolean;
 }
 interface ImageRule { id: number; kind: "sender" | "domain" | "all"; value: string }
@@ -1160,18 +1163,21 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
     qc.invalidateQueries({ queryKey: ["mail-unread"] });
   };
   const bulk = useMutation({
-    mutationFn: (v: { action: string; target?: string; flag?: string; on?: boolean }) =>
+    // The numbers travel WITH the call, they are not read out of the surroundings. `onMutate`
+    // empties the selection, React draws again, and the mutation gets fresh options — with an
+    // empty `chosen` in them. What went to the server was therefore a request about nothing,
+    // and the answer was an honest "done: 0".
+    mutationFn: (v: { action: string; uids: number[]; target?: string; flag?: string;
+                       on?: boolean }) =>
       api.post<{ done: number }>(`/mailbox/accounts/${accountId}/messages/bulk`,
-                                  { folder: folder, uids: chosen, ...v }),
+                                  { folder: folder, ...v }),
     // Thirty ticked mails vanish at the click, not when the server has worked through them.
     // Only marking as read stays: those rows do not leave, they only change, and the check
     // right afterwards brings the change.
     onMutate: (v) => {
-      const taken = chosen;
-      if (v.action !== "flag") takeOut(qc, folder, taken);
+      if (v.action !== "flag") takeOut(qc, folder, v.uids);
       onChosen([]);
       setAnchor(null);
-      return { taken };
     },
     onSuccess: after,
     onError: (e) => {
@@ -1237,19 +1243,19 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
         {chosen.length > 0 && (
           <div className="flex w-full flex-wrap items-center gap-2">
             <Tag color="brand">{tr("mail.n_chosen", { n: chosen.length })}</Tag>
-            <Rowbutton onClick={() => bulk.mutate({ action: "flag", flag: "\\Seen", on: true })}>
+            <Rowbutton onClick={() => bulk.mutate({ action: "flag", uids: chosen, flag: "\\Seen", on: true })}>
               {tr("mail.mark_read_short")}
             </Rowbutton>
-            <Rowbutton onClick={() => bulk.mutate({ action: "flag", flag: "\\Seen", on: false })}>
+            <Rowbutton onClick={() => bulk.mutate({ action: "flag", uids: chosen, flag: "\\Seen", on: false })}>
               {tr("mail.mark_unread_short")}
             </Rowbutton>
             {archivable && (
-              <Rowbutton onClick={() => bulk.mutate({ action: "archive" })}>
+              <Rowbutton onClick={() => bulk.mutate({ action: "archive", uids: chosen })}>
                 {tr("mail.archive_button")}
               </Rowbutton>
             )}
             <Rowbutton onClick={() => setMoveOpen(true)}>{tr("mail.move_button")}</Rowbutton>
-            <Rowbutton danger onClick={() => bulk.mutate({ action: "delete" })}>
+            <Rowbutton danger onClick={() => bulk.mutate({ action: "delete", uids: chosen })}>
               {tr("mail.delete_3")}
             </Rowbutton>
             <div className="flex-1" />
@@ -1291,7 +1297,7 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
 
       {moveOpen && (
         <FolderChoice accountId={accountId} without={folder} onClose={() => setMoveOpen(false)}
-          onChoose={(target) => { setMoveOpen(false); bulk.mutate({ action: "move", target }); }} />
+          onChoose={(target) => { setMoveOpen(false); bulk.mutate({ action: "move", uids: chosen, target }); }} />
       )}
     </Area>
   );
@@ -1553,8 +1559,9 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   // "This one time": belongs to THIS mail, so the next one asks again. A kept answer is a
   // different thing and lives on the server.
   const [thisTime, setThisTime] = useState(false);
-  // Attachments open when there are few. A newsletter that ships a dozen files would
-  // otherwise push the mail itself off the screen, and one comes here for the mail.
+  // One attachment stands open, from the second on the list is folded: a mail with a handful
+  // of files would otherwise push the mail itself off the screen, and one comes here for the
+  // mail.
   const [clipsOpen, setClipsOpen] = useState(true);
   const [headOpen, setHeadOpen] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -1636,14 +1643,18 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   }, [error]);
 
   const start = useMutation({
-    mutationFn: (v: { definition_id: number; attachment?: number; all?: boolean }) =>
+    mutationFn: (v: { definition_id: number; attachment?: number; attachments?: number[];
+                       all?: boolean }) =>
       api.post<{ instance_id: number; runs: { instance_id: number }[] }>(
         `${basis}/action`, { ...v, folder: folder }),
     // One run per file: the message says how many were started, not which. The details
     // stand in the flows, and twenty numbers here would be no news but a wall.
-    onSuccess: (r) => setRun((r.runs?.length || 1) > 1
-      ? tr("mail.runs_started", { n: r.runs.length })
-      : tr("mail.run_started", { id: r.instance_id })),
+    onSuccess: (r) => {
+      setRun((r.runs?.length || 1) > 1 ? tr("mail.runs_started", { n: r.runs.length })
+                                        : tr("mail.run_started", { id: r.instance_id }));
+      // Damit der Knopf sofort weiß, dass er getan hat, was er tun sollte.
+      qc.invalidateQueries({ queryKey: ["mail-message"] });
+    },
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.action_failed")),
   });
 
@@ -1675,7 +1686,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   // list, and the next sender would get what the previous one was granted.
   useEffect(() => { setThisTime(false); }, [uid, folder, accountId]);
   useEffect(() => {
-    setClipsOpen((m?.attachments.length ?? 0) <= 3);
+    setClipsOpen((m?.attachments.length ?? 0) <= 1);
   }, [uid, folder, accountId, m?.attachments.length]);
   useEffect(() => {
     if (!m || m.seen) return;
@@ -1839,12 +1850,20 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               {/* The same action over all files at once. Only from the second attachment on:
                   with one file the row below it says the same thing, and two buttons for one
                   click are one too many. */}
-              {forAttachment.length > 0 && m.attachments.length > 1 && forAttachment.map((act) => (
-                <Rowbutton key={act.definition_id} title={act.description}
-                  onClick={() => start.mutate({ definition_id: act.definition_id, all: true })}>
-                  {act.name}
-                </Rowbutton>
-              ))}
+              {forAttachment.length > 0 && m.attachments.length > 1 && forAttachment.map((act) => {
+                // Over all of them only makes sense while there is something left over: with
+                // every file already filed the button would be a way to file them twice.
+                const open_ones = m.attachments.filter((a) => !(m.runs || []).some((r) =>
+                  r.definition_id === act.definition_id && r.attachment === a.index));
+                if (!open_ones.length) return null;
+                return (
+                  <Rowbutton key={act.definition_id} title={act.description}
+                    onClick={() => start.mutate({ definition_id: act.definition_id,
+                                                    attachments: open_ones.map((a) => a.index) })}>
+                    {act.name} ({open_ones.length})
+                  </Rowbutton>
+                );
+              })}
             </div>
             {clipsOpen && (
             <Listing>
@@ -1858,13 +1877,26 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                       title={tr("mail.view")}>
                       {tr("mail.view")}
                     </Rowbutton>
-                    {forAttachment.map((act) => (
-                      <Rowbutton key={act.definition_id}
-                        onClick={() => start.mutate({ definition_id: act.definition_id,
-                                                        attachment: a.index })}>
-                        {act.name}
-                      </Rowbutton>
-                    ))}
+                    {forAttachment.map((act) => {
+                      // An action that files a document is not one to press twice: the second
+                      // time makes a second document, and nobody notices until they tidy up.
+                      const ran = (m.runs || []).find((r) =>
+                        r.definition_id === act.definition_id && r.attachment === a.index);
+                      return ran ? (
+                        <Tag key={act.definition_id} color="green"
+                          title={tr("mail.ran_already", {
+                            name: act.name, date: formatDateTime(ran.when),
+                            id: String(ran.instance_id) })}>
+                          ✓ {act.name}
+                        </Tag>
+                      ) : (
+                        <Rowbutton key={act.definition_id}
+                          onClick={() => start.mutate({ definition_id: act.definition_id,
+                                                          attachment: a.index })}>
+                          {act.name}
+                        </Rowbutton>
+                      );
+                    })}
                   </div>
                 </ListRow>
               ))}
@@ -1931,12 +1963,22 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           {forMail.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted">{tr("mail.actions_label")}</span>
-              {forMail.map((act) => (
-                <Rowbutton key={act.definition_id} title={act.description}
-                  onClick={() => start.mutate({ definition_id: act.definition_id })}>
-                  {act.name}
-                </Rowbutton>
-              ))}
+              {forMail.map((act) => {
+                const ran = (m.runs || []).find((r) =>
+                  r.definition_id === act.definition_id && r.attachment === null);
+                return ran ? (
+                  <Tag key={act.definition_id} color="green"
+                    title={tr("mail.ran_already", { name: act.name,
+                      date: formatDateTime(ran.when), id: String(ran.instance_id) })}>
+                    ✓ {act.name}
+                  </Tag>
+                ) : (
+                  <Rowbutton key={act.definition_id} title={act.description}
+                    onClick={() => start.mutate({ definition_id: act.definition_id })}>
+                    {act.name}
+                  </Rowbutton>
+                );
+              })}
             </div>
           )}
           {run && <div className="text-xs text-green-400">{run}</div>}

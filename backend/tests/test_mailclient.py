@@ -1370,3 +1370,52 @@ async def test_a_picture_without_a_content_id_stays_an_attachment():
         ("image", "jpeg", "urlaub.jpg", None, "inline"),
     ]))
     assert [a["filename"] for a in found] == ["urlaub.jpg"]
+
+
+# ── Bilder, die die Mail selbst mitbringt ───────────────────────────────────
+
+async def test_a_picture_the_mail_carries_along_is_laid_into_it():
+    """`cid:` is only meaningful inside the message, no browser can fetch it. What arrived
+    was a mail full of empty frames, and "load pictures" did not help either: there was
+    nothing out there to load."""
+    from email.message import EmailMessage
+
+    from app.services.mailbox import _lay_in
+
+    msg = EmailMessage()
+    msg.set_content("Text")
+    msg.add_attachment(b"\x89PNG-daten", maintype="image", subtype="png",
+                        filename="logo.png", cid="<imgLogo>", disposition="inline")
+
+    html = _lay_in('<p><img src="cid:imgLogo" alt=""></p>', msg)
+
+    assert "cid:" not in html
+    assert "data:image/png;base64," in html
+
+
+async def test_a_picture_that_is_not_there_stays_as_it_is():
+    """A reference into nothing is left alone: an empty frame says more than a broken one."""
+    from email.message import EmailMessage
+
+    from app.services.mailbox import _lay_in
+
+    msg = EmailMessage()
+    msg.set_content("Text")
+
+    html = _lay_in('<img src="cid:fehlt">', msg)
+    assert html == '<img src="cid:fehlt">'
+
+
+async def test_a_carried_picture_is_no_remote_picture():
+    """Nothing is fetched for it, so nobody is told anything, so nobody has to allow it."""
+    from email.message import EmailMessage
+
+    from app.services.mailbox import _lay_in, clean
+
+    msg = EmailMessage()
+    msg.set_content("Text")
+    msg.add_attachment(b"bild", maintype="image", subtype="gif", filename="l.gif",
+                        cid="<l>", disposition="inline")
+
+    _, remote, _ = clean(_lay_in('<img src="cid:l">', msg))
+    assert remote is False

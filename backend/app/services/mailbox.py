@@ -317,6 +317,57 @@ def _kind(part, name: str) -> str:
     return guessed or declared or "application/octet-stream"
 
 
+# What may be carried into the HTML as inline data. A mail that ships a photo at four
+# megabytes would otherwise become a five megabyte answer, and the reading pane would wait for
+# a picture nobody asked for. Above the limit the picture stays out and remains an attachment.
+INLINE_MAX = 2 * 1024 * 1024
+INLINE_TOTAL = 8 * 1024 * 1024
+
+
+def _lay_in(html: str, msg: email.message.Message) -> str:
+    """Turn `cid:` references into the pictures they mean.
+
+    A mail carries its layout pictures with it and points at them by `Content-ID`. No browser
+    can fetch `cid:`: the reference is only meaningful inside the message. So what arrived was
+    a mail full of empty frames, and "load pictures" did not help either, because there was
+    nothing out there to load.
+
+    They are put in as `data:`, and that is more than a repair: nothing is fetched, so nobody
+    is told anything. A picture that comes with the mail is not a remote picture and needs no
+    permission.
+    """
+    import base64
+    import re as _re
+
+    if "cid:" not in html.lower():
+        return html
+    have: dict[str, tuple[str, bytes]] = {}
+    for part in msg.walk():
+        cid = part.get("Content-ID")
+        if not cid or part.get_content_maintype() != "image":
+            continue
+        raw = part.get_payload(decode=True) or b""
+        if not raw or len(raw) > INLINE_MAX:
+            continue
+        have[cid.strip().strip("<>").lower()] = (part.get_content_type(), raw)
+    if not have:
+        return html
+
+    used = 0
+
+    def replace(hit):
+        nonlocal used
+        key = hit.group(2).strip().lower()
+        found = have.get(key)
+        if not found or used + len(found[1]) > INLINE_TOTAL:
+            return hit.group(0)
+        used += len(found[1])
+        kind, raw = found
+        return f'{hit.group(1)}"data:{kind};base64,{base64.b64encode(raw).decode()}"'
+
+    return _re.sub(r'(src\s*=\s*)["\']cid:([^"\']+)["\']', replace, html, flags=_re.I)
+
+
 def _attachments(msg: email.message.Message) -> list[dict]:
     """Index of the attachments: name, type, size. The content is fetched only on demand, a
     list of twenty mails must not drag twenty PDFs across the network.
@@ -616,6 +667,9 @@ def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
             raise LookupError("Nachricht nicht gefunden")
         msg = email.message_from_bytes(entry[b"RFC822"], policy=email.policy.default)
         text, html = _text_from(msg)
+        # First the pictures the mail brought along, then the cleaning: afterwards they are
+        # `data:` like any embedded picture and nobody has to allow anything for them.
+        html = _lay_in(html, msg) if html else html
         html_clean, remoteimages, counters = clean(html) if html else ("", False, 0)
         # A part that carries nothing is no part: without this the reader gets a choice
         # between an empty page and the text, with the empty one preselected.

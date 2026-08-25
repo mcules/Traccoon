@@ -2964,5 +2964,6 @@
   "mail.headers_hint": "Alles, was die Mail über ihren Weg verrät: Stationen, Prüfergebnisse, Filterurteile.",
   "mail.headers_unreadable": "Kopfzeilen nicht lesbar",
   "mail.copy_all": "Alles kopieren",
-  "mail.one_attachment": "1 Anhang"
+  "mail.one_attachment": "1 Anhang",
+  "mail.ran_already": "„{name}“ lief am {date} (Vorgang {id}). Ein zweiter Lauf legt ein zweites Dokument an."
 }

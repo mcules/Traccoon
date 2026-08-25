@@ -519,15 +519,47 @@ async def image_rule_delete(rid: int, user: User = Depends(get_current_user),
 async def message(kid: int, uid: int, folder: str = "INBOX",
                     user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
+    account = await _account(db, kid, user)
     try:
-        found = await mailbox.message(await _account(db, kid, user), folder, uid)
+        found = await mailbox.message(account, folder, uid)
     except LookupError:
         raise Error(404, "err.mail_not_found", "Message not found")
     # Whether the pictures of THIS sender may be fetched without asking again. The decision
     # was made once, here it is only looked up.
     sender = (found.get("from") or [{}])[0].get("addr", "") if found.get("from") else ""
     found["images_allowed"] = _images_allowed(await _image_rules(db, user), sender)
+    found["runs"] = await _runs_of(db, account, folder, uid)
     return found
+
+
+async def _runs_of(db: AsyncSession, account: MailAccount, folder: str,
+                    uid: int) -> list[dict]:
+    """Which actions have already run on this mail, and on which attachment.
+
+    An action that files a document is not one to press twice: the second time makes a second
+    document, and nobody notices until they tidy up. What the run was started on stands in its
+    `source_ref` (`folder:uid` or `folder:uid:index`), so no new bookkeeping is needed for
+    this — the flows have been writing it down all along.
+    """
+    from ..models.workflow import WorkflowInstance
+
+    rows = (await db.execute(select(WorkflowInstance).where(
+        WorkflowInstance.source == f"mail:{account.name}",
+        WorkflowInstance.source_ref.like(f"{folder}:{uid}%"))
+        .order_by(WorkflowInstance.id))).scalars().all()
+    out = []
+    for r in rows:
+        parts = (r.source_ref or "").rsplit(":", 1)
+        # `INBOX:42:3` is an attachment, `INBOX:42` is the mail itself. A folder with a colon
+        # in its name would confuse that, which is why the last part has to be a number.
+        index = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() \
+            and parts[0] != folder else None
+        if index is None and r.source_ref != f"{folder}:{uid}":
+            continue
+        out.append({"definition_id": r.definition_id, "instance_id": r.id,
+                     "attachment": index, "status": r.status.value,
+                     "when": r.created_at.isoformat() if r.created_at else ""})
+    return out
 
 
 @router.get("/accounts/{kid}/messages/{uid}/headers")
