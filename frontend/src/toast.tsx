@@ -39,8 +39,8 @@ export function toast(text: string, kind: ToastKind = "info"): void {
   window.setTimeout(() => close(id), kind === "error" || kind === "warning" ? 7000 : 4000);
 }
 
-// Ein Griff für die Browser-Sonde: sie soll alle vier Töne zeigen können, ohne im Postfach
-// vier verschiedene Dinge auszulösen.
+// A handle for the browser probe: it should be able to show all four tones without
+// triggering four different things in the mailbox.
 if (typeof window !== "undefined") {
   (window as any).__toast = toast;
 }

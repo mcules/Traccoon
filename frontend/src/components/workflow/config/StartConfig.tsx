@@ -103,7 +103,7 @@ export default function StartConfig({
   };
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
-  // Was dieses Ereignis zum Filtern anbietet. Leer für die meisten — dann steht hier nichts,
+  // What this event offers for filtering. Empty for most of them, and then nothing stands here,
   // und es bleibt bei der Bedingung von Hand.
   const fields: EventField[] = t.event
     ? (events?.find((e) => e.event === t.event)?.fields || []) : [];
@@ -115,8 +115,8 @@ export default function StartConfig({
     const now = picked(path);
     const next = now.includes(value) ? now.filter((v) => v !== value) : [...now, value];
     const where = { ...(t.where || {}) };
-    // Nichts angehakt heisst „alles" und nicht „nichts": ein leerer Eintrag würde den
-    // Ablauf stumm schalten, obwohl man gerade das letzte Häkchen weggenommen hat.
+    // Nothing ticked means "everything" and not "nothing": an empty entry would silence
+    // the flow although one has just removed the last tick.
     if (next.length) where[path] = next; else delete where[path];
     setT({ where: Object.keys(where).length ? where : "" });
   };

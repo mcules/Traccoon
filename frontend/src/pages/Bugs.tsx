@@ -220,10 +220,10 @@ function TicketDialog({ bug, onClose, onDone, onError }: {
 }
 
 
-/** Was über eine Meldung gesagt wurde, und das Feld, um etwas dazuzusagen.
+/** What has been said about a report, and the field to add something to it.
  *
- * Interne Notizen stehen hier mit, sichtbar abgesetzt: sie gehen nie an den Melder, und
- * genau das muss man beim Schreiben sehen können, nicht erst hinterher hoffen. */
+ * Internal notes stand in here as well, visibly set apart: they never go to the reporter,
+ * and that is exactly what one has to see while writing, not hope for afterwards. */
 function Thread({ bugId, onPosted, onError }: {
   bugId: number; onPosted: () => void; onError: (e: unknown) => void;
 }) {

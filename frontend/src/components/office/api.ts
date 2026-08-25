@@ -335,7 +335,7 @@ export const officeApi = {
 // Built against real code (`backend/app/api/office_ws.py`): ONE user socket serves the project
 // tab **and** the global page; filtering happens server side. The client can only **narrow**
 // through `subscribe`, never widen: a subscription to a foreign project yields
-// Stille, keinen Fehler.
+// silence, not an error.
 
 /** What the server sends over the socket. */
 export type WsIn =

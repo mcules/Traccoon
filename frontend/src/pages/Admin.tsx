@@ -446,9 +446,9 @@ function McpAssign({ userId }: { userId: number }) {
   };
   return (
     <div className="text-xs">
-      <div className="mb-1 text-muted">Erlaubte MCP-Server (Komma) — z. B. obsidian, imap, paperless, banking, homeassistant, gameproj.
+      <div className="mb-1 text-muted">{tr("admin.allowed_mcp_servers")}
         {data?.provisioned
-          ? <span className="ml-1 text-green-400">· provisioniert (Gruppe {data.group})</span>
+          ? <span className="ml-1 text-green-400">{tr("admin.provisioned_group", { group: data.group })}</span>
           : <span className="ml-1 text-yellow-400">{tr("admin.not_provisioned_yet")}</span>}
       </div>
       <div className="flex gap-2">

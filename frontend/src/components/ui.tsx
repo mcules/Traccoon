@@ -20,7 +20,7 @@ export const ICON = {
 } as const;
 
 /**
- * Ein Knopf.
+ * A button.
  *
  * A button is blue. Before, most of them had a grey border, and grey is the colour a UI says
  * "nothing to get here" with: in a header with four of them every single one went under, and

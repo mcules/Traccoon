@@ -1654,7 +1654,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
       toast((r.runs?.length || 1) > 1 ? tr("mail.runs_started", { n: r.runs.length })
                                        : tr("mail.run_started", { id: r.instance_id }),
             "success");
-      // Damit der Knopf sofort weiß, dass er getan hat, was er tun sollte.
+      // So the button knows at once that it did what it was supposed to do.
       qc.invalidateQueries({ queryKey: ["mail-message"] });
     },
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.action_failed")),
@@ -2198,8 +2198,8 @@ function NewsletterOverview({ account, onClose, onOpen: onOpen_it, onError: onEr
 }) {
   const qc = useQueryClient();
   const [folders, setFolders] = useState<string[]>(["INBOX"]);
-  // Nur, was schiefging: ein Erfolg zeigt sich daran, dass die Zeile geht und im anderen
-  // Reiter wieder auftaucht.
+  // Only what went wrong: a success shows itself in the row leaving and turning up again
+  // in the other tab.
   const [done, setDone] = useState<Record<string, string>>({});
   // Which subscription has been opened up. One at a time: whoever opens the second one is
   // done with the first, and two open lists are a wall instead of an answer.
