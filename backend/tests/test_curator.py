@@ -155,3 +155,46 @@ async def test_without_an_own_model_no_curation_happens(db, monkeypatch):
     monkeypatch.setattr("app.worker.curator.curate", fake_curate)
     await worker._handle_curator({"owner_id": 1, "agent_role": "assistent"})
     assert not ran
+
+
+async def test_all_four_areas_are_tidied(db, monkeypatch):
+    """The narrowest note has to be tidied too, otherwise it grows until it falls out.
+
+    `Projekt-<KEY>-Agent-<rolle>.md` stands last in the prompt, so it is the first block the
+    budget drops once it is long. Leaving it out of the round would quietly undo the area.
+    """
+    from app.worker.curator import curate
+
+    seen: list[str] = []
+
+    async def fake_note(db_, mcp_, *, owner_id, path, agent, tokens, base_urls):
+        seen.append(path.rsplit("/", 1)[-1])
+        return None
+
+    monkeypatch.setattr("app.worker.curator.curate_note", fake_note)
+    root = "KI/Gedaechtnis"
+    user = await make_user(db, "vierbereiche")
+    user.vault_memory_path = root
+    await db.commit()
+    await curate(db, FakeMcp(), owner_id=user.id, agent_role="developer", project_key="TRA")
+    assert seen == ["Mensch.md", "Agent-developer.md", "Projekt-TRA.md",
+                    "Projekt-TRA-Agent-developer.md"]
+
+
+async def test_a_projectless_run_tidies_only_what_it_has(db, monkeypatch):
+    """Without a project there are no project notes — and none may be invented either."""
+    from app.worker.curator import curate
+
+    seen: list[str] = []
+
+    async def fake_note(db_, mcp_, *, owner_id, path, agent, tokens, base_urls):
+        seen.append(path.rsplit("/", 1)[-1])
+        return None
+
+    monkeypatch.setattr("app.worker.curator.curate_note", fake_note)
+    root = "KI/Gedaechtnis"
+    user = await make_user(db, "projektlos_kurator")
+    user.vault_memory_path = root
+    await db.commit()
+    await curate(db, FakeMcp(), owner_id=user.id, agent_role="assistent")
+    assert seen == ["Mensch.md", "Agent-assistent.md"]

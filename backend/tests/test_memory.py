@@ -9,7 +9,8 @@ import pytest
 from conftest import auth, make_user
 
 from app.worker.tools_memory import (
-    MAX_MEMORY_CHARS, NO_MEMORY, call_memory_tool, memory_root, note_path, read_memory,
+    MAX_MEMORY_CHARS, NO_MEMORY, TEACH_TOOL_NAME, call_memory_tool, call_teach_tool, memory_root,
+    note_path, read_memory,
 )
 
 
@@ -58,9 +59,14 @@ def test_paths():
     assert note_path(ROOT, "person") == f"{ROOT}/Mensch.md"
     assert note_path(ROOT, "agent", "developer") == f"{ROOT}/Agent-developer.md"
     assert note_path(ROOT, "project", "developer", "TRA") == f"{ROOT}/Projekt-TRA.md"
+    assert note_path(ROOT, "project_agent", "developer", "TRA") \
+        == f"{ROOT}/Projekt-TRA-Agent-developer.md"
     # Without a role respectively a project the note does not exist: the caller has to take 'mensch'.
     assert note_path(ROOT, "agent") is None
     assert note_path(ROOT, "project", "developer") is None
+    # The narrowest area needs BOTH halves; one of them is not enough for a note.
+    assert note_path(ROOT, "project_agent", "developer") is None
+    assert note_path(ROOT, "project_agent", "", "TRA") is None
     # No folder configured means the function is off.
     assert note_path("", "person") is None
     assert note_path("  ", "person") is None
@@ -70,19 +76,28 @@ def test_paths_without_a_path_change():
     """Role and project key must not be able to leave the folder."""
     p = note_path(ROOT, "project", "", "../../etc")
     assert p is not None and ".." not in p and p.count("/") == ROOT.count("/") + 1
+    # `project_agent` builds its name from BOTH, so both halves have to be cleaned.
+    p = note_path(ROOT, "project_agent", "../../rolle", "../../etc")
+    assert p is not None and ".." not in p and p.count("/") == ROOT.count("/") + 1
 
 
 async def test_recall_collects_from_the_general_to_the_specific():
-    """All three notes land in the block, the specific one last."""
+    """All four notes land in the block, the narrowest one last.
+
+    The order is not cosmetic: the block that stands last is the one the model weighs most
+    when two memories disagree, and the narrowest one is the one that is meant.
+    """
     mcp = FakeMcp({
         f"{ROOT}/Mensch.md": "- Commit-Betreffe auf Deutsch.",
         f"{ROOT}/Agent-developer.md": "- Immer Tests mitliefern.",
         f"{ROOT}/Projekt-TRA.md": "- Migration in beiden Tracks pflegen.",
+        f"{ROOT}/Projekt-TRA-Agent-developer.md": "- Hier gehoert der Alembic-Stempel dazu.",
     })
     text = await read_memory(mcp, ROOT, "developer", "TRA")
     assert text.index("Commit-Betreffe") < text.index("Tests mitliefern") \
-        < text.index("Migration in beiden")
+        < text.index("Migration in beiden") < text.index("Alembic-Stempel")
     assert "## About your person" in text and "## For this project" in text
+    assert "## For your role in this project" in text
 
 
 async def test_a_missing_note_on_recall_is_not_an_error():
@@ -118,6 +133,47 @@ async def test_the_role_memory_survives_a_bloated_person_note():
     assert len(block) <= MAX_MEMORY_CHARS
     assert block.count("- nur fuer die Rolle") == 20
     assert "## About your person" in block
+
+
+async def test_the_narrowest_note_survives_a_bloated_person_note():
+    """The budget is handed out from the back, so the project-and-role note may never fall out.
+
+    It is the last block in the prompt and the one that weighs most; losing it to a person
+    note that ran wild would quietly undo the whole area.
+    """
+    mcp = FakeMcp({f"{ROOT}/Mensch.md": "- allgemein\n" * 5000,
+                   f"{ROOT}/Projekt-TRA-Agent-developer.md": "- nur hier\n" * 20})
+    block = await read_memory(mcp, ROOT, "developer", "TRA")
+    assert len(block) <= MAX_MEMORY_CHARS
+    assert block.count("- nur hier") == 20
+
+
+async def test_remembering_in_the_narrowest_area(db):
+    """`remember` writes the fourth note, and creates it on the first insight."""
+    u = await make_user(db, "engmerker")
+    u.vault_memory_path = ROOT
+    await db.commit()
+    mcp = FakeMcp()
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": "project_agent", "text": "Alembic-Stempel nicht vergessen."},
+                                 agent_role="developer", project_key="TRA")
+    assert "Noted" in out
+    assert "Alembic-Stempel" in mcp.notes[f"{ROOT}/Projekt-TRA-Agent-developer.md"]
+
+
+async def test_the_narrowest_area_says_which_half_is_missing(db):
+    """Two halves can be missing, so the refusal has to name the one that is."""
+    u = await make_user(db, "halblos")
+    u.vault_memory_path = ROOT
+    await db.commit()
+    mcp = FakeMcp()
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": "project_agent", "text": "x"}, agent_role="developer")
+    assert out.startswith("ERROR") and "project" in out and "role" not in out
+    out = await call_memory_tool(db, mcp, u.id, "remember",
+                                 {"area": "project_agent", "text": "x"}, project_key="TRA")
+    assert out.startswith("ERROR") and "role" in out
+    assert mcp.calls == []
 
 
 async def test_a_note_quoting_an_error_message_still_reads():
@@ -536,3 +592,75 @@ async def test_an_unknown_area(db, area):
     else:
         assert out.startswith("ERROR")
         assert mcp.calls == []
+
+
+# ── Teaching: writing into a foreign memory ──────────────────────────────────
+
+async def test_teaching_writes_into_the_foreign_note(db):
+    """The supervision writes a rule into the note of a different role."""
+    u = await make_user(db, "aufseher")
+    u.vault_memory_path = ROOT
+    await db.commit()
+    mcp = FakeMcp()
+    out = await call_teach_tool(db, mcp, u.id, {
+        "agent": "developer", "area": "agent",
+        "text": "Vor dem Abschluss immer check laufen lassen."})
+    assert "Noted" in out
+    note = mcp.notes[f"{ROOT}/Agent-developer.md"]
+    assert "check laufen lassen" in note
+    # The origin has to be readable in the vault: this rule did not come from a run of that
+    # agent, and a wrong judgement of the supervision must be recognisable as one.
+    assert "(Aufsicht)" in note
+
+
+async def test_teaching_into_the_narrowest_note(db):
+    """With a project key the rule lands in the project-and-role note."""
+    u = await make_user(db, "aufseher2")
+    u.vault_memory_path = ROOT
+    await db.commit()
+    mcp = FakeMcp()
+    out = await call_teach_tool(db, mcp, u.id, {
+        "agent": "developer", "area": "project_agent", "project": "TRA",
+        "text": "Migration und DEV_CREATE_ALL zusammen stempeln."})
+    assert "Noted" in out
+    assert "stempeln" in mcp.notes[f"{ROOT}/Projekt-TRA-Agent-developer.md"]
+
+
+@pytest.mark.parametrize("args,hint", [
+    ({"area": "agent", "text": "x"}, "agent"),                        # ohne Rolle
+    ({"agent": "developer", "area": "person", "text": "x"}, "area"),  # zu weiter Bereich
+    ({"agent": "developer", "area": "agent"}, "text"),                # ohne Satz
+    ({"agent": "developer", "area": "project_agent", "text": "x"}, "project"),  # ohne Projekt
+])
+async def test_teaching_refuses_incomplete_calls(db, args, hint):
+    """Nothing half-addressed gets written: a rule in the wrong note is worse than none."""
+    u = await make_user(db, f"unvollstaendig{abs(hash(hint)) % 1000}")
+    u.vault_memory_path = ROOT
+    await db.commit()
+    mcp = FakeMcp()
+    out = await call_teach_tool(db, mcp, u.id, args)
+    assert out.startswith("ERROR") and hint in out
+    assert mcp.calls == []
+
+
+def test_teaching_is_not_always_allowed():
+    """Unlike the three memory tools, this one needs an explicit entry in `allowed_tools`.
+
+    Otherwise every agent could write into every other agent's memory, and the look back after
+    a run (which may call the memory tools) would reach into foreign notes as well.
+    """
+    from app.worker.runtime import AgentDef
+    from app.worker.tools_memory import MEMORY_TOOL_NAMES
+
+    assert TEACH_TOOL_NAME not in MEMORY_TOOL_NAMES
+
+    def agent(tools):
+        return AgentDef(id=None, name="x", role="x", system_prompt="", provider="claude_code",
+                        model="m", token_name="", fallback=None, fallback_model="",
+                        fallback_token_name="", temperature=0.3, max_tokens=1024,
+                        max_iterations=5, can_code=False, can_read_code=False,
+                        can_delegate=False, web_search=False, allowed_tools=tools,
+                        allowed_skills=[], autoload_skills=[], delegate_to=[])
+
+    assert not agent([]).tool_allowed(TEACH_TOOL_NAME)
+    assert agent([TEACH_TOOL_NAME]).tool_allowed(TEACH_TOOL_NAME)

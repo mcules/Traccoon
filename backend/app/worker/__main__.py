@@ -66,6 +66,9 @@ _DEFAULTS: dict[str, dict] = {
     "code_reviewer":   {"can_read_code": True, "mp": 8, "me": 30},
     "tester":          {"can_code": True, "mp": 8, "me": 40},
     "devops":          {"can_code": True, "mp": 8, "me": 40},
+    # The supervision reads numbers and writes tickets. It touches no code, and it needs few
+    # rounds: fetch the window, decide, file, done.
+    "supervisor":      {"mp": 6, "me": 20},
 }
 
 _PROMPTS: dict[str, str] = {
@@ -83,6 +86,17 @@ _PROMPTS: dict[str, str] = {
                      "that force a correction.",
     "tester": "You are the tester. Write tests (happy path plus edge cases).",
     "devops": "You are devops. Build, dependencies, CI/CD, infrastructure.",
+    # Deliberately about the WAY of working, not about the assignment: what exactly is to be
+    # looked at stands in the start context of the job that calls this role.
+    "supervisor": "You are the supervision of the agents. You look at finished runs, never at "
+                  "a single ticket: what repeats is a finding, what happened once is not. "
+                  "Provider trouble and interruptions of the house itself are none of your "
+                  "business, they pass on their own. For a real finding you open exactly ONE "
+                  "ticket and assign it to the role that can fix it. A pattern that is no "
+                  "defect in the code becomes exactly ONE rule in the memory of the agent it "
+                  "concerns (`memory_teach`), phrased so that it still helps next month. "
+                  "Never report the same thing twice: a class that already has an open ticket "
+                  "is settled for today.",
 }
 
 
@@ -340,6 +354,15 @@ async def handle(job: dict, redis: Redis) -> None:
         await redis.publish(f"{PREFIX}results", task_id)
         await redis.publish(f"{PREFIX}events:{project.id}",
                             json.dumps({"type": "issue_update", "issue_key": issue.key}))
+        # Tidy the memory afterwards, as a task of its own so nobody waits for it. Until now
+        # this only happened after assistant tasks, and those carry no project — so the
+        # project notes were never tidied at all. `due()` still caps it at once per note and
+        # day, so one nudge per ticket run costs nothing.
+        if owner_id:
+            from ..core.redis import enqueue_task
+            await enqueue_task({"kind": "curator", "task_id": f"curator-{owner_id}-{task_id}",
+                                "owner_id": owner_id, "agent_role": role,
+                                "project_key": project.key})
     log.info("processed %s -> %s", task_id, result.status)
 
 
@@ -980,6 +1003,9 @@ async def _handle_curator(job: dict) -> None:
     from .runtime import _agent_mcp, _owner_gateway
     owner_id = job.get("owner_id")
     role = job.get("agent_role") or "assistent"
+    # Empty for a projectless run — `note_path` then yields no project notes, which is exactly
+    # right there.
+    project_key = job.get("project_key") or ""
     if not owner_id:
         return
     async with SessionLocal() as db:
@@ -996,7 +1022,8 @@ async def _handle_curator(job: dict) -> None:
             async with mcp_session(agent.name, servers=await _agent_mcp(db, agent, owner_id),
                                    gateway_url=gw_url or "", gateway_token=gw_token or "") as mcp:
                 reports = await curate(db, mcp, owner_id=owner_id, agent_role=role,
-                                           agent=agent, tokens=tokens, base_urls=base_urls)
+                                           project_key=project_key, agent=agent, tokens=tokens,
+                                           base_urls=base_urls)
             for b in reports:
                 log.info("Curator: %s", b)
         except Exception:  # noqa: BLE001

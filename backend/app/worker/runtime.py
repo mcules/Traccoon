@@ -32,7 +32,8 @@ from .providers.router import router
 from .text import MojibakeWatch
 from .assistant_gate import gate_check
 from .tools_memory import (
-    MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLECTION_PROMPT, call_memory_tool, memory_root, read_memory,
+    MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLECTION_PROMPT, TEACH_TOOL, TEACH_TOOL_NAME,
+    call_memory_tool, call_teach_tool, memory_root, read_memory,
 )
 from .compaction import compact as _compact
 from .compaction import handover as _handover
@@ -1063,6 +1064,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             if mem_root:
                 for _t in MEMORY_TOOLS:
                     openai_tools.append(_t)
+                # Writing into a foreign memory is NOT part of the always-allowed three: it is
+                # the supervision's tool, and every other agent has no business in somebody
+                # else's note.
+                if agent.tool_allowed(TEACH_TOOL_NAME):
+                    openai_tools.append(TEACH_TOOL)
                 try:
                     _mem = await read_memory(mcp, mem_root, agent.role, project.get("key") or "")
                 except Exception:  # noqa: BLE001
@@ -1070,10 +1076,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 if _mem:
                     messages.append({"role": "system", "content":
                         "# Memory (learned earlier, still applies)\n" + _mem +
-                        "\n\nThis is what your person taught you — keep to it without them having "
-                        "it has to repeat it. If the current task contradicts a memory, "
-                        "the assignment applies: correct the memory with `forget` and "
-                        "`erinnere_dich`."})
+                        "\n\nThis is what your person taught you — keep to it without them "
+                        "having to say it again. The narrower a block, the more it weighs: a "
+                        "rule for your role in this project beats a general one. If the current "
+                        "assignment contradicts a memory, the assignment wins: correct the "
+                        "memory with `forget` and then `remember`."})
 
             # Vault-Projektkontext (MOC + Dateibaum) laden, falls konfiguriert (via obsidian-MCP)
             moc_path = project.get("vault_moc_path")
@@ -1420,6 +1427,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     elif call.name in MEMORY_TOOL_NAMES:
                         result = await call_memory_tool(db, mcp, owner_id, call.name, call.arguments,
                                                         agent.role, project.get("key") or "")
+                    elif call.name == TEACH_TOOL_NAME:
+                        result = (await call_teach_tool(db, mcp, owner_id, call.arguments)
+                                  if agent.tool_allowed(TEACH_TOOL_NAME) else
+                                  f"ERROR: tool '{TEACH_TOOL_NAME}' is not allowed for this agent.")
                     elif not agent.tool_allowed(call.name):
                         result = f"ERROR: tool '{call.name}' is not allowed for this agent."
                     else:

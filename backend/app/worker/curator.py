@@ -168,7 +168,10 @@ async def curate(db, mcp, *, owner_id: int, agent_role: str = "", project_key: s
     if not root:
         return []
     reports = []
-    for area in ("mensch", "agent", "projekt"):
+    # All four areas, including the narrowest one: `Projekt-<KEY>-Agent-<rolle>.md` is the
+    # block that stands last in the prompt, so it is the first to fall out of the budget once
+    # it has grown. Skipping it here would silently undo what it was built for.
+    for area in ("person", "agent", "project", "project_agent"):
         path = note_path(root, area, agent_role, project_key)
         if not path or not await due(db, owner_id, path):
             continue

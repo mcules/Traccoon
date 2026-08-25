@@ -4,9 +4,15 @@ The filing place is the vault, because the human should be able to see and corre
 been learned by hand; a database table would be invisible. Under
 `users.vault_memory_path` lie three kinds of note:
 
-    Mensch.md            applies to ALL runs of this human (preferences, fixed rules)
-    Agent-<rolle>.md     role specific (assistent, developer, code_reviewer …)
-    Projekt-<KEY>.md     project specific
+    Mensch.md                        applies to ALL runs of this human (preferences, rules)
+    Agent-<rolle>.md                 role specific (assistent, developer, code_reviewer …)
+    Projekt-<KEY>.md                 project specific, across every role
+    Projekt-<KEY>-Agent-<rolle>.md   role specific INSIDE one project
+
+The fourth note exists because the third one was never written: what the developer learned in
+UNI is wrong in TRA (role note) and wrong for the reviewer of the same project (project note),
+so in practice neither got the line. It is the narrowest area and therefore the last one in
+the prompt.
 
 The content is deliberately plain markdown, one bullet line per insight. There is no
 parsing, there are no ids and no hit counters: the text is hung into the prompt as a block,
@@ -40,7 +46,7 @@ MAX_MEMORY_CHARS = 20000
 # A single insight is a sentence, not an essay.
 MAX_ENTRY_CHARS = 600
 
-AREAS = ("person", "agent", "project")
+AREAS = ("person", "agent", "project", "project_agent")
 
 # What the areas and the tools were called until the switch to English. They stand in the
 # `allowed_tools` of agents and in memory notes people wrote themselves, so both names are
@@ -58,7 +64,9 @@ def _def(name: str, desc: str, props: dict, required: list[str]) -> dict:
 
 _AREA_DESC = ("Where the insight belongs: 'person' = applies always and everywhere "
               "(preferences, way of working, fixed rules) · 'agent' = for your role only · "
-              "'project' = for this project only.")
+              "'project' = for this project, whichever role works on it · 'project_agent' = "
+              "for your role in exactly this project. Take the narrowest area that is true: "
+              "the narrower one weighs more when two memories disagree.")
 
 MEMORY_TOOLS = [
     _def("remember",
@@ -86,6 +94,28 @@ MEMORY_TOOLS = [
 MEMORY_TOOL_NAMES = {t["function"]["name"] for t in MEMORY_TOOLS} | set(LEGACY_TOOLS)
 
 NO_MEMORY = "(no memory configured — your person has set no vault folder)"
+
+# Writing into SOMEBODY ELSE'S memory. Deliberately not a fourth entry in `MEMORY_TOOLS`:
+# those three are always allowed (`_ALWAYS_ALLOWED` in runtime.py) and are the only tools the
+# look back after a run may call. A tool that reaches into a foreign note must be granted
+# explicitly in `allowed_tools`, and it has no business in a look back at one's own run.
+TEACH_TOOL_NAME = "memory_teach"
+TEACH_TOOL = _def(
+    TEACH_TOOL_NAME,
+    "Write a lasting rule into the memory of ANOTHER agent. For what you noticed about "
+    "somebody else's work over several runs — your own lessons belong in `remember`. One "
+    "sentence per call, no reference to a single run.",
+    {"agent": {"type": "string",
+               "description": "The role whose memory is meant (developer, code_reviewer, "
+                              "gameproj-operator …)."},
+     "area": {"type": "string", "enum": ["agent", "project_agent"],
+              "description": "'agent' = for that role everywhere · 'project_agent' = for that "
+                             "role in the named project only."},
+     "text": {"type": "string",
+              "description": "The rule as one clear sentence, understandable on its own later."},
+     "project": {"type": "string",
+                 "description": "Project key — required for 'project_agent', ignored otherwise."}},
+    ["agent", "area", "text"])
 
 
 def _note_target(path: str) -> dict:
@@ -119,6 +149,12 @@ def note_path(root: str, area: str, agent_role: str = "", project_key: str = "")
         return f"{root}/Agent-{_safe(agent_role)}.md" if agent_role else None
     if area == "project":
         return f"{root}/Projekt-{_safe(project_key)}.md" if project_key else None
+    if area == "project_agent":
+        # Needs BOTH: without either half the note would silently widen to something the
+        # insight was never meant for.
+        if not (agent_role and project_key):
+            return None
+        return f"{root}/Projekt-{_safe(project_key)}-Agent-{_safe(agent_role)}.md"
     return None
 
 
@@ -197,7 +233,8 @@ async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "
     chunks: list[str] = []
     for area, title in (("person", "About your person"),
                         ("agent", "For your role"),
-                        ("project", "For this project")):
+                        ("project", "For this project"),
+                        ("project_agent", "For your role in this project")):
         path = note_path(root, area, agent_role, project_key)
         if not path:
             continue
@@ -277,9 +314,15 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
         return f"ERROR: `area` has to be {' | '.join(AREAS)}."
     path = note_path(root, area, agent_role, project_key)
     if not path:
-        missing = "project" if area == "project" else "role"
-        return (f"ERROR: the area '{area}' does not work in this run — there is no {missing}. "
-                "Take 'person'.")
+        # `project_agent` can lack either half, so the message names what is actually missing
+        # instead of guessing from the area alone.
+        missing = []
+        if area in ("agent", "project_agent") and not agent_role:
+            missing.append("role")
+        if area in ("project", "project_agent") and not project_key:
+            missing.append("project")
+        return (f"ERROR: the area '{area}' does not work in this run — there is no "
+                f"{' and no '.join(missing) or 'context'}. Take 'person'.")
 
     if name == "remember":
         text = " ".join((args.get("text") or "").split())[:MAX_ENTRY_CHARS]
@@ -313,6 +356,43 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
         return f"{removed} line(s) removed from {path}."
 
     return f"ERROR: unknown memory tool '{name}'."
+
+
+
+async def call_teach_tool(db: AsyncSession, mcp, owner_id: int | None, args: dict) -> str:
+    """Write one line into the memory note of a different agent.
+
+    Its own entry point rather than a fourth area of `call_memory_tool`: that one always
+    writes into the role of the run it belongs to, which is exactly right for `remember` and
+    exactly wrong here.
+    """
+    root = await memory_root(db, owner_id)
+    if not root:
+        return NO_MEMORY
+
+    role = (args.get("agent") or "").strip()
+    area = (args.get("area") or "").strip().lower()
+    area = LEGACY_AREAS.get(area, area)
+    project = (args.get("project") or "").strip()
+    text = " ".join((args.get("text") or "").split())[:MAX_ENTRY_CHARS]
+    if not role:
+        return "ERROR: `agent` is missing — say whose memory is meant."
+    if area not in ("agent", "project_agent"):
+        return "ERROR: `area` has to be agent | project_agent."
+    if not text:
+        return "ERROR: `text` is missing."
+    path = note_path(root, area, role, project)
+    if not path:
+        return "ERROR: the area 'project_agent' needs a `project` (its key, e.g. TRA)."
+
+    today = dt.datetime.now().strftime("%Y-%m-%d")
+    # The origin stays in the line. Whoever reads the note in the vault has to be able to see
+    # that this rule came from the outside and not from a run of that agent itself; otherwise
+    # a wrong judgement of the supervision looks like something the agent learned for itself.
+    error = await _append_line(mcp, path, f"- [{today}] (Aufsicht) {text}")
+    if error:
+        return f"ERROR while teaching: {error}"
+    return f"Noted in {path}."
 
 
 REFLECTION_PROMPT = (

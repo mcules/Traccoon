@@ -118,6 +118,16 @@ TRACCOON_TOOLS = [
           "headers": {"type": "object", "description": "additional headers"},
           "body": {"description": "JSON-Objekt/Liste oder Text"}},
          ["destination"]),
+    _def("traccoon_run_health",
+         "How the agent runs of a time window went: numbers per role, the failures grouped by "
+         "class, and tools with a noticeable failure rate. Every problem class carries a "
+         "signature and says whether a ticket for it is already open.",
+         {"since_hours": {"type": "integer",
+                          "description": "Size of the window in hours (default 24)."},
+          "project_key": {"type": "string",
+                          "description": "Only this project; empty = everything you may see."},
+          "agent": {"type": "string", "description": "Only this role."}},
+         []),
 ]
 TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 
@@ -587,4 +597,94 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         ).where(CostEntry.issue_id == iss.id))).one()
         return f"{iss.key}: ${row[0]:.4f} (in {row[1]} / out {row[2]} Tokens)."
 
+    if name == "traccoon_run_health":
+        return await _run_health_tool(db, user, args)
+
     return f"ERROR: unbekanntes Steuer-Tool '{name}'."
+
+
+def _statuses(problem: dict) -> str:
+    """`loop_exhausted 13, failed 2` — what the bare count leaves out."""
+    return ", ".join(f"{name} {n}" for name, n
+                     in sorted(problem.get("statuses", {}).items(), key=lambda kv: -kv[1]))
+
+
+def _health_text(data: dict) -> str:
+    """The report as lines, the way `traccoon_list_issues` answers — not as a wall of JSON.
+
+    A model reads lines. And the supervision has to be able to quote from it into a ticket
+    without reformatting anything first.
+    """
+    out = [f"Fenster: {data['since']} → {data['until']} ({data['hours']} h)",
+           f"Läufe: {data['runs']} · geliefert {data['delivered']} · wartend {data['waiting']} "
+           f"· abgebrochen {data['aborted']} · Kosten ≥ {data['cost_usd']:.2f} USD"]
+
+    if data["agents"]:
+        out.append("")
+        out.append("Je Rolle:")
+        for a in data["agents"]:
+            out.append(
+                f"- {a['agent']}: {a['runs']} Läufe · geliefert {a['delivered']} · "
+                f"wartend {a['waiting']} · abgebrochen {a['aborted']} · "
+                f"Ø {a['iterations_avg']} Runden (max {a['iterations_max']}) · "
+                f"Ø {a['duration_avg_s']}s (längster {a['duration_max_s']}s) · "
+                f"{a['cost_usd']:.2f} USD")
+
+    worth = [p for p in data["problems"] + data["tools"] if p["ticket_worthy"]]
+    rest = [p for p in data["problems"] if not p["ticket_worthy"]]
+
+    out.append("")
+    out.append("Ticketwürdig (liegt am Agenten oder am Haus):")
+    if not worth:
+        out.append("- nichts")
+    for p in worth:
+        head = (f"- [Aufsicht:{p['signature']}] {p['agent']}: "
+                + (f"{p['tool']} scheitert in {int(p['share'] * 100)} % der Aufrufe "
+                   f"({p['failed']} von {p['n']})"
+                   if p["kind"] == "tool" else
+                   f"{p['n']}× {p['kind']} "
+                   f"({_statuses(p)}, Läufe {', '.join(str(r) for r in p['runs'])})"))
+        if p["open_ticket"]:
+            head += f" — bereits offen als {p['open_ticket']}"
+        out.append(head)
+        for beispiel in p.get("examples", []):
+            out.append(f"    {beispiel}")
+
+    if rest:
+        out.append("")
+        out.append("Nur zur Einordnung (Provider, Infrastruktur, Warten auf einen Menschen):")
+        for p in rest:
+            out.append(f"- {p['agent']}: {p['n']}× {p['kind']}"
+                       + (f" — {p['examples'][0]}" if p.get("examples") else ""))
+    return "\n".join(out)
+
+
+async def _run_health_tool(db: AsyncSession, user: User, args: dict) -> str:
+    """The window over the runs, within the rights of the human.
+
+    Without a project key it looks at everything: a run without a project (job, flow, the
+    assistant) belongs to no project and would otherwise never be seen — and those are the
+    two roles with the most runs by far.
+    """
+    from ..services.run_health import health
+
+    project_id = None
+    key = (args.get("project_key") or "").strip()
+    if key:
+        p = (await db.execute(select(Project).where(Project.key == key))).scalar_one_or_none()
+        if p is None:
+            return f"Projekt '{key}' nicht gefunden."
+        try:
+            await build_access(p, user, db)
+        except HTTPException:
+            return "No access to this project."
+        project_id = p.id
+    elif user.global_role != "admin":
+        # Runs of foreign projects are none of this person's business. Without a key the whole
+        # window is only opened for an admin; everybody else names their project.
+        return ("ERROR: without `project_key` the whole window is only visible to an admin. "
+                "Name a project (traccoon_list_projects).")
+
+    data = await health(db, since_hours=int(args.get("since_hours") or 24),
+                        project_id=project_id, agent=(args.get("agent") or "").strip())
+    return _health_text(data)
