@@ -82,7 +82,8 @@ def _now() -> dt.datetime:
 # stay silent too. The tool writes a message to the agent's own person and attacks nothing.
 
 # The memory tools belong here as well: `allowed_tools` is deny by default, so a missing entry
-# would mean "silently never learns", exactly the state ABC-30 ended. They write only into the
+# would mean "silently never learns", exactly the state the memory was built to end. They
+# write only into the
 # memory folder of the agent's own person.
 _ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "submit_plan",
                    "delegate", "traccoon_notify_human"} | MEMORY_TOOL_NAMES
@@ -147,7 +148,7 @@ READ_ATTACHMENT_TOOL = {"type": "function", "function": {
     "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "The file name of the attachment"}},
                    "required": ["name"]}}}
 OPEN_TASKS_TOOL = {"type": "function", "function": {
-    "name": "open_tasks", "description": "Offene, einem Agenten zugewiesene Tickets (read-only).",
+    "name": "open_tasks", "description": "Open tickets assigned to an agent (read-only).",
     "parameters": {"type": "object", "properties": {}}}}
 CODEGRAPH_TOOL = {"type": "function", "function": {
     "name": "codegraph",
@@ -313,7 +314,7 @@ def _fs_dispatch(name: str, root: str | None, args: dict[str, Any]) -> str:
                 f.write(text.replace(old, new))
             return f"OK: {n} Ersetzung(en) in {args.get('path')}."
     except FileNotFoundError:
-        return f"ERROR: Datei nicht gefunden: {args.get('path')}"
+        return f"ERROR: file not found: {args.get('path')}"
     except ValueError as exc:
         return f"ERROR: {exc}"
     except Exception as exc:  # noqa: BLE001
@@ -323,7 +324,7 @@ def _fs_dispatch(name: str, root: str | None, args: dict[str, Any]) -> str:
 
 async def _do_check(ws_root: str | None, verify_command: str) -> str:
     if not ws_root:
-        return "ERROR: kein Workspace."
+        return "ERROR: no workspace."
     if not verify_command:
         return "✅ BUILD OK (no verify_command set — no build check configured)."
     try:
@@ -395,7 +396,7 @@ async def _do_screenshot(args: dict[str, Any], base_url: str) -> Any:
             r = await client.post(f"{SHOTTER_URL.rstrip('/')}/shot",
                                   json={"target": target, "base_url": base_url})
     except Exception as exc:  # noqa: BLE001
-        return f"ERROR: Screenshot-Dienst nicht erreichbar: {exc}"
+        return f"ERROR: the screenshot service is unreachable: {exc}"
     if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
         return f"ERROR while taking the screenshot (HTTP {r.status_code}): {r.text[:200]}"
     b64 = base64.b64encode(r.content).decode()
@@ -462,7 +463,7 @@ class AgentDef:
     allowed_skills: list[str]
     autoload_skills: list[str]
     delegate_to: list[str]
-    # Reads the memory at the start and looks back after the run (ABC-30). On by default;
+    # Reads the memory at the start and looks back after the run. On by default;
     # without a vault folder set on the owner nothing happens anyway.
     learns: bool = True
     # Threshold for compacting the history (worker/compaction.py). None means off. It was
@@ -541,8 +542,8 @@ async def _start_run(db: AsyncSession, issue_id: int, agent: str, phase: str, pr
         for r in old:
             r.status = "failed"
             r.finished_at = _now()
-            r.error = ((r.error or "") + " Abgebrochen: derselbe Auftrag wurde neu "
-                       "gestartet (Worker-Neustart).").strip()
+            r.error = ((r.error or "") + " Aborted: the same assignment was started "
+                       "again (worker restart).").strip()
     run = Run(issue_id=issue_id, agent=agent, phase=phase, provider=provider, model=model,
               status="running", parent_run_id=parent_run_id, continuation_index=continuation_index,
               task_id=task_id, project_id=project_id, owner_id=owner_id,
@@ -827,7 +828,7 @@ async def _agent_skills(db: AsyncSession, agent: AgentDef) -> tuple[str, str]:
             head = f"## AKTIVER MODUS: {s.name}" if s.autostart else f"## Skill: {s.name}"
             parts.append(f"{head}\n{s.body}")
         else:
-            menu.append(f"- `{s.key}` — {s.name}: {s.description or '(keine Beschreibung)'}")
+            menu.append(f"- `{s.key}`: {s.name}, {s.description or '(no description)'}")
     menu_text = ""
     if menu:
         menu_text = ("# Available skills (load one with the tool `load_skill` when you need it)\n"
@@ -853,7 +854,7 @@ MAX_REFLEXION_TURNS = 2
 async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | None,
                    project_key: str, messages: list[dict[str, Any]], summary: str, log_line,
                    tokens: dict, base_urls: dict) -> tuple[int, int, int]:
-    """Look back after a successful run: what lasts goes into the memory (ABC-30).
+    """Look back after a successful run: what lasts goes into the memory.
 
     An extra model turn over the history of the run, offered ONLY the memory tools, so the
     agent can do nothing here but learn. The normal case is "learned nothing", which costs one
@@ -970,7 +971,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                          "# The existing plan (revise it along the comments)\n\n" + issue["plan"]})
     elif (plan_text := (issue.get("plan") or "").strip()):
         # THE PLAN BELONGS IN THE EXECUTION. It used to be passed to `run_agent` but only used
-        # in planning mode, so the developer worked from the ticket description. On ABC-31
+        # in planning mode, so the developer worked from the ticket description. On one ticket
         # that description was a report of symptoms ("find the cause, evaluate job_runs"),
         # while the approved plan had named the cause long before, with file and line number.
         # The result on 2026-08-07: three runs, 155 turns, no
@@ -983,7 +984,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             "did differently and why."})
     if continuation_index > 0 and continuation_hint:
         messages.append({"role": "system", "content":
-            f"## Fortsetzung (Runde {continuation_index})\nWorktree-Stand ist erhalten. Letzter Stand:\n"
+            f"## Continuation (round {continuation_index})\nThe worktree state is kept. Last state:\n"
             f"{continuation_hint}\nCarry straight on, check the build status, finish the open steps."})
     elif mode != "plan" and issue.get("id"):
         # No orderly end, no handover, and the successor starts from zero although the
@@ -1057,7 +1058,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             if mode == "plan":
                 openai_tools.append(SUBMIT_PLAN_TOOL)
 
-            # Memory (ABC-30): learned rules from the owner's vault. Reading happens ON THE
+            # Memory: learned rules from the owner's vault. Reading happens ON THE
             # SERVER, so the `oneOf` addressing of the vault tool server does not depend on the
             # model (reasoning in tools_memory). Without a vault folder nothing happens.
             mem_root = await memory_root(db, owner_id) if agent.learns else ""
@@ -1107,16 +1108,16 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 t["function"]["name"] for t in openai_tools}
             result_there = False
             reminded = 0
-            limit_reason = "Iterations-Limit erreicht."
+            limit_reason = "Iteration limit reached."
             iteration = 0       # in case max_iterations is 0, the loop never runs
             for iteration in range(1, agent.max_iterations + 1):
                 if deadline and asyncio.get_running_loop().time() > deadline:
                     # As with the token budget: `break` falls into the loop_exhausted ending.
                     ran = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - deadline)
-                    limit_reason = f"Zeitlimit erreicht ({ran}s, Grenze {int(MAX_RUN_SECONDS)}s)."
+                    limit_reason = f"Time limit reached ({ran}s, bound {int(MAX_RUN_SECONDS)}s)."
                     log.warning("Run %s: time limit reached (%ds), loop_exhausted", run_id, ran)
                     await log_line("system", None,
-                              f"⚠️ {limit_reason} → loop_exhausted (Fortsetzung in frischem Run)",
+                              f"⚠️ {limit_reason} -> loop_exhausted (continuation in a fresh run)",
                               kind="system")
                     break
                 if iteration == max(2, agent.max_iterations - 2):
@@ -1124,7 +1125,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         "⚠️ You are approaching the iteration limit. If you are NOT right before "
                         "finishing: `continue_later` with a summary. Only on a real blocker: `ask_human`."})
                 # Remind while it still helps: budget spent without any result at all. On
-                # 2026-08-07 ABC-12 read 190 files across three runs and wrote not a line. The
+                # 2026-08-07 one ticket read 190 files across three runs and wrote not a line. The
                 # only reminder came at round 78 of 80, long after the time was gone.
                 if result_tools and not result_there:
                     used = max(
@@ -1137,7 +1138,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         text = reminder_text(mode, used, sharp=reminded >= len(REMINDER_AT))
                         messages.append({"role": "system", "content": text})
                         await log_line("system", None,
-                                        f"⚠️ {int(used * 100)} % Budget ohne Ergebnis — nachgehakt",
+                                        f"⚠️ {int(used * 100)} % of the budget without a result, reminded",
                                         kind="system")
                 # Shorten the context BEFORE it bursts the provider. What is measured is the
                 # real context size of the last call; without `max_context_tokens` nothing happens.
@@ -1148,7 +1149,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         tokens=tokens, base_urls=base_urls)
                     if _new is not None:
                         await log_line("system", None,
-                                  f"Verlauf kompaktiert: {len(messages)} → {len(_new)} Nachrichten "
+                                  f"History compacted: {len(messages)} -> {len(_new)} messages "
                                   f"(Kontext {last_context} von {agent.max_context_tokens}).",
                                   kind="system")
                         messages = _new
@@ -1161,7 +1162,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              web_search=agent.web_search, tokens=tokens,
                                              base_urls=base_urls, effort=agent.effort)
                 except ProviderError as exc:
-                    await log_line("system", None, f"Provider-Fehler: {exc}", kind="system")
+                    await log_line("system", None, f"Provider error: {exc}", kind="system")
                     # The turns so far are paid for even when the last one failed. Without the
                     # tokens here a provider error lost the whole run from the cost calculation.
                     await _end_run(db, run_id, "failed", error=str(exc), iterations=iteration,
@@ -1183,12 +1184,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # Hard token budget reached: end the run exactly as on the iteration limit.
                     # `break` falls into the loop_exhausted ending below (the same
                     # _end_run/RunResult path) so that the continuation semantics apply.
-                    limit_reason = f"Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS})."
+                    limit_reason = f"Token budget reached ({in_tok} >= {MAX_RUN_INPUT_TOKENS})."
                     log.warning("Run %s: token budget reached (%d >= %d), loop_exhausted",
                                 run_id, in_tok, MAX_RUN_INPUT_TOKENS)
                     await log_line("system", None,
-                              f"⚠️ Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS}) "
-                              f"→ loop_exhausted (Fortsetzung in frischem Run)", kind="system")
+                              f"⚠️ Token budget reached ({in_tok} >= {MAX_RUN_INPUT_TOKENS}) "
+                              f"-> loop_exhausted (continuation in a fresh run)", kind="system")
                     break
                 # The content stays verbatim as before (`AgentMonitor` reads it that way), but
                 # the row now carries the tokens of THIS turn: only then does the cost curve
@@ -1231,7 +1232,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                     "⛔ FINISHING BLOCKED: the build is RED. Fix the cause (delete nothing) "
                                     "and carry on:\n\n" + verdict})
                                 continue
-                        # Look back: what was a lasting rule? (ABC-30) Only on success, because
+                        # Look back: what was a lasting rule? Only on success, because
                         # an aborted run holds no solid lesson. Errors stay here: the run was
                         # successful, and the look back does not change that.
                         if mem_root:
@@ -1251,10 +1252,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     empties += 1
                     if empties >= 2:
                         # The failure cost something as well: the turns before it are paid for.
-                        await _end_run(db, run_id, "failed", error="Leere Modell-Antwort.",
+                        await _end_run(db, run_id, "failed", error="Empty model answer.",
                                        iterations=iteration, in_tok=in_tok, out_tok=out_tok,
                                        cache_read=cache_read, ctx=ctx)
-                        return RunResult("failed", "Leere Modell-Antwort.", iteration, run_id=run_id)
+                        return RunResult("failed", "Empty model answer.", iteration, run_id=run_id)
                     messages.append({"role": "system", "content":
                         "Your last answer was empty. Call a tool or deliver a closing summary."})
                     continue
@@ -1457,7 +1458,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                          "content": result})
                     else:
                         # `traccoon_http_call` already got its limit from the destination
-                        # (Destination.max_response_chars, ABC-31) and brings it along in the
+                        # (Destination.max_response_chars) and brings it along in the
                         # answer. The blanket cap would take it back here, hence the wider
                         # frame for this tool.
                         cap = MAX_HTTP_TOOL_CHARS if call.name == "traccoon_http_call" else 8000
@@ -1477,7 +1478,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             # limit" even after the token budget, which twists the search for a cause. The
             # rest is the handover to the continuation: findings, what is done, the next step,
             # taken from the HISTORY and not from the last sentence. Without it every
-            # continuation run started from zero (ABC-12: three runs, not a line of code).
+            # continuation run started from zero (three runs, not a line of code).
             exhausted = await _handover(
                 db, messages=messages, reason=limit_reason, last_text=last_text,
                 owner_id=owner_id, agent=agent, tokens=tokens, base_urls=base_urls)
@@ -1550,5 +1551,5 @@ async def _open_tasks(db: AsyncSession) -> str:
         )
     ).scalars().all()
     if not rows:
-        return "Keine zugewiesenen Tickets offen."
+        return "No assigned tickets are open."
     return "\n".join(f"- {i.key} [{i.agent_status}] {i.summary}" for i in rows)

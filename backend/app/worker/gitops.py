@@ -130,7 +130,7 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
     """Cumulative diff of the ticket state against the branching base (for the review gate).
 
     It is truncated at a line boundary and with an announcement. The silent cut in the middle
-    of a word took revenge on 2026-08-07: with ABC-32 the reviewer saw a compose block that
+    of a word took revenge on 2026-08-07: a reviewer saw a compose block that
     "breaks off in the middle (`v` as the last line)" and reported that as an incomplete
     service definition, which is a finding about the messenger, not about the code. A
     reviewer who does not know that something is withheld invents explanations for it.
@@ -141,7 +141,7 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
     # ALWAYS go over `merge-base`, even when a `base_commit` is present: that one is the main
     # state at the last preparation of the worktree, not the branching point of the branch
     # (`prepare` rewrites it on every reuse). A two dot diff against that state shows
-    # everything main has gained since the real branching as "deleted"; with ABC-31 on
+    # everything main has gained since the real branching as "deleted"; on
     # 2026-08-07 that was 1993 lines, and the reviewer dutifully reported that the agent had
     # removed the `may_plan_continue` node. It had never touched it. `merge-base` delivers
     # the branching point even when the other side has moved on.
@@ -388,15 +388,15 @@ def _github_slug(remote: str) -> str | None:
 async def open_pull_request(ctx: GitCtx, title: str, body: str = "") -> str:
     """Push the ticket branch and open a pull request instead of merging directly.
 
-    Returns: 'pr:<url>' on success, otherwise 'pr-fehler:<reason>'.
+    Returns: 'pr:<url>' on success, otherwise 'pr-error:<reason>'.
     """
     if not ctx.enabled or not ctx.remote:
-        return "pr-fehler:kein Remote konfiguriert"
+        return "pr-error:no remote configured"
     slug = _github_slug(ctx.remote)
     if not slug:
         return "pr-error:only GitHub remotes are supported"
     if not ctx.token:
-        return "pr-fehler:kein Git-Token hinterlegt"
+        return "pr-error:no git token stored"
 
     wd = ctx.worktree or ctx.workdir
     rc, out = await _git(wd, "push", _authed_url(ctx.remote, ctx.token), f"{ctx.branch}:{ctx.branch}")

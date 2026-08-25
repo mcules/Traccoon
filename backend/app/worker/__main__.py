@@ -181,7 +181,7 @@ async def handle(job: dict, redis: Redis) -> None:
     kind = job.get("kind")
     if kind == "accept":
         # ALWAYS write the result to Redis: /complete waits for it and may only set a ticket
-        # to done on a clean merge (ABC-18).
+        # to done on a clean merge.
         try:
             res = await _handle_accept(job, redis)
         except Exception as exc:  # noqa: BLE001
@@ -369,7 +369,7 @@ async def handle(job: dict, redis: Redis) -> None:
 # Safety net for the correction rounds of the review gate, NOT the normal stop. What ends it
 # is the matter itself: passing, or a correction that changes nothing in the code (a
 # standstill). The earlier hard limit of 2 fetched a person while things were still moving,
-# on ABC-32 (2026-08-07) even over a finding that came from the truncated diff display. A
+# on 2026-08-07 even over a finding that came from the truncated diff display. A
 # ticket should run through as long as it makes progress.
 REVIEW_ROUNDS = int(os.getenv("REVIEW_MAX_RUNDEN", "6"))
 
@@ -380,7 +380,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
     most 2 correction rounds by the executing agent, then hold_review.
 
     The rounds used up are kept ON THE TICKET, not in this loop. A counter in the process is
-    zero again after every worker restart, and ABC-32 ran straight into that on 2026-08-07:
+    zero again after every worker restart, and one ticket ran straight into that on 2026-08-07:
     check, correct, restart, check, correct, and the limit that should fetch a person was
     never reached.
     """
@@ -424,7 +424,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             log.info("review %s: passed (round %d)", issue.key, attempt + 1)
             return result
         # An ABORTED reviewer has no findings, it did not review at all. Without this
-        # distinction its error message was passed on as an assignment: on 2026-08-07 ABC-31
+        # distinction its error message was passed on as an assignment: on 2026-08-07 a ticket
         # sent the developer off to fix "claude: answer truncated at max_tokens … raise
         # max_tokens". That costs one of the two correction rounds, burns a full run and ends
         # in a review hold afterwards, over a finding that never existed.
@@ -463,7 +463,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             return result
     # Rounds spent and findings still open, so a person takes over. WITH the findings: the
     # ticket used to carry only "hold: review", and whoever wanted to know why had to look
-    # the run up in the database (ABC-32 on 2026-08-07). Somebody who has to decide needs
+    # the run up in the database (2026-08-07). Somebody who has to decide needs
     # the reason in the same place as the decision.
     open_ones = (getattr(rev, "text", "") or "").strip()
     db.add(Comment(
@@ -584,7 +584,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
         if project.auto_deploy and issue.merge_status == "merged" and not issue.parent_ticket_id:
             # Tickets must NOT deploy the host or maintenance project itself. An empty
             # (self targeting) stack_dir would be rejected by the deployer anyway and would
-            # only produce a deploy storm on every pass through the loop (see ABC-19). The host
+            # only produce a deploy storm on every pass through the loop. The host
             # stack is recreated exclusively through the explicit, idle gated maintenance
             # update (dispatcher self_deploy, only when no agent is running).
             if project.workspace_dir:
@@ -656,7 +656,7 @@ async def _handle_agent_free(job: dict, redis: Redis) -> None:
 # reason why a job could do exactly one thing.
 
 
-# Conversation history in chat (ABC-30): a chat used to be a series of independent runs, so a
+# Conversation history in chat: a chat used to be a series of independent runs, so a
 # person had to repeat themselves inside one conversation.
 #
 # The plain time window (8 exchanges / 12 h) cut the reference off ABRUPTLY: the person
@@ -1262,7 +1262,7 @@ async def pull_loop(redis: Redis) -> None:
 # Running runs per ticket key, for the kill channel (aborting from the interface)
 RUNNING: dict[str, asyncio.Task] = {}
 # Set as soon as SIGTERM/SIGINT arrived: accept no new tasks, let running ones finish.
-# Without this every deploy tore the agents out mid turn: twice on ABC-31 on 2026-08-07,
+# Without this every deploy tore the agents out mid turn: twice on 2026-08-07,
 # each time after nearly 40 turns of work.
 _shutdown = asyncio.Event()
 # The mirror in Redis (ACTIVE) comes from core.redis, and the backend checks the same key.
@@ -1276,7 +1276,7 @@ _inflight_task_ids: set[str] = set()
 
 
 async def kill_listener(redis: Redis) -> None:
-    """Abonniert traccoon:kill; Payload = Ticket-Key → laufenden Lauf abbrechen."""
+    """Subscribes to traccoon:kill; the payload is a ticket key, the running run is aborted."""
     pubsub = redis.pubsub()
     await pubsub.subscribe(f"{PREFIX}kill")
     async for msg in pubsub.listen():
@@ -1335,7 +1335,7 @@ async def main() -> None:
                 log.info("Run %s aborted (kill)", key)
                 await redis.set(f"{PREFIX}result:{job['task_id']}", json.dumps(
                     {"status": "failed", "success": False,
-                     "output": "Abgebrochen (Stopp durch Nutzer)"}), ex=RESULT_TTL)
+                     "output": "Aborted (stopped by a person)"}), ex=RESULT_TTL)
                 await redis.publish(f"{PREFIX}results", job["task_id"])
                 # Close the run row here. Without that it stayed on "running", and the
                 # watchdog for dead runs later found a corpse whose cause it did not know:
@@ -1415,7 +1415,7 @@ def _signals_accept() -> None:
 
     On a restart Docker first sends SIGTERM and kills after the grace period. Without a
     handler the process died at once, together with every agent that was thinking. The
-    requeue saves the task, not the conversation: on 2026-08-07 that cost ABC-31 nearly 40
+    requeue saves the task, not the conversation: on 2026-08-07 that cost one ticket nearly 40
     turns of work, twice.
     """
     loop = asyncio.get_running_loop()

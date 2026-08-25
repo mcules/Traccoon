@@ -79,7 +79,7 @@ async def test_the_agent_starts_a_flow_and_sees_only_startable_ones(db, anna):
 
     out = await call_traccoon_tool(db, anna.id, "traccoon_start_workflow",
                                    {"workflow_id": startable.id, "context": {"quelle": "models.dev"}})
-    assert "gestartet" in out
+    assert "started" in out
     inst = await _instances(db)
     assert len(inst) == 1
     assert inst[0].context["quelle"] == "models.dev"

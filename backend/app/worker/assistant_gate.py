@@ -74,7 +74,7 @@ async def apply_perm_decision(db: AsyncSession, task: AssistantTask, decision: s
 
 async def learn_permission(db: AsyncSession, owner_id: int | None, tool: str,
                            resource: str, action: str) -> None:
-    """'immer' (allow) / 'nie' (deny) dauerhaft merken (upsert je owner+tool+resource)."""
+    """Remember 'always' (allow) or 'never' (deny) for good (upsert per owner+tool+resource)."""
     resource = resource or "*"
     existing = (await db.execute(select(AssistantPermission).where(
         AssistantPermission.owner_user_id == owner_id, AssistantPermission.tool == tool,

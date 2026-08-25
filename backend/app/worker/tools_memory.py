@@ -1,4 +1,4 @@
-"""Memory of the agents: learned insights as notes in the Obsidian vault (ABC-30).
+"""Memory of the agents: learned insights as notes in the Obsidian vault.
 
 The filing place is the vault, because the human should be able to see and correct what has
 been learned by hand; a database table would be invisible. Under
@@ -9,14 +9,17 @@ been learned by hand; a database table would be invisible. Under
     Projekt-<KEY>.md                 project specific, across every role
     Projekt-<KEY>-Agent-<rolle>.md   role specific INSIDE one project
 
-The fourth note exists because the third one was never written: what the developer learned in
-UNI is wrong in TRA (role note) and wrong for the reviewer of the same project (project note),
-so in practice neither got the line. It is the narrowest area and therefore the last one in
-the prompt.
+The fourth note exists because the third one was never written: what a developer learns in
+one project is wrong in the next (role note) and wrong for the reviewer of the same project
+(project note), so in practice neither got the line. It is the narrowest area and therefore
+the last one in the prompt.
+
+The file names are German on purpose. They are notes a person opens in their own vault, and
+renaming them would leave every insight learned so far behind in a file nothing reads.
 
 The content is deliberately plain markdown, one bullet line per insight. There is no
 parsing, there are no ids and no hit counters: the text is hung into the prompt as a block,
-and merging duplicates is done by the agent itself over `vergiss` plus `erinnere_dich`.
+and merging duplicates is done by the agent itself over `forget` plus `remember`.
 
 WHY THESE TOOLS EXIST AT ALL: the obsidian MCP describes `target` as a `oneOf` without a
 `type` field. Models like `claude-sonnet-4-5` do not serve that: they send `target` as a

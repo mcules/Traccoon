@@ -33,8 +33,8 @@ ABORTED = ("failed", "loop_exhausted")
 # The marker a supervision ticket carries in its title. It is what makes a second run
 # recognise its own earlier report instead of filing it again, and a person reading the ticket
 # sees straight away where it came from.
-MARK = "[Aufsicht:{signature}]"
-MARK_RE = re.compile(r"\[Aufsicht:([^\]]+)\]")
+MARK = "[supervision:{signature}]"
+MARK_RE = re.compile(r"\[supervision:([^\]]+)\]")
 
 # Only from this many calls on does a tool failure rate mean anything. Below it a single
 # unlucky call would look like a defect.
@@ -48,17 +48,22 @@ TOOL_FAIL_SHARE = 0.15
 # Order matters: the first matching row wins. The infrastructure rows stand before the agent
 # rows on purpose — a run killed by a worker restart says nothing about the agent, however it
 # ended.
+# The German markers are not leftovers: the run messages were German until 2026-08-25, and
+# every row written before that still carries them. Dropping them would make months of history
+# unreadable to this module, so both spellings stay side by side.
 _CLASSES: list[tuple[str, tuple[str, ...]]] = [
     # The provider said no. Nothing in this house can fix it, and it passes on its own.
-    ("provider", ("rate_limit_error", "overloaded_error", "Verbindungsfehler",
-                  "connection attempts failed", "upstream connect error", "<!DOCTYPE html>",
-                  "bei max_tokens abgeschnitten", "truncated at max_tokens")),
+    ("provider", ("rate_limit_error", "overloaded_error", "connection attempts failed",
+                  "upstream connect error", "<!DOCTYPE html>", "truncated at max_tokens",
+                  "Verbindungsfehler", "bei max_tokens abgeschnitten")),
     # Traccoon itself interrupted the run. Also not the agent's doing.
-    ("infra", ("Worker-Neustart", "Worker restart", "Kill-Kanal", "kill channel", "Altlast:",
+    ("infra", ("worker restart", "kill channel", "the same assignment was started again",
+               "Worker-Neustart", "Kill-Kanal", "Altlast:",
                "derselbe Auftrag wurde neu gestartet", "Wächter war bereits weg")),
     # The agent ran out of room: time, iterations, tokens, build gate. THIS is worth looking at.
-    ("agent", ("Zeitlimit", "Iterations-Limit", "Token-Budget", "FINISHING BLOCKED",
-               "Leere Modell-Antwort", "empty model answer")),
+    ("agent", ("time limit reached", "iteration limit reached", "token budget reached",
+               "FINISHING BLOCKED", "empty model answer",
+               "Zeitlimit", "Iterations-Limit", "Token-Budget", "Leere Modell-Antwort")),
 ]
 
 # What a class means for the supervision. Only two of them justify pulling a person in.
@@ -219,7 +224,7 @@ async def _already_open(db: AsyncSession, signatures: list[str]) -> dict[str, st
         select(Issue.key, Issue.summary)
         .join(WorkflowStatus, WorkflowStatus.id == Issue.status_id)
         .where(WorkflowStatus.category != StatusCategory.done,
-               Issue.summary.contains("[Aufsicht:")))).all()
+               Issue.summary.contains("[supervision:")))).all()
     wanted = set(signatures)
     found: dict[str, str] = {}
     for key, summary in rows:

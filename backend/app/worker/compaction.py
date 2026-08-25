@@ -77,7 +77,7 @@ def _cuttable(m: dict) -> bool:
     tools for 60 rounds those practically do not exist: the history consists of
     assistant/tool pairs. The truncation therefore knew only two exits, almost nothing (the
     oldest four messages) or everything (history boiled down to three messages, agent
-    without memory, starts from the beginning). On exactly that, ABC-4 hung for two full
+    without memory, starts from the beginning). On exactly that, one ticket hung for two full
     runs on 2026-08-06 without writing a single file.
     """
     return m.get("role") != "tool" and not m.get("tool_call_id")
@@ -164,7 +164,7 @@ async def handover(db, *, messages: list[dict], reason: str, last_text: str,
     """Handover to the continuation run: what was learned, what was done, what comes next.
 
     Until now the continuation only held `grund` plus the last sentence of the agent. That
-    was not even enough to know which files had already been read: ABC-12 started three runs
+    was not even enough to know which files had already been read: one ticket started three runs
     in a row on 2026-08-07 with `open_tasks` and the same search query and wrote not a line
     of code in an hour and a half. The run ends at a limit, so the thread has to be rescued
     from the history, not from its last sentence.

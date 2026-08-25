@@ -1,6 +1,6 @@
 """The curator: keeps the learned memory readable instead of letting it run wild.
 
-The memory (ABC-30) is a bullet list per note that every run appends to at the bottom. It
+The memory is a bullet list per note that every run appends to at the bottom. It
 therefore only grows, and `read_memory` truncates at `MAX_MEMORY_CHARS`. From that limit on,
 the bottom falls silently out of the prompt: first learned, then forgotten, without anybody
 noticing. That is exactly what Predecessor has its `curator` for: tidying up as a small background

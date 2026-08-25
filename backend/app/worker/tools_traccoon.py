@@ -18,7 +18,7 @@ from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import User
 
 _now = lambda: dt.datetime.now(tz=dt.timezone.utc)  # noqa: E731
-_v = lambda x: getattr(x, "value", x) if x is not None else "—"  # Enum → Wert  # noqa: E731
+_v = lambda x: getattr(x, "value", x) if x is not None else "—"  # enum to value  # noqa: E731
 
 
 def _def(name: str, desc: str, props: dict, required: list[str]) -> dict:
@@ -40,15 +40,15 @@ TRACCOON_TOOLS = [
     _def("traccoon_create_issue", "Create a new ticket in a project (membership needed).",
          {"project_key": {"type": "string"}, "summary": {"type": "string"},
           "description": {"type": "string"}}, ["project_key", "summary"]),
-    _def("traccoon_comment", "Kommentar an ein Ticket schreiben.",
+    _def("traccoon_comment", "Write a comment on a ticket.",
          {"key": {"type": "string"}, "text": {"type": "string"}}, ["key", "text"]),
     _def("traccoon_assign_agent", "Assign an agent (a role) to a ticket (the AI permission is needed).",
          {"key": {"type": "string"}, "role": {"type": "string"}}, ["key", "role"]),
-    _def("traccoon_start_planning", "Planung eines Tickets starten (KI-Recht + zugewiesener Agent).",
+    _def("traccoon_start_planning", "Start the planning of a ticket (AI permission plus an assigned agent).",
          {"key": {"type": "string"}}, ["key"]),
-    _def("traccoon_approve_plan", "Vorgeschlagenen Plan eines Tickets freigeben (KI-Recht).",
+    _def("traccoon_approve_plan", "Approve the proposed plan of a ticket (AI permission).",
          {"key": {"type": "string"}}, ["key"]),
-    _def("traccoon_issue_costs", "Kosten (USD, Tokens) eines Tickets.",
+    _def("traccoon_issue_costs", "Cost (USD, tokens) of a ticket.",
          {"key": {"type": "string"}}, ["key"]),
     _def("traccoon_notify_human",
          "Report something to your person that they MUST know or explicitly WANT to know "
@@ -102,21 +102,21 @@ TRACCOON_TOOLS = [
          {"project_key": {"type": "string", "description": "optional: only this project"}}, []),
     _def("traccoon_start_workflow",
          "Start an instance of a published flow. `context` holds the "
-         "Startwerte des Graphen (frei belegbares Objekt). Ein Prozess mit Gegenstand "
+         "Start values for the graph (a free form object). A flow with a subject "
          "'issue' braucht `issue_key`.",
-         {"workflow_id": {"type": "integer", "description": "id aus traccoon_list_workflows"},
+         {"workflow_id": {"type": "integer", "description": "id from traccoon_list_workflows"},
           "issue_key": {"type": "string", "description": "only for flows on tickets"},
           "context": {"type": "object", "description": "Start values for the graph"}},
          ["workflow_id"]),
     _def("traccoon_http_call",
          "Call a released destination. The base URL and the login come from the destination; you "
          "only give the method, the path suffix, the query, the headers and the body.",
-         {"destination": {"type": "string", "description": "Name des Ziels"},
+         {"destination": {"type": "string", "description": "Name of the destination"},
           "method": {"type": "string", "description": "GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS"},
           "path": {"type": "string", "description": "A suffix to the base URL, /api/v2/orders say"},
-          "query": {"type": "object", "description": "Query-Parameter"},
+          "query": {"type": "object", "description": "Query parameters"},
           "headers": {"type": "object", "description": "additional headers"},
-          "body": {"description": "JSON-Objekt/Liste oder Text"}},
+          "body": {"description": "JSON object, list or text"}},
          ["destination"]),
     _def("traccoon_run_health",
          "How the agent runs of a time window went: numbers per role, the failures grouped by "
@@ -137,7 +137,7 @@ TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 # "always"). Reading stays free.
 # `traccoon_start_workflow` is included for the same reason: a process can trigger agent
 # runs, approvals and calls to the outside, which is not something an agent sets off unnoticed.
-# Auflisten bleibt frei.
+# Listing stays free.
 TRACCOON_GATED_TOOLS = {"traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
                         "traccoon_start_workflow"}
 
@@ -150,7 +150,7 @@ async def _issue_access(db: AsyncSession, user: User, key: str):
     """(Issue, Access, Project) for a ticket key, or (None, error text)."""
     iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
     if iss is None:
-        return None, None, f"Ticket '{key}' nicht gefunden."
+        return None, None, f"Ticket '{key}' not found."
     project = await db.get(Project, iss.project_id)
     try:
         acc = await build_access(project, user, db)
@@ -197,15 +197,15 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
     if name == "traccoon_get_job":
         j = await _job(args.get("job_id"))
         if j is None:
-            return "Job nicht gefunden."
+            return "Job not found."
         runs = (await db.execute(select(JobRun).where(JobRun.job_id == j.id)
                                    .order_by(JobRun.id.desc()).limit(5))).scalars().all()
         p = parameter(j.args)
         return (f"#{j.id} {j.name}\n"
-                f"Zeitplan: {j.type}:{j.schedule} · {'an' if j.enabled else 'AUS'} · "
-                f"Art {j.kind} · Agent {j.agent or '—'} · Meldung {j.notify_mode}\n"
+                f"schedule: {j.type}:{j.schedule} · {'on' if j.enabled else 'OFF'} · "
+                f"kind {j.kind} · agent {j.agent or '-'} · notify {j.notify_mode}\n"
                 + (f"Parameter: {p}\n" if p else "")
-                + (f"Offene Platzhalter (ohne Wert!): {', '.join(o)}\n"
+                + (f"Open placeholders (no value!): {', '.join(o)}\n"
                    if (o := open_placeholder(j.prompt, j.args)) else "")
                 + f"Prompt:\n{(j.prompt or '')[:2000]}\n"
                 + "Last runs: " + (", ".join(
@@ -222,8 +222,8 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
             # The template names its flow by key; here it becomes the number of this database.
             fields = await with_flow(db, fields)
             if fields.get("kind") == "workflow" and not fields.get("workflow_definition_id"):
-                return ("Der Ablauf hinter dieser Vorlage fehlt in dieser Installation "
-                        "— der Job wäre ohne Arbeit. Nichts angelegt.")
+                return ("The flow behind this template is missing in this installation, "
+                        "so the job would have no work to do. Nothing was created.")
         elif args.get("params"):
             fields["args"] = dict(args["params"])
         for f in _JOB_FIELDS:
@@ -251,7 +251,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
     if name == "traccoon_update_job":
         j = await _job(args.get("job_id"))
         if j is None:
-            return "Job nicht gefunden."
+            return "Job not found."
         changed = []
         for f in _JOB_FIELDS:
             if args.get(f) is not None and getattr(j, f) != args[f]:
@@ -272,7 +272,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
     if name == "traccoon_run_job":
         j = await _job(args.get("job_id"))
         if j is None:
-            return "Job nicht gefunden."
+            return "Job not found."
         jr = JobRun(job_id=j.id, status="running")
         db.add(jr)
         j.last_run_at = _now()
@@ -322,7 +322,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
             p = (await db.execute(select(Project).where(
                 Project.key == args["project_key"]))).scalar_one_or_none()
             if p is None:
-                return f"Projekt '{args['project_key']}' nicht gefunden."
+                return f"Projekt '{args['project_key']}' not found."
             q = q.where(or_(WorkflowDefinition.project_id == p.id,
                             WorkflowDefinition.project_id.is_(None)))
         rows = (await db.execute(q.order_by(WorkflowDefinition.id))).scalars().all()
@@ -341,11 +341,11 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
     if name == "traccoon_start_workflow":
         d = await db.get(WorkflowDefinition, int(args.get("workflow_id") or 0))
         if d is None or d.archived_at is not None:
-            return "Prozess nicht gefunden."
+            return "Flow not found."
         if not await _allowed(d):
-            return "Kein Zugriff auf diesen Prozess."
+            return "No access to this flow."
         if not d.enabled:
-            return f"Prozess '{d.key}' ist abgeschaltet."
+            return f"The flow '{d.key}' is switched off."
         if d.current_version_id is None:
             return f"The flow '{d.key}' has no published version."
         sk = d.subject_kind.value if hasattr(d.subject_kind, "value") else str(d.subject_kind)
@@ -356,7 +356,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
                 return error
             issue_id = iss.id
         elif sk == "issue":
-            return f"The flow '{d.key}' runs on a ticket — give an issue_key."
+            return f"The flow '{d.key}' runs on a ticket, so give an issue_key."
         context = args.get("context")
         try:
             inst = await start_workflow(
@@ -366,7 +366,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
             )
         except ValueError as e:
             return f"ERROR: {e}"
-        return (f"Prozess '{d.key}' gestartet — Instanz #{inst.id}, Status "
+        return (f"Flow '{d.key}' started, instance #{inst.id}, status "
                 f"{inst.status.value if hasattr(inst.status, 'value') else inst.status}. "
                 "Waiting steps (approvals, tasks) carry on without you.")
 
@@ -400,7 +400,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
     if name == "traccoon_list_issues":
         p = (await db.execute(select(Project).where(Project.key == args.get("project_key")))).scalar_one_or_none()
         if p is None:
-            return f"Projekt '{args.get('project_key')}' nicht gefunden."
+            return f"Projekt '{args.get('project_key')}' not found."
         try:
             await build_access(p, user, db)
         except HTTPException:
@@ -411,7 +411,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         limit = min(int(args.get("limit") or 20), 50)
         rows = (await db.execute(q.order_by(Issue.updated_at.desc()).limit(limit))).scalars().all()
         if not rows:
-            return "Keine Tickets."
+            return "No tickets."
         return "\n".join(f"- {i.key} [{_v(i.agent_status)}] {i.summary} "
                          f"(Agent: {i.assigned_agent or '—'})" for i in rows)
 
@@ -427,7 +427,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
     if name == "traccoon_create_issue":
         p = (await db.execute(select(Project).where(Project.key == args.get("project_key")))).scalar_one_or_none()
         if p is None:
-            return f"Projekt '{args.get('project_key')}' nicht gefunden."
+            return f"Projekt '{args.get('project_key')}' not found."
         try:
             await build_access(p, user, db)
         except HTTPException:
@@ -455,7 +455,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             return err
         from ..services.comments import apply_user_comment
         await apply_user_comment(db, iss, args.get("text", ""), user.id, "Assistent")
-        return f"Kommentar an {iss.key} gespeichert."
+        return f"Comment saved on {iss.key}."
 
     if name == "traccoon_assign_agent":
         iss, acc, err = await _issue_access(db, user, args.get("key", ""))
@@ -468,13 +468,13 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         iss.assigned_at = _now()
         # Assigning means starting, exactly as over the interface (`/issues/{key}/assign-agent`).
         # Without these lines the assistant only set fields, and the ticket lay there with an
-        # agent and a status without a process running (ABC-32 on 2026-08-07).
+        # agent and a status without a process running (seen on 2026-08-07).
         from ..services.lifecycle_flow import start_lifecycle
         inst = await start_lifecycle(db, iss, user.id, advance_now=False,
                                      entry="exec" if iss.plan else "plan")
         await db.commit()
         if inst is None:
-            return (f"{iss.key}: Agent '{iss.assigned_agent}' zugewiesen — aber KEIN Prozess "
+            return (f"{iss.key}: agent '{iss.assigned_agent}' assigned, but NO flow "
                     "started (no published lifecycle for this project).")
         return f"{iss.key}: agent '{iss.assigned_agent}' assigned, the lifecycle is starting."
 
@@ -521,8 +521,8 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             decided = await decide_open_approval(db, iss, "approved", user.id)
             await db.commit()
             if not decided:
-                return (f"{iss.key}: Status auf freigegeben gesetzt — im Prozess wartete "
-                        "but no approval (is something else running there right now?).")
+                return (f"{iss.key}: the status was set to approved, but no approval was waiting "
+                        "in the flow (is something else running there right now?).")
             return f"{iss.key}: the plan is approved, the flow carries on."
 
     if name == "traccoon_notify_human":
@@ -566,7 +566,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             return f"ERROR: {e}"
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben
         header = f"{res['method']} {res['url']} → HTTP {res['status_code']}"
-        # The limit was set by the destination (ABC-31): do NOT truncate again flatly here,
+        # The limit was set by the destination: do NOT truncate again flatly here,
         # because otherwise an agent would get only the beginning of a deliberately large
         # answer and would plan on truncated JSON without the cut being noticeable.
         max_chars = int(res.get("max_chars") or 4000)
@@ -600,7 +600,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
     if name == "traccoon_run_health":
         return await _run_health_tool(db, user, args)
 
-    return f"ERROR: unbekanntes Steuer-Tool '{name}'."
+    return f"ERROR: unknown control tool '{name}'."
 
 
 def _statuses(problem: dict) -> str:
@@ -615,47 +615,47 @@ def _health_text(data: dict) -> str:
     A model reads lines. And the supervision has to be able to quote from it into a ticket
     without reformatting anything first.
     """
-    out = [f"Fenster: {data['since']} → {data['until']} ({data['hours']} h)",
-           f"Läufe: {data['runs']} · geliefert {data['delivered']} · wartend {data['waiting']} "
-           f"· abgebrochen {data['aborted']} · Kosten ≥ {data['cost_usd']:.2f} USD"]
+    out = [f"Window: {data['since']} → {data['until']} ({data['hours']} h)",
+           f"Runs: {data['runs']} · delivered {data['delivered']} · waiting {data['waiting']} "
+           f"· aborted {data['aborted']} · cost >= {data['cost_usd']:.2f} USD"]
 
     if data["agents"]:
         out.append("")
-        out.append("Je Rolle:")
+        out.append("Per role:")
         for a in data["agents"]:
             out.append(
-                f"- {a['agent']}: {a['runs']} Läufe · geliefert {a['delivered']} · "
-                f"wartend {a['waiting']} · abgebrochen {a['aborted']} · "
-                f"Ø {a['iterations_avg']} Runden (max {a['iterations_max']}) · "
-                f"Ø {a['duration_avg_s']}s (längster {a['duration_max_s']}s) · "
+                f"- {a['agent']}: {a['runs']} runs · delivered {a['delivered']} · "
+                f"waiting {a['waiting']} · aborted {a['aborted']} · "
+                f"avg {a['iterations_avg']} rounds (max {a['iterations_max']}) · "
+                f"avg {a['duration_avg_s']}s (longest {a['duration_max_s']}s) · "
                 f"{a['cost_usd']:.2f} USD")
 
     worth = [p for p in data["problems"] + data["tools"] if p["ticket_worthy"]]
     rest = [p for p in data["problems"] if not p["ticket_worthy"]]
 
     out.append("")
-    out.append("Ticketwürdig (liegt am Agenten oder am Haus):")
+    out.append("Worth a ticket (down to the agent or to this house):")
     if not worth:
-        out.append("- nichts")
+        out.append("- nothing")
     for p in worth:
-        head = (f"- [Aufsicht:{p['signature']}] {p['agent']}: "
-                + (f"{p['tool']} scheitert in {int(p['share'] * 100)} % der Aufrufe "
-                   f"({p['failed']} von {p['n']})"
+        head = (f"- [supervision:{p['signature']}] {p['agent']}: "
+                + (f"{p['tool']} fails in {int(p['share'] * 100)} % of its calls "
+                   f"({p['failed']} of {p['n']})"
                    if p["kind"] == "tool" else
-                   f"{p['n']}× {p['kind']} "
-                   f"({_statuses(p)}, Läufe {', '.join(str(r) for r in p['runs'])})"))
+                   f"{p['n']}x {p['kind']} "
+                   f"({_statuses(p)}, runs {', '.join(str(r) for r in p['runs'])})"))
         if p["open_ticket"]:
-            head += f" — bereits offen als {p['open_ticket']}"
+            head += f" (already open as {p['open_ticket']})"
         out.append(head)
-        for beispiel in p.get("examples", []):
-            out.append(f"    {beispiel}")
+        for example in p.get("examples", []):
+            out.append(f"    {example}")
 
     if rest:
         out.append("")
-        out.append("Nur zur Einordnung (Provider, Infrastruktur, Warten auf einen Menschen):")
+        out.append("For context only (provider, infrastructure, waiting for a person):")
         for p in rest:
-            out.append(f"- {p['agent']}: {p['n']}× {p['kind']}"
-                       + (f" — {p['examples'][0]}" if p.get("examples") else ""))
+            out.append(f"- {p['agent']}: {p['n']}x {p['kind']}"
+                       + (f": {p['examples'][0]}" if p.get("examples") else ""))
     return "\n".join(out)
 
 
@@ -673,7 +673,7 @@ async def _run_health_tool(db: AsyncSession, user: User, args: dict) -> str:
     if key:
         p = (await db.execute(select(Project).where(Project.key == key))).scalar_one_or_none()
         if p is None:
-            return f"Projekt '{key}' nicht gefunden."
+            return f"Project '{key}' not found."
         try:
             await build_access(p, user, db)
         except HTTPException:

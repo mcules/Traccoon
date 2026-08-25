@@ -40,7 +40,7 @@ async def test_foreign_jobs_are_invisible(db, anna):
     await db.commit()
     assert "Bobs Job" not in await _tool(db, anna, "traccoon_list_jobs")
     j = (await db.execute(select(Job))).scalars().first()
-    assert await _tool(db, anna, "traccoon_get_job", job_id=j.id) == "Job nicht gefunden."
+    assert await _tool(db, anna, "traccoon_get_job", job_id=j.id) == "Job not found."
 
 
 async def test_creating_from_a_template(db, anna):
@@ -62,7 +62,7 @@ async def test_a_template_without_its_flow_creates_nothing(db, anna):
     """Better no job than one that is scheduled and has nothing to do."""
     out = await _tool(db, anna, "traccoon_create_job", name="Security-News",
                       template="research-digest")
-    assert "Ablauf" in out and "Nichts angelegt" in out
+    assert "flow" in out and "Nothing was created" in out
     assert (await db.execute(select(Job))).scalars().first() is None
 
 

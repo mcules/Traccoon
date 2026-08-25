@@ -29,7 +29,7 @@ async def test_a_new_run_closes_the_corpse_of_the_same_task(db):
     await db.refresh(corpse)
     assert corpse.status == "failed"
     assert corpse.finished_at is not None
-    assert "neu gestartet" in (corpse.error or "")
+    assert "started again" in (corpse.error or "")
     assert new.status == "running"          # the fresh run stays untouched
 
 
