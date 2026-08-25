@@ -71,6 +71,36 @@ const SPECIAL: Record<string, string> = {
  */
 const PAPER = "rounded border border-line bg-white p-3 text-sm text-neutral-900";
 
+/**
+ * Take these messages out of the list, without waiting for the server.
+ *
+ * Deleting, archiving, moving, spam: all of them mean "away from here", and the server needs
+ * a moment for it plus a moment to say so. Without this the mail one has just deleted stays
+ * on screen for that second, and a second is long enough to click it again.
+ *
+ * The truth still comes from the mailbox: the caller asks the list to check right afterwards,
+ * and if the handle went wrong it comes back. Which is the right way round, because a row
+ * that reappears is a mistake one sees, and one that quietly stayed is one nobody notices.
+ */
+function takeOut(qc: ReturnType<typeof useQueryClient>, folder: string, uids: number[]) {
+  const gone = new Set(uids);
+  qc.setQueriesData({ queryKey: ["mail-list"] }, (old: any) => {
+    if (!old?.pages) return old;
+    return {
+      ...old,
+      pages: old.pages.map((p: any) => {
+        // In a search across the mailbox the same number exists in several folders, so the
+        // folder decides along with it.
+        const out = p.messages.filter((m: Header) =>
+          gone.has(m.uid) && (m.folder || folder) === folder);
+        if (!out.length) return p;
+        return { ...p, total: Math.max(0, p.total - out.length),
+                 messages: p.messages.filter((m: Header) => !out.includes(m)) };
+      }),
+    };
+  });
+}
+
 /** What one can ask of a single folder. `manage` is the way out into the overview. */
 type FolderCommand = "read" | "empty" | "child" | "rename" | "delete";
 
@@ -1121,8 +1151,6 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
   }, [onChosen]);
 
   const after = () => {
-    onChosen([]);
-    setAnchor(null);
     qc.invalidateQueries({ queryKey: ["mail-list"] });
     qc.invalidateQueries({ queryKey: ["mail-folders"] });
     qc.invalidateQueries({ queryKey: ["mail-unread"] });
@@ -1131,8 +1159,21 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
     mutationFn: (v: { action: string; target?: string; flag?: string; on?: boolean }) =>
       api.post<{ done: number }>(`/mailbox/accounts/${accountId}/messages/bulk`,
                                   { folder: folder, uids: chosen, ...v }),
+    // Thirty ticked mails vanish at the click, not when the server has worked through them.
+    // Only marking as read stays: those rows do not leave, they only change, and the check
+    // right afterwards brings the change.
+    onMutate: (v) => {
+      const taken = chosen;
+      if (v.action !== "flag") takeOut(qc, folder, taken);
+      onChosen([]);
+      setAnchor(null);
+      return { taken };
+    },
     onSuccess: after,
-    onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.action_failed")),
+    onError: (e) => {
+      qc.invalidateQueries({ queryKey: ["mail-list"] });
+      onError(e instanceof ApiError ? e.message : tr("mail.action_failed"));
+    },
   });
 
   const archivable = account?.archive_mode === "pattern"
@@ -1578,35 +1619,47 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     const clock = setTimeout(() => asRead.mutate(), 3000);
     return () => clearTimeout(clock);
   }, [accountId, folder, m?.uid, m?.seen]);
-  // All handgrips end the same way: the list and the folder counts no longer hold, and the
-  // message is no longer where one was just reading it — so back to the list.
+  /**
+   * Every handle ends the same way, and it begins the same way too.
+   *
+   * `weg` runs BEFORE the request: the row disappears and the reading pane closes at the
+   * moment of the click, not a second later. `after` then lets the mailbox have the last
+   * word, and `gonewrong` fetches the list again, so a handle that failed brings its mail
+   * back instead of leaving a hole.
+   */
+  const away = () => {
+    takeOut(qc, folder, [uid]);
+    onBack();
+  };
   const after = () => {
     qc.invalidateQueries({ queryKey: ["mail-list"] });
     qc.invalidateQueries({ queryKey: ["mail-folders"] });
-    onBack();
+    qc.invalidateQueries({ queryKey: ["mail-unread"] });
   };
-  const gonewrong = (was: string) => (e: unknown) =>
+  const gonewrong = (was: string) => (e: unknown) => {
+    qc.invalidateQueries({ queryKey: ["mail-list"] });
     onError(e instanceof ApiError ? e.message : `${was} fehlgeschlagen`);
+  };
 
   const move = useMutation({
     mutationFn: (target: string) => api.post(`${basis}/move`, { folder: folder, target }),
-    onSuccess: after, onError: gonewrong(tr("mail.move")),
+    onMutate: away, onSuccess: after, onError: gonewrong(tr("mail.move")),
   });
   const archive = useMutation({
     mutationFn: () => api.post<{ folder: string }>(`${basis}/archive`, { folder: folder }),
-    onSuccess: after, onError: gonewrong(tr("mail.archive")),
+    onMutate: away, onSuccess: after, onError: gonewrong(tr("mail.archive")),
   });
   const asSpam = useMutation({
     mutationFn: () => api.post(`${basis}/spam`, { folder: folder }),
-    onSuccess: after, onError: gonewrong(tr("mail.mark_as_spam")),
+    onMutate: away, onSuccess: after, onError: gonewrong(tr("mail.mark_as_spam")),
   });
   const noSpam = useMutation({
     mutationFn: () => api.post(`${basis}/not-spam`, { folder: folder }),
-    onSuccess: after, onError: gonewrong(tr("mail.recall")),
+    onMutate: away, onSuccess: after, onError: gonewrong(tr("mail.recall")),
   });
   const remove = useMutation({
     mutationFn: () => api.post(`${basis}/delete`, { folder: folder }),
-    onSuccess: after, onError: gonewrong(tr("mail.delete_2")),
+    onMutate: away, onSuccess: after, onError: gonewrong(tr("mail.delete_2")),
   });
   // A kept answer about pictures. It belongs to the person, so the next mail from the same
   // sender does not ask again, in this mailbox or in the other one.
