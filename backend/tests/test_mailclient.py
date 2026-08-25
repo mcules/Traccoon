@@ -918,3 +918,81 @@ async def test_an_unknown_action_is_refused(db, client):
     r = await client.post(f"/mailbox/accounts/{kid}/messages/bulk", headers=auth(anna),
                           json={"uids": [1], "action": "verbrennen"})
     assert r.status_code == 400
+
+
+# ── Suche über das ganze Postfach ───────────────────────────────────────────
+
+class _SearchIMAP(_FakeIMAP):
+    """Ein Postfach mit mehreren Ordnern, von denen zwei etwas finden."""
+
+    def __init__(self, hits: dict[str, list[int]], dates: dict[int, object]):
+        super().__init__([])
+        self.hits, self.dates = hits, dates
+        self.searched: list[str] = []
+
+    def list_folders(self):
+        return [([], b".", name) for name in ["INBOX", "Archiv", "Papierkorb"]] + [
+            ([b"\\Noselect"], b".", "Container")]
+
+    def search(self, criteria):
+        self.searched.append(self.selected)
+        return list(self.hits.get(self.selected, []))
+
+    def fetch(self, uids, what):
+        return {uid: {b"INTERNALDATE": self.dates[uid]} for uid in uids}
+
+
+async def test_the_search_across_the_mailbox_asks_every_folder(monkeypatch):
+    """Whoever files by year cannot search in a folder: they would have to guess the year
+    before being allowed to look."""
+    import datetime as dt
+
+    fake = _SearchIMAP({"INBOX": [1], "Archiv": [2, 3]},
+                        {1: dt.datetime(2026, 1, 1), 2: dt.datetime(2024, 5, 1),
+                         3: dt.datetime(2026, 8, 1)})
+    _fake_imap(monkeypatch, fake)
+
+    result = mailbox._search_all_sync(MailAccount(name="p"), "Rechnung", 0, 50)
+
+    # Der Container-Ordner ist keiner: \\Noselect wird übersprungen.
+    assert fake.searched == ["INBOX", "Archiv", "Papierkorb"]
+    assert result["total"] == 3
+    # Nach Datum sortiert, ordnerübergreifend, und jeder Treffer weiß, wo er liegt.
+    assert [(m["folder"], m["uid"]) for m in result["messages"]] == [
+        ("Archiv", 3), ("INBOX", 1), ("Archiv", 2)]
+
+
+async def test_the_search_says_when_it_had_to_stop(monkeypatch):
+    """Five hundred hits are the cap. A cut-off result that looks complete would be the worse
+    answer."""
+    import datetime as dt
+
+    viele = list(range(1, 700))
+    fake = _SearchIMAP({"INBOX": viele},
+                        {uid: dt.datetime(2026, 1, 1) for uid in viele})
+    _fake_imap(monkeypatch, fake)
+
+    result = mailbox._search_all_sync(MailAccount(name="p"), "a", 0, 50)
+
+    assert result["capped"] is True
+    assert result["total"] == mailbox.SEARCH_CAP
+
+
+async def test_a_folder_that_refuses_does_not_end_the_search(monkeypatch):
+    """One folder without permission must not swallow the hits of the other twenty."""
+    import datetime as dt
+
+    fake = _SearchIMAP({"INBOX": [1], "Archiv": [2]},
+                        {1: dt.datetime(2026, 1, 1), 2: dt.datetime(2026, 2, 1)})
+    echt = fake.select_folder
+
+    def zickig(name, readonly=False):
+        if name == "Papierkorb":
+            raise RuntimeError("kein Zugriff")
+        echt(name, readonly)
+    fake.select_folder = zickig
+    _fake_imap(monkeypatch, fake)
+
+    result = mailbox._search_all_sync(MailAccount(name="p"), "a", 0, 50)
+
+    assert result["total"] == 2

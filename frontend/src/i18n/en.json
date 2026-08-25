@@ -2899,5 +2899,13 @@
   "mail.drag_the_seam": "Drag to change the width of the list, double click puts it back",
   "mail.search_in_folder": "Search in '{folder}'",
   "mail.mailbox_handles": "What one can do with the mailbox '{name}'",
-  "mail.mailbox_settings_short": "Settings"
+  "mail.mailbox_settings_short": "Settings",
+  "mail.search_scope": "Search:",
+  "mail.scope_folder": "In this folder",
+  "mail.scope_all": "Whole mailbox",
+  "mail.searching_now": "Searching…",
+  "mail.nothing_found": "Nothing found.",
+  "mail.lies_in": "Lies in '{folder}'",
+  "mail.capped": "first {n}",
+  "mail.capped_hint": "The search stopped at {n} hits. A narrower question shows the rest."
 }

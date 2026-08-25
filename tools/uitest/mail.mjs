@@ -54,10 +54,35 @@ if (await feld.count()) {
   await feld.fill("Rechnung");
   const kommt = seite.waitForRequest((r) => r.url().includes("q=Rechnung"), { timeout: 6000 })
     .then(() => "ja").catch(() => "nein");
+  // Die Kastengrößen vor und während der Suche: nichts darf springen.
+  const vorher = await seite.evaluate(() => {
+    const k = document.querySelectorAll("main [class*='rounded-lg'][class*='border-line']");
+    return [...k].slice(0, 3).map((d) => Math.round(d.getBoundingClientRect().width));
+  });
   await feld.press("Enter");
   console.log("ENTER-SUCHE", await kommt);
-  await seite.waitForTimeout(500);
+  await seite.waitForTimeout(250);
+  const waehrend = await seite.evaluate(() => {
+    const k = document.querySelectorAll("main [class*='rounded-lg'][class*='border-line']");
+    return [...k].slice(0, 3).map((d) => Math.round(d.getBoundingClientRect().width));
+  });
+  const dreht = await seite.locator("[role=status]").count();
+  console.log("BREITEN", JSON.stringify({ vorher, waehrend, spinner: dreht }));
   await seite.screenshot({ path: "/w/mail-08-suche.png" });
+  const weit = seite.getByText("Ganzes Postfach").first();
+  if (await weit.count()) {
+    await weit.click();
+    await seite.waitForTimeout(400);
+    const dreht2 = await seite.locator("[role=status]").count();
+    const breiten2 = await seite.evaluate(() => {
+      const k = document.querySelectorAll("main [class*='rounded-lg'][class*='border-line']");
+      return [...k].slice(0, 3).map((d) => Math.round(d.getBoundingClientRect().width));
+    });
+    console.log("POSTFACHSUCHE", JSON.stringify({ spinner: dreht2, breiten: breiten2 }));
+    await seite.screenshot({ path: "/w/mail-09-weit.png" });
+    await seite.waitForTimeout(12000);
+    await seite.screenshot({ path: "/w/mail-10-weit-fertig.png" });
+  }
   await feld.fill("");
   await feld.press("Escape");
   await seite.waitForTimeout(800);

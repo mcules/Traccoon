@@ -2899,5 +2899,13 @@
   "mail.drag_the_seam": "Ziehen ändert die Breite der Liste, Doppelklick setzt sie zurück",
   "mail.search_in_folder": "In „{folder}“ suchen",
   "mail.mailbox_handles": "Was man mit dem Postfach „{name}“ machen kann",
-  "mail.mailbox_settings_short": "Einstellungen"
+  "mail.mailbox_settings_short": "Einstellungen",
+  "mail.search_scope": "Suchen:",
+  "mail.scope_folder": "In diesem Ordner",
+  "mail.scope_all": "Ganzes Postfach",
+  "mail.searching_now": "Wird gesucht…",
+  "mail.nothing_found": "Nichts gefunden.",
+  "mail.lies_in": "Liegt in „{folder}“",
+  "mail.capped": "erste {n}",
+  "mail.capped_hint": "Die Suche hat bei {n} Treffern aufgehört. Enger fragen zeigt den Rest."
 }

@@ -419,13 +419,22 @@ async def folder_rename(kid: int, data: FolderRenameIn,
 
 
 @router.get("/accounts/{kid}/messages")
-async def messages(kid: int, folder: str = "INBOX", q: str = "", offset: int = 0,
-                      limit: int = 50, user: User = Depends(get_current_user),
+async def messages(kid: int, folder: str = "INBOX", q: str = "", scope: str = "folder",
+                      offset: int = 0, limit: int = 50,
+                      user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
+    """The messages of a folder, or the hits of a search.
+
+    `scope=all` searches the whole mailbox instead of the open folder. That is one SELECT and
+    one SEARCH per folder and therefore nothing that happens by itself: whoever wants it says
+    so, and the answer says whether it had to stop at the cap.
+    """
     account = await _account(db, kid, user)
     capped = max(1, min(limit, 200))
     # The search stays uncached: it is rarely the same one twice, and a hit that has actually
     # been moved already would be particularly annoying in a search.
+    if q and scope == "all":
+        return await mailbox.search_all(account, q, offset, capped)
     if q:
         return await mailbox.listing(account, folder, q, offset, capped)
     return await cache.cached(account.id, f"list:{folder}:{offset}:{capped}", cache.TTL_LISTING,

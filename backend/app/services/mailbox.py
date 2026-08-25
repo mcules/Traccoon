@@ -415,6 +415,40 @@ def _has_attachment(structure) -> bool:
     return search(structure)
 
 
+# How many hits a search across the whole mailbox collects at most. Every hit costs a line in
+# a FETCH and a place in the sort, and whoever searches for "invoice" in ten years of mail
+# does not read hit six hundred. The answer says when it was cut off.
+SEARCH_CAP = 500
+
+
+def _row(uid: int, entry: dict, folder: str = "") -> dict:
+    """One line of the message list out of what the server sent for it."""
+    envelope = entry.get(b"ENVELOPE")
+    flags = {f.decode().lower() for f in entry.get(b"FLAGS", ())}
+    sender = ""
+    if envelope is not None and envelope.from_:
+        first = envelope.from_[0]
+        name = _header(first.name.decode() if first.name else "")
+        address = f"{(first.mailbox or b'').decode()}@{(first.host or b'').decode()}"
+        sender = formataddr((name, address))
+    return {
+        "uid": uid,
+        "folder": folder,
+        "subject": _header(envelope.subject.decode("utf-8", "replace")
+                         if envelope is not None and envelope.subject else ""),
+        "from": sender,
+        "date": (entry.get(b"INTERNALDATE") or dt.datetime.now(dt.timezone.utc)).isoformat(),
+        "size": entry.get(b"RFC822.SIZE", 0),
+        "seen": "\\seen" in flags,
+        "flagged": "\\flagged" in flags,
+        "answered": "\\answered" in flags,
+        "has_attachment": _has_attachment(entry.get(b"BODYSTRUCTURE")),
+    }
+
+
+LIST_FIELDS = ["ENVELOPE", "FLAGS", "RFC822.SIZE", "INTERNALDATE", "BODYSTRUCTURE"]
+
+
 def _listing_sync(account: MailAccount, folder: str, search: str, offset: int,
                 limit: int) -> dict:
     with _imap(account) as client:
@@ -426,32 +460,66 @@ def _listing_sync(account: MailAccount, folder: str, search: str, offset: int,
         excerpt = uids[offset:offset + limit]
         if not excerpt:
             return {"total": len(uids), "exists": total, "messages": []}
-        raw = client.fetch(excerpt, ["ENVELOPE", "FLAGS", "RFC822.SIZE", "INTERNALDATE",
-                                        "BODYSTRUCTURE"])
-        messages = []
-        for uid in excerpt:
-            entry = raw.get(uid) or {}
-            envelope = entry.get(b"ENVELOPE")
-            flags = {f.decode().lower() for f in entry.get(b"FLAGS", ())}
-            sender = ""
-            if envelope is not None and envelope.from_:
-                first = envelope.from_[0]
-                name = _header(first.name.decode() if first.name else "")
-                address = f"{(first.mailbox or b'').decode()}@{(first.host or b'').decode()}"
-                sender = formataddr((name, address))
-            messages.append({
-                "uid": uid,
-                "subject": _header(envelope.subject.decode("utf-8", "replace")
-                                 if envelope is not None and envelope.subject else ""),
-                "from": sender,
-                "date": (entry.get(b"INTERNALDATE") or dt.datetime.now(dt.timezone.utc)).isoformat(),
-                "size": entry.get(b"RFC822.SIZE", 0),
-                "seen": "\\seen" in flags,
-                "flagged": "\\flagged" in flags,
-                "answered": "\\answered" in flags,
-                "has_attachment": _has_attachment(entry.get(b"BODYSTRUCTURE")),
-            })
-        return {"total": len(uids), "exists": total, "messages": messages}
+        raw = client.fetch(excerpt, LIST_FIELDS)
+        return {"total": len(uids), "exists": total,
+                "messages": [_row(uid, raw.get(uid) or {}, folder) for uid in excerpt]}
+
+
+def _search_all_sync(account: MailAccount, search: str, offset: int, limit: int) -> dict:
+    """Search the whole mailbox, every folder.
+
+    Two searches for two questions: "where in this folder was that" is answered in the folder,
+    "where in this mailbox was that" is not answerable there at all. Whoever files by year
+    otherwise has to guess the year before being allowed to search.
+
+    It costs what it costs: one SELECT and one SEARCH per folder, and the server reads the
+    text of every message for it. Which is why it is a decision and not the default.
+
+    The hits of all folders are sorted together by date, so the newest one comes first no
+    matter which folder it lies in. Without that the result would be ordered by the order of
+    the folder list, which is an order nobody is looking for.
+    """
+    with _imap(account) as client:
+        hits: list[tuple[str, int]] = []
+        cut = False
+        for flags, _separator, name in client.list_folders():
+            if "\\noselect" in {f.decode().lower() for f in flags}:
+                continue
+            try:
+                client.select_folder(name, readonly=True)
+                found = client.search(["TEXT", search])
+            except Exception:  # noqa: BLE001 — a folder that refuses is not the whole search
+                log.debug("no search in %s", name)
+                continue
+            for uid in found:
+                hits.append((name, uid))
+            if len(hits) >= SEARCH_CAP:
+                cut = True
+                break
+
+        if not hits:
+            return {"total": 0, "exists": 0, "messages": [], "capped": False}
+
+        # The dates of all hits, one FETCH per folder rather than one per message.
+        by_folder: dict[str, list[int]] = {}
+        for name, uid in hits[:SEARCH_CAP]:
+            by_folder.setdefault(name, []).append(uid)
+        rows: list[tuple[dt.datetime, dict]] = []
+        for name, uids in by_folder.items():
+            client.select_folder(name, readonly=True)
+            raw = client.fetch(uids, LIST_FIELDS)
+            for uid in uids:
+                entry = raw.get(uid) or {}
+                # Sorted by the date the server sent, not by the string it becomes: an ISO
+                # string with a time zone offset in it sorts by its own characters, and an
+                # hour of difference would then decide the order of a whole year.
+                when = entry.get(b"INTERNALDATE") or dt.datetime.min
+                rows.append((when, _row(uid, entry, name)))
+
+        rows.sort(key=lambda pair: pair[0], reverse=True)
+        rows = [pair[1] for pair in rows]
+        return {"total": len(rows), "exists": len(rows), "capped": cut,
+                "messages": rows[offset:offset + limit]}
 
 
 def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
@@ -921,6 +989,11 @@ async def folder(account: MailAccount, count: bool = False) -> list[dict]:
 async def listing(account: MailAccount, folder_name: str, search: str = "", offset: int = 0,
                 limit: int = 50) -> dict:
     return await asyncio.to_thread(_listing_sync, account, folder_name, search, offset, limit)
+
+
+async def search_all(account: MailAccount, search: str, offset: int = 0,
+                      limit: int = 50) -> dict:
+    return await asyncio.to_thread(_search_all_sync, account, search, offset, limit)
 
 
 async def message(account: MailAccount, folder_name: str, uid: int) -> dict:

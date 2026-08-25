@@ -9,7 +9,7 @@ import { AccountDialog, type MailAccount, type MailIdentity } from "../component
 import {
   Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
   Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT,
-  Menu, MenuItem, MenuLine, Splitter} from "../components/ui";
+  Menu, MenuItem, MenuLine, Splitter, Busy} from "../components/ui";
 
 /**
  * The mailbox.
@@ -23,6 +23,9 @@ import {
 interface Header {
   uid: number; subject: string; from: string; date: string; size: number;
   seen: boolean; flagged: boolean; answered: boolean; has_attachment: boolean;
+  /** Where this message lies. Only interesting when searching the whole mailbox: then the
+   *  hits come from several folders and a UID alone would open the wrong mail. */
+  folder?: string;
 }
 interface Address { name: string; addr: string }
 interface Attachment { index: number; filename: string; content_type: string; size: number }
@@ -84,7 +87,14 @@ export default function Mail() {
   const [accountId, setAccountId] = useState<number | null>(null);
   const [folder, setFolder] = useState("INBOX");
   const [uid, setUid] = useState<number | null>(null);
+  // Which folder the open message lies in. Usually the one that is selected, but a search
+  // across the mailbox hands out hits from everywhere, and a UID only means something
+  // together with its folder.
+  const [readFolder, setReadFolder] = useState("");
+  // The search and how far it reaches belong together: whoever switches from the folder to
+  // the whole mailbox is asking the same question again, only wider.
   const [search, setSearch] = useState("");
+  const [scope, setScope] = useState<"folder" | "all">("folder");
   const [err, setErr] = useState("");
   // What a folder command did. It stands until the next one, because "127 into the trash" is
   // exactly the sentence one wants to read again a moment later.
@@ -129,6 +139,7 @@ export default function Mail() {
     setUid(null);
     setChosen([]);
     setSearch("");
+    setScope("folder");
     if (!switched) return;
     // The server notes it, and the browser has to hear about it: leaving the page throws the
     // choice away (the component goes with it), and on coming back the person in the context
@@ -192,9 +203,11 @@ export default function Mail() {
           style={{ ["--list" as any]: `${listWidth}px` }}
           className={`min-h-0 flex-col xl:flex xl:w-[var(--list)] xl:shrink-0 xl:grow-0 ${
             uid !== null ? "hidden sm:hidden xl:flex" : "flex flex-1"}`}>
-          <MessagesListing accountId={accountId!} folder={folder} search={search}
-            account={account} onOpen={setUid} onError={setErr} open={uid}
-            chosen={chosen} onChosen={setChosen} onSearch={(q) => { setSearch(q); setUid(null); }} />
+          <MessagesListing accountId={accountId!} folder={folder} search={search} scope={scope}
+            account={account} onError={setErr} open={uid}
+            onOpen={(id, name) => { setUid(id); setReadFolder(name); }}
+            chosen={chosen} onChosen={setChosen}
+            onSearch={(q, wide) => { setSearch(q); setScope(wide); setUid(null); }} />
         </div>
 
         <Splitter leftOf={listColumn} value={listWidth} onChange={setListWidth}
@@ -211,7 +224,7 @@ export default function Mail() {
             </Area>
           ) : (
             <Readview accountId={accountId!} account={account}
-              folder={folder} uid={uid} onBack={() => setUid(null)}
+              folder={readFolder || folder} uid={uid} onBack={() => setUid(null)}
               onReplies={(f) => setCompose(f)} onError={setErr} />
           )}
         </div>
@@ -881,12 +894,14 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
  * Shift takes a range, as in every list in the world. Without it, tidying up thirty
  * newsletters means thirty clicks, which is exactly the moment one stops using a selection.
  */
-function MessagesListing({ accountId, folder: folder, search, account, onOpen: onOpen_it,
-                           onError: onError, open: open, chosen, onChosen, onSearch }: {
-  accountId: number; folder: string; search: string; account: MailAccount | undefined;
-  onOpen: (uid: number) => void; onError: (m: string) => void;
+function MessagesListing({ accountId, folder: folder, search, scope, account,
+                           onOpen: onOpen_it, onError: onError, open: open, chosen, onChosen,
+                           onSearch }: {
+  accountId: number; folder: string; search: string; scope: "folder" | "all";
+  account: MailAccount | undefined;
+  onOpen: (uid: number, folder: string) => void; onError: (m: string) => void;
   open: number | null; chosen: number[]; onChosen: (uids: number[]) => void;
-  onSearch: (q: string) => void;
+  onSearch: (q: string, scope: "folder" | "all") => void;
 }) {
   const qc = useQueryClient();
   const [page, setPage] = useState(0);
@@ -900,16 +915,23 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
   const limit = 50;
   useEffect(() => { setPage(0); }, [folder, search]);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["mail-list", accountId, folder, search, page],
-    queryFn: () => api.get<{ total: number; messages: Header[] }>(
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: ["mail-list", accountId, folder, search, scope, page],
+    queryFn: () => api.get<{ total: number; capped?: boolean; messages: Header[] }>(
       `/mailbox/accounts/${accountId}/messages?folder=${encodeURIComponent(folder)}`
-      + `&q=${encodeURIComponent(search)}&offset=${page * limit}&limit=${limit}`),
+      + `&q=${encodeURIComponent(search)}&scope=${scope}`
+      + `&offset=${page * limit}&limit=${limit}`),
     // Not before an account is picked: `kontoId` is null on the first render, and the
     // request went out as `accounts/null/messages` — a 422 on every visit to the page.
     enabled: !!accountId,
-    // New mail should turn up in the list, not only in the counter next to it.
-    refetchInterval: 60_000, refetchOnWindowFocus: true,
+    // The previous answer stays on screen while the next one is being fetched. Without it the
+    // list empties itself for the length of a search, everything below it jumps up, and the
+    // click one had already aimed at lands on a different mail.
+    placeholderData: (before) => before,
+    // New mail should turn up in the list, not only in the counter next to it. A search is
+    // not repeated by itself: it costs the server real work, and its result does not go stale
+    // in a minute.
+    refetchInterval: search ? false : 60_000, refetchOnWindowFocus: !search,
   });
   useEffect(() => {
     if (error) onError(error instanceof ApiError ? error.message : tr("mail.mailbox_unreachable"));
@@ -974,19 +996,39 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
           {/* The folder stands in the placeholder, not as a heading: it is marked in the tree
               beside this column anyway, and a line for it would be a line of mail less. */}
           <form className="flex min-w-0 flex-1 items-center gap-2"
-                onSubmit={(e) => { e.preventDefault(); onSearch(question.trim()); }}>
+                onSubmit={(e) => { e.preventDefault(); onSearch(question.trim(), scope); }}>
             <input value={question} placeholder={tr("mail.search_in_folder", { folder })}
               className={`${INPUT_VALUE} min-w-0 flex-1`}
               onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape") { setQuestion(""); onSearch(""); } }} />
+              onKeyDown={(e) => { if (e.key === "Escape") { setQuestion(""); onSearch("", "folder"); } }} />
             {(search || question) && (
-              <Rowbutton onClick={() => { setQuestion(""); onSearch(""); }}>✕</Rowbutton>
+              <Rowbutton onClick={() => { setQuestion(""); onSearch("", "folder"); }}>✕</Rowbutton>
             )}
           </form>
-          <span className="shrink-0 text-xs text-muted">
-            {data?.total ?? 0} {search ? tr("mail.hits") : tr("mail.messages")}
+          {/* While a new answer is on its way the old number is not wrong, it is stale.
+              Dimmed it says so, and it keeps its place so the row does not jump. */}
+          <span className={`shrink-0 text-xs text-muted ${isFetching ? "opacity-40" : ""}`}>
+            {data?.total ?? 0}{data?.capped ? "+" : ""}{" "}
+            {search ? tr("mail.hits") : tr("mail.messages")}
           </span>
         </div>
+
+        {/* How far the search reaches. Its own row, and only while something is being
+            searched for: beside the field it squeezed everything else out at the width the
+            list has by default, and without a search it would be a switch for nothing. */}
+        {(search || question) && (
+          <div className="flex w-full flex-wrap items-center gap-2">
+            <span className="text-xs text-muted">{tr("mail.search_scope")}</span>
+            <Tab active={scope} selection={[
+              ["folder", tr("mail.scope_folder")], ["all", tr("mail.scope_all")],
+            ]} onChoose={(wide) => onSearch(question.trim(), wide)} />
+            {data?.capped && (
+              <Tag title={tr("mail.capped_hint", { n: data.total })}>
+                {tr("mail.capped", { n: data.total })}
+              </Tag>
+            )}
+          </div>
+        )}
 
         {chosen.length > 0 && (
           <div className="flex w-full flex-wrap items-center gap-2">
@@ -1014,9 +1056,13 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
         )}
       </>}
     >
+      <Busy text={isFetching && search ? tr("mail.searching_now")
+                                        : isFetching ? tr("mail.loading") : undefined}
+            show={isFetching}>
       <Listing>
         {messages.map((m, index) => (
-          <ListRow key={m.uid} dense onClick={() => onOpen_it(m.uid)}>
+          <ListRow key={`${m.folder || folder}:${m.uid}`} dense
+                   onClick={() => onOpen_it(m.uid, m.folder || folder)}>
             <div className="flex items-start gap-2">
               {/* Its own click target, and it must not open the mail: a tick is a decision
                   about the row, not a way into it. */}
@@ -1031,6 +1077,9 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
                     m.uid === open ? "font-medium" : m.seen ? "text-ink" : "font-semibold text-ink"}`}>
                     {m.subject || tr("mail.no_subject")}
                   </span>
+                  {scope === "all" && search && m.folder && m.folder !== folder && (
+                    <Tag title={tr("mail.lies_in", { folder: m.folder })}>📁 {m.folder}</Tag>
+                  )}
                   {!m.seen && <Tag color="brand">{tr("mail.new_short")}</Tag>}
                   {m.has_attachment && <span title={tr("mail.has_attachment")}>📎</span>}
                   {m.flagged && <span title={tr("mail.flagged")}>⭐</span>}
@@ -1043,8 +1092,11 @@ function MessagesListing({ accountId, folder: folder, search, account, onOpen: o
           </ListRow>
         ))}
         {isLoading && <ListingEmpty>{tr("mail.loading")}</ListingEmpty>}
-        {!isLoading && !messages.length && <ListingEmpty>{tr("mail.nothing_in_folder")}</ListingEmpty>}
+        {!isLoading && !messages.length && (
+          <ListingEmpty>{search ? tr("mail.nothing_found") : tr("mail.nothing_in_folder")}</ListingEmpty>
+        )}
       </Listing>
+      </Busy>
       {(data?.total ?? 0) > limit && (
         <div className="mt-3 flex items-center gap-2">
           <Rowbutton onClick={() => setPage(Math.max(0, page - 1))}>{tr("mail.newer")}</Rowbutton>

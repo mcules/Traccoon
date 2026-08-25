@@ -688,3 +688,44 @@ export function Splitter({ leftOf, value, onChange, min = 240, keepRight = 420, 
     </div>
   );
 }
+
+
+/**
+ * Something is happening and it takes a moment.
+ *
+ * A ring and not three dancing dots: it says "it is running" without pretending to know how
+ * far along it is. Where a wait has a length, a number is better than any animation.
+ */
+export function Spinner({ text }: { text?: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 text-sm text-muted">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-brand"
+            role="status" aria-live="polite" aria-label={text || tr("common.loading")} />
+      {text && <span>{text}</span>}
+    </span>
+  );
+}
+
+/**
+ * The wait laid OVER the content, not in its place.
+ *
+ * What is underneath keeps its size, and nothing on the page moves: a list that empties
+ * itself while it is being refilled makes everything below it jump, and the click one had
+ * already aimed at lands somewhere else. What one sees is the old state, greyed, with the
+ * word for what is happening on top.
+ */
+export function Busy({ text, show, children }: {
+  text?: string; show: boolean; children: ReactNode;
+}) {
+  if (!show) return <>{children}</>;
+  return (
+    <div className="relative min-h-[6rem]">
+      <div className="pointer-events-none opacity-40 transition-opacity">{children}</div>
+      <div className="absolute inset-0 flex items-start justify-center pt-8">
+        <div className="rounded-lg border border-line bg-card px-4 py-2 shadow-2xl">
+          <Spinner text={text} />
+        </div>
+      </div>
+    </div>
+  );
+}
