@@ -300,7 +300,7 @@ export default function Mail() {
           folder={command.folder} kind={command.kind} onClose={() => setCommand(null)}
           onGone={() => { setCommand(null); go(command.accountId, "INBOX"); }}
           onEmptied={() => { setUid(null); setChosen([]); }}
-          onDone={toast} onError={setErr} />
+          onDone={(text, kind) => toast(text, kind || "success")} onError={setErr} />
       )}
       {papers && (
         <NewsletterOverview account={papers} onClose={() => setPapers(null)} onError={setErr}
@@ -629,7 +629,7 @@ function FolderCommands({ accountId, account, folder: folder, kind, onClose, onG
                           onDone, onError: onError }: {
   accountId: number; account: MailAccount | undefined; folder: Folder; kind: FolderCommand;
   onClose: () => void; onGone: () => void; onEmptied: () => void;
-  onDone: (text: string) => void; onError: (m: string) => void;
+  onDone: (text: string, kind?: "success" | "info") => void; onError: (m: string) => void;
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState(kind === "rename" ? folder.display : "");
@@ -647,9 +647,10 @@ function FolderCommands({ accountId, account, folder: folder, kind, onClose, onG
     mutationFn: () => api.post<{ marked: number }>(
       `/mailbox/accounts/${accountId}/folders/read-all`, { folder: folder.name }),
     onSuccess: (r) => {
+      // Nichts getan ist kein Erfolg, sondern eine Auskunft.
       onDone(!r.marked ? tr("mail.nothing_unread")
         : r.marked === 1 ? tr("mail.marked_read_one")
-        : tr("mail.marked_read_n", { n: r.marked }));
+        : tr("mail.marked_read_n", { n: r.marked }), r.marked ? "success" : "info");
       refresh();
       onClose();
     },
@@ -661,7 +662,8 @@ function FolderCommands({ accountId, account, folder: folder, kind, onClose, onG
     onSuccess: (r) => {
       onDone(!r.deleted ? tr("mail.folder_was_empty")
         : r.target ? tr("mail.emptied_into", { n: r.deleted, folder: r.target })
-                   : tr("mail.emptied_finally", { n: r.deleted }));
+                   : tr("mail.emptied_finally", { n: r.deleted }),
+             r.deleted ? "success" : "info");
       refresh();
       onEmptied();
       onClose();
@@ -1650,7 +1652,8 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     // stand in the flows, and twenty numbers here would be no news but a wall.
     onSuccess: (r) => {
       toast((r.runs?.length || 1) > 1 ? tr("mail.runs_started", { n: r.runs.length })
-                                       : tr("mail.run_started", { id: r.instance_id }));
+                                       : tr("mail.run_started", { id: r.instance_id }),
+            "success");
       // Damit der Knopf sofort weiß, dass er getan hat, was er tun sollte.
       qc.invalidateQueries({ queryKey: ["mail-message"] });
     },

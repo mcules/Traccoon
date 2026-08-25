@@ -32,6 +32,17 @@ const platz = await seite.evaluate(() => {
   return { unten: Math.round(window.innerHeight - r.bottom),
            rechts: Math.round(window.innerWidth - r.right), text: t.innerText.slice(0, 40) };
 });
+// Die anderen drei Töne dazu, damit man sie nebeneinander sieht.
+await seite.evaluate(() => {
+  const w = window;
+  const zeigen = w.__toast;
+  if (zeigen) {
+    zeigen("Etwas ist schiefgegangen", "error");
+    zeigen("Das solltest du dir ansehen", "warning");
+    zeigen("Eine Auskunft", "info");
+  }
+});
+await seite.waitForTimeout(400);
 await seite.screenshot({ path: "/w/toast.png" });
 await seite.waitForTimeout(5000);
 const spaeter = await seite.locator("[role=status]").filter({ hasText: /markiert|gelesen/ }).count();

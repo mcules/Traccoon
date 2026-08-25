@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
  * is an event, and whoever triggers one should not have to reach through three components to
  * do it. `toast("…")` works from anywhere, `<Toasts />` stands once in the layout.
  */
-export type ToastKind = "info" | "error";
+export type ToastKind = "success" | "error" | "warning" | "info";
 
 type Entry = { id: number; text: string; kind: ToastKind };
 
@@ -24,19 +24,39 @@ function announce() {
   listener.forEach((fn) => fn());
 }
 
-/** Show a message. Errors stay longer, because one usually wants to read them twice. */
+/**
+ * Show a message.
+ *
+ * The colour says what kind it is before one has read a word: green went well, red went
+ * wrong, yellow is worth a look, blue is a piece of news. Errors and warnings stay longer,
+ * because those are the two one usually reads twice.
+ */
 export function toast(text: string, kind: ToastKind = "info"): void {
   if (!text) return;
   const id = ++counter;
   entries = [...entries, { id, text, kind }];
   announce();
-  window.setTimeout(() => close(id), kind === "error" ? 7000 : 4000);
+  window.setTimeout(() => close(id), kind === "error" || kind === "warning" ? 7000 : 4000);
+}
+
+// Ein Griff für die Browser-Sonde: sie soll alle vier Töne zeigen können, ohne im Postfach
+// vier verschiedene Dinge auszulösen.
+if (typeof window !== "undefined") {
+  (window as any).__toast = toast;
 }
 
 function close(id: number): void {
   entries = entries.filter((e) => e.id !== id);
   announce();
 }
+
+/** The four tones, in the colours the rest of the house uses for the same meanings. */
+const TONE: Record<ToastKind, string> = {
+  success: "border-emerald-500/50 bg-emerald-500/20 text-emerald-200",
+  error: "border-red-500/50 bg-red-500/20 text-red-200",
+  warning: "border-amber-500/50 bg-amber-500/20 text-amber-200",
+  info: "border-brand/50 bg-brand/20 text-ink",
+};
 
 export function Toasts() {
   const [now, setNow] = useState(entries);
@@ -55,10 +75,10 @@ export function Toasts() {
       {now.map((e) => (
         <button key={e.id} type="button" onClick={() => close(e.id)}
           title={tr_close()}
+          // Stronger than the tags in a list: this thing stands over the page and has to be
+          // read in passing, so it may carry its colour and not just hint at it.
           className={`toast-in pointer-events-auto w-full rounded-lg border px-3 py-2 text-left
-            text-sm shadow-2xl transition-opacity hover:opacity-80 ${
-            e.kind === "error" ? "border-red-500/40 bg-red-500/15 text-red-200"
-                                : "border-line bg-card text-ink"}`}>
+            text-sm shadow-2xl transition-opacity hover:opacity-80 ${TONE[e.kind]}`}>
           {e.text}
         </button>
       ))}
