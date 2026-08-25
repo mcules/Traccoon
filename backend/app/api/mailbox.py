@@ -293,20 +293,30 @@ class FolderIn(BaseModel):
 
 
 def _check_deletable(account, folder: str) -> None:
-    """Folders that must not be deleted.
+    """Folders that must not be deleted or renamed.
 
-    The inbox is not deletable (the server refuses it anyway), and the four special folders
-    hang on the buttons of the UI: whoever deletes their trash afterwards has a delete that no
-    longer works.
+    The inbox is not deletable (the server refuses it anyway), and the special folders hang on
+    the buttons of the UI: whoever deletes their trash afterwards has a delete that no longer
+    works. Renaming is the same case: on IMAP the name IS the folder, so a renamed trash is a
+    gone trash as far as the account is concerned.
     """
     if folder.upper() == "INBOX":
         raise Error(400, "err.inbox_not_deletable", "The inbox cannot be deleted")
     roles = {account.folder_sent: "sent", account.folder_drafts: "drafts",
-              account.folder_trash: "trash", account.folder_junk: "junk"}
+              account.folder_trash: "trash", account.folder_junk: "junk",
+              account.folder_archive: "archive"}
     if folder and folder in roles:
         raise Error(400, "err.folder_has_role",
                      "'{folder}' is the {role} folder of this account. Change that first.",
                      folder=folder, role=roles[folder])
+
+
+async def _delimiter(account: MailAccount) -> str:
+    """How this server nests folders. A dot with Courier, a slash with Dovecot, and guessing
+    it would mean creating `Archive/2026` as a folder with a slash in its name."""
+    tree = await cache.cached(account.id, "folders:0", cache.TTL_FOLDER,
+                               lambda: mailbox.folder(account, False))
+    return next((o["delimiter"] for o in tree if o.get("delimiter")), "/")
 
 
 @router.post("/accounts/{kid}/folders/read-all")
@@ -327,6 +337,85 @@ async def folder_delete(kid: int, data: FolderIn, user: User = Depends(get_curre
     _check_deletable(account, data.folder)
     await mailbox.folder_delete(account, data.folder)
     await cache.invalidate(account.id)
+
+
+@router.post("/accounts/{kid}/folders/empty")
+async def folder_empty(kid: int, data: FolderIn, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    """Empty the folder: the mail goes, the folder stays.
+
+    Where it goes is the same question as with a single message: into the trash, unless one
+    already stands in the trash (or the account has none). The answer says which of the two it
+    was, because "127 into the trash" and "127 gone" are two different pieces of news.
+    """
+    account = await _account(db, kid, user)
+    result = await mailbox.folder_empty(account, data.folder, account.folder_trash or "")
+    await cache.invalidate(account.id)
+    return result
+
+
+class FolderCreateIn(BaseModel):
+    name: str
+    parent: str = ""
+
+
+@router.post("/accounts/{kid}/folders/create")
+async def folder_create(kid: int, data: FolderCreateIn,
+                          user: User = Depends(get_current_user),
+                          db: AsyncSession = Depends(get_session)):
+    """A new folder, optionally below an existing one."""
+    account = await _account(db, kid, user)
+    delimiter = await _delimiter(account)
+    name = data.name.strip().strip(delimiter)
+    if not name:
+        raise Error(400, "err.folder_name_missing", "The folder needs a name")
+    if delimiter in name:
+        raise Error(400, "err.folder_name_separator",
+                     "'{separator}' separates folders on this server and cannot be part of a name",
+                     separator=delimiter)
+    full = f"{data.parent}{delimiter}{name}" if data.parent else name
+    await mailbox.folder_create(account, full)
+    await cache.invalidate(account.id)
+    return {"folder": full}
+
+
+class FolderRenameIn(BaseModel):
+    folder: str
+    name: str
+    parent: str | None = None      # None = keep where it is
+
+
+@router.post("/accounts/{kid}/folders/rename")
+async def folder_rename(kid: int, data: FolderRenameIn,
+                          user: User = Depends(get_current_user),
+                          db: AsyncSession = Depends(get_session)):
+    """Rename a folder, and with `parent` hang it somewhere else at the same time.
+
+    On IMAP both are the same command: the name is the path. Special folders are protected
+    for the same reason as with deleting.
+    """
+    account = await _account(db, kid, user)
+    _check_deletable(account, data.folder)
+    delimiter = await _delimiter(account)
+    name = data.name.strip().strip(delimiter)
+    if not name:
+        raise Error(400, "err.folder_name_missing", "The folder needs a name")
+    if delimiter in name:
+        raise Error(400, "err.folder_name_separator",
+                     "'{separator}' separates folders on this server and cannot be part of a name",
+                     separator=delimiter)
+    parts = data.folder.split(delimiter)
+    parent = data.parent if data.parent is not None else delimiter.join(parts[:-1])
+    full = f"{parent}{delimiter}{name}" if parent else name
+    if full == data.folder:
+        return {"folder": full}
+    # Into itself would be a folder that swallows its own path, and the server answers that
+    # with an error nobody can read.
+    if parent == data.folder or parent.startswith(data.folder + delimiter):
+        raise Error(400, "err.folder_into_itself", "A folder cannot move into itself")
+    await mailbox.folder_rename(account, data.folder, full)
+    await cache.invalidate(account.id)
+    return {"folder": full}
 
 
 @router.get("/accounts/{kid}/messages")
@@ -609,6 +698,11 @@ class ActionIn(BaseModel):
     definition_id: int
     folder: str = "INBOX"
     attachment: int | None = None
+    # Several attachments at once: one run per file, so that a flow stays what it is, the way
+    # of ONE attachment. `all` takes whatever hangs on the mail, without the UI having to
+    # count them first.
+    attachments: list[int] | None = None
+    all: bool = False
 
 
 @router.post("/accounts/{kid}/messages/{uid}/action")
@@ -627,28 +721,52 @@ async def action_start(kid: int, uid: int, data: ActionIn,
                      "The workflow definition is missing or not published")
     header = await mailbox.message(account, data.folder, uid)
     attachments = header.get("attachments") or []
-    chosen = None
-    if data.attachment is not None:
-        chosen = next((a for a in attachments if a["index"] == data.attachment), None)
-        if chosen is None:
+
+    # Which files this call is about. Nothing chosen means the mail itself: the flow then
+    # runs once, without an attachment in its context.
+    if data.all:
+        wanted = [a["index"] for a in attachments]
+        if not wanted:
+            raise Error(400, "err.no_attachment", "This message has no attachments")
+    elif data.attachments is not None:
+        wanted = list(data.attachments)
+    elif data.attachment is not None:
+        wanted = [data.attachment]
+    else:
+        wanted = []
+
+    chosen = []
+    for index in wanted:
+        hit = next((a for a in attachments if a["index"] == index), None)
+        if hit is None:
             raise Error(404, "err.attachment_not_found", "Attachment not found")
-    context = {
-        "mail": {
-            "account": account.name, "account_id": account.id, "folder": data.folder, "uid": uid,
-            "subject": header.get("subject", ""),
-            "from": (header.get("from") or [{}])[0].get("addr", ""),
-            "date": header.get("date", ""),
-            "message_id": header.get("message_id", ""),
-            "text": (header.get("text") or "")[:20000],
-            "attachments": attachments,
-            # A flow that assigns the assistant should know the house rules of the mailbox as
-            # well — otherwise they would only apply through MCP.
-            "instructions": account.mcp_instructions,
-        },
-        "attachment": chosen or {},
+        chosen.append(hit)
+
+    mail = {
+        "account": account.name, "account_id": account.id, "folder": data.folder, "uid": uid,
+        # Who pressed the button. A flow that reports afterwards has a recipient that way
+        # (`mail.owner_id`) instead of shouting into the room.
+        "owner_id": user.id,
+        "subject": header.get("subject", ""),
+        "from": (header.get("from") or [{}])[0].get("addr", ""),
+        "date": header.get("date", ""),
+        "message_id": header.get("message_id", ""),
+        "text": (header.get("text") or "")[:20000],
+        "attachments": attachments,
+        # A flow that assigns the assistant should know the house rules of the mailbox as
+        # well — otherwise they would only apply through MCP.
+        "instructions": account.mcp_instructions,
     }
-    inst = await start_workflow(
-        db, definition, subject_kind=WorkflowSubjectKind.standalone, context=context,
-        actor_id=user.id, source=f"mail:{account.name}",
-        source_ref=f"{data.folder}:{uid}" + (f":{data.attachment}" if chosen else ""))
-    return {"instance_id": inst.id, "status": inst.status.value}
+
+    async def start(one: dict | None):
+        return await start_workflow(
+            db, definition, subject_kind=WorkflowSubjectKind.standalone,
+            context={"mail": mail, "attachment": one or {}},
+            actor_id=user.id, source=f"mail:{account.name}",
+            source_ref=f"{data.folder}:{uid}" + (f":{one['index']}" if one else ""))
+
+    runs = [await start(one) for one in chosen] if chosen else [await start(None)]
+    return {"instance_id": runs[0].id, "status": runs[0].status.value,
+            "runs": [{"instance_id": r.id, "status": r.status.value,
+                       "attachment": (one or {}).get("filename", "")}
+                      for r, one in zip(runs, chosen or [None])]}

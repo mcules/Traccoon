@@ -535,3 +535,267 @@ async def test_a_move_without_a_target_goes_to_the_archive(db, monkeypatch):
                                                         "folder": "INBOX", "uid": 9}})
     assert result == {"action": "mail_move", "moved": True,
                         "target": "Archive/2026", "uid": 9}
+
+
+# ── Ordner: leeren, anlegen, umbenennen ─────────────────────────────────────
+
+class _FakeIMAP:
+    """As much IMAP as the folder handles touch. It remembers what was asked of it."""
+
+    def __init__(self, uids: list[int], move: bool = True):
+        self.uids, self._move = uids, move
+        self.selected = ""
+        self.moved: list[tuple[list[int], str]] = []
+        self.flagged: list[tuple[list[int], list]] = []
+        self.expunged = False
+        self.created: list[str] = []
+        self.renamed: list[tuple[str, str]] = []
+        self.subscribed: list[str] = []
+
+    def select_folder(self, name, readonly=False):
+        self.selected = name
+
+    def search(self, criteria):
+        return list(self.uids)
+
+    def has_capability(self, name):
+        return self._move and name == "MOVE"
+
+    def move(self, uids, target):
+        self.moved.append((list(uids), target))
+
+    def copy(self, uids, target):
+        self.moved.append((list(uids), target))
+
+    def add_flags(self, uids, flags):
+        self.flagged.append((list(uids), list(flags)))
+
+    def expunge(self):
+        self.expunged = True
+
+    def create_folder(self, name):
+        self.created.append(name)
+
+    def rename_folder(self, name, target):
+        self.renamed.append((name, target))
+
+    def subscribe_folder(self, name):
+        self.subscribed.append(name)
+
+
+def _fake_imap(monkeypatch, client) -> None:
+    import contextlib
+
+    @contextlib.contextmanager
+    def borrow(account):
+        yield client
+    monkeypatch.setattr(mailbox, "_imap", borrow)
+
+
+async def test_emptying_moves_into_the_trash(monkeypatch):
+    """Emptying is what deleting a single message is: a movement, not a loss."""
+    fake = _FakeIMAP([1, 2, 3])
+    _fake_imap(monkeypatch, fake)
+    account = MailAccount(name="privat", folder_trash="Papierkorb")
+
+    result = mailbox._folder_empty_sync(account, "Newsletter", "Papierkorb")
+
+    assert result == {"deleted": 3, "target": "Papierkorb"}
+    assert fake.moved == [([1, 2, 3], "Papierkorb")]
+    assert not fake.flagged, "verschoben wird verschoben, nicht zusätzlich gelöscht"
+
+
+async def test_emptying_the_trash_is_final(monkeypatch):
+    """In the trash there is nothing left to move to. It would be a move onto itself, and
+    the folder would stay full."""
+    fake = _FakeIMAP([7, 8])
+    _fake_imap(monkeypatch, fake)
+    account = MailAccount(name="privat", folder_trash="Papierkorb")
+
+    result = mailbox._folder_empty_sync(account, "Papierkorb", "Papierkorb")
+
+    assert result == {"deleted": 2, "target": ""}
+    assert not fake.moved
+    assert fake.flagged == [([7, 8], [b"\\Deleted"])] and fake.expunged
+
+
+async def test_emptying_asks_in_blocks(monkeypatch):
+    """A folder with ten thousand mails must not become a single command."""
+    fake = _FakeIMAP(list(range(1, 1201)))
+    _fake_imap(monkeypatch, fake)
+
+    mailbox._folder_empty_sync(MailAccount(name="p"), "Alt", "Papierkorb")
+
+    assert [len(block) for block, _ in fake.moved] == [500, 500, 200]
+
+
+async def test_an_empty_folder_stays_untouched(monkeypatch):
+    fake = _FakeIMAP([])
+    _fake_imap(monkeypatch, fake)
+
+    assert mailbox._folder_empty_sync(MailAccount(name="p"), "Leer", "Papierkorb") == {
+        "deleted": 0, "target": ""}
+    assert not fake.moved and not fake.expunged
+
+
+async def _folders(monkeypatch, separator: str = ".") -> None:
+    async def fake_folder(account, count=False):
+        return [{"name": "INBOX", "display": "INBOX", "level": 0, "parent": "",
+                 "delimiter": separator, "special": "inbox", "unseen": 0, "total": 0},
+                {"name": f"INBOX{separator}Archiv", "display": "Archiv", "level": 1,
+                 "parent": "INBOX", "delimiter": separator, "special": "", "unseen": 0,
+                 "total": 0}]
+    monkeypatch.setattr(mailbox, "folder", fake_folder)
+
+
+async def test_a_new_folder_takes_the_separator_of_the_server(db, client, monkeypatch):
+    """A slash in the name is a folder called "a/b" on a server that nests with dots."""
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+    await _folders(monkeypatch)
+    created = []
+
+    async def fake_create(account, name):
+        created.append(name)
+    monkeypatch.setattr(mailbox, "folder_create", fake_create)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/folders/create", headers=auth(anna),
+                          json={"name": "2026", "parent": "INBOX.Archiv"})
+    assert r.status_code == 200, r.text
+    assert r.json()["folder"] == "INBOX.Archiv.2026"
+    assert created == ["INBOX.Archiv.2026"]
+
+    # And a name that carries the separator is a mistake, not a second level.
+    r = await client.post(f"/mailbox/accounts/{kid}/folders/create", headers=auth(anna),
+                          json={"name": "Archiv.2026"})
+    assert r.status_code == 400
+    assert created == ["INBOX.Archiv.2026"]
+
+
+async def test_renaming_keeps_the_folder_where_it_hangs(db, client, monkeypatch):
+    """Without `parent` only the name changes, the path around it stays."""
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+    await _folders(monkeypatch)
+    renamed = []
+
+    async def fake_rename(account, folder, target):
+        renamed.append((folder, target))
+    monkeypatch.setattr(mailbox, "folder_rename", fake_rename)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/folders/rename", headers=auth(anna),
+                          json={"folder": "INBOX.Archiv", "name": "Ablage"})
+    assert r.status_code == 200, r.text
+    assert renamed == [("INBOX.Archiv", "INBOX.Ablage")]
+
+    # Mit `parent` ist dasselbe Kommando auch der Umzug.
+    r = await client.post(f"/mailbox/accounts/{kid}/folders/rename", headers=auth(anna),
+                          json={"folder": "INBOX.Archiv", "name": "Archiv", "parent": ""})
+    assert r.status_code == 200, r.text
+    assert renamed[-1] == ("INBOX.Archiv", "Archiv")
+
+
+async def test_a_folder_does_not_move_into_itself(db, client, monkeypatch):
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+    await _folders(monkeypatch)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/folders/rename", headers=auth(anna),
+                          json={"folder": "INBOX.Archiv", "name": "Archiv",
+                                "parent": "INBOX.Archiv"})
+    assert r.status_code == 400
+
+
+async def test_a_special_folder_is_not_renamed(db, client, monkeypatch):
+    """The trash hangs on the delete button. Renamed it would be a button that does nothing."""
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account(folder_trash="Papierkorb"))).json()["id"]
+    await _folders(monkeypatch)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/folders/rename", headers=auth(anna),
+                          json={"folder": "Papierkorb", "name": "Muell"})
+    assert r.status_code == 400
+    assert "Papierkorb" in r.text
+
+
+async def test_all_attachments_are_one_run_each(db, client, monkeypatch):
+    """A flow is the way of ONE attachment. Three files are therefore three runs, not one
+    that has to loop by itself."""
+    anna = await make_user(db, "anna")
+    kid = (await client.post("/mailbox/accounts", headers=auth(anna),
+                             json=_account())).json()["id"]
+
+    async def fake_message(account, folder, uid):
+        return {"subject": "Belege", "from": [{"addr": "shop@example.org"}], "attachments": [
+            {"index": 1, "filename": "a.pdf", "content_type": "application/pdf", "size": 1},
+            {"index": 2, "filename": "b.pdf", "content_type": "application/pdf", "size": 2}]}
+    monkeypatch.setattr(mailbox, "message", fake_message)
+
+    d = WorkflowDefinition(project_id=None, key="paperless", name="Nach Paperless",
+                           created_by=anna.id, subject_kind=WorkflowSubjectKind.standalone)
+    db.add(d)
+    await db.flush()
+    v = WorkflowVersion(definition_id=d.id, version=1, status=WorkflowVersionStatus.published,
+                        graph={"nodes": [
+                            {"id": "s", "type": "start", "position": {"x": 0, "y": 0},
+                             "data": {"config": {"trigger": {"kind": "mail_action",
+                                                              "scope": "attachment"}}}},
+                            {"id": "e", "type": "end", "position": {"x": 0, "y": 1},
+                             "data": {"config": {"outcome": "completed"}}}],
+                            "edges": [{"id": "k", "source": "s", "target": "e"}]})
+    db.add(v)
+    await db.flush()
+    d.current_version_id = v.id
+    await db.commit()
+
+    r = await client.post(f"/mailbox/accounts/{kid}/messages/5/action", headers=auth(anna),
+                          json={"definition_id": d.id, "all": True})
+    assert r.status_code == 200, r.text
+    assert [run["attachment"] for run in r.json()["runs"]] == ["a.pdf", "b.pdf"]
+
+    rows = (await db.execute(select(WorkflowInstance))).scalars().all()
+    assert sorted(i.source_ref for i in rows) == ["INBOX:5:1", "INBOX:5:2"]
+    assert sorted(i.context["attachment"]["filename"] for i in rows) == ["a.pdf", "b.pdf"]
+
+
+# ── Dateityp eines Anhangs ──────────────────────────────────────────────────
+
+def _with_attachment(kind: str, name: str):
+    """A mail with exactly one attachment of that declared type."""
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = "mit Anhang"
+    msg.set_content("siehe Anhang")
+    main, _, sub = kind.partition("/")
+    msg.add_attachment(b"%PDF-1.4 ...", maintype=main, subtype=sub, filename=name)
+    return msg
+
+
+async def test_a_pdf_declared_as_nothing_is_still_a_pdf():
+    """Plenty of senders declare every attachment as `application/octet-stream`. The preview
+    then had nothing to go on and offered none, for a file called `rechnung.pdf`."""
+    from app.services.mailbox import _attachments
+
+    found = _attachments(_with_attachment("application/octet-stream", "rechnung.pdf"))
+    assert [(a["filename"], a["content_type"]) for a in found] == [
+        ("rechnung.pdf", "application/pdf")]
+
+
+async def test_a_declared_type_keeps_the_last_word():
+    """Only the generic types are a guess. What a sender really says stands."""
+    from app.services.mailbox import _attachments
+
+    found = _attachments(_with_attachment("image/png", "bild.jpg"))
+    assert found[0]["content_type"] == "image/png"
+
+
+async def test_without_an_extension_nothing_is_invented():
+    from app.services.mailbox import _attachments
+
+    found = _attachments(_with_attachment("application/octet-stream", "datei"))
+    assert found[0]["content_type"] == "application/octet-stream"

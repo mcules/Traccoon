@@ -213,8 +213,26 @@ def clean(html: str) -> tuple[str, bool]:
     return clean, fern
 
 
+def _kind(part, name: str) -> str:
+    """The file type of an attachment, and the file name has the last word.
+
+    Plenty of senders declare every attachment as `application/octet-stream`, a PDF invoice
+    included: it is the "I do not know" of the mail world. Traccoon then knew nothing either
+    and offered no preview for a file whose name ends in `.pdf`. So: a declared type counts,
+    but a generic one is only a placeholder, and the extension is the better guess.
+    """
+    import mimetypes
+
+    declared = (part.get_content_type() or "").lower()
+    if declared and declared not in ("application/octet-stream", "application/x-download",
+                                      "binary/octet-stream", "content/unknown"):
+        return declared
+    guessed, _ = mimetypes.guess_type(name or "")
+    return guessed or declared or "application/octet-stream"
+
+
 def _attachments(msg: email.message.Message) -> list[dict]:
-    """Index of the attachments — name, type, size. The content is fetched only on demand: a
+    """Index of the attachments: name, type, size. The content is fetched only on demand, a
     list of twenty mails must not drag twenty PDFs across the network."""
     out = []
     for i, part in enumerate(msg.walk()):
@@ -222,8 +240,9 @@ def _attachments(msg: email.message.Message) -> list[dict]:
         if not name:
             continue
         raw = part.get_payload(decode=True) or b""
-        out.append({"index": i, "filename": _header(name),
-                    "content_type": part.get_content_type(), "size": len(raw)})
+        readable = _header(name)
+        out.append({"index": i, "filename": readable,
+                    "content_type": _kind(part, readable), "size": len(raw)})
     return out
 
 
@@ -411,8 +430,16 @@ def _listing_sync(account: MailAccount, folder: str, search: str, offset: int,
 
 
 def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
+    """Read a message, and read it only.
+
+    Read-only on purpose: an IMAP server sets `\\Seen` by itself when a mailbox is open for
+    writing and somebody fetches the body. Opening would then already be reading, and
+    clicking past something in a list would silently take its mark away. When a mail counts as
+    read is decided one level up (three seconds open), and it is said there with a flag of its
+    own.
+    """
     with _imap(account) as client:
-        client.select_folder(folder)
+        client.select_folder(folder, readonly=True)
         raw = client.fetch([uid], ["RFC822", "FLAGS"])
         entry = raw.get(uid)
         if not entry:
@@ -450,7 +477,8 @@ def _attachment_sync(account: MailAccount, folder: str, uid: int, index: int) ->
             name = part.get_filename()
             if not name:
                 break
-            return (_header(name), part.get_content_type(), part.get_payload(decode=True) or b"")
+            readable = _header(name)
+            return (readable, _kind(part, readable), part.get_payload(decode=True) or b"")
     raise LookupError("Anhang nicht gefunden")
 
 
@@ -564,7 +592,7 @@ def _archive_sync(account: MailAccount, folder: str, uid: int) -> str:
             client.create_folder(target)
             try:
                 client.subscribe_folder(target)
-            except Exception:  # noqa: BLE001 — not every server knows subscriptions
+            except Exception:  # noqa: BLE001 (not every server knows subscriptions)
                 log.debug("no subscription for %s", target)
         if client.has_capability("MOVE"):
             client.move([uid], target)
@@ -607,6 +635,65 @@ def _folder_delete_sync(account: MailAccount, folder: str) -> None:
         # Switch away first: some servers refuse to delete the selected folder.
         client.select_folder("INBOX", readonly=True)
         client.delete_folder(folder)
+
+
+# How many messages go into one command. A folder with ten thousand mails would otherwise
+# become a single line the server has to read in one piece, and some servers cut it off.
+BLOCK = 500
+
+
+def _folder_empty_sync(account: MailAccount, folder: str, trash: str) -> dict:
+    """Empty the folder: everything in it goes, the folder itself stays.
+
+    Emptying means the same as deleting a single message: into the trash, so that a misgrab
+    stays a movement. Only in the trash itself (or without one) is it final, otherwise
+    "empty the trash" would be a move onto itself.
+    """
+    with _imap(account) as client:
+        client.select_folder(folder)
+        uids = client.search(["ALL"])
+        if not uids:
+            return {"deleted": 0, "target": ""}
+        final = not trash or folder == trash
+        move = client.has_capability("MOVE")
+        for start in range(0, len(uids), BLOCK):
+            block = uids[start:start + BLOCK]
+            if final:
+                client.add_flags(block, [b"\\Deleted"])
+            elif move:
+                client.move(block, trash)
+            else:
+                client.copy(block, trash)
+                client.add_flags(block, [b"\\Deleted"])
+        if final or not move:
+            client.expunge()
+        return {"deleted": len(uids), "target": "" if final else trash}
+
+
+def _folder_create_sync(account: MailAccount, name: str) -> None:
+    with _imap(account) as client:
+        client.create_folder(name)
+        # Unsubscribed the folder would exist but stay invisible in other mail programs:
+        # they list what one is subscribed to, not what is there.
+        try:
+            client.subscribe_folder(name)
+        except Exception:  # noqa: BLE001 — not every server knows subscriptions
+            log.debug("no subscription for %s", name)
+
+
+def _folder_rename_sync(account: MailAccount, folder: str, target: str) -> None:
+    """Rename, which on IMAP is also the move: the name IS the path.
+
+    Subfolders come along by themselves (the server renames the whole branch); the
+    subscription does not, which is why it is set again on the new name.
+    """
+    with _imap(account) as client:
+        client.select_folder("INBOX", readonly=True)
+        client.rename_folder(folder, target)
+        try:
+            client.subscribe_folder(target)
+        except Exception:  # noqa: BLE001
+            log.debug("no subscription for %s", target)
 
 
 def _final_sync(account: MailAccount, folder: str, uid: int) -> None:
@@ -763,6 +850,18 @@ async def all_read(account: MailAccount, folder_name: str) -> int:
 
 async def folder_delete(account: MailAccount, folder_name: str) -> None:
     await asyncio.to_thread(_folder_delete_sync, account, folder_name)
+
+
+async def folder_empty(account: MailAccount, folder_name: str, trash: str = "") -> dict:
+    return await asyncio.to_thread(_folder_empty_sync, account, folder_name, trash)
+
+
+async def folder_create(account: MailAccount, name: str) -> None:
+    await asyncio.to_thread(_folder_create_sync, account, name)
+
+
+async def folder_rename(account: MailAccount, folder_name: str, target: str) -> None:
+    await asyncio.to_thread(_folder_rename_sync, account, folder_name, target)
 
 
 async def archive(account: MailAccount, folder_name: str, uid: int) -> str:

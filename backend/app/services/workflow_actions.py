@@ -999,7 +999,9 @@ async def _mail_attachment(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     from . import mailbox
 
     mail = dict(ctx.get("mail") or {})
-    attachment = dict(ctx.get("anhang") or {})
+    # The trigger writes `attachment`; `anhang` is the name from before the switch to English
+    # and still stands in the context of instances that were started back then.
+    attachment = dict(ctx.get("attachment") or ctx.get("anhang") or {})
     account_id = mail.get("account_id")
     index = params.get("index")
     index = int(index) if index not in (None, "") else attachment.get("index")

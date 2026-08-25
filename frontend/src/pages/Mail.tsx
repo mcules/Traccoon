@@ -175,7 +175,9 @@ export default function Mail() {
                   folder one delete button is one too many. */}
               {accountId && (
                 <FolderHandgrips accountId={accountId} folder={folder}
-                  onDeleted={() => { setFolder("INBOX"); setUid(null); }}
+                  account={accounts.find((k) => k.id === accountId)}
+                  onGone={() => { setFolder("INBOX"); setUid(null); }}
+                  onEmptied={() => setUid(null)}
                   onError={setErr} />
               )}
             </Area>
@@ -326,18 +328,31 @@ function FolderTree({ folder: folder, active, onChoose }: {
   );
 }
 
-/** What one can do with a whole folder — both with a confirmation, both rare. */
-function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onError }: {
-  accountId: number; folder: string; onDeleted: () => void; onError: (m: string) => void;
+/**
+ * What one can do with a whole folder: mark everything read, empty it, and the folder
+ * management behind it.
+ *
+ * Emptying and deleting are two different things, and the difference is the folder itself:
+ * "empty" takes the mail out and leaves the folder standing, "delete" takes both. The daily
+ * case is the first one — which is why it stands here, while creating, renaming and deleting
+ * sit one click away in the management: rare, and none of them a thing one wants to have
+ * within reach of a misgrab.
+ */
+function FolderHandgrips({ accountId, folder: folder, account, onGone, onEmptied,
+                            onError: onError }: {
+  accountId: number; folder: string; account: MailAccount | undefined;
+  onGone: () => void; onEmptied: () => void; onError: (m: string) => void;
 }) {
   const qc = useQueryClient();
-  const [question, setQuestion] = useState<"gelesen" | "loeschen" | null>(null);
+  const [question, setQuestion] = useState<"gelesen" | "leeren" | null>(null);
+  const [manage, setManage] = useState(false);
   const [notice, setNotice] = useState("");
   const gonewrong = (was: string) => (e: unknown) =>
     onError(e instanceof ApiError ? e.message : tr("mail.failed_suffix", { what: was }));
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["mail-folders"] });
     qc.invalidateQueries({ queryKey: ["mail-list"] });
+    qc.invalidateQueries({ queryKey: ["mail-unread"] });
   };
 
   const read = useMutation({
@@ -350,17 +365,30 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
     },
     onError: (e) => { setQuestion(null); gonewrong(tr("mail.marking"))(e); },
   });
-  const remove = useMutation({
-    mutationFn: () => api.post(`/mailbox/accounts/${accountId}/folders/delete`, { folder: folder }),
-    onSuccess: () => { setQuestion(null); refresh(); onDeleted(); },
-    onError: (e) => { setQuestion(null); gonewrong(tr("mail.delete"))(e); },
+  const empty = useMutation({
+    mutationFn: () => api.post<{ deleted: number; target: string }>(
+      `/mailbox/accounts/${accountId}/folders/empty`, { folder: folder }),
+    onSuccess: (r) => {
+      setQuestion(null);
+      setNotice(!r.deleted ? tr("mail.folder_was_empty")
+        : r.target ? tr("mail.emptied_into", { n: r.deleted, folder: r.target })
+                   : tr("mail.emptied_finally", { n: r.deleted }));
+      refresh();
+      onEmptied();
+    },
+    onError: (e) => { setQuestion(null); gonewrong(tr("mail.emptying"))(e); },
   });
+
+  // Whether emptying moves or really deletes is the same question as with a single message,
+  // and the answer belongs in the safety question, afterwards it is too late for it.
+  const finally_ = !account?.folder_trash || folder === account.folder_trash;
 
   return (
     <>
       <div className="flex flex-wrap gap-2">
         <Rowbutton onClick={() => setQuestion("gelesen")}>{tr("mail.mark_all_read")}</Rowbutton>
-        <Rowbutton danger onClick={() => setQuestion("loeschen")}>{tr("mail.delete_folder")}</Rowbutton>
+        <Rowbutton danger onClick={() => setQuestion("leeren")}>{tr("mail.empty_folder")}</Rowbutton>
+        <Rowbutton onClick={() => setManage(true)}>{tr("mail.manage_folders")}</Rowbutton>
       </div>
       {notice && <div className="text-xs text-green-400">{notice}</div>}
 
@@ -372,15 +400,198 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
           danger={false} confirmText={tr("mail.mark")} runs={read.isPending}
           onClose={() => setQuestion(null)} onConfirm={() => read.mutate()} />
       )}
-      {question === "loeschen" && (
+      {question === "leeren" && (
         <ConfirmDialog
-          title={tr("mail.delete_folder_q", { folder })}
-          text={tr("mail.folder_disappears")}
-          hint={tr("mail.final_special_protected")}
-          confirmText={tr("mail.delete_finally")} runs={remove.isPending}
-          onClose={() => setQuestion(null)} onConfirm={() => remove.mutate()} />
+          title={tr("mail.empty_folder_q", { folder })}
+          text={finally_ ? tr("mail.empty_finally_text", { folder })
+                          : tr("mail.empty_into_trash_text",
+                               { folder, trash: account!.folder_trash })}
+          hint={tr("mail.folder_itself_stays")}
+          confirmText={finally_ ? tr("mail.delete_finally") : tr("mail.empty")}
+          runs={empty.isPending}
+          onClose={() => setQuestion(null)} onConfirm={() => empty.mutate()} />
+      )}
+      {manage && (
+        <FolderManagement accountId={accountId} account={account} chosen={folder}
+          onClose={() => setManage(false)} onGone={onGone} onError={onError} />
       )}
     </>
+  );
+}
+
+/**
+ * Creating, renaming, moving and deleting folders.
+ *
+ * All four in one place, because they are the same question asked four times: where does this
+ * folder belong. Renaming and moving are even the same command on IMAP: the name IS the
+ * path, which is why one row here carries both the name and the folder above it.
+ *
+ * The special folders (inbox, sent, drafts, trash, spam, archive) can be seen but not touched:
+ * they hang on the buttons of the mailbox, and a renamed trash is a delete button that no
+ * longer works. Whoever really wants to move one changes it in the settings of the account
+ * first, because there it says which folder plays which role.
+ */
+function FolderManagement({ accountId, account, chosen, onClose, onGone, onError: onError }: {
+  accountId: number; account: MailAccount | undefined; chosen: string;
+  onClose: () => void; onGone: () => void; onError: (m: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [parent, setParent] = useState(chosen === "INBOX" ? "" : chosen);
+  const [rename, setRename] = useState<Folder | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameParent, setRenameParent] = useState("");
+  const [remove, setRemove] = useState<Folder | null>(null);
+
+  const { data: folder } = useQuery({
+    queryKey: ["mail-folders", accountId],
+    queryFn: () => api.get<Folder[]>(`/mailbox/accounts/${accountId}/folders?counts=true`),
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["mail-folders"] });
+    qc.invalidateQueries({ queryKey: ["mail-list"] });
+  };
+  const gonewrong = (was: string) => (e: unknown) =>
+    onError(e instanceof ApiError ? e.message : tr("mail.failed_suffix", { what: was }));
+
+  const create = useMutation({
+    mutationFn: () => api.post(`/mailbox/accounts/${accountId}/folders/create`,
+                                { name: name.trim(), parent: parent }),
+    onSuccess: () => { setName(""); refresh(); },
+    onError: gonewrong(tr("mail.creating")),
+  });
+  const move = useMutation({
+    mutationFn: () => api.post(`/mailbox/accounts/${accountId}/folders/rename`, {
+      folder: rename!.name, name: renameName.trim(), parent: renameParent }),
+    onSuccess: () => { setRename(null); refresh(); },
+    onError: gonewrong(tr("mail.renaming")),
+  });
+  const drop = useMutation({
+    mutationFn: () => api.post(`/mailbox/accounts/${accountId}/folders/delete`,
+                                { folder: remove!.name }),
+    onSuccess: () => {
+      const gone = remove!.name;
+      setRemove(null);
+      refresh();
+      // What one was standing in is no longer there, and the list beside it would otherwise
+      // go on asking a folder that does not exist any more.
+      if (gone === chosen) onGone();
+    },
+    onError: (e) => { setRemove(null); gonewrong(tr("mail.delete"))(e); },
+  });
+
+  /** Which folders play a role in this account. Those stay untouched. */
+  const role = (o: Folder): string => {
+    if (o.name.toUpperCase() === "INBOX") return tr("mail.role_inbox");
+    const roles: [string | undefined, string][] = [
+      [account?.folder_sent, tr("mail.role_sent")], [account?.folder_drafts, tr("mail.role_drafts")],
+      [account?.folder_trash, tr("mail.role_trash")], [account?.folder_junk, tr("mail.role_junk")],
+      [account?.folder_archive, tr("mail.role_archive")]];
+    return roles.find(([n]) => n && n === o.name)?.[1] || "";
+  };
+
+  /** The choice of a parent folder. `""` is the root, a folder does not have to hang below
+   *  something. Whoever is being renamed cannot become their own parent. */
+  const parentChoice = (without?: string) => (
+    <>
+      <option value="">{tr("mail.top_level")}</option>
+      {(folder || []).filter((o) => !without
+                              || (o.name !== without && !o.name.startsWith(without + o.delimiter)))
+        .map((o) => (
+          <option key={o.name} value={o.name}>{"\u00a0\u00a0".repeat(o.level)}{o.display}</option>
+        ))}
+    </>
+  );
+
+  return (
+    <Dialog wide title={tr("mail.manage_folders_title")} onClose={onClose} foot={
+      <Button onClick={onClose}>{tr("common.close")}</Button>
+    }>
+      <div className="space-y-4">
+        <Listing>
+          {(folder || []).map((o) => {
+            const fixed = !!role(o);
+            const editing = rename?.name === o.name;
+            return (
+              <ListRow key={o.name} dense>
+                {editing ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input value={renameName} autoFocus className={`${INPUT_VALUE} max-w-[12rem]`}
+                      onChange={(e) => setRenameName(e.target.value)} />
+                    <span className="text-xs text-muted">{tr("mail.below")}</span>
+                    <select value={renameParent} className={`${INPUT_VALUE} max-w-[14rem]`}
+                      onChange={(e) => setRenameParent(e.target.value)}>
+                      {parentChoice(o.name)}
+                    </select>
+                    <div className="flex-1" />
+                    <Rowbutton onClick={() => move.mutate()}>{tr("common.save")}</Rowbutton>
+                    <Rowbutton onClick={() => setRename(null)}>{tr("common.cancel")}</Rowbutton>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2"
+                       style={{ paddingLeft: `${o.level * 0.85}rem` }}>
+                    <span>{SPECIAL[o.special] || "📁"}</span>
+                    <span className="min-w-0 flex-1 truncate">{o.display}</span>
+                    <span className="shrink-0 text-xs text-muted">
+                      {o.total} {tr("mail.messages")}
+                    </span>
+                    {fixed ? (
+                      <Tag title={tr("mail.role_protected")}>{role(o)}</Tag>
+                    ) : (
+                      <>
+                        <Rowbutton onClick={() => {
+                          setRename(o);
+                          setRenameName(o.display);
+                          setRenameParent(o.parent);
+                        }}>{tr("mail.rename")}</Rowbutton>
+                        <Rowbutton danger onClick={() => setRemove(o)}>{tr("mail.delete")}</Rowbutton>
+                      </>
+                    )}
+                  </div>
+                )}
+              </ListRow>
+            );
+          })}
+          {!folder?.length && <ListingEmpty>{tr("mail.folders_loading")}</ListingEmpty>}
+        </Listing>
+
+        {/* Creating stands below the list and not in a dialog of its own: one sees while
+            typing what is already there, which is exactly the question one has at that
+            moment. */}
+        <form className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => { e.preventDefault(); if (name.trim()) create.mutate(); }}>
+          <div className="min-w-[10rem] flex-1">
+            <Field label={tr("mail.new_folder")}>
+              <input value={name} onChange={(e) => setName(e.target.value)}
+                placeholder={tr("mail.folder_name")} className={INPUT_VALUE} />
+            </Field>
+          </div>
+          <div className="min-w-[10rem] flex-1">
+            <Field label={tr("mail.below_folder")}>
+              <select value={parent} onChange={(e) => setParent(e.target.value)}
+                className={INPUT_VALUE}>
+                {parentChoice()}
+              </select>
+            </Field>
+          </div>
+          <Button variant="primary" type="submit" disabled={!name.trim()} runs={create.isPending}>
+            {tr("mail.create")}
+          </Button>
+        </form>
+      </div>
+
+      {remove && (
+        <ConfirmDialog
+          title={tr("mail.delete_folder_q", { folder: remove.display })}
+          text={remove.total
+            ? tr("mail.folder_disappears_with", { n: remove.total })
+            : tr("mail.folder_disappears")}
+          hint={tr("mail.final_special_protected")}
+          confirmText={tr("mail.delete_finally")} runs={drop.isPending}
+          onClose={() => setRemove(null)} onConfirm={() => drop.mutate()} />
+      )}
+    </Dialog>
   );
 }
 
@@ -661,11 +872,46 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   }, [error]);
 
   const start = useMutation({
-    mutationFn: (v: { definition_id: number; attachment?: number }) =>
-      api.post<{ instance_id: number }>(`${basis}/action`, { ...v, folder: folder }),
-    onSuccess: (r) => setRun(`Ablauf gestartet (Vorgang ${r.instance_id})`),
-    onError: (e) => onError(e instanceof ApiError ? e.message : "Aktion fehlgeschlagen"),
+    mutationFn: (v: { definition_id: number; attachment?: number; all?: boolean }) =>
+      api.post<{ instance_id: number; runs: { instance_id: number }[] }>(
+        `${basis}/action`, { ...v, folder: folder }),
+    // One run per file: the message says how many were started, not which. The details
+    // stand in the flows, and twenty numbers here would be no news but a wall.
+    onSuccess: (r) => setRun((r.runs?.length || 1) > 1
+      ? tr("mail.runs_started", { n: r.runs.length })
+      : tr("mail.run_started", { id: r.instance_id })),
+    onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.action_failed")),
   });
+
+  /**
+   * Three seconds open means read.
+   *
+   * Not on opening: whoever clicks through a list and goes straight on has not read anything,
+   * and a mail that loses its mark on the way past is one that will never be found again.
+   * Three seconds is long enough for a misgrab and short enough not to have to think about it.
+   *
+   * Only ever once per mail: the answer sets `seen` in the loaded message, so the timer does
+   * not start a second time, and the counters beside it hold the old state and have to look
+   * again.
+   */
+  const asRead = useMutation({
+    mutationFn: () => api.post(`${basis}/flag`, { folder: folder, flag: "\\Seen", on: true }),
+    onSuccess: () => {
+      qc.setQueryData<Message>(["mail-message", accountId, folder, uid],
+        (old) => (old ? { ...old, seen: true } : old));
+      qc.invalidateQueries({ queryKey: ["mail-list"] });
+      qc.invalidateQueries({ queryKey: ["mail-folders"] });
+      qc.invalidateQueries({ queryKey: ["mail-unread"] });
+    },
+    // A failed mark is no message: it is repaired by opening it again, and an error banner
+    // over something nobody asked for would only be in the way.
+    onError: () => {/* quiet */},
+  });
+  useEffect(() => {
+    if (!m || m.seen) return;
+    const clock = setTimeout(() => asRead.mutate(), 3000);
+    return () => clearTimeout(clock);
+  }, [accountId, folder, m?.uid, m?.seen]);
   // All handgrips end the same way: the list and the folder counts no longer hold, and the
   // message is no longer where one was just reading it — so back to the list.
   const after = () => {
@@ -768,6 +1014,23 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           </div>
 
           {m.attachments.length > 0 && (
+            <div className="space-y-2">
+            {/* The same action over all files at once. Only from the second attachment on:
+                with one file the row below it says the same thing, and two buttons for one
+                click are one too many. */}
+            {forAttachment.length > 0 && m.attachments.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted">
+                  {tr("mail.all_attachments", { n: m.attachments.length })}
+                </span>
+                {forAttachment.map((act) => (
+                  <Rowbutton key={act.definition_id} title={act.description}
+                    onClick={() => start.mutate({ definition_id: act.definition_id, all: true })}>
+                    {act.name}
+                  </Rowbutton>
+                ))}
+              </div>
+            )}
             <Listing>
               {m.attachments.map((a) => (
                 <ListRow key={a.index}>
@@ -789,6 +1052,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                 </ListRow>
               ))}
             </Listing>
+            </div>
           )}
 
           {m.html ? (
