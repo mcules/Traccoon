@@ -950,7 +950,10 @@ class AttachmentIn(BaseModel):
 
 
 class SendIn(BaseModel):
-    identity_id: int
+    # Optional, and that is not laxness: a mail always has a sender, and which one is a
+    # question the mailbox can answer by itself. A form that cannot work it out was sending
+    # `null` and got a validation error back that named a field the person never filled in.
+    identity_id: int | None = None
     to: list[str] = []
     cc: list[str] = []
     bcc: list[str] = []
@@ -972,7 +975,15 @@ class SendIn(BaseModel):
 
 async def _fields(db: AsyncSession, kid: int, data: SendIn, user: User):
     account = await _account(db, kid, user)
-    ident = await db.get(MailIdentity, data.identity_id)
+    ident = await db.get(MailIdentity, data.identity_id) if data.identity_id else None
+    if ident is None and data.identity_id is None:
+        # Nobody named one: the mailbox decides, the same way it does everywhere else.
+        rows = (await db.execute(select(MailIdentity).where(
+            MailIdentity.account_id == account.id).order_by(MailIdentity.id))).scalars().all()
+        ident = next((i for i in rows if i.is_default), rows[0] if rows else None)
+        if ident is None:
+            raise Error(400, "err.mailbox_without_identity",
+                        "This mailbox has no sender address")
     if ident is None or ident.account_id != account.id:
         raise Error(400, "err.identity_not_of_account",
                      "The identity does not belong to this account")

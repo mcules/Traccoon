@@ -1204,6 +1204,7 @@
   "err.location_not_found": "Location not found",
   "err.mail_account_not_found": "Mail account not found",
   "err.mail_not_found": "Message not found",
+  "err.mailbox_without_identity": "This mailbox has no sender address",
   "err.maintainer_rights_target_project": "Maintainer rights in the target project are required",
   "err.manifest_json_invalid": "manifest.json is invalid",
   "err.manifest_json_missing": "manifest.json is missing",

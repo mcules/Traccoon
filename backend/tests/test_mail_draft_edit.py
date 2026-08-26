@@ -175,3 +175,30 @@ async def test_a_mark_that_fails_does_not_break_the_send(db, client, marks):
         "identity_id": ident.id, "to": ["du@example.org"], "subject": "Fwd: x", "text": "y",
         "about_uid": 12, "about_folder": "INBOX", "about_kind": "forward"})
     assert r.status_code == 204 and marks["sent"], "the mail went out"
+
+
+async def test_a_mail_without_a_named_sender_takes_the_default(db, client, watch):
+    """A mail always has a sender, and which one the mailbox can work out by itself.
+
+    The occasion: sending a draft from the reading view left the field empty, and the answer
+    was a validation error naming a field the person never filled in.
+    """
+    anna = await make_user(db, "anna")
+    kid, ident = await _account_with_identity(db, client, anna)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "to": ["du@example.org"], "subject": "Ohne Absender", "text": "x"})
+    assert r.status_code == 204, r.text
+    assert watch["sent"]
+
+
+async def test_a_foreign_sender_is_still_refused(db, client, watch):
+    """Working it out is not the same as accepting anything."""
+    anna = await make_user(db, "anna")
+    kid, _ = await _account_with_identity(db, client, anna)
+    other = await make_user(db, "bert")
+    kid2, ident2 = await _account_with_identity(db, client, other)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "identity_id": ident2.id, "to": ["du@example.org"], "subject": "x", "text": "y"})
+    assert r.status_code == 400 and "identity" in r.json()["key"]

@@ -1850,8 +1850,21 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     return { files, failed };
   };
 
+  /**
+   * The sender of a draft is written in the draft.
+   *
+   * `matchingIdentity` asks the other question, which of our addresses a mail was sent TO.
+   * On a draft that finds nothing: its recipients are the far side. It sent an empty
+   * identity, and the send came back with a validation error about a field nobody filled in.
+   */
+  const draftIdentity = (): number | undefined => {
+    const sender = (m?.from || []).map((a) => a.addr.toLowerCase());
+    return (identities || []).find((i) => sender.includes(i.email.toLowerCase()))?.id
+      ?? matchingIdentity();
+  };
+
   const draftFields = (files: NonNullable<ComposeStart["attachments"]>): ComposeStart => ({
-    identity: String(matchingIdentity() ?? ""),
+    identity: String(draftIdentity() ?? ""),
     to: (m?.to || []).map((a) => a.addr).join(", "),
     cc: (m?.cc || []).map((a) => a.addr).join(", "),
     subject: m?.subject || "",
@@ -1884,7 +1897,9 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
       if (failed) throw new ApiError(400, tr("mail.draft_files_missing"));
       const f = draftFields(files);
       return api.post(`/mailbox/accounts/${accountId}/send`, {
-        identity_id: Number(f.identity) || null,
+        // Left out when we do not know it: the mailbox then takes its default, which is a
+        // better answer than an error about a field the person never saw.
+        identity_id: Number(f.identity) || undefined,
         to: (f.to || "").split(",").map((x) => x.trim()).filter(Boolean),
         cc: (f.cc || "").split(",").map((x) => x.trim()).filter(Boolean),
         subject: f.subject, text: f.text,

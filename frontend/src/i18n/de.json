@@ -1204,6 +1204,7 @@
   "err.location_not_found": "Ort nicht gefunden",
   "err.mail_account_not_found": "Mailkonto nicht gefunden",
   "err.mail_not_found": "Nachricht nicht gefunden",
+  "err.mailbox_without_identity": "Dieses Postfach hat keine Absenderadresse",
   "err.maintainer_rights_target_project": "Maintainer-Recht im Zielprojekt erforderlich",
   "err.manifest_json_invalid": "manifest.json ungültig",
   "err.manifest_json_missing": "manifest.json fehlt",
