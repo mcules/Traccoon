@@ -1147,6 +1147,8 @@
   "err.do_not_demote_yourself": "Nicht sich selbst degradieren",
   "err.draft_failed": "Entwurf fehlgeschlagen: {reason}",
   "err.draft_is_current": "Dieser Entwurf ist die aktuelle Fassung und lässt sich nicht verwerfen.",
+  "err.draft_sender_unknown": "Der Entwurf ist von {sender} geschrieben, und das ist keine Adresse dieses Postfachs. Wähle den Absender und sende erneut.",
+  "err.draft_unreadable": "Der Entwurf ließ sich nicht lesen, sein Absender ist damit unbekannt",
   "err.e_mail_already_taken": "E-Mail bereits vergeben",
   "err.e_mail_user_name_already_taken": "E-Mail oder Benutzername bereits vergeben",
   "err.empty_message": "Leere Nachricht",

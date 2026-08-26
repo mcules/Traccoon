@@ -1147,6 +1147,8 @@
   "err.do_not_demote_yourself": "Do not demote yourself",
   "err.draft_failed": "The draft failed: {reason}",
   "err.draft_is_current": "This draft is the current version and cannot be discarded",
+  "err.draft_sender_unknown": "The draft is written from {sender}, which is not an address of this mailbox. Choose the sender and send again.",
+  "err.draft_unreadable": "The draft could not be read, so its sender is unknown",
   "err.e_mail_already_taken": "E-mail already taken",
   "err.e_mail_user_name_already_taken": "E-mail or user name already taken",
   "err.empty_message": "Empty message",

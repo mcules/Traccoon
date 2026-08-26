@@ -202,3 +202,79 @@ async def test_a_foreign_sender_is_still_refused(db, client, watch):
     r = await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
         "identity_id": ident2.id, "to": ["du@example.org"], "subject": "x", "text": "y"})
     assert r.status_code == 400 and "identity" in r.json()["key"]
+
+
+@pytest.fixture
+def draft_box(monkeypatch):
+    """A draft in the mailbox, and a record of what went out from where."""
+    seen = {"sent": [], "from": []}
+    draft = {"uid": 17, "folder": "Drafts", "subject": "Halb fertig",
+             "from": [{"name": "Ich", "addr": "shop@example.org"}],
+             "to": [{"addr": "du@example.org"}], "cc": [], "text": "Der Rest kommt.",
+             "message_id": "<x@example.org>", "date": "Mon, 26 Aug 2026 10:00:00 +0200"}
+
+    async def message(account, folder, uid):
+        return draft
+
+    async def send(account, ident, fields):
+        seen["from"].append(ident.email)
+        seen["sent"].append(fields)
+
+    monkeypatch.setattr(mailbox, "message", message)
+    monkeypatch.setattr(mailbox, "send", send)
+    monkeypatch.setattr(mailbox, "draft_drop", lambda *a, **k: _nothing())
+    return seen, draft
+
+
+async def _nothing():
+    return None
+
+
+async def test_a_draft_goes_out_under_the_address_it_was_written_from(db, client, draft_box):
+    """The whole reason a mailbox has several addresses.
+
+    This went wrong once and cost real mails: the sender was worked out in the browser, the
+    list of identities was not there yet, and the server quietly substituted the default. Seven
+    mails left under the wrong address, and a mail that has gone out cannot be taken back.
+    """
+    seen, _ = draft_box
+    anna = await make_user(db, "anna")
+    kid, default_ident = await _account_with_identity(db, client, anna)
+    db.add(MailIdentity(account_id=kid, email="shop@example.org", display_name="Ich beim Shop"))
+    await db.commit()
+
+    r = await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "to": ["du@example.org"], "subject": "Halb fertig", "text": "Der Rest kommt.",
+        "replaces_uid": 17})
+    assert r.status_code == 204, r.text
+    assert seen["from"] == ["shop@example.org"]
+    assert seen["from"] != [default_ident.email], "never the default when the draft says otherwise"
+
+
+async def test_a_draft_from_an_unknown_address_is_refused(db, client, draft_box):
+    """Guessing is what caused the damage. Without a basis it stops and asks."""
+    seen, _ = draft_box
+    anna = await make_user(db, "anna")
+    kid, _ident = await _account_with_identity(db, client, anna)   # no shop@ identity here
+
+    r = await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "to": ["du@example.org"], "subject": "x", "text": "y", "replaces_uid": 17})
+    assert r.status_code == 400
+    assert r.json()["key"] == "err.draft_sender_unknown"
+    assert seen["sent"] == [], "nothing went out"
+
+
+async def test_a_named_sender_still_wins(db, client, draft_box):
+    """Whoever picks an address in the window means it."""
+    seen, _ = draft_box
+    anna = await make_user(db, "anna")
+    kid, _ = await _account_with_identity(db, client, anna)
+    other = MailIdentity(account_id=kid, email="zweit@example.org")
+    db.add(other)
+    await db.commit()
+    await db.refresh(other)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "identity_id": other.id, "to": ["du@example.org"], "subject": "x", "text": "y",
+        "replaces_uid": 17})
+    assert r.status_code == 204 and seen["from"] == ["zweit@example.org"]

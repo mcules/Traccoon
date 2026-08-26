@@ -977,13 +977,7 @@ async def _fields(db: AsyncSession, kid: int, data: SendIn, user: User):
     account = await _account(db, kid, user)
     ident = await db.get(MailIdentity, data.identity_id) if data.identity_id else None
     if ident is None and data.identity_id is None:
-        # Nobody named one: the mailbox decides, the same way it does everywhere else.
-        rows = (await db.execute(select(MailIdentity).where(
-            MailIdentity.account_id == account.id).order_by(MailIdentity.id))).scalars().all()
-        ident = next((i for i in rows if i.is_default), rows[0] if rows else None)
-        if ident is None:
-            raise Error(400, "err.mailbox_without_identity",
-                        "This mailbox has no sender address")
+        ident = await _sender_for(db, account, data)
     if ident is None or ident.account_id != account.id:
         raise Error(400, "err.identity_not_of_account",
                      "The identity does not belong to this account")
@@ -993,6 +987,41 @@ async def _fields(db: AsyncSession, kid: int, data: SendIn, user: User):
         {"filename": a.filename, "content_type": a.content_type,
          "data": base64.b64decode(a.data_base64)} for a in data.attachments]
     return account, ident, fields
+
+
+async def _sender_for(db: AsyncSession, account: MailAccount, data: SendIn) -> MailIdentity:
+    """Which address this goes out from when the request names none.
+
+    A draft decides for itself. Its `From` was chosen when it was written, and that choice is
+    the whole point of having several addresses on one mailbox: whoever writes to a shop under
+    the address the shop knows must not have the mail leave under another one.
+
+    This is not a nicety. Substituting the default here sent seven mails from the wrong
+    address before anybody could see it, and a mail that has gone out cannot be taken back. So
+    when a draft names a sender we do not know, this refuses instead of guessing.
+    """
+    rows = (await db.execute(select(MailIdentity).where(
+        MailIdentity.account_id == account.id).order_by(MailIdentity.id))).scalars().all()
+    if not rows:
+        raise Error(400, "err.mailbox_without_identity", "This mailbox has no sender address")
+
+    if data.replaces_uid is not None and account.folder_drafts:
+        try:
+            draft = await mailbox.message(account, account.folder_drafts, data.replaces_uid)
+        except Exception as exc:  # noqa: BLE001
+            raise Error(400, "err.draft_unreadable",
+                        "The draft could not be read, so its sender is unknown") from exc
+        wrote = [str(a.get("addr") or "").lower() for a in (draft.get("from") or [])]
+        hit = next((i for i in rows if i.email.lower() in wrote), None)
+        if hit is None:
+            raise Error(400, "err.draft_sender_unknown",
+                        "The draft is written from {sender}, which is not an address of this "
+                        "mailbox. Choose the sender and send again.",
+                        sender=", ".join(wrote) or "no address")
+        return hit
+
+    # A new mail that names no sender: the mailbox decides, as it always did.
+    return next((i for i in rows if i.is_default), rows[0])
 
 
 async def _mark_about(account, data: SendIn) -> None:

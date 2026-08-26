@@ -1897,9 +1897,10 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
       if (failed) throw new ApiError(400, tr("mail.draft_files_missing"));
       const f = draftFields(files);
       return api.post(`/mailbox/accounts/${accountId}/send`, {
-        // Left out when we do not know it: the mailbox then takes its default, which is a
-        // better answer than an error about a field the person never saw.
-        identity_id: Number(f.identity) || undefined,
+        // Deliberately NOT filled in from here. The draft carries its sender in its own
+        // header and the server reads it there; a value guessed in the browser was how mails
+        // went out from the wrong address while the list of identities was still loading.
+        identity_id: undefined,
         to: (f.to || "").split(",").map((x) => x.trim()).filter(Boolean),
         cc: (f.cc || "").split(",").map((x) => x.trim()).filter(Boolean),
         subject: f.subject, text: f.text,
