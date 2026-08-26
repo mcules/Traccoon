@@ -67,7 +67,7 @@ export const EVENTS = [
   // in front with `events.insert(0, …)`).
   ev(8871, 0, 0, 0, "session_seen", {
     title: "The login fails on accented characters", issue_key: "ABC-412",
-    project_key: "TRA", started_at: ts(0),
+    project_key: "ABC", started_at: ts(0),
   }),
 
   // ── Wurzellauf 8871 ────────────────────────────────────────────────────────
@@ -182,7 +182,7 @@ export const EVENTS = [
   }),
   ev(8873, 117, 1, 46200, "tool_start", {
     tool: "traccoon_list_issues", target: null, tool_use_id: "tu-5",
-    args_preview: '{"project": "TRA"}',
+    args_preview: '{"project": "ABC"}',
   }),
   // `ok: null`: an old row without a recognisable prefix. Unknown, NOT success.
   ev(8873, 118, 1, 46900, "tool_result", {
@@ -227,7 +227,7 @@ export const EVENTS = [
 export const ROSTER = [
   {
     agent_id: "run:8871", run_id: 8871, agent: "exec_agent", phase: "execute",
-    status: "success", issue_key: "ABC-412", project_id: PROJECT_ID, project_key: "TRA",
+    status: "success", issue_key: "ABC-412", project_id: PROJECT_ID, project_key: "ABC",
     provider: "claude_code", model: "sonnet", parent_run_id: null, spawn_depth: 0,
     started_at: ts(0), ended_at: ts(54000), iterations: 9,
     in_tokens: 52000, out_tokens: 3400, cache_read_tokens: 47000,
@@ -235,7 +235,7 @@ export const ROSTER = [
   },
   {
     agent_id: "run:8872", run_id: 8872, agent: "review_agent", phase: "execute",
-    status: "success", issue_key: "ABC-412", project_id: PROJECT_ID, project_key: "TRA",
+    status: "success", issue_key: "ABC-412", project_id: PROJECT_ID, project_key: "ABC",
     provider: "codex", model: "gpt-5-codex", parent_run_id: 8871, spawn_depth: 1,
     started_at: ts(7200), ended_at: ts(12000), iterations: 4,
     in_tokens: 18400, out_tokens: 1120, cache_read_tokens: 16000,
@@ -243,7 +243,7 @@ export const ROSTER = [
   },
   {
     agent_id: "run:8873", run_id: 8873, agent: "assistant", phase: "execute",
-    status: "blocked", issue_key: "ABC-412", project_id: PROJECT_ID, project_key: "TRA",
+    status: "blocked", issue_key: "ABC-412", project_id: PROJECT_ID, project_key: "ABC",
     provider: "claude_code", model: "sonnet", parent_run_id: null, spawn_depth: 0,
     started_at: ts(45000), ended_at: ts(48000), iterations: 2,
     in_tokens: 3100, out_tokens: 240, cache_read_tokens: 2900,

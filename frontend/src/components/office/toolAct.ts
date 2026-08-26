@@ -58,8 +58,9 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   remember: "write",
   forget: "write",
   memory_search: "read",
+  memory_teach: "write",
 
-  // ── worker/tools_traccoon.py: the twenty control tools ─────────────────────
+  // ── worker/tools_traccoon.py: the control tools ────────────────────────────
   traccoon_list_projects: "read",
   traccoon_list_issues: "read",
   traccoon_get_issue: "read",
@@ -85,6 +86,7 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   traccoon_start_workflow: "run",
   // The only way of an agent onto the network (destinations, `allow_agents`); here "browse" is proven.
   traccoon_http_call: "browse",
+  traccoon_run_health: "read",
 };
 
 /** The target list the checker tests against: every name Traccoon itself offers as a tool.
@@ -98,9 +100,9 @@ export const NATIVE_TOOLS: readonly string[] = [
   "fs_read", "fs_list", "fs_write", "fs_edit",
   "check", "deploy", "screenshot", "read_attachment", "open_tasks", "codegraph",
   "delegate", "load_skill",
-  // tools_memory.py (3)
-  "remember", "forget", "memory_search",
-  // tools_traccoon.py (20)
+  // tools_memory.py (4)
+  "remember", "forget", "memory_search", "memory_teach",
+  // tools_traccoon.py (21)
   "traccoon_list_projects", "traccoon_list_issues", "traccoon_get_issue",
   "traccoon_create_issue", "traccoon_comment", "traccoon_assign_agent",
   "traccoon_start_planning", "traccoon_approve_plan", "traccoon_issue_costs",
@@ -108,6 +110,7 @@ export const NATIVE_TOOLS: readonly string[] = [
   "traccoon_list_jobs", "traccoon_get_job", "traccoon_job_templates",
   "traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
   "traccoon_list_workflows", "traccoon_start_workflow", "traccoon_http_call",
+  "traccoon_run_health",
 ];
 
 // ── 2./3. MCP ────────────────────────────────────────────────────────────────

@@ -288,7 +288,7 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN required (see .env)}
       PREVIEW_MEMORY: ${PREVIEW_MEMORY:-2g}
       PREVIEW_CPUS: ${PREVIEW_CPUS:-2}
-      # Testumgebungen (ABC-18): Build-Deckel + Wartezeit der Liveness-Nachpruefung.
+      # Test environments: the build cap plus the wait for the liveness check.
       # Portbereich/Grenzen kommen zur Laufzeit aus den globalen Einstellungen (Admin).
       TESTENV_MAX_BUILDS: ${TESTENV_MAX_BUILDS:-2}
       TESTENV_LIVENESS_WAIT: ${TESTENV_LIVENESS_WAIT:-6}

@@ -103,8 +103,11 @@ NO_MEMORY = "(no memory configured — your person has set no vault folder)"
 # look back after a run may call. A tool that reaches into a foreign note must be granted
 # explicitly in `allowed_tools`, and it has no business in a look back at one's own run.
 TEACH_TOOL_NAME = "memory_teach"
+# The name stands here as a literal on purpose: the office tool table is read out of the
+# `_def("<name>", …)` calls of this file, and a constant in that place would make the tool
+# invisible to that check.
 TEACH_TOOL = _def(
-    TEACH_TOOL_NAME,
+    "memory_teach",
     "Write a lasting rule into the memory of ANOTHER agent. For what you noticed about "
     "somebody else's work over several runs — your own lessons belong in `remember`. One "
     "sentence per call, no reference to a single run.",

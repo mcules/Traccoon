@@ -43,8 +43,8 @@ Four things stay German on purpose, and none of them is a leftover:
 This repository is public. Nothing in it names a person, a company, or a project that is not
 this one:
 
-- **No ticket keys.** A comment may keep its reasoning and its date, but not `ABC-32`: the
-  number means nothing outside the installation that issued it. Write "one ticket", "a
+- **No ticket keys.** A comment may keep its reasoning and its date, but not the key
+  itself: the number means nothing outside the installation that issued it. Write "one ticket", "a
   reviewer run", or just the date.
 - **No neighbouring systems.** Other services of the same household are "the predecessor",
   "another program", "a game bot". Third party products that this genuinely talks to keep
