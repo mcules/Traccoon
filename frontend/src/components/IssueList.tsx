@@ -71,8 +71,8 @@ export default function IssueList({
         <span className="text-xs text-muted">{filtered.length} / {issues.length}</span>
       </div>
 
-      {/* Five columns cannot be held on a phone: the title column was left with two words per
-          Zeile zusammengequetscht. Ab sm die sortierbare Tabelle, darunter Karten. */}
+      {/* Five columns cannot be held on a phone: the title column was left squeezed into two
+          words per line. From sm on the sortable table, below that cards. */}
       <table className="hidden w-full text-sm sm:table">
         <thead>
           <tr className="border-b border-line text-left text-xs text-muted">

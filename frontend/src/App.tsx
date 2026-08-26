@@ -143,7 +143,7 @@ export default function App() {
             `?tab=` ProjectView redirects itself. */}
         <Route path="/projects/:key" element={<ProjectView />} />
         <Route path="/projects/:key/:tab" element={<ProjectView />} />
-        <Route path="/projects/:key/:tab/:unter" element={<ProjectView />} />
+        <Route path="/projects/:key/:tab/:under" element={<ProjectView />} />
         <Route path="/buero" element={<OldAddress to="/office" />} />
         <Route path="/office" element={
           <Suspense fallback={<div className="p-4 text-sm text-muted">{tr("common.loading")}</div>}>
