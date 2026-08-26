@@ -34,8 +34,10 @@ async def test_chat_task_is_created_and_queued(db, anna, monkeypatch):
     assert t.kind == "chat" and t.status == "approved"
     assert t.meta["chat_text"] == "was liegt heute an?" and t.meta["chat_id"] == "277"
     assert "agent" not in t.meta            # without an entry the assistant takes over
+    # `is_chat` puts it in the lane kept free for somebody who is waiting: a message from the
+    # messenger is a person typing, exactly like one from the browser.
     assert queued == [{"kind": "assistant", "task_id": f"assistant-{t.id}",
-                           "assistant_task_id": t.id}]
+                           "assistant_task_id": t.id, "is_chat": True}]
 
 
 async def test_a_named_agent_lands_in_the_meta(db, anna, monkeypatch):

@@ -68,8 +68,10 @@ async def apply_perm_decision(db: AsyncSession, task: AssistantTask, decision: s
     task.status = "approved"
     await db.commit()
     from ..core.redis import enqueue_task
+    # A run that was waiting for an approval keeps the lane it came from: a conversation
+    # that had to ask a question is still a conversation.
     await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
-                        "assistant_task_id": task.id})
+                        "assistant_task_id": task.id, "is_chat": task.kind == "chat"})
 
 
 async def learn_permission(db: AsyncSession, owner_id: int | None, tool: str,

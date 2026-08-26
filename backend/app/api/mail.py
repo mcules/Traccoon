@@ -354,14 +354,24 @@ async def chat_history(before: int | None = None, limit: int = 20, archive: bool
     `more` says whether anything lies before that page, which the browser cannot tell from a
     full page alone.
 
-    WITHOUT `session_id` everything of the owner comes back, exactly as before. That is not
-    tidiness but compatibility: a client that predates the sessions must not fall silent
-    because a parameter it does not know now exists.
+    WITHOUT `session_id` the newest conversation comes back, not all of them. This used to
+    return everything of the owner, and a client that has not chosen a session yet, which is
+    every client on its first request, filled its window with three conversations at once:
+    the messenger, the browser and the plugin, one below the other, all of them looking like
+    one thread. A conversation is a boundary or it is nothing.
     """
     n = max(1, min(limit, 100))
     q = (select(AssistantTask)
          .where(AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat")
          .order_by(AssistantTask.id.desc()))
+    if not session_id:
+        # The newest one somebody spoke in. An owner without any conversation gets an empty
+        # page, which is the truth and not a mixture.
+        session_id = (await db.execute(
+            select(AssistantTask.session_id)
+            .where(AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat",
+                   AssistantTask.session_id.isnot(None))
+            .order_by(AssistantTask.id.desc()).limit(1))).scalar()
     if session_id:
         q = q.where(AssistantTask.session_id == session_id)
     q = q.where(AssistantTask.archived_at.isnot(None) if archive
@@ -436,8 +446,9 @@ async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
     await db.commit()
     await db.refresh(t)
     from ..core.redis import enqueue_task
+    # A conversation goes into the lane of its own: somebody is sitting in front of it.
     await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
-                        "assistant_task_id": t.id})
+                        "assistant_task_id": t.id, "is_chat": True})
     return _chat_out(t)
 
 

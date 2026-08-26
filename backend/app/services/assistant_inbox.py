@@ -64,8 +64,9 @@ async def create_chat_task(db: AsyncSession, owner_user_id: int | None, text: st
     await db.commit()
     await db.refresh(task)
     from ..core.redis import enqueue_task
+    # Chat from the messenger, same lane as chat from anywhere else: it is a person waiting.
     await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
-                        "assistant_task_id": task.id})
+                        "assistant_task_id": task.id, "is_chat": True})
     return task
 
 
@@ -95,7 +96,7 @@ async def approve_assistant_task(db: AsyncSession, task: AssistantTask, *, scope
     await db.commit()
     from ..core.redis import enqueue_task
     await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
-                        "assistant_task_id": task.id})
+                        "assistant_task_id": task.id, "is_chat": task.kind == "chat"})
 
 
 async def reject_assistant_task(db: AsyncSession, task: AssistantTask) -> None:

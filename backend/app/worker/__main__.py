@@ -42,6 +42,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("traccoon.worker")
 
 MAX_CONCURRENT = int(os.getenv("WORKER_CONCURRENCY", "3"))
+# Slots kept free for somebody who is waiting in front of a screen.
+#
+# The reason: five mails arrived at once, their intake runs took all three slots, and a
+# person typing in the chat waited behind them. From where they sit their conversation had
+# stopped, and the other one was standing in its place. Background work is patient, a
+# conversation is not, so it does not queue behind it.
+CHAT_LANES = int(os.getenv("WORKER_CHAT_LANES", "2"))
 # Grace period on shutdown: this long an agent already running may keep working before the
 # process leaves. A run can take hours, so waiting for it completely is out, but the two
 # minutes are enough for the model turn in flight including its tool, and for its step rows
@@ -1332,6 +1339,8 @@ async def main() -> None:
     blocking = Redis.from_url(settings.redis_url, socket_timeout=BLOCK_TIMEOUT + 10, **_REDIS_KW)
     killer = Redis.from_url(settings.redis_url, **_REDIS_KW)
     sem = asyncio.Semaphore(MAX_CONCURRENT)
+    # The second lane, only for chat. Everything else shares the first one.
+    chat_sem = asyncio.Semaphore(CHAT_LANES)
     # Drop entries from a crashed previous life, otherwise the interface shows runs that do
     # not exist any more.
     await redis.delete(ACTIVE)
@@ -1351,7 +1360,9 @@ async def main() -> None:
 
     async def _run(job: dict, raw: str) -> None:
         key = job.get("issue_key") or job.get("task_id", "")
-        async with sem:
+        # Which lane this belongs in. `is_chat` is set where the task is put into the queue,
+        # because only there is it known without a database round trip.
+        async with (chat_sem if job.get("is_chat") else sem):
             RUNNING[key] = asyncio.current_task()
             await redis.hset(ACTIVE, key, json.dumps({
                 "issue_key": key, "task_id": job.get("task_id", ""), "role": job.get("role", ""),
