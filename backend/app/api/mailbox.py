@@ -9,6 +9,7 @@ flow and puts account, folder, UID and — if chosen — the attachment into its
 being in the editor instead of in a development run.
 """
 import base64
+import logging
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
@@ -24,6 +25,8 @@ from ..models.user import User
 from ..services import mailbox
 from ..services import mailbox_cache as cache
 from .deps import get_current_user
+
+log = logging.getLogger("traccoon.mailbox")
 
 router = APIRouter(prefix="/mailbox", tags=["mailbox"])
 
@@ -955,6 +958,10 @@ class SendIn(BaseModel):
     text: str = ""
     in_reply_to: str = ""
     attachments: list[AttachmentIn] = []
+    # The draft this replaces. A message cannot be changed over IMAP: editing one means
+    # writing a new one and taking the old one away, and both halves have to be one request —
+    # otherwise a failed send leaves the draft gone.
+    replaces_uid: int | None = None
 
 
 async def _fields(db: AsyncSession, kid: int, data: SendIn, user: User):
@@ -963,11 +970,29 @@ async def _fields(db: AsyncSession, kid: int, data: SendIn, user: User):
     if ident is None or ident.account_id != account.id:
         raise Error(400, "err.identity_not_of_account",
                      "The identity does not belong to this account")
-    fields = data.model_dump(exclude={"identity_id", "attachments"})
+    fields = data.model_dump(exclude={"identity_id", "attachments", "replaces_uid"})
     fields["attachments"] = [
         {"filename": a.filename, "content_type": a.content_type,
          "data": base64.b64decode(a.data_base64)} for a in data.attachments]
     return account, ident, fields
+
+
+async def _drop_replaced(account, data: SendIn) -> None:
+    """Take the old draft away — after the new one is stored, never before.
+
+    Deliberately bound to the drafts folder and to a uid alone: a request that could name any
+    folder would turn "send" into "delete whatever you like", and a send is not the place to
+    hand out that power.
+    """
+    if data.replaces_uid is None or not account.folder_drafts:
+        return
+    try:
+        await mailbox.draft_drop(account, data.replaces_uid)
+    except Exception:  # noqa: BLE001
+        # The new version is safe, only the old one stayed behind. That is a duplicate in the
+        # drafts folder, not a loss, and it must not turn a successful send into an error.
+        log.warning("the replaced draft %s could not be removed", data.replaces_uid,
+                    exc_info=True)
 
 
 @router.post("/accounts/{kid}/send", status_code=204)
@@ -977,6 +1002,7 @@ async def send(kid: int, data: SendIn, user: User = Depends(get_current_user),
     if not fields.get("to"):
         raise Error(400, "err.no_recipient", "No recipient")
     await mailbox.send(account, ident, fields)
+    await _drop_replaced(account, data)
     await cache.invalidate(account.id)
 
 
@@ -985,6 +1011,7 @@ async def draft(kid: int, data: SendIn, user: User = Depends(get_current_user),
                   db: AsyncSession = Depends(get_session)):
     account, ident, fields = await _fields(db, kid, data, user)
     await mailbox.draft_save(account, ident, fields)
+    await _drop_replaced(account, data)
     await cache.invalidate(account.id)
 
 
@@ -1033,7 +1060,7 @@ async def actions(user: User = Depends(get_current_user),
                     # the trigger and not built into one flow: the intention behind a click is
                     # what usually gets lost, and every button after this one can ask for it
                     # the same way.
-                    "fields": _fields(t)})
+                    "fields": _action_fields(t)})
     return out
 
 
@@ -1042,7 +1069,7 @@ async def actions(user: User = Depends(get_current_user),
 _FIELD_TYPES = ("text", "line", "number", "switch")
 
 
-def _fields(trigger: dict) -> list[dict]:
+def _action_fields(trigger: dict) -> list[dict]:
     """The input fields of a trigger, cleaned up.
 
     Whatever stands in a graph comes from an editor and from hand-written JSON, so nothing
@@ -1135,7 +1162,7 @@ async def action_start(kid: int, uid: int, data: ActionIn,
     from ..models.workflow import WorkflowVersion
 
     version = await db.get(WorkflowVersion, definition.current_version_id)
-    declared = _fields(_start_trigger(version.graph if version else {}))
+    declared = _action_fields(_start_trigger(version.graph if version else {}))
     # Only declared fields come through. A button hands its values to a flow, and whatever
     # was not asked for has no business in its context.
     given = {f["name"]: data.values.get(f["name"], "") for f in declared}

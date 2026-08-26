@@ -9,14 +9,14 @@ one can ask the same way. What is pinned here is the part that would silently ro
 declared fields reach the flow, and a required one is not a suggestion.
 """
 import pytest
-from app.api.mailbox import _fields
+from app.api.mailbox import _action_fields
 
 from conftest import make_user
 
 
 def test_only_usable_fields_come_through():
     """Whatever stands in a graph comes from an editor and from hand-written JSON."""
-    out = _fields({"fields": [
+    out = _action_fields({"fields": [
         {"name": "auftrag", "label": "Instruction", "type": "text", "required": True},
         {"label": "without a name"},          # cannot carry a value
         "not even an object",
@@ -29,7 +29,7 @@ def test_only_usable_fields_come_through():
 
 
 def test_a_trigger_without_fields_is_a_plain_button():
-    assert _fields({"kind": "mail_action"}) == []
+    assert _action_fields({"kind": "mail_action"}) == []
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ async def test_the_shipped_button_asks_for_the_instruction(db, flow):
 
     _user, d = flow
     version = await db.get(WorkflowVersion, d.current_version_id)
-    fields = _fields(_start_trigger(version.graph))
+    fields = _action_fields(_start_trigger(version.graph))
     assert [f["name"] for f in fields] == ["auftrag"]
     assert fields[0]["required"] is False, "only filing it must stay one click"
 

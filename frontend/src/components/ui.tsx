@@ -463,8 +463,13 @@ export function Tag({ color = "neutral", title: title, children }: {
 }
 
 /** Secondary action inside an entry ("versions", "history", "cancel"). */
-export function Rowbutton({ onClick, title: title, danger = false, children }: {
-  onClick: () => void; title?: string; danger?: boolean; children: ReactNode;
+export function Rowbutton({ onClick, title: title, danger = false, disabled = false,
+                           children }: {
+  onClick: () => void; title?: string; danger?: boolean;
+  /** Grey means not possible right now, here as everywhere else. For an action that first
+   *  has to fetch something before it can open a window. */
+  disabled?: boolean;
+  children: ReactNode;
 }) {
   return (
     // The row button is a button too: blue, not grey (see DESIGN.md).
@@ -473,7 +478,10 @@ export function Rowbutton({ onClick, title: title, danger = false, children }: {
     // submit button. The ✕ beside the mail search was one, so pressing Enter emptied the
     // field instead of searching with it.
     <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} title={title}
-      className={danger ? BUTTON_SMALL.danger : BUTTON_SMALL.secondary}>
+      disabled={disabled}
+      className={disabled
+        ? `${BASE_SMALL} border border-line bg-transparent text-muted cursor-not-allowed`
+        : danger ? BUTTON_SMALL.danger : BUTTON_SMALL.secondary}>
       {children}
     </button>
   );

@@ -1031,6 +1031,19 @@ def _draft_sync(account: MailAccount, raw: bytes) -> None:
         client.append(account.folder_drafts, raw, flags=[b"\\Draft"])
 
 
+def _draft_drop_sync(account: MailAccount, uid: int) -> None:
+    """Remove the draft that has just been replaced.
+
+    IMAP cannot change a message; editing a draft means writing a new one and taking the old
+    one away. It is expunged and not moved to the trash on purpose: three rounds of editing
+    would otherwise leave three corpses behind, and the version that matters is the one that
+    was just written. Only ever called AFTER the new one is safely stored.
+    """
+    with _imap(account) as client:
+        client.select_folder(account.folder_drafts)
+        _erase(client, [uid])
+
+
 def _store_sync(account: MailAccount, folder: str, raw: bytes) -> None:
     with _imap(account) as client:
         client.append(folder, raw, flags=[b"\\Seen"])
@@ -1147,6 +1160,10 @@ async def listing(account: MailAccount, folder_name: str, search: str = "", offs
 async def search_all(account: MailAccount, search: str, offset: int = 0,
                       limit: int = 50) -> dict:
     return await asyncio.to_thread(_search_all_sync, account, search, offset, limit)
+
+
+async def draft_drop(account: MailAccount, uid: int) -> None:
+    await asyncio.to_thread(_draft_drop_sync, account, uid)
 
 
 async def message(account: MailAccount, folder_name: str, uid: int) -> dict:

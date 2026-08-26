@@ -61,6 +61,25 @@ interface Folder {
   name: string; display: string; level: number; parent: string; delimiter: string;
   special: string; unseen: number; total: number;
 }
+/**
+ * What the writing window starts with.
+ *
+ * Was a plain `Record<string, string>` while it only ever carried an answer. A draft being
+ * picked up brings two things that are not strings: the files it already has, and the uid of
+ * the draft it replaces — IMAP cannot change a message, so editing one means writing a new
+ * one and taking the old one away.
+ */
+interface ComposeStart {
+  identity?: string;
+  to?: string;
+  cc?: string;
+  subject?: string;
+  text?: string;
+  in_reply_to?: string;
+  replaces_uid?: number;
+  attachments?: { filename: string; content_type: string; data_base64: string; size: number }[];
+}
+
 /** What a click carries besides the flow itself: which files, and what was typed. */
 interface ActionRun {
   attachment?: number; attachments?: number[]; all?: boolean;
@@ -161,7 +180,7 @@ export default function Mail() {
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState<"folder" | "all">("folder");
   const [err, setErr] = useState("");
-  const [compose, setCompose] = useState<null | Record<string, string>>(null);
+  const [compose, setCompose] = useState<ComposeStart | null>(null);
   const [settings, setSettings] = useState<MailAccount | null>(null);
   // The selection belongs to the page, not to the list: the handles above it and the folder
   // change below it both have to know about it.
@@ -1566,7 +1585,7 @@ function readable(kind: string, filename: string): boolean {
 
 function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onReplies, onError: onError }: {
   accountId: number; account: MailAccount | undefined; folder: string; uid: number;
-  onBack: () => void; onReplies: (f: Record<string, string>) => void;
+  onBack: () => void; onReplies: (f: ComposeStart) => void;
   onError: (m: string) => void;
 }) {
   const [moveOpen, setMoveOpen] = useState(false);
@@ -1783,6 +1802,93 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.rule_failed")),
   });
 
+  /**
+   * Pick the draft up again.
+   *
+   * The files come along as bytes, not as a list of names: the server builds the message from
+   * what the window hands it, so a draft edited without its attachments would quietly lose
+   * them. If they cannot be fetched the window opens anyway and says so — a text one can
+   * still save beats a button that does nothing.
+   */
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [sendDraftOpen, setSendDraftOpen] = useState(false);
+
+  /** The files of the draft as bytes. The server builds the message from what it is handed,
+   *  so a draft edited or sent without them would quietly lose them. */
+  const draftFiles = async () => {
+    const files: NonNullable<ComposeStart["attachments"]> = [];
+    let failed = false;
+    for (const a of m?.attachments || []) {
+      try {
+        const { blob, kind } = await fetchFile(
+          `${basis}/attachments/${a.index}?folder=${encodeURIComponent(folder)}`);
+        const data = await new Promise<string>((done, gonewrong) => {
+          const reader = new FileReader();
+          reader.onload = () => done(String(reader.result).split(",")[1] || "");
+          reader.onerror = () => gonewrong(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        files.push({ filename: a.filename, content_type: kind, data_base64: data,
+                     size: blob.size });
+      } catch {
+        failed = true;
+      }
+    }
+    return { files, failed };
+  };
+
+  const draftFields = (files: NonNullable<ComposeStart["attachments"]>): ComposeStart => ({
+    identity: String(matchingIdentity() ?? ""),
+    to: (m?.to || []).map((a) => a.addr).join(", "),
+    cc: (m?.cc || []).map((a) => a.addr).join(", "),
+    subject: m?.subject || "",
+    text: m?.text || "",
+    attachments: files,
+    replaces_uid: uid,
+  });
+
+  /** Back into the writing window, with everything the draft already had. */
+  const continueDraft = async () => {
+    if (!m) return;
+    setDraftBusy(true);
+    const { files, failed } = await draftFiles();
+    setDraftBusy(false);
+    if (failed) onError(tr("mail.draft_files_missing"));
+    onReplies(draftFields(files));
+  };
+
+  /**
+   * Send it as it stands.
+   *
+   * Asked for first, and not out of politeness: this is the one button here that reaches
+   * somebody else, and there is no way back from it. Who it goes to stands in the question,
+   * so the answer is about this mail and not about the idea of sending.
+   */
+  const sendDraft = useMutation({
+    mutationFn: async () => {
+      const { files, failed } = await draftFiles();
+      if (failed) throw new ApiError(400, tr("mail.draft_files_missing"));
+      const f = draftFields(files);
+      return api.post(`/mailbox/accounts/${accountId}/send`, {
+        identity_id: Number(f.identity) || null,
+        to: (f.to || "").split(",").map((x) => x.trim()).filter(Boolean),
+        cc: (f.cc || "").split(",").map((x) => x.trim()).filter(Boolean),
+        subject: f.subject, text: f.text,
+        attachments: files.map(({ filename, content_type, data_base64 }) =>
+          ({ filename, content_type, data_base64 })),
+        replaces_uid: uid,
+      });
+    },
+    onSuccess: () => {
+      setSendDraftOpen(false);
+      qc.invalidateQueries({ queryKey: ["mail-list"] });
+      onBack();
+    },
+    onError: (e) => { setSendDraftOpen(false);
+                      onError(e instanceof ApiError ? e.message : tr("mail.send_failed")); },
+  });
+
+  const isDraft = !!account?.folder_drafts && folder === account.folder_drafts;
   const pictures = thisTime || !!m?.images_allowed;
   const forMail = (actions || []).filter((a) => a.scope !== "attachment");
   const forAttachment = (actions || []).filter((a) => a.scope === "attachment");
@@ -1795,37 +1901,53 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
         {/* Back to the list is only a way where the list had to give up its place. In three
             columns it stands beside this one and the button would point at itself. */}
         <span className="xl:hidden"><Rowbutton onClick={onBack}>{tr("mail.back_to_list")}</Rowbutton></span>
-        <Rowbutton onClick={() => onReplies(answerFields(false))}>{tr("mail.reply")}</Rowbutton>
+        {/* A draft is not answered, it is finished. Reply, forward and spam would all be
+            answers to a mail that never arrived anywhere — the one thing one wants here is
+            back into the writing window. */}
+        {isDraft && (<>
+          <Rowbutton onClick={() => void continueDraft()} disabled={draftBusy}>
+            {tr("mail.edit_draft")}
+          </Rowbutton>
+          <Rowbutton onClick={() => setSendDraftOpen(true)}
+            disabled={draftBusy || sendDraft.isPending || !(m?.to || []).length}>
+            {tr("mail.send")}
+          </Rowbutton>
+        </>)}
+        {!isDraft && (
+          <Rowbutton onClick={() => onReplies(answerFields(false))}>{tr("mail.reply")}</Rowbutton>
+        )}
         {/* Only when it really does something different: what counts is what is left after
             one's own addresses are taken off. Otherwise a mail addressed to me and a second
             own address, a button that does the same as its neighbour. */}
-        {moreRecipient() && (
+        {!isDraft && moreRecipient() && (
           <Rowbutton onClick={() => onReplies(answerFields(true))}>
             {tr("mail.reply_all")}
           </Rowbutton>
         )}
-        <Rowbutton onClick={() => onReplies({
+        {!isDraft && <Rowbutton onClick={() => onReplies({
           identity: String(matchingIdentity() ?? ""),
           subject: `Fwd: ${m?.subject || ""}`,
           text: `\n\n${tr("mail.forwarded_message")}\n`
             + `${tr("mail.from_label")}: ${(m?.from || []).map((a) => a.addr).join(", ")}\n`
             + `${tr("mail.date_label")}: ${m?.date || ""}\n${tr("mail.subject")}: ${m?.subject || ""}\n\n${m?.text || ""}`,
-        })}>{tr("mail.forward")}</Rowbutton>
+        })}>{tr("mail.forward")}</Rowbutton>}
         {/* Archive and spam appear only when the account names a target for them — a button
             that explains on being pressed that it cannot is none. */}
-        {(account?.archive_mode === "pattern" ? account?.archive_pattern : account?.folder_archive) && (
+        {!isDraft && (account?.archive_mode === "pattern" ? account?.archive_pattern : account?.folder_archive) && (
           <Rowbutton onClick={() => archive.mutate()}>{tr("mail.archive_button")}</Rowbutton>
         )}
         {/* In the spam folder "mark as spam" is not an action but a
             repetition. What is missing there is the contradiction. */}
-        {account?.folder_junk && (folder === account.folder_junk ? (
+        {!isDraft && account?.folder_junk && (folder === account.folder_junk ? (
           <Rowbutton onClick={() => noSpam.mutate()} title={tr("mail.back_inbox_detection_learns")}>
             ✅ {tr("mail.not_spam")}
           </Rowbutton>
         ) : (
           <Rowbutton onClick={() => asSpam.mutate()}>{tr("mail.spam_button")}</Rowbutton>
         ))}
-        <Rowbutton onClick={() => setMoveOpen(true)}>{tr("mail.move_button")}</Rowbutton>
+        {/* Archive, spam and move are answers to a mail that arrived. A draft never went
+            anywhere: what one does with it is finish it, send it, or throw it away. */}
+        {!isDraft && <Rowbutton onClick={() => setMoveOpen(true)}>{tr("mail.move_button")}</Rowbutton>}
         <div className="flex-1" />
         <Rowbutton danger onClick={() => remove.mutate()}>{tr("mail.delete_3")}</Rowbutton>
       </>}
@@ -2073,6 +2195,13 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
         <FolderChoice accountId={accountId} without={folder} onClose={() => setMoveOpen(false)}
           onChoose={(target) => { setMoveOpen(false); move.mutate(target); }} />
       )}
+
+      {sendDraftOpen && (
+        <ConfirmDialog title={tr("mail.send_draft_question")}
+          text={tr("mail.send_draft_to", { to: (m?.to || []).map((a) => a.addr).join(", ") })}
+          confirmText={tr("mail.send")} danger={false} runs={sendDraft.isPending}
+          onClose={() => setSendDraftOpen(false)} onConfirm={() => sendDraft.mutate()} />
+      )}
     </Area>
   );
 }
@@ -2122,7 +2251,7 @@ function ActionFields({ act, runs: running, onClose, onStart }: {
 
 
 function ComposeDialog({ accountId, start, onClose, onError: onError }: {
-  accountId: number; start: Record<string, string>; onClose: () => void;
+  accountId: number; start: ComposeStart; onClose: () => void;
   onError: (m: string) => void;
 }) {
   const { data: identities } = useQuery({
@@ -2135,7 +2264,8 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
     text: start.text || "", in_reply_to: start.in_reply_to || "",
   });
   const [attachments, setAttachments] = useState<
-    { filename: string; content_type: string; data_base64: string; size: number }[]>([]);
+    { filename: string; content_type: string; data_base64: string; size: number }[]>(
+      start.attachments || []);
 
   /** Read a file in. Base64 in the browser, because the server builds the message and not the
    *  browser — one place where draft and sending do the same thing. */
@@ -2160,6 +2290,8 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
     subject: f.subject, text: f.text, in_reply_to: f.in_reply_to,
     attachments: attachments.map(({ filename, content_type, data_base64 }) =>
       ({ filename, content_type, data_base64 })),
+    // Picked up from the drafts folder: the old one goes when the new one stands.
+    replaces_uid: start.replaces_uid ?? null,
   });
   const send = useMutation({
     mutationFn: () => api.post(`/mailbox/accounts/${accountId}/send`, base()),
@@ -2175,7 +2307,8 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
   return (
     // Held in place: whoever is writing a mail otherwise loses half the text on a misplaced
     // click. It is closed through ✕, cancel, draft or send.
-    <Dialog wide hold title={tr("mail.compose")} onClose={onClose}
+    <Dialog wide hold onClose={onClose}
+      title={tr(start.replaces_uid ? "mail.continue_draft" : "mail.compose")}
       foot={
         <div className="flex items-center gap-2">
           <Rowbutton onClick={() => draft.mutate()}>{tr("mail.save_as_draft")}</Rowbutton>
