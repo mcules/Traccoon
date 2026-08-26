@@ -149,3 +149,116 @@ async def test_the_house_rule_is_the_first_thing_said(db, box):
     text = await mail_mcp.instructions(db, user)
     assert "reply_uid" in text
     assert text.index("reply_uid") < len(text) / 2, "it stands first, not at the end"
+
+
+async def test_the_answer_comes_from_the_address_it_was_sent_to(db, box, monkeypatch):
+    """A mailbox with six addresses answered everything from the first one.
+
+    The far side knows exactly one of them, the one it wrote to. Answering from another is
+    how a shop that only ever saw an address of its own gets a stranger writing about its
+    order.
+    """
+    user, seen = box
+    from app.models.mail import MailAccount, MailIdentity
+    from sqlalchemy import select
+
+    account = (await db.execute(select(MailAccount))).scalars().first()
+    db.add(MailIdentity(account_id=account.id, email="shop@example.org",
+                        display_name="Ich beim Shop"))
+    await db.commit()
+
+    origin = {**ORIGIN, "to": [{"addr": "shop@example.org"}],
+              "cc": [{"addr": "wer@fremd.de"}]}
+
+    async def message(acc, folder, uid):
+        return origin
+
+    monkeypatch.setattr(mailbox, "message", message)
+
+    captured = {}
+
+    async def send(acc, ident, fields):
+        captured["from"] = ident.email
+        seen["sent"].append(fields)
+
+    monkeypatch.setattr(mailbox, "send", send)
+    await mail_mcp.execute(db, user, "mail_send", {
+        "account": "privat", "to": ["vertrieb@beispiel.de"], "text": "Ja.", "reply_uid": 12})
+    assert captured["from"] == "shop@example.org"
+
+
+async def test_an_address_of_ours_in_copy_counts_too(db, box, monkeypatch):
+    """Being kept in the loop is still being addressed. Only: `To` comes first."""
+    user, seen = box
+    from app.models.mail import MailAccount, MailIdentity
+    from sqlalchemy import select
+
+    account = (await db.execute(select(MailAccount))).scalars().first()
+    db.add(MailIdentity(account_id=account.id, email="verteiler@example.org"))
+    await db.commit()
+
+
+    async def message(acc, folder, uid):
+        return {**ORIGIN, "to": [{"addr": "wer@fremd.de"}],
+                "cc": [{"addr": "verteiler@example.org"}]}
+
+    monkeypatch.setattr(mailbox, "message", message)
+    captured = {}
+
+    async def send(acc, ident, fields):
+        captured["from"] = ident.email
+
+    monkeypatch.setattr(mailbox, "send", send)
+    await mail_mcp.execute(db, user, "mail_send", {
+        "account": "privat", "to": ["x@fremd.de"], "text": "Ja.", "reply_uid": 12})
+    assert captured["from"] == "verteiler@example.org"
+
+
+async def test_an_own_wish_beats_the_addressed_one(db, box, monkeypatch):
+    """Whoever names an identity means it."""
+    user, seen = box
+    captured = {}
+
+    async def send(acc, ident, fields):
+        captured["from"] = ident.email
+
+    monkeypatch.setattr(mailbox, "send", send)
+    await mail_mcp.execute(db, user, "mail_send", {
+        "account": "privat", "to": ["x@fremd.de"], "text": "Ja.", "reply_uid": 12,
+        "identity": "ich@example.org"})
+    assert captured["from"] == "ich@example.org"
+
+
+async def test_the_agent_writes_through_the_same_door(db, box, monkeypatch):
+    """The native tool and the MCP server are one implementation, two entrances.
+
+    The occasion: the assistant wrote through a foreign mail server that knows one sender
+    address per mailbox. It answered a shop from a stranger's address and quoted nothing, and
+    no prompt fixed that, because the foreign server cannot do either.
+    """
+    from app.worker.tools_traccoon import call_traccoon_tool
+
+    user, seen = box
+    answer = await call_traccoon_tool(db, user.id, "traccoon_mail_draft", {
+        "account": "privat", "to": ["vertrieb@beispiel.de"], "text": "Passt.",
+        "reply_uid": 12, "folder": "INBOX"})
+
+    assert "quoted" in answer.lower() or "underneath" in answer.lower()
+    assert "> anbei unser Angebot." in seen["drafts"][0]["text"]
+
+
+async def test_a_mailbox_that_releases_nothing_says_so_instead_of_throwing(db, box):
+    """A refusal is an answer the model can work with. An exception is a dead run."""
+    from app.worker.tools_traccoon import call_traccoon_tool
+
+    from app.models.mail import MailAccount
+    from sqlalchemy import select
+
+    user, _ = box
+    account = (await db.execute(select(MailAccount))).scalars().first()
+    account.mcp_tools = ["mail_draft"]          # drafting yes, sending no
+    await db.commit()
+
+    answer = await call_traccoon_tool(db, user.id, "traccoon_mail_send", {
+        "account": "privat", "to": ["x@beispiel.de"], "text": "Hallo."})
+    assert answer.startswith("ERROR:") and "mail_send" in answer

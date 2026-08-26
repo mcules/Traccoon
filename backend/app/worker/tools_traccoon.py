@@ -128,6 +128,31 @@ TRACCOON_TOOLS = [
                           "description": "Only this project; empty = everything you may see."},
           "agent": {"type": "string", "description": "Only this role."}},
          []),
+    _def("traccoon_mail_draft",
+         "Put a draft into one of your person's mailboxes (sends nothing). Answering a mail? "
+         "Give `reply_uid` and `folder` and write ONLY your answer in `text`: subject, "
+         "reference, the quote of the original and the right sender address are set by this "
+         "tool. Do not quote by hand.",
+         {"account": {"type": "string", "description": "name of the mailbox"},
+          "to": {"type": "array", "items": {"type": "string"}},
+          "cc": {"type": "array", "items": {"type": "string"}},
+          "subject": {"type": "string"},
+          "text": {"type": "string", "description": "your answer, without the quote"},
+          "reply_uid": {"type": "integer", "description": "UID of the mail being answered"},
+          "folder": {"type": "string", "description": "its folder (default INBOX)"},
+          "identity": {"type": "string",
+                       "description": "sender address; empty = the one the mail went to"}},
+         ["account", "to"]),
+    _def("traccoon_mail_send",
+         "Really send a mail from one of your person's mailboxes. Same rules as with the "
+         "draft: `reply_uid` plus `folder` when you answer, and only your answer in `text`.",
+         {"account": {"type": "string"},
+          "to": {"type": "array", "items": {"type": "string"}},
+          "cc": {"type": "array", "items": {"type": "string"}},
+          "subject": {"type": "string"}, "text": {"type": "string"},
+          "reply_uid": {"type": "integer"}, "folder": {"type": "string"},
+          "identity": {"type": "string"}},
+         ["account", "to"]),
     _def("traccoon_mail_policy",
          "The standing rules for incoming mail of your person: which senders run "
          "automatically, which are blocked. `what`: 'list' (the default), 'block' (never "
@@ -150,7 +175,10 @@ TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 # runs, approvals and calls to the outside, which is not something an agent sets off unnoticed.
 # Listing stays free.
 TRACCOON_GATED_TOOLS = {"traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
-                        "traccoon_start_workflow", "traccoon_mail_policy"}
+                        "traccoon_start_workflow", "traccoon_mail_policy",
+                        # A draft lies in one's own mailbox and goes nowhere; sending reaches
+                        # somebody else, and that is a decision a person makes once.
+                        "traccoon_mail_send"}
 
 
 async def _user(db: AsyncSession, owner_id: int | None) -> User | None:
@@ -611,10 +639,35 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
     if name == "traccoon_run_health":
         return await _run_health_tool(db, user, args)
 
+    if name in ("traccoon_mail_draft", "traccoon_mail_send"):
+        return await _mail_write_tool(db, user, name, args)
+
     if name == "traccoon_mail_policy":
         return await _mail_policy_tool(db, user, args)
 
     return f"ERROR: unknown control tool '{name}'."
+
+
+async def _mail_write_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
+    """Write a mail through Traccoon's own mailboxes.
+
+    The same door the MCP server offers outside (`services/mail_mcp.execute`), only from
+    inside. It has to be this one and not a foreign mail server: only here does a mailbox have
+    SEVERAL sender addresses, and only here does an answer come out quoted. A mail account
+    with one fixed address answers a shop that only ever saw an address of its own with a
+    stranger, and no amount of prompting fixes that.
+    """
+    from ..services import mail_mcp
+
+    tool = "mail_draft" if name.endswith("_draft") else "mail_send"
+    try:
+        result = await mail_mcp.execute(db, user, tool, args)
+    except (LookupError, PermissionError, ValueError) as why:
+        return f"ERROR: {why}"
+    if not isinstance(result, dict):
+        return str(result)
+    what = "The draft is in the mailbox" if tool == "mail_draft" else "The mail went out"
+    return what + (", with the original quoted underneath." if result.get("quoted") else ".")
 
 
 async def _mail_policy_tool(db: AsyncSession, user: User, args: dict) -> str:

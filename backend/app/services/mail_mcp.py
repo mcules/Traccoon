@@ -241,7 +241,6 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
         return {"ok": True, "folder": account.folder_junk}
 
     if name in ("mail_send", "mail_draft"):
-        ident = await _identity(db, account, str(args.get("identity") or ""))
         fields = {"to": list(args.get("to") or []), "cc": list(args.get("cc") or []),
                   "subject": str(args.get("subject") or ""),
                   "text": str(args.get("text") or ""),
@@ -256,6 +255,14 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
         if args.get("reply_uid") is not None:
             origin = await _as_answer(account, fields, int(args["reply_uid"]),
                                       str(args.get("folder") or "INBOX"))
+        # Who the answer comes from is decided by the mail being answered: it was addressed to
+        # one of our addresses, and that is the one the far side knows. A mailbox with six
+        # identities would otherwise answer everything from the first one, and a shop that
+        # only ever saw an address of its own gets a stranger writing about its order.
+        wish = str(args.get("identity") or "")
+        if not wish and origin is not None:
+            wish = await _identity_addressed(db, account, origin)
+        ident = await _identity(db, account, wish)
         if name == "mail_draft":
             await mailbox.draft_save(account, ident, fields)
             return {"ok": True, "draft": True, "quoted": bool(origin)}
@@ -312,6 +319,23 @@ async def _as_answer(account: MailAccount, fields: dict, uid: int, folder: str) 
         fields["in_reply_to"] = str(origin.get("message_id") or "")
     fields["text"] = (fields.get("text") or "").rstrip() + "\n\n" + quote(origin)
     return origin
+
+
+async def _identity_addressed(db: AsyncSession, account: MailAccount, origin: dict) -> str:
+    """Which of our addresses this mail went to, if any.
+
+    `To` before `Cc`: being written to directly beats being kept in the loop. An address that
+    is not an identity of this mailbox says nothing, and then the default applies as before.
+    """
+    rows = (await db.execute(select(MailIdentity).where(
+        MailIdentity.account_id == account.id))).scalars().all()
+    mine = {i.email.lower(): i.email for i in rows}
+    for field in ("to", "cc"):
+        for entry in (origin.get(field) or []):
+            hit = mine.get(str(entry.get("addr") or "").lower())
+            if hit:
+                return hit
+    return ""
 
 
 async def _identity(db: AsyncSession, account: MailAccount, wish: str) -> MailIdentity:

@@ -89,6 +89,9 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   traccoon_run_health: "read",
   // Reading is a read; blocking and revoking change a standing arrangement.
   traccoon_mail_policy: "write",
+  // A draft is written into a mailbox; sending it leaves the house.
+  traccoon_mail_draft: "write",
+  traccoon_mail_send: "browse",
 };
 
 /** The target list the checker tests against: every name Traccoon itself offers as a tool.
@@ -104,7 +107,7 @@ export const NATIVE_TOOLS: readonly string[] = [
   "delegate", "load_skill",
   // tools_memory.py (4)
   "remember", "forget", "memory_search", "memory_teach",
-  // tools_traccoon.py (22)
+  // tools_traccoon.py (24)
   "traccoon_list_projects", "traccoon_list_issues", "traccoon_get_issue",
   "traccoon_create_issue", "traccoon_comment", "traccoon_assign_agent",
   "traccoon_start_planning", "traccoon_approve_plan", "traccoon_issue_costs",
@@ -113,6 +116,7 @@ export const NATIVE_TOOLS: readonly string[] = [
   "traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
   "traccoon_list_workflows", "traccoon_start_workflow", "traccoon_http_call",
   "traccoon_run_health", "traccoon_mail_policy",
+  "traccoon_mail_draft", "traccoon_mail_send",
 ];
 
 // ── 2./3. MCP ────────────────────────────────────────────────────────────────
