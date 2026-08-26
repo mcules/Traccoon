@@ -383,9 +383,7 @@ export function Area({ title: title, subtitle, hint: hint, tools: tools, fills =
    *  Without it the content scrolls, which is what a list wants — in a flex column a list
    *  would be squeezed instead of scrolled, and `Listing` cuts off what sticks out. */
   column?: boolean;
-  /** A card may be its tool row alone: the filter of the backlog belongs to every section
-   *  below it and therefore to none of their cards. */
-  children?: ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className={`rounded-lg border border-line bg-card p-4 ${

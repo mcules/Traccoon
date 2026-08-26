@@ -654,7 +654,6 @@
   "backlog.backlog": "Backlog",
   "backlog.backlog_empty": "Backlog ist leer.",
   "backlog.finish": "Abschließen",
-  "backlog.n_tickets": "{n} Tickets",
   "backlog.n_tickets_n_done": "{n} Tickets · {done} fertig",
   "backlog.new_sprint": "Neuer Sprint",
   "backlog.nothing_assigned_yet": "Noch nichts zugeordnet.",

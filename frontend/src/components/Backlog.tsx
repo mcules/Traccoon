@@ -70,10 +70,6 @@ export default function Backlog({
 
       <BulkBar project={project} meta={meta} picked={picked} sprints onDone={clear} />
 
-      {/* The filter stands over every section, which is why it is a card of its own and not
-          the tool row of one of them: it searches the sprints as well as the rest. */}
-      <Area tools={<IssueFilterRow meta={meta} filter={filter} count={count} />} />
-
       {open.map((s: Sprint) => {
         const inside = filtered.filter((i) => i.sprint_id === s.id);
         const done = inside.filter((i) => i.resolved_at).length;
@@ -107,13 +103,13 @@ export default function Backlog({
 
       {/* No heading: the view switcher above already says "backlog", and a card that repeats
           the name of the page one is standing on says nothing. A sprint card carries a title
-          because it names WHICH sprint; this one is the rest. */}
+          because it names WHICH sprint; this one is the rest.
+          The filter sits in this tool row and nowhere else, so that a backlog without sprints
+          is the same picture as the list and the archive: one card, filter above, table
+          below. It still measures every section, the sprints above included. */}
       <Area tools={
         <>
-          <span className="text-xs text-muted">
-            {tr("backlog.n_tickets", { n: backlog.length })}
-          </span>
-          <div className="flex-1" />
+          <IssueFilterRow meta={meta} filter={filter} count={count} />
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("backlog.new_sprint")}
             className="rounded border border-line bg-surface px-2 py-1 text-xs" />
           <button onClick={() => name.trim() && fresh.mutate()}
