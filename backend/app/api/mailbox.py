@@ -1028,7 +1028,40 @@ async def actions(user: User = Depends(get_current_user),
                     "description": d.description,
                     # A flow that processes an attachment belongs on the attachment and not on
                     # the mail — it says so itself through its trigger.
-                    "scope": t.get("scope") or "message"})
+                    "scope": t.get("scope") or "message",
+                    # What the button wants to know before it runs. Deliberately declared on
+                    # the trigger and not built into one flow: the intention behind a click is
+                    # what usually gets lost, and every button after this one can ask for it
+                    # the same way.
+                    "fields": _fields(t)})
+    return out
+
+
+# What a declared field may look like. Kept small on purpose: a button is not a form
+# designer, and everything beyond this belongs in the flow.
+_FIELD_TYPES = ("text", "line", "number", "switch")
+
+
+def _fields(trigger: dict) -> list[dict]:
+    """The input fields of a trigger, cleaned up.
+
+    Whatever stands in a graph comes from an editor and from hand-written JSON, so nothing
+    from there reaches the UI unchecked: a field without a name cannot carry a value, and an
+    unknown type would render as nothing at all.
+    """
+    out = []
+    for raw in (trigger.get("fields") or []):
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        if not name:
+            continue
+        kind = str(raw.get("type") or "text")
+        out.append({"name": name,
+                    "label": str(raw.get("label") or name),
+                    "type": kind if kind in _FIELD_TYPES else "text",
+                    "hint": str(raw.get("hint") or ""),
+                    "required": bool(raw.get("required"))})
     return out
 
 
@@ -1041,6 +1074,9 @@ class ActionIn(BaseModel):
     # count them first.
     attachments: list[int] | None = None
     all: bool = False
+    # What the person typed into the fields of the button. It lands in the context under
+    # `input`, so a flow reads it the same way as everything else it is given.
+    values: dict[str, str | int | bool | None] = {}
 
 
 @router.post("/accounts/{kid}/messages/{uid}/action")
@@ -1096,10 +1132,23 @@ async def action_start(kid: int, uid: int, data: ActionIn,
         "instructions": account.mcp_instructions,
     }
 
+    from ..models.workflow import WorkflowVersion
+
+    version = await db.get(WorkflowVersion, definition.current_version_id)
+    declared = _fields(_start_trigger(version.graph if version else {}))
+    # Only declared fields come through. A button hands its values to a flow, and whatever
+    # was not asked for has no business in its context.
+    given = {f["name"]: data.values.get(f["name"], "") for f in declared}
+    missing = [f["label"] for f in declared
+               if f["required"] and not str(given[f["name"]] or "").strip()]
+    if missing:
+        raise Error(400, "err.a_required_field_is_empty", "The field {fields} needs a value",
+                    fields=", ".join(missing))
+
     async def start(one: dict | None):
         return await start_workflow(
             db, definition, subject_kind=WorkflowSubjectKind.standalone,
-            context={"mail": mail, "attachment": one or {}},
+            context={"mail": mail, "attachment": one or {}, "input": given},
             actor_id=user.id, source=f"mail:{account.name}",
             source_ref=f"{data.folder}:{uid}" + (f":{one['index']}" if one else ""))
 

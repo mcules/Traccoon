@@ -424,11 +424,23 @@ def _attachment_to_paperless() -> dict:
 
     It shows the whole path of a mail action (fetch the attachment, call the tool, say
     something) and is at the same time the answer to how one builds further buttons like it.
+
+    The field on the button is the second half of the point. Filing a document is rarely the
+    whole intention — "this is the policy for the car, put the number into the contract note"
+    is, and that sentence used to have nowhere to go: one filed the file and told the
+    assistant afterwards, in a different place, without the document. The field carries it
+    along, and when it is filled the assistant takes over after the upload, with the document
+    id in hand.
     """
     nodes = [
         _n("start", "start", 0, 0, {
             "label": "A button on the attachment",
-            "trigger": {"kind": "mail_action", "scope": "attachment"},
+            "trigger": {"kind": "mail_action", "scope": "attachment",
+                        "fields": [{"name": "auftrag",
+                                    "label": "Instruction for the assistant",
+                                    "type": "text",
+                                    "hint": "Leave empty = only file it.",
+                                    "required": False}]},
         }),
         _n("holen", "auto_action", 0, 1,
            _action("mail_attachment", "Fetch the attachment", context_key="attachment")),
@@ -439,15 +451,33 @@ def _attachment_to_paperless() -> dict:
                        "filename": "{{ attachment.filename }}",
                        "title": "{{ mail.subject }}"},
             context_key="paperless")),
-        _n("melden", "auto_action", 0, 3, _action(
+        _n("weiche", "decision", 0, 3, {
+            "label": "Was something asked for?",
+            "branches": [
+                {"handle": "auftrag", "label": "yes, an instruction stands there",
+                 "guard": {"!=": [{"var": "input.auftrag"}, ""]}},
+                {"handle": "nur_ablegen", "label": "no, only file it"},
+            ],
+            "default_handle": "nur_ablegen"}),
+        _n("assistent", "auto_action", 1, 4, _action(
+            "assistant_task", "Hand it to the assistant",
+            agent="assistent",
+            title="📄 {{ attachment.filename }}",
+            task="A document was just filed in the archive.\n\n"
+                 "Instruction: {{ input.auftrag }}\n\n"
+                 "Document: {{ attachment.filename }} (id {{ paperless.json.id }})\n"
+                 "From the mail \"{{ mail.subject }}\" by {{ mail.from }}.",
+            approval=False)),
+        _n("melden", "auto_action", 0, 4, _action(
             "notify", "Say so",
             to={"mode": "context", "path": "mail.owner_id"},
             title="📄 {{ attachment.filename }} is in the archive",
             text="From the mail \"{{ mail.subject }}\" by {{ mail.from }}.")),
-        _n("fertig", "end", 0, 4, {"label": "Filed", "outcome": "completed"}),
+        _n("fertig", "end", 0, 5, {"label": "Filed", "outcome": "completed"}),
     ]
-    edges = [_e("start", "holen"), _e("holen", "ablegen"), _e("ablegen", "melden"),
-             _e("melden", "fertig")]
+    edges = [_e("start", "holen"), _e("holen", "ablegen"), _e("ablegen", "weiche"),
+             _e("weiche", "assistent", "auftrag"), _e("weiche", "melden", "nur_ablegen"),
+             _e("assistent", "fertig"), _e("melden", "fertig")]
     return {"nodes": nodes, "edges": edges}
 
 
@@ -531,7 +561,8 @@ TEMPLATES: list[dict] = [
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Appears in the mailbox on every attachment. The tool paperless__post_document "
                 "has to be released to the flow; adjust title and tags in the step "
-                "\"File in Paperless\".",
+                "\"File it in the archive\". The field on the button is optional: filled in, "
+                "the assistant takes over after the upload.",
      "build": _attachment_to_paperless},
     {"key": "mail-intake",
      "name": "Mail intake",

@@ -61,7 +61,20 @@ interface Folder {
   name: string; display: string; level: number; parent: string; delimiter: string;
   special: string; unseen: number; total: number;
 }
-interface Action { definition_id: number; key: string; name: string; description: string; scope: string }
+/** What a click carries besides the flow itself: which files, and what was typed. */
+interface ActionRun {
+  attachment?: number; attachments?: number[]; all?: boolean;
+  values?: Record<string, string>;
+}
+
+interface ActionField {
+  name: string; label: string; type: string; hint: string; required: boolean;
+}
+interface Action {
+  definition_id: number; key: string; name: string; description: string; scope: string;
+  /** What the button wants to know before it runs. Empty = press and go. */
+  fields: ActionField[];
+}
 
 const SPECIAL: Record<string, string> = {
   sent: "📤", drafts: "📝", trash: "🗑", junk: "🚫", archive: "📦",
@@ -1644,8 +1657,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   }, [error]);
 
   const start = useMutation({
-    mutationFn: (v: { definition_id: number; attachment?: number; attachments?: number[];
-                       all?: boolean }) =>
+    mutationFn: (v: ActionRun & { definition_id: number }) =>
       api.post<{ instance_id: number; runs: { instance_id: number }[] }>(
         `${basis}/action`, { ...v, folder: folder }),
     // One run per file: the message says how many were started, not which. The details
@@ -1659,6 +1671,20 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     },
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.action_failed")),
   });
+
+  /**
+   * Press the button — or ask first.
+   *
+   * An action may declare fields on its trigger, and then the click is not the whole
+   * statement: "file this" and "file this and put the number into the contract note" are two
+   * different intentions, and the second one used to have nowhere to go. Everything runs
+   * through here so that no button forgets to ask.
+   */
+  const [askFields, setAskFields] = useState<{ act: Action; payload: ActionRun } | null>(null);
+  const run = (act: Action, payload: ActionRun) => {
+    if (act.fields?.length) setAskFields({ act, payload });
+    else start.mutate({ ...payload, definition_id: act.definition_id });
+  };
 
   /**
    * Three seconds open means read.
@@ -1862,8 +1888,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                 if (!open_ones.length) return null;
                 return (
                   <Rowbutton key={act.definition_id} title={act.description}
-                    onClick={() => start.mutate({ definition_id: act.definition_id,
-                                                    attachments: open_ones.map((a) => a.index) })}>
+                    onClick={() => run(act, { attachments: open_ones.map((a) => a.index) })}>
                     {act.name} ({open_ones.length})
                   </Rowbutton>
                 );
@@ -1915,8 +1940,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                           </Tag>
                         ) : (
                           <Rowbutton key={act.definition_id}
-                            onClick={() => start.mutate({ definition_id: act.definition_id,
-                                                            attachment: a.index })}>
+                            onClick={() => run(act, { attachment: a.index })}>
                             {act.name}
                           </Rowbutton>
                         );
@@ -1985,6 +2009,16 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
             </pre>
           )}
 
+          {askFields && (
+            <ActionFields act={askFields.act} runs={start.isPending}
+              onClose={() => setAskFields(null)}
+              onStart={(values) => {
+                start.mutate({ ...askFields.payload,
+                               definition_id: askFields.act.definition_id, values });
+                setAskFields(null);
+              }} />
+          )}
+
           {forMail.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted">{tr("mail.actions_label")}</span>
@@ -1999,7 +2033,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                   </Tag>
                 ) : (
                   <Rowbutton key={act.definition_id} title={act.description}
-                    onClick={() => start.mutate({ definition_id: act.definition_id })}>
+                    onClick={() => run(act, {})}>
                     {act.name}
                   </Rowbutton>
                 );
@@ -2042,6 +2076,50 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     </Area>
   );
 }
+
+/**
+ * What the button wants to know before it runs.
+ *
+ * A flow declares its fields on its own trigger, so this stays one dialog for all of them
+ * instead of one dialog per button. The optional field is the point: an instruction that has
+ * nowhere to go ends up nowhere, and the moment to say it is the moment of the click.
+ */
+function ActionFields({ act, runs: running, onClose, onStart }: {
+  act: Action; runs: boolean; onClose: () => void;
+  onStart: (values: Record<string, string>) => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>(
+    Object.fromEntries(act.fields.map((f) => [f.name, ""])));
+  const set = (name: string, v: string) => setValues((old) => ({ ...old, [name]: v }));
+  const complete = act.fields.every((f) => !f.required || values[f.name]?.trim());
+
+  return (
+    <Dialog title={act.name} onClose={onClose} foot={
+      <DialogFoot onCancel={onClose} disabled={!complete} runs={running}
+        saveText={tr("mail.start_action")} onSave={() => onStart(values)} />
+    }>
+      <div className="space-y-3">
+        {act.description && <p className="text-sm text-muted">{act.description}</p>}
+        {act.fields.map((f) => (
+          <Field key={f.name} label={f.label} hint={f.hint || undefined}>
+            {f.type === "switch" ? (
+              <input type="checkbox" checked={values[f.name] === "ja"}
+                onChange={(e) => set(f.name, e.target.checked ? "ja" : "")} />
+            ) : f.type === "text" ? (
+              <textarea className={INPUT_VALUE} rows={3} autoFocus value={values[f.name] ?? ""}
+                onChange={(e) => set(f.name, e.target.value)} />
+            ) : (
+              <input className={INPUT_VALUE} autoFocus
+                type={f.type === "number" ? "number" : "text"} value={values[f.name] ?? ""}
+                onChange={(e) => set(f.name, e.target.value)} />
+            )}
+          </Field>
+        ))}
+      </div>
+    </Dialog>
+  );
+}
+
 
 function ComposeDialog({ accountId, start, onClose, onError: onError }: {
   accountId: number; start: Record<string, string>; onClose: () => void;
