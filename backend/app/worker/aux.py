@@ -106,4 +106,12 @@ async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, message
         log.warning("aux.%s failed (%s), the caller continues without the result", task, exc)
         return None
     text = (resp.text or "").strip()
-    return text or None
+    if not text:
+        # An empty answer used to be indistinguishable from "no model configured": both were
+        # a bare None, and the caller could only report that it knows nothing any more. A
+        # thinking model that spends its whole output budget on reasoning lands exactly here,
+        # and until this line said so, nothing in the logs did.
+        log.warning("aux.%s: %s/%s answered empty (max_tokens=%d) — the caller continues "
+                    "without the result", task, provider, model or "?", max_tokens)
+        return None
+    return text

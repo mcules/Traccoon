@@ -21,9 +21,10 @@ The two traps that determine what happens here:
    permitted seams and summarised piece by piece, instead of trying it with everything at
    once and standing there empty handed.
 
-If the aux model fails for a piece, an honest marker stands in its place; the rest of the
-summary stays. A run without parts of its history is unpleasant, but an aborted run is
-worse, and a run without any history at all starts from the beginning.
+If the aux model fails for a piece, that piece is taken over raw and clipped instead of
+being dropped: it has to get smaller, that is the point of the whole operation, but nothing
+disappears without trace. A run whose history is shortened is unpleasant; a run that tells
+its person that part of their own conversation is gone is unusable.
 """
 from __future__ import annotations
 
@@ -54,6 +55,11 @@ MAX_CHUNKS = 12
 # minutes each would be half the runtime of an agent run; all at once would overwhelm the
 # small local endpoint.
 AUX_PARALLEL = 3
+# The emergency exit when the aux model delivers nothing: the block is taken over raw and
+# clipped instead of being dropped. Both bounds are deliberately tight — the compaction runs
+# BECAUSE the context is too big, so the replacement has to be smaller than what it replaces.
+RAW_PER_MESSAGE = 400
+RAW_PER_CHUNK = 4000
 
 
 def _header_end(messages: list[dict]) -> int:
@@ -217,6 +223,34 @@ def _chunk(messages: list[dict], von: int, to: int) -> list[tuple[int, int]]:
     return chunks
 
 
+def _clipped(block: list[dict], budget: int) -> str:
+    """The raw history, shortened: who said what, cut off at the sides.
+
+    The emergency exit of the compaction. It HAS to shrink — that is the whole point of the
+    operation — which is why the budget is derived from what is being replaced and not from
+    a fixed number alone: a block of many short messages would otherwise grow through the
+    role in front of every line. What survives is enough to know that something was said and
+    roughly what: a name, a number, a decision at the beginning of a line.
+    """
+    out, spent = [], 0
+    for m in block:
+        role = str(m.get("role") or "?")
+        text = str(m.get("content") or "")
+        if not text and m.get("tool_calls"):
+            text = "(tool calls: " + ", ".join(
+                str((c.get("function") or {}).get("name") or "?") for c in m["tool_calls"]) + ")"
+        if len(text) > RAW_PER_MESSAGE:
+            half = RAW_PER_MESSAGE // 2
+            text = text[:half] + " […] " + text[-half:]
+        line = f"  {role}: {text}"
+        if spent + len(line) > budget:
+            out.append(f"  […] {len(block) - len(out)} further messages, no room left")
+            break
+        out.append(line)
+        spent += len(line)
+    return "\n".join(out)
+
+
 async def _summarise(db, messages: list[dict], chunks: list[tuple[int, int]], *,
                           owner_id, agent, tokens, base_urls) -> str:
     """Summarise every piece on its own and append the parts to each other.
@@ -244,10 +278,15 @@ async def _summarise(db, messages: list[dict], chunks: list[tuple[int, int]], *,
                 text = None
         if text:
             return text.strip()
-        log.warning("Compaction: piece %d/%d without a summary (aux not available)",
-                    nr, len(chunks))
-        return (f"- (part {nr}: {b - a} messages, no summary possible — "
-                "this section is lost, check it if in doubt.)")
+        # No summary is a reason to shorten, never to throw away. What stood here before was
+        # a note to the person that this part of THEIR conversation is gone and they should
+        # check it themselves — for a chat with an assistant that is the one outcome that
+        # must not exist. Raw and clipped is worse than a summary and far better than a hole.
+        log.warning("Compaction: piece %d/%d without a summary (aux not available), "
+                    "%d messages are taken over raw and clipped", nr, len(chunks), b - a)
+        room = min(RAW_PER_CHUNK, max(200, _as_text(messages[a:b]).__len__() // 2))
+        return (f"- (part {nr}: {b - a} messages, no summary possible — clipped verbatim "
+                f"below.)\n{_clipped(messages[a:b], room)}")
 
     parts = await asyncio.gather(*[_piece(nr, a, b)
                                    for nr, (a, b) in enumerate(chunks, 1)])

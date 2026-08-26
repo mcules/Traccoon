@@ -30,6 +30,7 @@ from ..models.ops import Permission
 from ..models.project import Project
 from ..models.ticket import Comment, Issue
 from ..models.user import User
+from ..services import continuation
 from . import gitops
 from .runtime import AgentDef, agent_def_from_row, run_agent
 from .secrets import (
@@ -635,17 +636,34 @@ async def _handle_agent_free(job: dict, redis: Redis) -> None:
         try:
             agent = await _load_agent(db, job.get("agent") or "assistent", 0, "execute", owner_id)
             tokens, base_urls = await _build_tokens(db, owner_id, agent)
-            result = await run_agent(
-                db=db, agent=agent,
-                issue={"id": None, "key": task_id, "summary": name,
-                       "description": prompt, "plan": None},
-                project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
-                mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
-                base_urls=base_urls, owner_id=owner_id, task_id=task_id)
+            # A budget that runs out is not a result. Whoever waits here (a job, a flow node)
+            # used to be handed "failed" for it, and the work of the round was gone.
+            rounds, hint = 0, ""
+            while True:
+                result = await run_agent(
+                    db=db, agent=agent,
+                    issue={"id": None, "key": task_id, "summary": name,
+                           "description": prompt, "plan": None},
+                    project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
+                    mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
+                    base_urls=base_urls, owner_id=owner_id, task_id=task_id,
+                    continuation_index=rounds, continuation_hint=hint)
+                if result.status != "loop_exhausted" or not continuation.may_continue(rounds):
+                    break
+                rounds += 1
+                hint = continuation.hint(result.summary or result.text or "")
+                log.info("free agent run %s: limit reached, continuation %d/%d",
+                         task_id, rounds, continuation.MAX_ROUNDS)
             text = result.summary or result.text or ""
             await db.commit()
-            await report("done" if result.status == "done" else "failed",
-                        text if result.status == "done" else (result.text or result.status))
+            if result.status == "done":
+                await report("done", text)
+            elif result.status == "loop_exhausted":
+                # The ceiling, not a mishap: whoever waits gets what was reached, said out
+                # loud. Reporting "failed" here would throw away exactly that.
+                await report("done", continuation.paused_note(text, rounds))
+            else:
+                await report("failed", result.text or result.status)
         except Exception as exc:  # noqa: BLE001 — whoever waits has to be told
             log.exception("free agent run %s failed", task_id)
             await report("failed", str(exc)[:2000])
@@ -911,16 +929,28 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             agent = await _load_agent(db, meta.get("agent") or "assistent",
                                       0, "execute", owner_id)
             tokens, base_urls = await _build_tokens(db, owner_id, agent)
-            result = await run_agent(
-                db=db, agent=agent,
-                issue={"id": None, "key": f"assistant-{t.id}", "summary": t.title,
-                       "description": prompt, "plan": None},
-                project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
-                mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
-                base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"],
-                comment_history=history,
-                history_title="# The conversation so far (oldest message first)",
-                assistant_task_id=t.id)
+            # The same rule as for a free run: a spent budget is continued, not reported as
+            # an error. In a conversation that matters twice over — the history belongs to
+            # the person, and "iteration limit reached" used to be the last thing they heard.
+            rounds, hint = 0, ""
+            while True:
+                result = await run_agent(
+                    db=db, agent=agent,
+                    issue={"id": None, "key": f"assistant-{t.id}", "summary": t.title,
+                           "description": prompt, "plan": None},
+                    project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
+                    mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
+                    base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"],
+                    comment_history=history,
+                    history_title="# The conversation so far (oldest message first)",
+                    assistant_task_id=t.id,
+                    continuation_index=rounds, continuation_hint=hint)
+                if result.status != "loop_exhausted" or not continuation.may_continue(rounds):
+                    break
+                rounds += 1
+                hint = continuation.hint(result.summary or result.text or "")
+                log.info("assistant task %s: limit reached, continuation %d/%d",
+                         tid, rounds, continuation.MAX_ROUNDS)
             if result.status == "blocked" and getattr(result, "blocker_kind", None) == "assistant_perm":
                 # Tool gate: the item waits for approval (status awaiting, chat card set).
                 # Do NOT finalise, the run is started again after the decision.
@@ -933,6 +963,10 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 # on. In a conversation the question IS the answer: report done so it reaches
                 # the person and stays in the history (`_chat_history`).
                 question_open = True
+            elif result.status == "loop_exhausted":
+                # The ceiling after several continuations. Not an error: nothing broke, the
+                # work is unfinished, and what was reached is the answer.
+                out = continuation.paused_note(out, rounds)
             elif result.status not in ("done",):
                 status, err = "error", (result.text or result.status)
         except Exception as exc:  # noqa: BLE001

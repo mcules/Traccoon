@@ -73,9 +73,14 @@ async def test_the_summary_replaces_the_middle_part(db, monkeypatch):
     assert new[-1] == m[-1]                                # the most recent stays verbatim
 
 
-async def test_without_aux_it_still_shortens_but_says_so(db, monkeypatch):
-    """An aborted run is worse than one with a gap in its memory, but the agent has to KNOW
-    about the gap; otherwise it takes it for completeness."""
+async def test_without_aux_it_shortens_raw_instead_of_dropping(db, monkeypatch):
+    """A failed summary shortens; it does not throw away.
+
+    What stood here before was a marker saying the section is lost — in a conversation with
+    an assistant that is the one outcome that must not exist, because the history is the
+    person's own. It has to get SMALLER, that is what the compaction is for, but the content
+    stays reachable.
+    """
     async def fake_aux(*a, **kw):
         return None
 
@@ -84,7 +89,15 @@ async def test_without_aux_it_still_shortens_but_says_so(db, monkeypatch):
     new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
     assert new is not None and len(new) < len(m)
-    assert "no summary possible" in new[2]["content"] and "lost" in new[2]["content"]
+    text = new[2]["content"]
+    assert "no summary possible" in text, "the agent has to know the section is not a summary"
+    assert "lost" not in text
+    # The replacement is smaller than what it replaces — otherwise the compaction would make
+    # the very problem worse that it exists to solve. Measured against the same rendering the
+    # aux model would have been given, because that is what the block costs in the context.
+    von, to = compaction.plan(m, limit_tokens=100_000, measured=90_000)
+    piece = text[text.index("- (part"):]     # without the fixed head every compaction carries
+    assert len(piece) < len(compaction._as_text(m[von:to]))
 
 
 async def test_nothing_to_do_returns_none(db):

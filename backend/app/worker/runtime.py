@@ -35,6 +35,7 @@ from .tools_memory import (
     MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLECTION_PROMPT, TEACH_TOOL, TEACH_TOOL_NAME,
     call_memory_tool, call_teach_tool, memory_root, read_memory,
 )
+from . import compaction as _compaction
 from .compaction import compact as _compact
 from .compaction import handover as _handover
 from .tools_traccoon import (
@@ -60,6 +61,10 @@ MAX_RUN_INPUT_TOKENS = int(os.getenv("MAX_RUN_INPUT_TOKENS", "2000000"))
 # It ends like the iteration limit: loop_exhausted, continuation in a fresh run, and the caps
 # bound the whole thing. 0 switches the limit off.
 MAX_RUN_SECONDS = float(os.getenv("AGENT_RUN_TIMEOUT_SEC", "1800"))
+# How much of the history to be summarised is written into the run before it happens. A step
+# is a database row, not an archive, so there is a bound — but the bound sits far above what a
+# summary keeps, and the record no longer depends on the summary working.
+RAW_HISTORY_CHARS = 40_000
 
 # Upper bound for answers of `traccoon_http_call`. The real limit is set by the destination
 # (Destination.max_response_chars); this is only the bar against a misconfigured destination
@@ -1143,6 +1148,21 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 # Shorten the context BEFORE it bursts the provider. What is measured is the
                 # real context size of the last call; without `max_context_tokens` nothing happens.
                 if agent.max_context_tokens and last_context:
+                    # What is about to be summarised is written into the run first, verbatim.
+                    # A summary may fail; the record of the run must not depend on that. Before
+                    # this, a whole section of a conversation existed only inside the running
+                    # process and was gone with it — and the person was told to check it
+                    # themselves.
+                    _area = _compaction.plan(messages, agent.max_context_tokens, last_context)
+                    if _area is not None:
+                        _raw = _compaction._as_text(messages[_area[0]:_area[1]])
+                        await log_line("system", None,
+                                       f"History before the compaction ({_area[1] - _area[0]} "
+                                       f"messages):\n{_raw[:RAW_HISTORY_CHARS]}",
+                                       # Deliberately a plain system step: the office view
+                                       # keeps those out of the room and in the text stream,
+                                       # which is exactly where a record belongs.
+                                       kind="system")
                     _new = await _compact(
                         db, messages=messages, limit_tokens=agent.max_context_tokens,
                         measured=last_context, owner_id=owner_id, agent=agent,
