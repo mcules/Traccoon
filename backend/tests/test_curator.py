@@ -198,3 +198,36 @@ async def test_a_projectless_run_tidies_only_what_it_has(db, monkeypatch):
     await db.commit()
     await curate(db, FakeMcp(), owner_id=user.id, agent_role="assistent")
     assert seen == ["Mensch.md", "Agent-assistent.md"]
+
+async def test_a_box_above_the_list_survives_the_tidy_up(db, monkeypatch):
+    """A warning at the head of a note is not a learned line.
+
+    Somebody put it there by hand, and the curator is asked for bullets. Before, the answer
+    overwrote the note and the box was gone at the next successful run.
+    """
+    box = "> NEVER build a chemical plant outside a water planet.\n> No exception."
+    content = f"# Mensch\n\n{box}\n\n{NOTE}"
+    keep = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
+    _aux(monkeypatch, f"### KEEP\n{keep}\n### ARCHIVE\n- Erkenntnis 39: alt.")
+    mcp = FakeMcp(content)
+    assert await _run(db, mcp)
+    written = mcp.notes[PATH]
+    assert box in written, "the box stands in the note again"
+    assert written.count("NEVER build") == 1, "and only once"
+    assert written.index(box) < written.index("- Erkenntnis 0"), "still above the list"
+
+
+async def test_the_box_is_none_of_the_models_business(db, monkeypatch):
+    """It never goes into the assignment, so no tidy-up can reword it."""
+    seen = {}
+
+    async def fake(*a, **kw):
+        seen["task"] = kw["messages"][0]["content"]
+        return "### KEEP\n" + "\n".join(
+            f"- Erkenntnis {i}: zusammengefasst." for i in range(20)) + "\n### ARCHIVE\nnone"
+
+    monkeypatch.setattr("app.worker.aux.aux_chat", fake)
+    box = "> A standing instruction."
+    await _run(db, FakeMcp(f"# Mensch\n\n{box}\n\n{NOTE}"))
+    assert box not in seen["task"]
+    assert "Insight 0" in seen["task"]

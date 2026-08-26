@@ -75,6 +75,24 @@ def _lines(text: str) -> list[str]:
     return [z.strip() for z in text.splitlines() if z.strip().startswith(("-", "*"))]
 
 
+def _split_lead(content: str) -> tuple[str, str]:
+    """The block above the first bullet, and the list below it.
+
+    A note may open with a standing box: a warning somebody put at the top by hand, a
+    blockquote, a paragraph. That is not a learned line and it is not the curator's to judge.
+    It used to disappear anyway, because the model is asked for bullets and its answer
+    overwrites the note. So the block never reaches the model and goes back on top unchanged.
+
+    The generated `# Title` line is dropped here: `curate_note` writes it again itself, and
+    without this it would stand twice.
+    """
+    lines = content.splitlines()
+    first = next((i for i, z in enumerate(lines) if z.strip().startswith(("-", "*"))),
+                 len(lines))
+    lead = [z for z in lines[:first] if not z.strip().startswith("# ")]
+    return "\n".join(lead).strip(), "\n".join(lines[first:]).strip()
+
+
 async def _latest_key(owner_id: int, path: str) -> str:
     return f"curator_last:{owner_id}:{path}"
 
@@ -97,7 +115,8 @@ async def curate_note(db, mcp, *, owner_id: int, path: str, agent, tokens: dict,
     if len(content) < MIN_CHARS:
         return None
 
-    pinned = [z for z in _lines(content) if PIN in z]
+    lead, body = _split_lead(content)
+    pinned = [z for z in _lines(body) if PIN in z]
 
     from .aux import aux_chat
     # The answer repeats the whole list plus what is thrown out, so it is roughly as long as
@@ -106,7 +125,7 @@ async def curate_note(db, mcp, *, owner_id: int, path: str, agent, tokens: dict,
     # fit. Scaled with a floor, capped so a runaway note cannot pull the aux model apart.
     budget = min(16000, max(3000, len(content) // 2))
     answer = await aux_chat(db, owner_id=owner_id, task="curator",
-                             messages=[{"role": "user", "content": TASK + content}],
+                             messages=[{"role": "user", "content": TASK + body}],
                              agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=budget)
     if not answer:
         return None
@@ -129,11 +148,13 @@ async def curate_note(db, mcp, *, owner_id: int, path: str, agent, tokens: dict,
         log.warning("Curator: %d pinned line(s) were missing in the result, %s stays unchanged",
                     len(missing), path)
         return None
-    if len(_lines(keep)) < len(_lines(content)) / 3:
+    if len(_lines(keep)) < len(_lines(body)) / 3:
         log.warning("Curator: the result throws more than two thirds away, %s stays unchanged", path)
         return None
 
     header = f"# {path.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
+    if lead:
+        header += lead + "\n\n"
     if archive:
         # Archive FIRST, truncate AFTERWARDS: if the second step breaks off, nothing is lost.
         arch_path = path.rsplit("/", 1)[0] + "/Archiv-" + path.rsplit("/", 1)[-1]
@@ -157,7 +178,7 @@ async def curate_note(db, mcp, *, owner_id: int, path: str, agent, tokens: dict,
 
     await set_setting(db, await _latest_key(owner_id, path),
                       dt.datetime.now(tz=dt.timezone.utc).isoformat())
-    before, after = len(_lines(content)), len(_lines(keep))
+    before, after = len(_lines(body)), len(_lines(keep))
     return f"{path}: {before} → {after} entries, {len(_lines(archive))} archived"
 
 
