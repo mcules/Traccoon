@@ -5,6 +5,7 @@ the code. The return value of every tool is terse text for the agent.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
@@ -16,6 +17,8 @@ from ..models.enums import TicketAgentStatus
 from ..models.project import Project, ProjectMember
 from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import User
+
+log = logging.getLogger("traccoon.tools")
 
 _now = lambda: dt.datetime.now(tz=dt.timezone.utc)  # noqa: E731
 _v = lambda x: getattr(x, "value", x) if x is not None else "—"  # enum to value  # noqa: E731
@@ -664,6 +667,13 @@ async def _mail_write_tool(db: AsyncSession, user: User, name: str, args: dict) 
         result = await mail_mcp.execute(db, user, tool, args)
     except (LookupError, PermissionError, ValueError) as why:
         return f"ERROR: {why}"
+    except ImportError as why:
+        # A dependency missing in this container. It happened: the worker ran on an image
+        # built before the mail library was added, and the run died on the import instead of
+        # the agent being told the tool is not available. A broken tool is an answer, not the
+        # end of the work.
+        log.error("the mail tools are not available here: %s", why)
+        return f"ERROR: the mail tools are not available in this run ({why})."
     if not isinstance(result, dict):
         return str(result)
     what = "The draft is in the mailbox" if tool == "mail_draft" else "The mail went out"
