@@ -133,7 +133,7 @@ function storedWidth(): number {
 export default function Mail() {
   // The mailbox takes the whole window instead of the reading column: three columns beside
   // each other, and the one on the right is a mail somebody laid out for a screen.
-  usePageChrome("Mail", [], undefined, "top", true);
+  usePageChrome("Mail", [], undefined, "top", { wide: true, frame: true });
   const qc = useQueryClient();
   const { user, refresh: userAgain } = useAuth();
   const [accountId, setAccountId] = useState<number | null>(null);

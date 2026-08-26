@@ -134,11 +134,16 @@ export default function ProjectView() {
     tab === "work" ? work : tab === "operations" ? operation : [];
   const view = views.some(([k]) => k === under) ? under! : (views[0]?.[0] ?? "");
 
+  // The whole window, like the mailbox: a board with five columns and a ticket list with
+  // five of its own have nothing to gain from a reading column of 1400px. Deliberately
+  // without the frame: this page grows downwards, and a box of a fixed height would cut off
+  // everything under it that does not scroll on its own.
   usePageChrome(
     project?.name ?? "",
     projectChromeTabs(project, { tab, sub: view || under }),
     tab,
     "side",
+    { wide: true },
   );
 
   if (!project) return <div className="text-muted">{tr("project_view.project_not_found")}</div>;
