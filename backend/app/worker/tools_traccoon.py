@@ -128,6 +128,17 @@ TRACCOON_TOOLS = [
                           "description": "Only this project; empty = everything you may see."},
           "agent": {"type": "string", "description": "Only this role."}},
          []),
+    _def("traccoon_mail_policy",
+         "The standing rules for incoming mail of your person: which senders run "
+         "automatically, which are blocked. `what`: 'list' (the default), 'block' (never "
+         "again by itself), 'revoke' (take a rule back). A block beats every approval, also "
+         "for the whole domain behind an address. Whoever grants a rule by mistake gets it "
+         "back through here without a developer.",
+         {"what": {"type": "string", "description": "list | block | revoke"},
+          "kind": {"type": "string", "description": "sender | domain | category"},
+          "value": {"type": "string",
+                    "description": "the address, the domain or the category the rule is about"}},
+         []),
 ]
 TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 
@@ -139,7 +150,7 @@ TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 # runs, approvals and calls to the outside, which is not something an agent sets off unnoticed.
 # Listing stays free.
 TRACCOON_GATED_TOOLS = {"traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
-                        "traccoon_start_workflow"}
+                        "traccoon_start_workflow", "traccoon_mail_policy"}
 
 
 async def _user(db: AsyncSession, owner_id: int | None) -> User | None:
@@ -600,7 +611,60 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
     if name == "traccoon_run_health":
         return await _run_health_tool(db, user, args)
 
+    if name == "traccoon_mail_policy":
+        return await _mail_policy_tool(db, user, args)
+
     return f"ERROR: unknown control tool '{name}'."
+
+
+async def _mail_policy_tool(db: AsyncSession, user: User, args: dict) -> str:
+    """Read, block, take back — the three things one wants from a standing mail rule.
+
+    Writing goes through the assistant gate like every other change (see
+    TRACCOON_GATED_TOOLS): a permanent rule about somebody's mail is not something an agent
+    sets up unnoticed. Reading is free.
+    """
+    from ..models.assistant import AssistantPolicy
+    from ..services.assistant_policy import revoke_policy, upsert_policy
+
+    what = str(args.get("what") or "list").strip().lower()
+    kind = str(args.get("kind") or "sender").strip().lower()
+    value = str(args.get("value") or "").strip().lower()
+
+    if what == "list":
+        rows = (await db.execute(select(AssistantPolicy)
+                .where(AssistantPolicy.owner_user_id == user.id)
+                .order_by(AssistantPolicy.blocked.desc(), AssistantPolicy.match_kind,
+                          AssistantPolicy.match_value))).scalars().all()
+        if not rows:
+            return "No standing mail rules."
+        out = []
+        for p in rows:
+            mark = "BLOCKED" if p.blocked else ("automatic" if p.auto_approve else "hint only")
+            since = p.created_at.strftime("%Y-%m-%d") if p.created_at else "?"
+            out.append(f"- {p.match_kind} {p.match_value} — {mark}, since {since}, "
+                       f"{p.hit_count or 0}x"
+                       + (f", from: {p.origin}" if p.origin else ""))
+        return "\n".join(out)
+
+    if kind not in ("sender", "domain", "category"):
+        return "ERROR: kind has to be sender, domain or category."
+    if not value:
+        return "ERROR: value is missing (the address, the domain or the category)."
+
+    if what == "block":
+        await upsert_policy(db, user.id, match_kind=kind, match_value=value, blocked=True,
+                            auto_approve=False, origin="blocked by the assistant")
+        await db.commit()
+        return f"{kind} {value} is blocked — it will never run by itself again."
+
+    if what == "revoke":
+        ok = await revoke_policy(db, user.id, match_kind=kind, match_value=value)
+        await db.commit()
+        return (f"The rule for {kind} {value} is taken back." if ok
+                else f"There was no rule for {kind} {value}.")
+
+    return "ERROR: what has to be list, block or revoke."
 
 
 def _statuses(problem: dict) -> str:

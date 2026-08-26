@@ -89,9 +89,11 @@ async def classify(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     policy = await match_policy(db, owner_id, sender_email=sender_email, domain=domain,
                                 category=classification["category"])
     redaction, action_hint, auto = "redacted", "", False
+    blocked = bool(policy is not None and policy.blocked)
     if policy is not None:
         await note_hit(db, policy)
-        redaction, action_hint, auto = policy.redaction, policy.action_hint, policy.auto_approve
+        redaction, action_hint = policy.redaction, policy.action_hint
+        auto = policy.auto_approve and not blocked
     # Redaction protects against raw text leaving the house. If a model on the own endpoint
     # processes the mail, nothing leaves the house, and then the redaction is no longer a
     # protection but only a loss of information (and a detour over the IMAP tools that
@@ -99,12 +101,15 @@ async def classify(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     agent = str(intake.get("agent") or "assistent")
     if await agent_running_local(db, owner_id, agent):
         redaction = "unredacted"
-    if intake.get("auto_run"):  # the trigger enforces a chatless immediate run.
+    # The trigger enforces a chatless immediate run -- a block is stronger. Whoever put a
+    # sender on the block list means every way in, not only the one through the review.
+    if intake.get("auto_run") and not blocked:
         auto = True
 
     inst.context = {**ctx, "classification": classification,
                     "policy": {"redaction": redaction, "action_hint": action_hint or "",
-                               "auto": bool(auto), "id": policy.id if policy else None}}
+                               "auto": bool(auto), "blocked": blocked,
+                               "id": policy.id if policy else None}}
     return {"action": "mail_classify", "category": classification["category"],
             "priority": classification["priority"], "auto": bool(auto),
             "classified": bool(classify_agent)}

@@ -83,9 +83,13 @@ async def approve_assistant_task(db: AsyncSession, task: AssistantTask, *, scope
         sender_email, domain = parse_sender((task.meta or {}).get("from") or "")
         value = {"sender": sender_email, "domain": domain, "category": task.category}.get(scope, "")
         if value:
+            # The rule carries the item it was granted at. Months later a list of bare
+            # addresses cannot be judged, and "why is this one in here" is exactly the
+            # question one has when taking a rule back.
             await upsert_policy(db, task.owner_user_id, match_kind=scope, match_value=value,
                                 auto_approve=True, redaction=redaction,
-                                action_hint=action_note or task.action_hint or "")
+                                action_hint=action_note or task.action_hint or "",
+                                origin=task.title or "", origin_task_id=task.id)
 
     task.status = "approved"
     await db.commit()

@@ -105,6 +105,12 @@ async def lifespan(app: FastAPI):
                 # Telegram approval card for project-less assistant items.
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS assistant_task_id INTEGER "
                 "REFERENCES assistant_tasks(id) ON DELETE CASCADE",
+                # A sender rule can block (deny beats every allow) and says where it came from.
+                "ALTER TABLE assistant_policies ADD COLUMN IF NOT EXISTS blocked BOOLEAN "
+                "DEFAULT FALSE NOT NULL",
+                "ALTER TABLE assistant_policies ADD COLUMN IF NOT EXISTS origin VARCHAR(300) "
+                "DEFAULT '' NOT NULL",
+                "ALTER TABLE assistant_policies ADD COLUMN IF NOT EXISTS origin_task_id INTEGER",
                 # Tool gate of the assistant: pending approval plus one-shot grant per item.
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS pending_tool VARCHAR(150)",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS pending_resource VARCHAR(500)",

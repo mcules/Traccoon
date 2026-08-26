@@ -2,13 +2,15 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
+import { formatDate } from "../lib/formatTime";
 import {
   Actions, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, DeleteDialog, Area, Tag, Listing, ListingEmpty, ListRow, BUTTON, BUTTON_TEXT} from "./ui";
 
 interface Policy {
   id: number; match_kind: string; match_value: string;
-  auto_approve: boolean; redaction: string; action_hint: string;
-  enabled: boolean; hit_count: number; last_used_at: string | null; created_at: string;
+  auto_approve: boolean; blocked: boolean; redaction: string; action_hint: string;
+  enabled: boolean; origin: string; origin_task_id: number | null;
+  hit_count: number; last_used_at: string | null; created_at: string;
 }
 
 const KIND_KEY: Record<string, string> = { sender: "assistant_policies.sender", domain: "assistant_policies.domain", category: "assistant_policies.category" };
@@ -48,16 +50,27 @@ export default function AssistantPolicies() {
             <div className="flex flex-wrap items-center gap-1.5">
               <Tag>{KIND_KEY[p.match_kind] ? tr(KIND_KEY[p.match_kind]) : p.match_kind}</Tag>
               <span className="font-medium text-ink">{p.match_value}</span>
-              <span className={`rounded px-1.5 text-xs ${p.auto_approve ? "bg-green-600/15 text-green-400" : "bg-surface text-muted"}`}>
-                {tr(p.auto_approve ? "assistant_policies.auto_approve" : "assistant_policies.hint_only")}</span>
+              <span className={`rounded px-1.5 text-xs ${p.blocked ? "bg-red-600/15 text-red-400"
+                : p.auto_approve ? "bg-green-600/15 text-green-400" : "bg-surface text-muted"}`}>
+                {tr(p.blocked ? "assistant_policies.blocked"
+                  : p.auto_approve ? "assistant_policies.auto_approve" : "assistant_policies.hint_only")}</span>
               <span className={`rounded px-1.5 text-xs ${p.redaction === "unredacted" ? "bg-amber-500/15 text-amber-400" : "bg-surface text-muted"}`}>
                 {tr(p.redaction === "unredacted" ? "assistant.unredacted" : "assistant.redacted")}</span>
               <span className="ml-auto text-xs text-muted">{p.hit_count}×</span>
             </div>
             {p.action_hint && <p className="mt-1 text-xs text-muted">↳ {p.action_hint}</p>}
+            {/* Where a rule comes from and since when. A list of bare addresses cannot be
+                judged months later, and taking one back is exactly the moment one asks. */}
+            <p className="mt-1 text-xs text-muted">
+              {tr("assistant_policies.since", { date: formatDate(p.created_at) })}
+              {p.origin && ` · ${tr("assistant_policies.granted_at", { what: p.origin })}`}
+            </p>
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1" />
               <Actions>
+                <IconButton icon={p.blocked ? "✅" : "🚫"}
+                  onClick={() => save.mutate({ ...p, blocked: !p.blocked, auto_approve: false })}
+                  title={tr(p.blocked ? "assistant_policies.unblock" : "assistant_policies.block")} />
                 <IconButton icon={p.enabled ? "⏸" : "⏵"} onClick={() => save.mutate({ ...p, enabled: !p.enabled })}
                   title={tr(p.enabled ? "jobs_panel.switch_off" : "jobs_panel.switch")} />
                 <IconButton icon={ICON.edit} title={tr("common.edit")} onClick={() => setDialog(p)} />
@@ -147,6 +160,7 @@ function RuleDialog({ rule: rule, runs: running, onClose, onSave }: {
   const [redaction, setRedaction] = useState(rule?.redaction || "redacted");
   const [hint, setHint] = useState(rule?.action_hint || "");
   const [autoApprove, setAutoApprove] = useState(rule ? rule.auto_approve : true);
+  const [blocked, setBlocked] = useState(rule ? rule.blocked : false);
   const [enabled, setEnabled] = useState(rule ? rule.enabled : true);
 
   return (
@@ -157,7 +171,7 @@ function RuleDialog({ rule: rule, runs: running, onClose, onSave }: {
         onSave={() => onSave({
           ...(rule ? { id: rule.id } : {}),
           match_kind: kind, match_value: value.trim(), redaction, action_hint: hint,
-          auto_approve: autoApprove, enabled,
+          auto_approve: autoApprove && !blocked, blocked, enabled,
         })} />}>
       <div className="space-y-3">
         <Field label={tr("assistant_policies.matches")}>
@@ -180,8 +194,16 @@ function RuleDialog({ rule: rule, runs: running, onClose, onSave }: {
           <input value={hint} onChange={(e) => setHint(e.target.value)} className={INPUT_VALUE} />
         </Field>
         <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={autoApprove} onChange={(e) => setAutoApprove(e.target.checked)} />
+          <input type="checkbox" checked={autoApprove} disabled={blocked}
+            onChange={(e) => setAutoApprove(e.target.checked)} />
           {tr("assistant_policies.auto_approve")}
+        </label>
+        {/* A rule cannot approve and block at the same time, so one switch takes the other
+            out of reach instead of letting the row say yes and no about the same sender. */}
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={blocked}
+            onChange={(e) => { setBlocked(e.target.checked); if (e.target.checked) setAutoApprove(false); }} />
+          {tr("assistant_policies.blocked_hint")}
         </label>
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />

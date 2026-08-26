@@ -177,9 +177,21 @@ class AssistantPolicy(TimestampMixin, Base):
     match_value: Mapped[str] = mapped_column(String(300), default="")
 
     auto_approve: Mapped[bool] = mapped_column(Boolean, default=True)   # skips the review
+    # The other side of the same table: this one may NEVER run by itself. It beats every
+    # allow, however specific that one is, and it exists because "not allowed" and "blocked"
+    # are not the same thing: a rule that merely does not approve says nothing about the
+    # domain around it, a block says it for all of them. Without this a mistaken tap on
+    # "always this sender" could only be undone by deleting the rule -- and the next tap
+    # would create it again.
+    blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     redaction: Mapped[str] = mapped_column(String(20), default="redacted")  # redacted | unredacted
-    action_hint: Mapped[str] = mapped_column(Text, default="")         # gelernte Aktion
+    action_hint: Mapped[str] = mapped_column(Text, default="")         # learned action
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Where the rule comes from: the heading of the item it was granted at, plus its id. A
+    # list of bare addresses cannot be judged months later -- "why is this one in here" is
+    # the first question, and until now nothing in the row answered it.
+    origin: Mapped[str] = mapped_column(String(300), default="")
+    origin_task_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     hit_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

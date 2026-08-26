@@ -124,13 +124,14 @@ async def stats(days: int = 30, user: User = Depends(get_current_user),
     return data
 
 
-# ================= Gelernte Regeln (AssistantPolicy) =================
+# ================= Learned rules (AssistantPolicy) =================
 
 def _pol_out(p: AssistantPolicy) -> dict:
     return {
         "id": p.id, "match_kind": p.match_kind, "match_value": p.match_value,
-        "auto_approve": p.auto_approve, "redaction": p.redaction,
+        "auto_approve": p.auto_approve, "blocked": p.blocked, "redaction": p.redaction,
         "action_hint": p.action_hint, "enabled": p.enabled,
+        "origin": p.origin, "origin_task_id": p.origin_task_id,
         "hit_count": p.hit_count, "last_used_at": p.last_used_at, "created_at": p.created_at,
     }
 
@@ -139,6 +140,7 @@ class PolicyIn(BaseModel):
     match_kind: str = "sender"       # sender | domain | category
     match_value: str
     auto_approve: bool = True
+    blocked: bool = False            # never by itself; beats every allow
     redaction: str = "redacted"      # redacted | unredacted
     action_hint: str = ""
     enabled: bool = True
@@ -166,7 +168,7 @@ async def create_policy(data: PolicyIn, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
     p = await upsert_policy(db, user.id, match_kind=data.match_kind, match_value=data.match_value,
                             auto_approve=data.auto_approve, redaction=data.redaction,
-                            action_hint=data.action_hint)
+                            action_hint=data.action_hint, blocked=data.blocked)
     p.enabled = data.enabled
     await db.commit()
     await db.refresh(p)
@@ -179,7 +181,10 @@ async def update_policy(pid: int, data: PolicyIn, user: User = Depends(get_curre
     p = await _pol_owned(pid, user, db)
     p.match_kind = data.match_kind if data.match_kind in ("sender", "domain", "category") else p.match_kind
     p.match_value = (data.match_value or "").strip().lower()
-    p.auto_approve = data.auto_approve
+    p.blocked = data.blocked
+    # A blocked rule cannot approve at the same time. Two fields, one truth: whoever sets the
+    # block wins, so that no row can say yes and no about the same sender.
+    p.auto_approve = data.auto_approve and not data.blocked
     p.redaction = data.redaction if data.redaction in ("redacted", "unredacted") else "redacted"
     p.action_hint = data.action_hint
     p.enabled = data.enabled

@@ -27,6 +27,7 @@ from ..models.user import User
 from ..services.assistant_inbox import (
     approve_assistant_task, create_chat_task, reject_assistant_task,
 )
+from ..services.assistant_policy import parse_sender, revoke_policy, upsert_policy
 from ..services import assistant_sessions as sessions
 from ..services.artifacts import set_ticket_status
 from ..services.comments import add_system_comment, apply_user_comment
@@ -290,13 +291,17 @@ async def _transcribe(audio: bytes, mediakind: str = "voice",
 _DEC_TEXT = {"once": "once", "always": "always", "never": "never"}
 
 
-async def _done(cq: CallbackQuery, note: str) -> None:
+async def _done(cq: CallbackQuery, note: str,
+                keyboard: InlineKeyboardMarkup | None = None) -> None:
     """Remove the keyboard and write the outcome onto the question.
 
     That way one sees in the history at once what is still open: answered questions carry no
     buttons any more but a line with the decision and the time. Even on "already handled"
     (decided elsewhere) the buttons have to go, otherwise they keep inviting a press.
-    # buttons any more but a line with the decision and the time.
+
+    `keyboard` is the one exception: a decision that goes on working after the tap — a
+    standing rule — leaves a way back standing. A thumb hits the wrong button, and without
+    this the only way out of a permanent rule was a developer.
     """
     msg = cq.message
     if msg is None:
@@ -304,19 +309,35 @@ async def _done(cq: CallbackQuery, note: str) -> None:
     line = f"<i>{safe(note)} · {_now().strftime('%d.%m. %H:%M')}</i>"
     try:
         # html_text keeps the formatting of the original message (bold, lines).
-        await msg.edit_text(f"{msg.html_text}\n\n{line}", parse_mode="HTML")
+        await msg.edit_text(f"{msg.html_text}\n\n{line}", parse_mode="HTML",
+                            reply_markup=keyboard)
         return
     except Exception:  # noqa: BLE001
         # Too old to edit, without text (a photo) or unchanged: then at least clear the
         # buttons away, which is the actual purpose.
         try:
-            await msg.edit_reply_markup(reply_markup=None)
+            await msg.edit_reply_markup(reply_markup=keyboard)
         except Exception:  # noqa: BLE001
             log.warning("Could not remove the keyboard on message %s", msg.message_id)
 
 
 def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
+
+
+async def _revoke_scope(db, task: AssistantTask, scope: str) -> bool:
+    """Take back the standing rule that was granted at this item.
+
+    Which value belongs to a scope is decided in exactly the same way as when granting it
+    (`approve_assistant_task`) — if the two ever drift apart, the undo silently takes back
+    nothing and the rule stays.
+    """
+    sender_email, domain = parse_sender((task.meta or {}).get("from") or "")
+    value = {"sender": sender_email, "domain": domain,
+             "category": task.category or ""}.get(scope, "")
+    if not value:
+        return False
+    return await revoke_policy(db, task.owner_user_id, match_kind=scope, match_value=value)
 
 
 # --- Medienausgang ---------------------------------------------------------------------
@@ -549,7 +570,16 @@ async def run_bot() -> None:
             [InlineKeyboardButton(text="✅ Approve", callback_data=f"atask:approve:{tid}"),
              InlineKeyboardButton(text="❌ Discard", callback_data=f"atask:reject:{tid}")],
             [InlineKeyboardButton(text="♾️ Always this sender", callback_data=f"atask:sender:{tid}"),
-             InlineKeyboardButton(text="♾️ Always this category", callback_data=f"atask:category:{tid}")]])
+             InlineKeyboardButton(text="♾️ Always this category", callback_data=f"atask:category:{tid}")],
+            # The counterpart of "always": the same tap in the other direction. Without it a
+            # sender one never wants to see could only be discarded again and again, one item
+            # at a time.
+            [InlineKeyboardButton(text="🚫 Never this sender", callback_data=f"atask:block:{tid}")]])
+
+    def _undo_kb(tid: int, scope: str) -> InlineKeyboardMarkup:
+        """The way back out of a standing rule, right where it was granted."""
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="↩ Undo the rule", callback_data=f"atask:undo:{tid}:{scope}")]])
 
     def _spam_kb(vid: int) -> InlineKeyboardMarkup:
         # Exactly two buttons. The question is a yes or no question, and every further option
@@ -996,11 +1026,21 @@ async def run_bot() -> None:
                     await cq.answer("Geladen")
                     await _done(cq, f"\u2714\ufe0f Geladen: {s.title or 'ohne Titel'}")
             elif data.startswith("atask:"):
-                _, action, sid = data.split(":", 2)
+                parts = data.split(":")
+                action, sid = parts[1], parts[2]
                 t = await db.get(AssistantTask, int(sid))
                 if t is None:
                     await cq.answer("Not found")
                     await _done(cq, "⏭ the task is gone")
+                elif action == "undo":
+                    # Deliberately BEFORE the status check: the item is approved by now, that
+                    # is exactly what is being taken back here.
+                    scope = parts[3] if len(parts) > 3 else "sender"
+                    ok = await _revoke_scope(db, t, scope)
+                    await db.commit()
+                    await cq.answer("Taken back" if ok else "Nothing to take back")
+                    await _done(cq, "↩ The standing rule is taken back" if ok
+                                else "↩ There was no standing rule")
                 elif t.status not in ("new", "error"):
                     await cq.answer(f"already done ({t.status})")
                     await _done(cq, f"⏭ already done ({t.status})")
@@ -1008,6 +1048,20 @@ async def run_bot() -> None:
                     await reject_assistant_task(db, t)
                     await cq.answer("Discarded")
                     await _done(cq, "❌ Discarded")
+                elif action == "block":
+                    sender_email, _dom = parse_sender((t.meta or {}).get("from") or "")
+                    if not sender_email:
+                        await cq.answer("No sender found")
+                        await _done(cq, "🚫 no sender in the item")
+                    else:
+                        await upsert_policy(db, t.owner_user_id, match_kind="sender",
+                                            match_value=sender_email, blocked=True,
+                                            auto_approve=False, origin=t.title or "",
+                                            origin_task_id=t.id)
+                        await reject_assistant_task(db, t)
+                        await cq.answer("Blocked")
+                        await _done(cq, "🚫 Blocked · this sender never runs by itself",
+                                    _undo_kb(t.id, "sender"))
                 else:
                     scope = {"sender": "sender", "category": "category"}.get(action, "once")
                     # Quick approval by chat is redacted (safe); unredacted is handled by the web inbox.
@@ -1015,7 +1069,8 @@ async def run_bot() -> None:
                     await cq.answer("Approved" + ("" if scope == "once" else " + remembered"))
                     await _done(cq, "✅ Approved" + {
                         "sender": " · this sender automatically from now on",
-                        "category": " · this category automatically from now on"}.get(scope, ""))
+                        "category": " · this category automatically from now on"}.get(scope, ""),
+                        None if scope == "once" else _undo_kb(t.id, scope))
             elif data.startswith("spam:"):
                 _, answer, vid = data.split(":", 2)
                 v = await db.get(SpamVerdict, int(vid))
