@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { tr } from "../i18n";
 import { Issue, Project, ProjectMeta } from "../api";
 import { type OnOpenTicket } from "../ticketOpen";
+import { Area } from "./ui";
 import BulkBar from "./issues/BulkBar";
 import IssueTable from "./issues/IssueTable";
 import { useSelection } from "./issues/useSelection";
@@ -38,28 +39,34 @@ export default function IssueList({
   const shown = useMemo(() => new Set(filtered.map((i) => i.key)), [filtered]);
   const picked = useMemo(() => chosen.filter((k) => shown.has(k)), [chosen, shown]);
 
+  // The filter belongs to the list, so it stands in the tool row of its card. The card
+  // itself is the rule of the design guide: a list stands in one, and it is the same one
+  // around every group of the backlog.
+  const tools = (
+    <>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("issue_list.search_title_or_key")}
+        className="w-64 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
+      <select value={statusId} onChange={(e) => setStatusId(e.target.value ? +e.target.value : "")}
+        className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
+        <option value="">{tr("issue_list.all_states")}</option>
+        {meta.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+      <label className="flex items-center gap-1.5 text-sm text-muted">
+        <input type="checkbox" checked={onlyAi} onChange={(e) => setOnlyAi(e.target.checked)} />
+        {tr("issue_list.only_with_agent")}
+      </label>
+      <div className="flex-1" />
+      <span className="text-xs text-muted">{filtered.length} / {issues.length}</span>
+    </>
+  );
+
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("issue_list.search_title_or_key")}
-          className="w-64 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        <select value={statusId} onChange={(e) => setStatusId(e.target.value ? +e.target.value : "")}
-          className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
-          <option value="">{tr("issue_list.all_states")}</option>
-          {meta.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <label className="flex items-center gap-1.5 text-sm text-muted">
-          <input type="checkbox" checked={onlyAi} onChange={(e) => setOnlyAi(e.target.checked)} />
-          {tr("issue_list.only_with_agent")}
-        </label>
-        <div className="flex-1" />
-        <span className="text-xs text-muted">{filtered.length} / {issues.length}</span>
-      </div>
-
       <BulkBar project={project} meta={meta} picked={picked} archived={archived} onDone={clear} />
-
-      <IssueTable meta={meta} issues={filtered} onOpen={onOpen}
-        ticked={ticked} onTick={tick} onSetMany={setMany} />
+      <Area tools={tools}>
+        <IssueTable meta={meta} issues={filtered} onOpen={onOpen}
+          ticked={ticked} onTick={tick} onSetMany={setMany} />
+      </Area>
     </div>
   );
 }

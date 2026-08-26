@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { tr } from "../i18n";
 import { api, ApiError, Issue, Project, ProjectMeta, Sprint } from "../api";
 import { type OnOpenTicket } from "../ticketOpen";
-import { BUTTON, BUTTON_SMALL, BUTTON_TEXT } from "./ui";
+import { Area, BUTTON, BUTTON_SMALL, BUTTON_TEXT } from "./ui";
 import BulkBar from "./issues/BulkBar";
 import IssueTable from "./issues/IssueTable";
 import { useSelection } from "./issues/useSelection";
@@ -70,9 +70,8 @@ export default function Backlog({
         const inside = issues.filter((i) => i.sprint_id === s.id);
         const done = inside.filter((i) => i.resolved_at).length;
         return (
-          <section key={s.id} className="rounded-lg border border-line p-3">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="font-medium">{s.name}</span>
+          <Area key={s.id} title={s.name} tools={
+            <>
               {s.state === "active"
                 ? <span className="rounded bg-green-500/20 px-1.5 text-xs text-green-400">{tr("backlog.running")}</span>
                 : <span className="rounded bg-surface px-1.5 text-xs text-muted">{tr("backlog.planned")}</span>}
@@ -91,15 +90,15 @@ export default function Backlog({
                 <button onClick={() => remove.mutate(s.id)}
                   className={BUTTON_TEXT.danger}>{tr("common.delete_2")}</button>
               )}
-            </div>
+            </>
+          }>
             {table(inside, tr("backlog.nothing_assigned_yet"))}
-          </section>
+          </Area>
         );
       })}
 
-      <section className="rounded-lg border border-line p-3">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <span className="font-medium">{tr("backlog.backlog")}</span>
+      <Area title={tr("backlog.backlog")} tools={
+        <>
           <span className="text-xs text-muted">
             {tr("backlog.n_tickets", { n: backlog.length })}
           </span>
@@ -108,9 +107,10 @@ export default function Backlog({
             className="rounded border border-line bg-surface px-2 py-1 text-xs" />
           <button onClick={() => name.trim() && fresh.mutate()}
             className={BUTTON_SMALL.secondary}>{tr("backlog.add_sprint")}</button>
-        </div>
+        </>
+      }>
         {table(backlog, tr("backlog.backlog_empty"))}
-      </section>
+      </Area>
     </div>
   );
 }

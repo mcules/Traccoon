@@ -15,6 +15,10 @@ import { ticketOpenHandlers, type OnOpenTicket } from "../../ticketOpen";
  * It owns its sorting (a table sorts what it shows) and nothing else. The selection lives
  * with the caller: the backlog draws one table per sprint, and ticking across two of them has
  * to end up in one bulk action.
+ *
+ * The table stands INSIDE a card, so a row that is ticked or hovered takes the page colour,
+ * not the card colour. On the card it would be the card colour on the card colour, which is
+ * the third level of the design guide and exactly why it has three.
  */
 
 const PRIO_COLOR: Record<string, string> = {
@@ -89,8 +93,8 @@ export default function IssueTable({
             const t = typeMap.get(i.type_id);
             return (
               <tr key={i.id} {...ticketOpenHandlers(i.key, onOpen)}
-                className={`cursor-pointer border-b border-line/50 hover:bg-card ${
-                  ticked.has(i.key) ? "bg-card" : ""}`}>
+                className={`cursor-pointer border-b border-line/50 hover:bg-surface ${
+                  ticked.has(i.key) ? "bg-surface" : ""}`}>
                 {/* The tick box is the second way to touch a row; a click on it must not open
                     the ticket, otherwise every tick would bring the drawer along. */}
                 <td className="py-1.5" onClick={(e) => e.stopPropagation()}>
@@ -130,7 +134,7 @@ export default function IssueTable({
           const w = waitInfo(i);
           return (
             <div key={i.id} {...ticketOpenHandlers(i.key, onOpen)}
-              className={`cursor-pointer rounded-lg border bg-card p-2 text-sm ${
+              className={`cursor-pointer rounded-lg border bg-surface p-2 text-sm ${
                 ticked.has(i.key) ? "border-brand" : "border-line"}`}>
               <div className="flex items-baseline gap-2">
                 <input type="checkbox" checked={ticked.has(i.key)} className="mt-0.5"
