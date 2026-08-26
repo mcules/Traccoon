@@ -45,6 +45,13 @@ BUILTIN_EVENTS: list[tuple[str, str]] = [
     ("assistant.session_closed", "Unterhaltung geschlossen"),
     ("assistant.session_deleted", "Unterhaltung geloescht"),
     ("deployment.finished", "Deployment abgeschlossen"),
+    # Reported from outside by the AgentShield collector (POST /events with a token that
+    # carries the `plugin_data` scope). They stand here so the editor offers them like the
+    # rest — a trigger nobody can pick from the list is one that gets typed wrong once and
+    # then stays quiet.
+    ("agentshield.finding.new", "a configuration finding appeared"),
+    ("agentshield.finding.fixed", "a configuration finding is gone"),
+    ("agentshield.audit.finished", "the configuration audit finished"),
 ]
 
 # What an event carries that is worth filtering on, written out per event so the editor can
@@ -56,6 +63,16 @@ BUILTIN_EVENTS: list[tuple[str, str]] = [
 # Anything not in here is still reachable through `filter`. This is the shortcut for the
 # handful of fields one actually filters on, not a fence around the rest.
 EVENT_FIELDS: dict[str, list[dict]] = {
+    "agentshield.finding.new": [
+        {"path": "finding.severity", "label": "Severity",
+         "options": [("critical", "critical"), ("high", "high"), ("medium", "medium"),
+                     ("low", "low"), ("info", "info")]},
+    ],
+    "agentshield.finding.fixed": [
+        {"path": "finding.severity", "label": "Severity",
+         "options": [("critical", "critical"), ("high", "high"), ("medium", "medium"),
+                     ("low", "low"), ("info", "info")]},
+    ],
     "bug.reported": [
         {"path": "report.kind", "label": "Art der Meldung",
          "options": [("bug", "Etwas ist kaputt"), ("feature", "Ein Wunsch"),

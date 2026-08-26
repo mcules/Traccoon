@@ -18,10 +18,11 @@ from __future__ import annotations
 
 ASSISTANT = "assistant"
 TICKETS = "tickets"
+PLUGIN_DATA = "plugin_data"
 FULL = "full"
 
 # What may be handed out on a create call, in the order the interface offers them.
-ALL_SCOPES: tuple[str, ...] = (ASSISTANT, TICKETS, FULL)
+ALL_SCOPES: tuple[str, ...] = (ASSISTANT, TICKETS, PLUGIN_DATA, FULL)
 
 # (method or None for any, route template). A pattern ending in `*` matches by prefix,
 # everything else has to be equal.
@@ -36,6 +37,18 @@ GRANTS: dict[str, tuple[tuple[str | None, str], ...]] = {
         # The personal channel (new mail, the counter in the bar). Same reasoning as
         # `/notifications*`: it carries what concerns the person, not a project.
         (None, "/ws/me"),
+    ),
+    # For a collector that fills a plugin's tables from outside — a scanner, an importer,
+    # a device. It writes rows and reports what happened; it cannot read a ticket, a mail or
+    # anybody's mailbox. The alternative would have been `full` for a container that only
+    # ever writes into one table, which is the sort of token nobody dares revoke later.
+    PLUGIN_DATA: (
+        (None, "/plugins/{slug}/data/{table}"),
+        (None, "/plugins/{slug}/data/{table}/{rid}"),
+        # Reporting an event is part of collecting: whoever brings the finding in should be
+        # able to say so, otherwise every flow would have to poll the table.
+        ("POST", "/events"),
+        ("GET", "/auth/me"),
     ),
     TICKETS: (
         ("GET", "/projects"),
