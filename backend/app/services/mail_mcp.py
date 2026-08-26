@@ -87,21 +87,31 @@ TOOLS: list[dict] = [
          "uid": {"type": "integer"}},
          "required": ["account", "uid"]}},
     {"name": "mail_draft", "art": "senden",
-     "description": "Einen Entwurf im Postfach ablegen (verschickt nichts).",
-     "schema": {"type": "object", "properties": {
-         "account": {"type": "string"}, "identity": {"type": "string"},
-         "to": {"type": "array", "items": {"type": "string"}},
-         "cc": {"type": "array", "items": {"type": "string"}},
-         "subject": {"type": "string"}, "text": {"type": "string"}},
-         "required": ["account", "to"]}},
-    {"name": "mail_send", "art": "senden",
-     "description": "Eine Nachricht wirklich verschicken.",
+     "description": "Einen Entwurf im Postfach ablegen (verschickt nichts). Antwortest du auf "
+                    "eine Mail, gib `reply_uid` an — Betreff, Bezug und das Zitat der "
+                    "ursprünglichen Mail setzt das Werkzeug dann selbst.",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "identity": {"type": "string"},
          "to": {"type": "array", "items": {"type": "string"}},
          "cc": {"type": "array", "items": {"type": "string"}},
          "subject": {"type": "string"}, "text": {"type": "string"},
-         "in_reply_to": {"type": "string"}},
+         "reply_uid": {"type": "integer",
+                       "description": "UID der Mail, auf die geantwortet wird"},
+         "folder": {"type": "string", "default": "INBOX"}},
+         "required": ["account", "to"]}},
+    {"name": "mail_send", "art": "senden",
+     "description": "Eine Nachricht wirklich verschicken. Antwortest du auf eine Mail, gib "
+                    "`reply_uid` an — Betreff, Bezug und das Zitat der ursprünglichen Mail "
+                    "setzt das Werkzeug dann selbst. Schreib nur deine Antwort in `text`.",
+     "schema": {"type": "object", "properties": {
+         "account": {"type": "string"}, "identity": {"type": "string"},
+         "to": {"type": "array", "items": {"type": "string"}},
+         "cc": {"type": "array", "items": {"type": "string"}},
+         "subject": {"type": "string"}, "text": {"type": "string"},
+         "in_reply_to": {"type": "string"},
+         "reply_uid": {"type": "integer",
+                       "description": "UID der Mail, auf die geantwortet wird"},
+         "folder": {"type": "string", "default": "INBOX"}},
          "required": ["account", "to"]}},
 ]
 BY_NAME = {w["name"]: w for w in TOOLS}
@@ -140,14 +150,18 @@ async def toollist(db: AsyncSession, user: User) -> list[dict]:
 async def instructions(db: AsyncSession, user: User) -> str:
     """The house rules of all released mailboxes, for the `instructions` field of the
     protocol: it is read on connecting, so before the first tool runs."""
+    # The one rule that applies to every mailbox, and it stands first because it is the one
+    # that gets forgotten: an answer without the question in it is unreadable a week later.
+    always = ("Antwortest du auf eine Mail, gib bei `mail_send`/`mail_draft` immer "
+              "`reply_uid` (und `folder`) an und schreib in `text` NUR deine Antwort. "
+              "Betreff, Bezug und das Zitat der ursprünglichen Mail setzt das Werkzeug "
+              "selbst, und deine Antwort steht über dem Zitat. Zitiere nicht von Hand.")
     parts = []
     for k in await accounts(db, user):
         if k.mcp_instructions:
             parts.append(f"Postfach „{k.name}\": {k.mcp_instructions.strip()}")
-    if not parts:
-        return ""
-    return ("House rules of the released mailboxes — they apply before anything else:\n\n"
-            + "\n\n".join(parts))
+    return ("House rules of the released mailboxes, they apply before anything else:\n\n"
+            + "\n\n".join([always, *parts]))
 
 
 async def _account(db: AsyncSession, user: User, name: str, tool: str) -> MailAccount:
@@ -234,14 +248,70 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
                   "in_reply_to": str(args.get("in_reply_to") or ""), "attachments": []}
         if not fields["to"]:
             raise ValueError("Nothing goes out without a recipient")
+        # An answer carries the mail it answers, always. Whoever reads it a week later has the
+        # question in front of them, not a lone sentence, and mail programs thread by the
+        # reference. Asking the model to remember all of that every time is how it ends up
+        # missing sometimes, so the tool does it.
+        origin = None
+        if args.get("reply_uid") is not None:
+            origin = await _as_answer(account, fields, int(args["reply_uid"]),
+                                      str(args.get("folder") or "INBOX"))
         if name == "mail_draft":
             await mailbox.draft_save(account, ident, fields)
-            return {"ok": True, "draft": True}
+            return {"ok": True, "draft": True, "quoted": bool(origin)}
         await mailbox.send(account, ident, fields)
+        if origin is not None:
+            # Only after it went out, and never at the price of the send: see `_mark_about`
+            # in the mail API, this is the same rule.
+            try:
+                await mailbox.flag(account, str(args.get("folder") or "INBOX"),
+                                   int(args["reply_uid"]), mailbox.ANSWERED, True)
+            except Exception:  # noqa: BLE001
+                log.warning("the answered mark on %s could not be set", args["reply_uid"],
+                            exc_info=True)
         log.info("MCP: mail from %s through account %s to %s", user.id, account.name, fields["to"])
-        return {"ok": True, "sent": True}
+        return {"ok": True, "sent": True, "quoted": bool(origin)}
 
     raise LookupError(f"Unbekanntes Werkzeug „{name}\"")
+
+
+def quote(origin: dict) -> str:
+    """The original mail as a quote: attribution line, then every line behind a `>`.
+
+    The plain form every mail program has been writing for thirty years, and deliberately not
+    a prettier one: what matters is that the far side sees its own words unchanged and that a
+    program can fold them away.
+    """
+    when = str(origin.get("date") or "")
+    who = ", ".join(a.get("addr", "") for a in (origin.get("from") or []) if a.get("addr"))
+    head = f"Am {when} schrieb {who}:" if who or when else "Ursprüngliche Nachricht:"
+    body = str(origin.get("text") or "").rstrip()
+    return head + "\n" + "\n".join(f"> {line}" for line in body.split("\n"))
+
+
+async def _as_answer(account: MailAccount, fields: dict, uid: int, folder: str) -> dict | None:
+    """Turn the fields into a real answer: subject, reference, and the quote below the text.
+
+    The answer stays ABOVE the quote. That is what a person expects when they open it: the
+    new part first, the old part underneath for looking up.
+    """
+    try:
+        origin = await mailbox.message(account, folder, uid)
+    except Exception as exc:  # noqa: BLE001
+        # Better an answer without a quote than none at all, but it must not happen quietly.
+        log.warning("the mail %s:%s to answer could not be read (%s)", folder, uid, exc)
+        return None
+    subject = (fields.get("subject") or "").strip()
+    original = str(origin.get("subject") or "")
+    if not subject:
+        subject = original
+    if not subject.lower().startswith("re:"):
+        subject = f"Re: {subject}"
+    fields["subject"] = subject
+    if not fields.get("in_reply_to"):
+        fields["in_reply_to"] = str(origin.get("message_id") or "")
+    fields["text"] = (fields.get("text") or "").rstrip() + "\n\n" + quote(origin)
+    return origin
 
 
 async def _identity(db: AsyncSession, account: MailAccount, wish: str) -> MailIdentity:

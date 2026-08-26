@@ -442,13 +442,19 @@ async def test_instructions_appear_on_connect_and_on_the_account(db):
     assert accounts[0]["instructions"].startswith("Sachlich")
 
 
-async def test_no_empty_field_without_an_instruction(db):
-    """An empty hint is worse than none: it looks like a rule."""
+async def test_a_mailbox_without_rules_adds_no_empty_line(db):
+    """An empty hint is worse than none: it looks like a rule.
+
+    What always stands there is the one rule that belongs to no mailbox in particular, how an
+    answer is written. A mailbox that has nothing of its own to say adds nothing to it.
+    """
     from app.services.mail_mcp import instructions, execute
 
     anna = await make_user(db, "anna")
-    await _mcp_account(db, anna)
-    assert await instructions(db, anna) == ""
+    account = await _mcp_account(db, anna)
+    text = await instructions(db, anna)
+    assert "reply_uid" in text, "the standing rule stands there"
+    assert account.name not in text, "and nothing about a mailbox that said nothing"
     assert "instructions" not in (await execute(db, anna, "mail_accounts", {}))[0]
 
 

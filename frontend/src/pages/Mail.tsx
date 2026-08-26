@@ -81,6 +81,7 @@ interface ComposeStart {
   text?: string;
   in_reply_to?: string;
   replaces_uid?: number;
+  replaces_folder?: string;
   /** The mail this one answers or passes on. It gets the mark once the sending worked. */
   about_uid?: number;
   about_folder?: string;
@@ -327,7 +328,9 @@ export default function Mail() {
       </div>
 
       {compose && accountId && (
-        <ComposeDialog accountId={accountId} start={compose} onClose={() => setCompose(null)}
+        <ComposeDialog accountId={accountId} start={compose}
+          onGone={(gone) => { if (uid === gone) setUid(null); }}
+          onClose={() => setCompose(null)}
           onError={setErr} />
       )}
       {settings && (
@@ -1855,6 +1858,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     text: m?.text || "",
     attachments: files,
     replaces_uid: uid,
+    replaces_folder: folder,
   });
 
   /** Back into the writing window, with everything the draft already had. */
@@ -1891,6 +1895,8 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     },
     onSuccess: () => {
       setSendDraftOpen(false);
+      // Out of the list right away: it went out, it is not a draft any more.
+      takeOut(qc, folder, [uid]);
       qc.invalidateQueries({ queryKey: ["mail-list"] });
       onBack();
     },
@@ -2267,10 +2273,13 @@ function ActionFields({ act, runs: running, onClose, onStart }: {
 }
 
 
-function ComposeDialog({ accountId, start, onClose, onError: onError }: {
+function ComposeDialog({ accountId, start, onClose, onGone, onError: onError }: {
   accountId: number; start: ComposeStart; onClose: () => void;
+  /** The draft that was replaced is gone. Whoever was looking at it has to look away. */
+  onGone?: (uid: number) => void;
   onError: (m: string) => void;
 }) {
+  const qc = useQueryClient();
   const { data: identities } = useQuery({
     queryKey: ["mail-identities", accountId],
     queryFn: () => api.get<MailIdentity[]>(`/mailbox/accounts/${accountId}/identities`),
@@ -2314,14 +2323,32 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
     about_folder: start.about_folder || "",
     about_kind: start.about_kind || "",
   });
+  /**
+   * The draft that was here is gone, whatever came of it.
+   *
+   * A message cannot be changed over IMAP, so both saving and sending write a new one and
+   * take the old one away. The row in the list would otherwise stay until the next fetch,
+   * showing a draft that no longer exists: one edits it, and the old text stands there as if
+   * nothing had happened.
+   */
+  const replaced = () => {
+    const gone = start.replaces_uid;
+    if (gone === undefined) return;
+    takeOut(qc, start.replaces_folder || "", [gone]);
+    onGone?.(gone);
+    // And the new version has a number nobody here knows yet, so it comes with the next
+    // fetch. Removing first and fetching after is what makes the change look immediate.
+    qc.invalidateQueries({ queryKey: ["mail-list"] });
+  };
+
   const send = useMutation({
     mutationFn: () => api.post(`/mailbox/accounts/${accountId}/send`, base()),
-    onSuccess: onClose,
+    onSuccess: () => { replaced(); onClose(); },
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.send_failed")),
   });
   const draft = useMutation({
     mutationFn: () => api.post(`/mailbox/accounts/${accountId}/draft`, base()),
-    onSuccess: onClose,
+    onSuccess: () => { replaced(); onClose(); },
     onError: (e) => onError(e instanceof ApiError ? e.message : tr("mail.draft_failed")),
   });
 
