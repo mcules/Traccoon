@@ -196,6 +196,7 @@ export default function TicketDrawer({
     onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const [newPersonName, setNewPersonName] = useState("");
+  const [editDescription, setEditDescription] = useState(false);
   const setAssignee = useMutation({
     mutationFn: (body: { user_id?: number; display_name?: string }) =>
       api.post(`/issues/${issueKey}/assignee`, body),
@@ -377,13 +378,35 @@ export default function TicketDrawer({
       className="mb-3 w-full rounded border border-line bg-surface px-3 py-2 text-base font-medium" />
   );
 
+  // The description is markdown, so it is READ as markdown and only becomes a text area when
+  // somebody wants to write. Before, it stood in the box it is edited in at all times: every
+  // list a bullet, every heading a hash, and nobody sees what they wrote. Saving stays where
+  // it was, on the save button of the drawer, so the draft is not a second way to keep it.
   const bDescription = (
     <details open className="mb-3 rounded border border-line">
-      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">{tr("ticket_drawer.description")}</summary>
+      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">
+        {tr("ticket_drawer.description")}
+      </summary>
       <div className="px-3 pb-3">
-        <textarea value={draft.description}
-          onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-          rows={4} className="w-full rounded border border-line bg-surface px-3 py-2" />
+        {editDescription ? (
+          <>
+            <textarea value={draft.description} autoFocus
+              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              rows={8} className="w-full rounded border border-line bg-surface px-3 py-2" />
+            <button onClick={() => setEditDescription(false)} className={BUTTON_TEXT.secondary}>
+              {tr("ticket_drawer.done_writing")}
+            </button>
+          </>
+        ) : (
+          <div onDoubleClick={() => setEditDescription(true)}>
+            {draft.description.trim()
+              ? <Markdown text={draft.description} />
+              : <span className="text-sm text-muted">{tr("ticket_drawer.no_description_yet")}</span>}
+            <button onClick={() => setEditDescription(true)} className={BUTTON_TEXT.secondary}>
+              {tr("common.edit")}
+            </button>
+          </div>
+        )}
       </div>
     </details>
   );
@@ -582,7 +605,7 @@ export default function TicketDrawer({
               {c.kind === "internal" && <span className="rounded bg-line px-1">intern</span>}
               <span className="ml-auto">{formatTime(c.created_at)}</span>
             </div>
-            <div className="whitespace-pre-wrap">{c.body}</div>
+            <Markdown text={c.body} />
           </div>
         ))}
         {comments?.length === 0 && <div className="text-xs text-muted">{tr("ticket_drawer.no_comments_yet")}</div>}
