@@ -702,7 +702,7 @@ export default function TicketDrawer({
             || issue.agent_status === "failed") && (
             <button onClick={() => life.mutate("plan")}
               className={BUTTON_SMALL.primary}>
-              🧭 {issue.agent_status === "failed" ? "Erneut planen" : tr("ticket_drawer.start_planning")}
+              🧭 {issue.agent_status === "failed" ? tr("ticket_drawer.plan_again") : tr("ticket_drawer.start_planning")}
             </button>
           )}
         </div>

@@ -16,9 +16,11 @@ from ..models.ticket import (
 )
 from ..models.user import User
 from ..schemas.issue import (
-    AssignAgentIn, AssigneeIn, CommentCreate, CommentOut, IssueCreate, IssueOut, IssueUpdate,
+    AssignAgentIn, AssigneeIn, BulkIn, CommentCreate, CommentOut, IssueCreate, IssueOut,
+    IssueUpdate,
     MoveIn, TagIn,
 )
+from ..services import issue_actions as actions
 from .deps import Access, build_access, get_current_user, get_project_access
 
 router = APIRouter(tags=["issues"])
@@ -173,13 +175,7 @@ async def delete_issue(
     db: AsyncSession = Depends(get_session),
 ):
     issue, access = pair
-    if not access.has_role(ProjectRole.maintainer):
-        raise Error(status.HTTP_403_FORBIDDEN, "err.deleting_requires_maintainer",
-                     "Deleting requires maintainer")
-    if issue.testenv_status:
-        from ..services.testenv import stop_testenv
-        await stop_testenv(db, issue, access.project.key)
-    await db.delete(issue)
+    await actions.delete(db, issue, access)
     await db.commit()
 
 
@@ -189,20 +185,7 @@ async def archive_issue(
     db: AsyncSession = Depends(get_session),
 ):
     issue, access = pair
-    _require_write(access)
-    now = dt.datetime.now(tz=dt.timezone.utc)
-    issue.archived = True
-    issue.archived_at = now
-    # Clear away an orphaned test environment as well: container, volumes, port.
-    if issue.testenv_status:
-        from ..services.testenv import stop_testenv
-        await stop_testenv(db, issue, access.project.key)
-    # Agent runs follow the ticket.
-    from ..models.agents import Run
-    await db.execute(
-        sa_update(Run).where(Run.issue_id == issue.id, Run.archived.is_(False))
-        .values(archived=True, archived_at=now)
-    )
+    await actions.archive(db, issue, access)
     await db.commit()
     await db.refresh(issue)
     return issue
@@ -214,14 +197,7 @@ async def unarchive_issue(
     db: AsyncSession = Depends(get_session),
 ):
     issue, access = pair
-    _require_write(access)
-    issue.archived = False
-    issue.archived_at = None
-    from ..models.agents import Run
-    await db.execute(
-        sa_update(Run).where(Run.issue_id == issue.id, Run.archived.is_(True))
-        .values(archived=False, archived_at=None)
-    )
+    await actions.unarchive(db, issue, access)
     await db.commit()
     await db.refresh(issue)
     return issue
@@ -236,29 +212,7 @@ async def assign_agent(
     db: AsyncSession = Depends(get_session),
 ):
     issue, access = pair
-    if not access.ai_assign:
-        raise Error(status.HTTP_403_FORBIDDEN, "err.ai_right_ai_assign_required",
-                     "The AI right (ai_assign) is required")
-    issue.assigned_agent = data.agent
-    issue.assigned_by_user_id = access.user.id
-    issue.assigned_at = dt.datetime.now(tz=dt.timezone.utc)
-    # The assignment starts the planning: with a PM the PM plans and orchestrates, with a
-    # direct assignment the plan_agent plans and the assigned agent implements afterwards.
-    if issue.agent_status is None:
-        from ..services.artifacts import set_ticket_status
-        # Planning starts, so "in progress" (out of to do); the artifact row follows.
-        await set_ticket_status(db, issue, TicketAgentStatus.planning)
-    await db.commit()
-    # The flow itself sits in the process "AI ticket lifecycle" (project copy, set of the
-    # user or global default); here it is only triggered.
-    from ..services.lifecycle_flow import start_lifecycle
-    await start_lifecycle(db, issue, access.user.id,
-                          entry="exec" if issue.plan else "plan")
-    await db.commit()
-    from ..services.events import emit
-    await emit(db, "issue.assigned", project_id=issue.project_id, issue_id=issue.id,
-               actor_id=access.user.id,
-               payload={"issue": {"key": issue.key, "agent": data.agent}})
+    await actions.assign_agent(db, issue, access, agent=data.agent)
     await db.refresh(issue)
     return issue
 
@@ -478,26 +432,92 @@ async def add_comment(
     return c
 
 
-# ---------- Board-Move (Status + Reihenfolge) ----------
+# ---------- The same handle over several tickets ----------
 
-RANK_STEP = 1000
+# How many tickets one request may carry. High enough for "tick everything and archive it",
+# low enough that a single call cannot occupy the database for minutes.
+BULK_MAX = 200
 
 
-async def _guard_done_transition(issue: Issue, target: WorkflowStatus, db: AsyncSession) -> None:
-    """In the test environment flow, "done" may ONLY be set over POST /issues/{key}/complete
-    (stop, merge, done). A direct board move there would skip the merge and show a silently
-    unmerged ticket as finished."""
-    from ..models.enums import StatusCategory
-    if target.category != StatusCategory.done:
-        return
-    if issue.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing):
-        return
-    project = await db.get(Project, issue.project_id)
-    if project is None or not project.testenv_enabled:
-        return
-    raise Error(status.HTTP_409_CONFLICT, "err.direct_jump_to_done",
-                 'On to "done" only over "set to done", which stops the test environment and '
-                 "merges the branch.")
+@router.post("/projects/{project_id}/issues/bulk")
+async def bulk_issues(
+    project_id: int,
+    data: BulkIn,
+    access: Access = Depends(get_project_access),
+    db: AsyncSession = Depends(get_session),
+):
+    """One action, several tickets, the same rules as on a single one.
+
+    Every ticket is committed on its own. A selection is a rough instrument: among thirty
+    there is the one that is on "testing" and may not jump to "done", and it would be the
+    wrong answer to let it undo the other twenty nine. So what went wrong is REPORTED, with
+    the key and the reason, instead of being swallowed or taking everything with it.
+
+    The rules themselves live in `services/issue_actions`, the same functions the single
+    endpoints call. A bulk action that carried its own copy of them would be the place where
+    the list and the drawer start to disagree.
+    """
+    if not data.keys:
+        return {"done": 0, "failed": []}
+    if len(data.keys) > BULK_MAX:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.too_many_tickets_at_once",
+                     "At most {n} tickets at once", n=BULK_MAX)
+
+    rows = (await db.execute(
+        select(Issue).where(Issue.project_id == project_id, Issue.key.in_(data.keys))
+    )).scalars().all()
+    found = {i.key: i for i in rows}
+
+    done, failed = 0, []
+    for key in data.keys:
+        issue = found.get(key)
+        # A key of a foreign project is not an error of the caller's rights but a stale list:
+        # somebody deleted or moved it while the selection stood.
+        if issue is None:
+            failed.append({"key": key, "error_key": "err.ticket_not_found",
+                            "error": "Ticket not found"})
+            continue
+        try:
+            if data.action == "status":
+                if data.status_id is None:
+                    raise Error(status.HTTP_400_BAD_REQUEST, "err.status_id_required",
+                                 "status_id is required")
+                await actions.move(db, issue, access, status_id=data.status_id)
+            elif data.action == "priority":
+                if data.priority is None:
+                    raise Error(status.HTTP_400_BAD_REQUEST, "err.priority_required",
+                                 "priority is required")
+                await actions.set_priority(db, issue, access, priority=data.priority)
+            elif data.action == "assignee":
+                if data.user_id is None:
+                    await actions.clear_assignee(db, issue, access)
+                else:
+                    await actions.set_assignee(db, issue, access, user_id=data.user_id)
+            elif data.action == "archive":
+                await actions.archive(db, issue, access)
+            elif data.action == "unarchive":
+                await actions.unarchive(db, issue, access)
+            elif data.action == "delete":
+                await actions.delete(db, issue, access)
+            elif data.action == "assign_agent":
+                # This one commits inside (the lifecycle reads the ticket back), so no commit
+                # of ours afterwards.
+                await actions.assign_agent(db, issue, access,
+                                            agent=data.agent or "project_manager")
+                done += 1
+                continue
+            await db.commit()
+            done += 1
+        except Error as exc:
+            # The key travels along, not only the sentence: the browser says it in the
+            # language of whoever is reading, exactly as with every other error in this house.
+            await db.rollback()
+            failed.append({"key": key, "error_key": exc.key, "error": exc.detail,
+                            "values": exc.values})
+    return {"done": done, "failed": failed, "action": data.action}
+
+
+# ---------- Board move (status plus order) ----------
 
 
 @router.put("/issues/{key}/move", response_model=IssueOut)
@@ -507,28 +527,7 @@ async def move_issue(
     db: AsyncSession = Depends(get_session),
 ):
     issue, access = pair
-    _require_write(access)
-    target_status = await db.get(WorkflowStatus, data.status_id)
-    if target_status is None or target_status.project_id != issue.project_id:
-        raise Error(status.HTTP_400_BAD_REQUEST, "err.status_does_not_belong_project",
-                     "The status does not belong to the project")
-    await _guard_done_transition(issue, target_status, db)
-    issue.status_id = data.status_id
-    await db.flush()
-    # Order all tickets of the target column (except this one), insert anew, ranks sequential.
-    others = (
-        await db.execute(
-            select(Issue).where(
-                Issue.project_id == issue.project_id,
-                Issue.status_id == data.status_id,
-                Issue.id != issue.id,
-            ).order_by(Issue.rank, Issue.number)
-        )
-    ).scalars().all()
-    pos = max(0, min(data.position, len(others)))
-    ordered = others[:pos] + [issue] + others[pos:]
-    for i, it in enumerate(ordered):
-        it.rank = f"{(i + 1) * RANK_STEP:012d}"
+    await actions.move(db, issue, access, status_id=data.status_id, position=data.position)
     await db.commit()
     await db.refresh(issue)
     return issue

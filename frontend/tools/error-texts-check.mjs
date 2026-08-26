@@ -10,15 +10,26 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const BACKEND = existsSync("/backend") ? "/backend" : "../backend";
-const API = join(BACKEND, "app/api");
+// Not only `app/api`: a rule that several endpoints share lives in `app/services`, and its
+// refusal carries a key just the same. Reading the door alone declared exactly those keys
+// orphaned the moment they moved one floor down.
+const ROOTS = ["app/api", "app/services", "app/worker", "app/core"];
 
 const keys = new Set();
-for (const file of readdirSync(API).filter((d) => d.endsWith(".py"))) {
-  const source = readFileSync(join(API, file), "utf8");
-  for (const hit of source.matchAll(/\bError\(\s*[^,]+,\s*"(err\.[a-z0-9_]+)"/g)) {
-    keys.add(hit[1]);
+const walk = (dir) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) { walk(path); continue; }
+    if (!entry.name.endsWith(".py")) continue;
+    const source = readFileSync(path, "utf8");
+    for (const hit of source.matchAll(/\bError\(\s*[^,]+,\s*"(err\.[a-z0-9_]+)"/g)) {
+      keys.add(hit[1]);
+    }
   }
-}
+};
+for (const root of ROOTS) walk(join(BACKEND, root));
+// `core/error.py` shows the shape of a call in its own docstring. That example is not a key.
+keys.delete("err.x");
 
 const de = JSON.parse(readFileSync("src/i18n/de.json", "utf8"));
 const en = JSON.parse(readFileSync("src/i18n/en.json", "utf8"));

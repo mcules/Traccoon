@@ -1,5 +1,7 @@
 import datetime as dt
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from ..models.enums import Priority, TicketAgentStatus
@@ -100,6 +102,22 @@ class IssueOut(BaseModel):
 class MoveIn(BaseModel):
     status_id: int
     position: int = 0  # zero based position within the target column
+
+
+class BulkIn(BaseModel):
+    """The same handle over several tickets, the way the mailbox already does it.
+
+    `keys` and not ids: that is what the list has in its hand and what a person reads. The
+    parameters of the single actions stand beside it, and which of them apply is decided by
+    `action`, so one shape instead of six.
+    """
+    keys: list[str]
+    action: Literal["status", "priority", "assignee", "archive", "unarchive", "delete",
+                    "assign_agent"]
+    status_id: int | None = None
+    priority: Priority | None = None
+    user_id: int | None = None          # None at "assignee" clears it
+    agent: str | None = None
 
 
 class TagIn(BaseModel):
