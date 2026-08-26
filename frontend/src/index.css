@@ -8,6 +8,10 @@
   --ink: 23 43 77;
   --muted: 107 119 140;
   --line: 223 225 230;
+  /* The blue of the house, the same in both themes. It is a variable and not a fixed
+     value in the config so that a box with a look of its own -- the terminal of the PM
+     chat -- can redefine it for its inside without every component knowing about it. */
+  --brand: 0 82 204;
 }
 :root[data-theme="dark"] {
   --card: 34 39 46;

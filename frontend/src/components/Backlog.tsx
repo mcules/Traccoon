@@ -5,6 +5,7 @@ import { api, ApiError, Issue, Project, ProjectMeta, Sprint } from "../api";
 import { type OnOpenTicket } from "../ticketOpen";
 import { Area, BUTTON, BUTTON_SMALL, BUTTON_TEXT } from "./ui";
 import BulkBar from "./issues/BulkBar";
+import { IssueFilterRow, useFiltered, useIssueFilter } from "./issues/IssueFilter";
 import IssueTable from "./issues/IssueTable";
 import { useSelection } from "./issues/useSelection";
 
@@ -27,6 +28,8 @@ export default function Backlog({
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [err, setErr] = useState("");
+  const filter = useIssueFilter();
+  const { filtered, count } = useFiltered(issues, filter);
   const { ticked, chosen, tick, setMany, clear } = useSelection();
 
   const inv = () => {
@@ -50,9 +53,10 @@ export default function Backlog({
   });
 
   const open = useMemo(() => (meta.sprints || []).filter((s) => s.state !== "closed"), [meta]);
-  const backlog = useMemo(() => issues.filter((i) => !i.sprint_id), [issues]);
-  // Only what stands on this page can be acted on.
-  const shown = useMemo(() => new Set(issues.map((i) => i.key)), [issues]);
+  const backlog = useMemo(() => filtered.filter((i) => !i.sprint_id), [filtered]);
+  // Only what stands on this page can be acted on, and a filter that hides a ticket hides it
+  // from the handles as well.
+  const shown = useMemo(() => new Set(filtered.map((i) => i.key)), [filtered]);
   const picked = useMemo(() => chosen.filter((k) => shown.has(k)), [chosen, shown]);
 
   const table = (rows: Issue[], empty: string) => (
@@ -66,8 +70,12 @@ export default function Backlog({
 
       <BulkBar project={project} meta={meta} picked={picked} sprints onDone={clear} />
 
+      {/* The filter stands over every section, which is why it is a card of its own and not
+          the tool row of one of them: it searches the sprints as well as the rest. */}
+      <Area tools={<IssueFilterRow meta={meta} filter={filter} count={count} />} />
+
       {open.map((s: Sprint) => {
-        const inside = issues.filter((i) => i.sprint_id === s.id);
+        const inside = filtered.filter((i) => i.sprint_id === s.id);
         const done = inside.filter((i) => i.resolved_at).length;
         return (
           <Area key={s.id} title={s.name} tools={

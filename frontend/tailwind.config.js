@@ -5,7 +5,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        brand: "#0052CC",
+        brand: "rgb(var(--brand) / <alpha-value>)",
         card: "rgb(var(--card) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",
         ink: "rgb(var(--ink) / <alpha-value>)",

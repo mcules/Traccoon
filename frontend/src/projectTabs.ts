@@ -83,8 +83,8 @@ export function projectTabs(project: Project | undefined): [ProjectTab, string][
 /**
  * Tab to chrome tabs (the sub-menu).
  *
- * `aktuell` keeps the group highlighted and its link pointing at the view one is in, so
- * that a click on "Arbeit" while in the backlog does not silently jump back to the board.
+ * `active` keeps the group highlighted and its link pointing at the view one is in, so that
+ * a click on "work" while in the backlog does not silently jump back to the board.
  */
 export function projectChromeTabs(
   project: Project | undefined,

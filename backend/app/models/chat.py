@@ -7,7 +7,7 @@ from ..db import Base
 
 
 class Message(Base):
-    """PM-Chat-Nachricht (projekt-scoped; Comment bleibt ticket-scoped)."""
+    """A message of the PM chat (project scoped; a comment stays ticket scoped)."""
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -17,5 +17,5 @@ class Message(Base):
     author_label: Mapped[str] = mapped_column(String(255), default="")
     content: Mapped[str] = mapped_column(Text, default="")
     round: Mapped[int] = mapped_column(Integer, default=0)
-    meta_type: Mapped[str | None] = mapped_column(String(30), nullable=True)  # z.B. "compact"
+    meta_type: Mapped[str | None] = mapped_column(String(30), nullable=True)  # e.g. "compact"
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

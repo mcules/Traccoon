@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { tr } from "../i18n";
+import Markdown from "./Markdown";
 import { useQuery } from "@tanstack/react-query";
 import { api, getToken, Project } from "../api";
 import { useAuth } from "../auth";
@@ -9,7 +10,11 @@ import { BUTTON } from "./ui";
 interface Msg { id?: number; role: string; author?: string; content: string; created_at?: string; }
 
 export default function PmChat({ project }: { project: Project }) {
-  const [messages, setMessages] = useState<Msg[]>([]);
+  // What has been said stands in two places on purpose: the history is what the server
+  // knows, the live part is what has arrived since. Before, the history was poured into
+  // state from inside the query, and a second mount within the cache window never ran the
+  // query again -- so leaving the chat and coming back showed an empty one.
+  const [live, setLive] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -17,22 +22,20 @@ export default function PmChat({ project }: { project: Project }) {
   const { user } = useAuth();
   const cli = user?.pm_chat_style === "cli";
 
-  useQuery({
+  const { data: history } = useQuery({
     queryKey: ["pm-history", project.id],
-    queryFn: async () => {
-      const h = await api.get<Msg[]>(`/projects/${project.id}/messages?token=${getToken()}`);
-      setMessages(h);
-      return h;
-    },
+    queryFn: () => api.get<Msg[]>(`/projects/${project.id}/messages?token=${getToken()}`),
   });
+  const messages = useMemo(() => [...(history ?? []), ...live], [history, live]);
 
   useEffect(() => {
     const proto = location.protocol === "https:" ? "wss" : "ws";
+    setLive([]);   // another project, another conversation
     const ws = new WebSocket(`${proto}://${location.host}/api/projects/${project.id}/ws?token=${getToken()}`);
     ws.onmessage = (e) => {
       try {
         const m = JSON.parse(e.data);
-        if (m.type === "pm_chat") setMessages((prev) => [...prev, { role: m.role, content: m.content, created_at: m.created_at }]);
+        if (m.type === "pm_chat") setLive((prev) => [...prev, { role: m.role, content: m.content, created_at: m.created_at }]);
       } catch { /* ignore */ }
     };
     wsRef.current = ws;
@@ -43,7 +46,7 @@ export default function PmChat({ project }: { project: Project }) {
 
   function send() {
     if (!text.trim() || wsRef.current?.readyState !== WebSocket.OPEN) return;
-    setMessages((prev) => [...prev, { role: "user", content: text, created_at: new Date().toISOString() }]);
+    setLive((prev) => [...prev, { role: "user", content: text, created_at: new Date().toISOString() }]);
     wsRef.current.send(JSON.stringify({ type: "chat", content: text }));
     setText("");
   }
@@ -67,10 +70,10 @@ function BubbleChat({ messages, text, setText, send, boxRef }: ViewProps) {
           <div key={i} className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
             m.role === "user" ? "ml-auto bg-brand/20" : m.role === "system" ? "bg-red-500/10 text-red-300" : "bg-surface"}`}>
             <div className="mb-1 flex items-center gap-2 text-xs text-muted">
-              <span>{m.role === "user" ? "Du" : m.role === "pm" ? "🤖 PM" : "System"}</span>
+              <span>{m.role === "user" ? tr("pm_chat.you") : m.role === "pm" ? "🤖 PM" : tr("pm_chat.system")}</span>
               {m.created_at && <span className="ml-auto">{formatTime(m.created_at)}</span>}
             </div>
-            <div className="whitespace-pre-wrap">{m.content}</div>
+            <Markdown text={m.content} />
           </div>
         ))}
         {messages.length === 0 && <div className="text-sm text-muted">{tr("pm_chat.tell_the_pm_what_to_do_it_creates_tickets_and")}</div>}
@@ -94,12 +97,19 @@ const T = {
 /** Terminal look like the Claude Code CLI in dark mode. */
 function CliChat({ messages, text, setText, send, boxRef, project }: ViewProps & { project: Project }) {
   return (
+    // The tokens are redefined for the inside of the box: whatever renders in here, the
+    // markdown of an answer above all, has to take the colours of the terminal and not those
+    // of the page, otherwise a code block sits in here as a bright patch.
     <div className="flex h-[70vh] flex-col overflow-hidden rounded-lg border font-mono text-[13px] leading-relaxed"
-      style={{ background: T.bg, borderColor: T.border, color: T.ink }}>
+      style={{
+        background: T.bg, borderColor: T.border, color: T.ink,
+        "--surface": "38 36 31", "--line": "51 48 43", "--muted": "139 133 122",
+        "--brand": "135 183 201",
+      } as CSSProperties}>
       <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs"
         style={{ borderColor: T.border, color: T.dim }}>
         <span style={{ color: T.accent }}>✻</span>
-        <span>projektmanager — {project.key}</span>
+        <span>{tr("pm_chat.project_manager")} — {project.key}</span>
       </div>
 
       <div ref={boxRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
@@ -126,8 +136,11 @@ function CliChat({ messages, text, setText, send, boxRef, project }: ViewProps &
             <div key={i} className="flex gap-2">
               <span style={{ color: system ? T.err : T.accent }}>{system ? "✗" : "⏺"}</span>
               <div className="min-w-0 flex-1">
-                <div className="whitespace-pre-wrap break-words" style={system ? { color: T.err } : undefined}>
-                  {m.content}
+                {/* The answer is markdown; the typed line above is not, because a terminal
+                    shows what one typed the way one typed it. The renderer sets no font, so
+                    inside here it keeps the monospace of the terminal. */}
+                <div className="break-words [&>div]:text-[13px]" style={system ? { color: T.err } : undefined}>
+                  <Markdown text={m.content} />
                 </div>
                 {m.created_at && (
                   <div className="mt-0.5 text-[11px]" style={{ color: T.dim }}>{formatTime(m.created_at)}</div>
@@ -145,7 +158,7 @@ function CliChat({ messages, text, setText, send, boxRef, project }: ViewProps &
           placeholder={tr("pm_chat.message_to_the_pm")}
           className="flex-1 bg-transparent font-mono text-[13px] outline-none placeholder:opacity-50"
           style={{ color: T.ink }} />
-        <span className="text-[11px]" style={{ color: T.dim }}>⏎ senden</span>
+        <span className="text-[11px]" style={{ color: T.dim }}>⏎ {tr("pm_chat.send").toLowerCase()}</span>
       </div>
     </div>
   );

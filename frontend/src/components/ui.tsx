@@ -24,12 +24,11 @@ export const ICON = {
  *
  * A button is blue. Before, most of them had a grey border, and grey is the colour a UI says
  * "nothing to get here" with: in a header with four of them every single one went under, and
- * the colour that actually means "disabled" was the
- * Normalzustand.
+ * the colour that actually means "disabled" was the normal state.
  *
  * So the rule here is: **grey means disabled, nothing else.**
  *
- * Drei Arten, mehr braucht es nicht:
+ * Three kinds, no more are needed:
  *
  * * `primary` — the one action this surface is about (filled blue).
  * * `secondary` — everything else one can do (blue border, blue text). Stays readable and
@@ -78,8 +77,8 @@ export const BUTTON = {
  * Actions without a surface: "show more", an × to remove, a link inside a line.
  *
  * Here too grey only stands for disabled — an action that exists is blue. A text button is
- * still no button with a surface: it subordinates itself to the text it stands in
- * steht, statt ihn zu unterbrechen.
+ * still no button with a surface: it subordinates itself to the text it
+ * stands in instead of interrupting it.
  */
 export const BUTTON_TEXT = {
   secondary: "text-brand transition-colors hover:underline disabled:text-muted disabled:no-underline",
@@ -384,7 +383,9 @@ export function Area({ title: title, subtitle, hint: hint, tools: tools, fills =
    *  Without it the content scrolls, which is what a list wants — in a flex column a list
    *  would be squeezed instead of scrolled, and `Listing` cuts off what sticks out. */
   column?: boolean;
-  children: ReactNode;
+  /** A card may be its tool row alone: the filter of the backlog belongs to every section
+   *  below it and therefore to none of their cards. */
+  children?: ReactNode;
 }) {
   return (
     <div className={`rounded-lg border border-line bg-card p-4 ${
