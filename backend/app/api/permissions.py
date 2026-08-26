@@ -102,7 +102,7 @@ async def answer_blocker(data: AnswerIn, pair: tuple[Issue, Access] = Depends(ge
     blocker.answered_by = access.user.id
     # The answer as a user comment (which flows into the next run)
     db.add(Comment(issue_id=issue.id, author_id=access.user.id,
-                   author_label=access.user.display_name or access.user.username,
+                   author_label=access.name_here,
                    body=data.answer, kind="agent"))
     await db.commit()
     # The process waits at an event node for exactly this answer.

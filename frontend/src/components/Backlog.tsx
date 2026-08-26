@@ -97,7 +97,10 @@ export default function Backlog({
         );
       })}
 
-      <Area title={tr("backlog.backlog")} tools={
+      {/* No heading: the view switcher above already says "backlog", and a card that repeats
+          the name of the page one is standing on says nothing. A sprint card carries a title
+          because it names WHICH sprint; this one is the rest. */}
+      <Area tools={
         <>
           <span className="text-xs text-muted">
             {tr("backlog.n_tickets", { n: backlog.length })}

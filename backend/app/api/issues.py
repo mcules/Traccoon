@@ -422,7 +422,10 @@ async def add_comment(
         raise Error(status.HTTP_400_BAD_REQUEST, "err.kind_has_agent_internal",
                      "kind has to be agent|internal")
     from ..services.comments import apply_user_comment
-    label = access.user.display_name or access.user.username
+    # The name in the ticket is the name in this project: a callsign in the radio project,
+    # a nickname in the other one. It is written into the row as it is now, because a
+    # comment is a record of a moment and not a live view of a profile.
+    label = access.name_here
     await apply_user_comment(db, issue, data.body, access.user.id, label, data.kind)
     c = (
         await db.execute(

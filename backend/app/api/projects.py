@@ -9,10 +9,11 @@ from ..core.error import Error
 from ..db import get_session
 from ..models.enums import IssueTypeCategory, ProjectRole, ResourceType, StatusCategory
 from ..models.hardware import HardwareAsset, Location
-from ..models.project import Project, ProjectMember, ResourceGrant, default_ai_assign
+from ..models.project import Project, ProjectMember, ResourceGrant, default_ai_assign, member_name
 from ..models.ticket import Board, BoardColumn, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import User
 from ..schemas.project import (
+    AliasIn,
     MemberCreate, MemberOut, MemberUpdate, ProjectCreate, ProjectOut,
     ProjectSettings, ProjectSettingsOut, ProjectUpdate, ResourceGrantIn, ResourceGrantOut,
 )
@@ -256,10 +257,43 @@ async def list_members(
         )
     ).all()
     return [
-        MemberOut(id=m.id, user_id=u.id, username=u.username, display_name=u.display_name,
-                  role=m.role, ai_assign=m.ai_assign)
+        MemberOut(id=m.id, user_id=u.id, username=u.username,
+                  display_name=member_name(m.alias, u.display_name, u.username),
+                  alias=m.alias, role=m.role, ai_assign=m.ai_assign)
         for m, u in rows
     ]
+
+
+@router.put("/projects/{project_id}/me/alias", response_model=MemberOut)
+async def set_my_alias(
+    data: AliasIn,
+    access: Access = Depends(get_project_access),
+    db: AsyncSession = Depends(get_session),
+):
+    """The name I carry in THIS project.
+
+    Self service on purpose: what somebody is called is theirs to say, and a maintainer
+    renaming a colleague is a different matter than a colleague choosing a callsign. It sits
+    on the membership, so leaving the project takes the alias with it, and rejoining starts
+    from the account name again.
+
+    An inherited membership has no row here, so there is nothing to write on: the alias of
+    the project one inherits from applies, and that is where it can be changed.
+    """
+    member = (await db.execute(
+        select(ProjectMember).where(ProjectMember.project_id == access.project.id,
+                                    ProjectMember.user_id == access.user.id)
+    )).scalar_one_or_none()
+    if member is None:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.no_membership_of_this_project",
+                     "You have no membership of this project")
+    member.alias = data.alias.strip()
+    await db.commit()
+    await db.refresh(member)
+    return MemberOut(id=member.id, user_id=access.user.id, username=access.user.username,
+                     display_name=member_name(member.alias, access.user.display_name,
+                                              access.user.username),
+                     alias=member.alias, role=member.role, ai_assign=member.ai_assign)
 
 
 @router.post("/projects/{project_id}/members", response_model=MemberOut,
@@ -288,7 +322,8 @@ async def add_member(
     await db.commit()
     await db.refresh(m)
     return MemberOut(id=m.id, user_id=target.id, username=target.username,
-                     display_name=target.display_name, role=m.role, ai_assign=m.ai_assign)
+                     display_name=member_name(m.alias, target.display_name, target.username),
+                     alias=m.alias, role=m.role, ai_assign=m.ai_assign)
 
 
 @router.put("/projects/{project_id}/members/{user_id}", response_model=MemberOut)

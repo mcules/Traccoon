@@ -36,7 +36,9 @@ def _require_ai(access: Access) -> None:
 
 
 def _who(access: Access) -> str:
-    return access.user.display_name or access.user.username
+    """The name under which somebody appears in the history of a ticket, so the one they
+    carry in this project."""
+    return access.name_here
 
 
 async def _waiting_approval(db: AsyncSession, issue: Issue) -> tuple[int, WorkflowStepRun]:

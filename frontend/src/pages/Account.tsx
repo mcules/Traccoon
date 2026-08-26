@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { tr, setLanguage } from "../i18n";
-import { api, ApiError } from "../api";
+import { api, ApiError, Project } from "../api";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 import MailAccountsPanel from "../components/MailAccountsPanel";
@@ -11,7 +11,7 @@ import {
   AgentsOperationPanel, AssistantNoticesPanel, MemoryPanel, MySwitchPanel, TimezonePanel,
   NightWindowPanel,
 } from "../components/AccountPanels";
-import { BUTTON } from "../components/ui";
+import { BUTTON, BUTTON_SMALL } from "../components/ui";
 
 /**
  * Everything that belongs to the person, on one page.
@@ -49,7 +49,7 @@ export default function Account() {
           The tokens stand beside the password: both are how this person proves who they are,
           only one of them is meant for a client that runs for months. */}
       {tab === "person" && (
-        <><LanguagePanel /><TimezonePanel /><EmailPanel /><PasswordPanel /><TokensPanel /></>
+        <><LanguagePanel /><TimezonePanel /><ProjectAliasPanel /><EmailPanel /><PasswordPanel /><TokensPanel /></>
       )}
       {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
       {tab === "notifications" && <><NotificationsPanel /><AssistantNoticesPanel /></>}
@@ -187,6 +187,75 @@ function LanguagePanel() {
     </section>
   );
 }
+
+/**
+ * The name one carries in a project.
+ *
+ * A radio project knows a callsign, a community project a nickname, and neither of them is
+ * the name on the account. It stands here and not in the project settings, because it is
+ * self service: what somebody is called is theirs to say, and the project settings are open
+ * to maintainers only.
+ */
+function ProjectAliasPanel() {
+  const { data: projects } = useQuery({
+    queryKey: ["my-projects"], queryFn: () => api.get<Project[]>("/projects"),
+  });
+  const mine = (projects || []).filter((p) => p.my_role);
+  if (!mine.length) return null;
+  return (
+    <section className="space-y-3 rounded-lg border border-line bg-card p-4">
+      <div className="text-sm font-medium text-ink">{tr("account.name_per_project")}</div>
+      <p className="text-xs text-muted">{tr("account.name_per_project_hint")}</p>
+      <div className="space-y-2">
+        {mine.map((p) => <AliasRow key={p.id} project={p} />)}
+      </div>
+    </section>
+  );
+}
+
+function AliasRow({ project }: { project: Project }) {
+  const qc = useQueryClient();
+  const { data: members } = useQuery({
+    queryKey: ["members", project.id],
+    queryFn: () => api.get<{ user_id: number; alias?: string }[]>(`/projects/${project.id}/members`),
+  });
+  const { user } = useAuth();
+  const mine = members?.find((m) => m.user_id === user?.id);
+  const [value, setValue] = useState("");
+  const [touched, setTouched] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  // Until somebody types, the field shows what is stored. Keeping it in state from the
+  // start would freeze the value of the first render, before the answer arrived.
+  const shown = touched ? value : (mine?.alias ?? "");
+
+  const save = useMutation({
+    mutationFn: () => api.put(`/projects/${project.id}/me/alias`, { alias: shown.trim() }),
+    onSuccess: () => {
+      setErr(""); setOk(tr("profile.saved")); setTouched(false);
+      qc.invalidateQueries({ queryKey: ["members", project.id] });
+      qc.invalidateQueries({ queryKey: ["meta", project.id] });
+      setTimeout(() => setOk(""), 2000);
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.save_failed")),
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="w-40 shrink-0 truncate text-sm text-ink" title={project.name}>
+        {project.name}
+      </span>
+      <input value={shown} onChange={(e) => { setTouched(true); setValue(e.target.value); }}
+        placeholder={tr("account.alias_placeholder")}
+        className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
+      <button onClick={() => save.mutate()} disabled={save.isPending}
+        className={BUTTON_SMALL.primary}>{tr("profile.save")}</button>
+      {ok && <span className="text-xs text-green-400">{ok}</span>}
+      {err && <span className="text-xs text-red-400">{err}</span>}
+    </div>
+  );
+}
+
 
 function EmailPanel() {
   const { user, refresh } = useAuth();

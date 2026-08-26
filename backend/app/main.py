@@ -325,6 +325,10 @@ async def lifespan(app: FastAPI):
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'loop'",
                 # Timer node: waits a while without anyone having to report anything.
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'timer'",
+                # A name per project: a radio project knows a callsign, a community project a
+                # nickname, and neither is the name on the account.
+                "ALTER TABLE project_members ADD COLUMN IF NOT EXISTS alias VARCHAR(255) "
+                "DEFAULT '' NOT NULL",
                 # Memory in the vault: folder on the user, learning switch on the agent.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS vault_memory_path VARCHAR(500) "
                 "DEFAULT '' NOT NULL",

@@ -76,6 +76,7 @@ class TagOut(BaseModel):
 class MemberLite(BaseModel):
     user_id: int
     username: str
+    # The name of this person in this project (alias before account name).
     display_name: str
     role: str
     ai_assign: bool

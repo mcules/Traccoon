@@ -119,6 +119,16 @@ class Access:
     is_member: bool
     member_since: dt.datetime | None = None
     inherited: bool = False  # role inherited from the parent tree instead of a direct membership
+    # The name this person chose for THIS project. Empty means the account name applies. An
+    # inherited membership brings the alias of the project it is inherited from: whoever is
+    # a callsign one floor up is the same person one floor down.
+    alias: str = ""
+
+    @property
+    def name_here(self) -> str:
+        """What to write when this person appears by name in this project."""
+        from ..models.project import member_name
+        return member_name(self.alias, self.user.display_name, self.user.username)
 
     def has_role(self, minimum: ProjectRole) -> bool:
         return ROLE_RANK[self.role] >= ROLE_RANK[minimum]
@@ -186,14 +196,15 @@ async def build_access(project: Project, user: User, db: AsyncSession) -> Access
         )
     ).scalar_one_or_none()
     if member is not None:
-        return Access(user, project, member.role, member.ai_assign, True, member.created_at)
+        return Access(user, project, member.role, member.ai_assign, True,
+                      member.created_at, alias=member.alias)
     inherited = await _find_inherited_membership(project, user, db)
     if inherited is not None:
         # Inherited counts as a membership (is_member=True); `inherited` tells it apart from
         # a direct member, and only the admin override stays is_member=False ("foreign").
         return Access(
             user, project, _cap_inherited_role(inherited.role), inherited.ai_assign, True,
-            inherited.created_at, inherited=True,
+            inherited.created_at, inherited=True, alias=inherited.alias,
         )
     # Admin override: a global admin may access even without a membership (foreign project)
     if user.global_role == GlobalRole.admin:
@@ -240,12 +251,13 @@ def build_access_bulk(
     that the caller can simply filter out inaccessible projects."""
     member = members_by_project.get(project.id)
     if member is not None:
-        return Access(user, project, member.role, member.ai_assign, True, member.created_at)
+        return Access(user, project, member.role, member.ai_assign, True,
+                      member.created_at, alias=member.alias)
     inherited = _find_inherited_membership_bulk(project, members_by_project, projects_by_id)
     if inherited is not None:
         return Access(
             user, project, _cap_inherited_role(inherited.role), inherited.ai_assign, True,
-            inherited.created_at, inherited=True,
+            inherited.created_at, inherited=True, alias=inherited.alias,
         )
     if user.global_role == GlobalRole.admin:
         return Access(user, project, ProjectRole.owner, True, False)

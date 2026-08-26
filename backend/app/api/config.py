@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.error import Error
 from ..db import get_session
 from ..models.enums import ProjectRole, SprintState
-from ..models.project import ProjectMember
+from ..models.project import ProjectMember, member_name
 from ..models.ticket import (
     Board, BoardColumn, Issue, IssueType, Sprint, Tag, WorkflowStatus,
 )
@@ -60,7 +60,8 @@ async def project_meta(
         )
     ).all()
     members = [
-        MemberLite(user_id=u.id, username=u.username, display_name=u.display_name,
+        MemberLite(user_id=u.id, username=u.username,
+                   display_name=member_name(m.alias, u.display_name, u.username),
                    role=m.role.value, ai_assign=m.ai_assign, status=u.status.value)
         for m, u in member_rows
     ]

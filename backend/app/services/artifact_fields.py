@@ -379,7 +379,10 @@ async def dynamic_options(db: AsyncSession, field: ArtifactField,
         rows = (await db.execute(
             select(User, ProjectMember).join(ProjectMember, ProjectMember.user_id == User.id)
             .where(ProjectMember.project_id == project_id))).all()
-        return [(str(u.id), u.display_name or u.username) for u, _ in rows]
+        # The choice list of a person field shows the name of this project, not the one on
+        # the account: whoever is a callsign here should be findable as a callsign here.
+        from ..models.project import member_name
+        return [(str(u.id), member_name(m.alias, u.display_name, u.username)) for u, m in rows]
     if source == "location":
         rows = (await db.execute(select(Location).order_by(Location.full_path))).scalars().all()
         return [(str(r.id), r.full_path or r.name) for r in rows]

@@ -105,11 +105,21 @@ class MemberUpdate(BaseModel):
     ai_assign: bool | None = None
 
 
+class AliasIn(BaseModel):
+    """The name somebody gives themselves in one project. Empty puts the account name back."""
+    alias: str = Field(default="", max_length=255)
+
+
 class MemberOut(BaseModel):
     id: int
     user_id: int
     username: str
+    # What this person is called in THIS project: the alias if they set one, otherwise their
+    # account name. Everything that shows a name reads this field and needs to know nothing
+    # about the three sources behind it.
     display_name: str
+    # The raw alias, so the form can show what is set and what is merely inherited.
+    alias: str = ""
     role: ProjectRole
     ai_assign: bool
 

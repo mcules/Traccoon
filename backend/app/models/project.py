@@ -98,8 +98,24 @@ class ProjectMember(TimestampMixin, Base):
     )
     # AI right: may use the PM chat and assign agents to tickets (orthogonal to the role)
     ai_assign: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # What this person is called HERE. A radio project knows a callsign, a community project
+    # a nickname, and neither of them is the name on the account. Empty means the account
+    # name applies, which is why it is an empty string and not NULL: there is no third state
+    # between "set" and "not set".
+    alias: Mapped[str] = mapped_column(String(255), default="", nullable=False)
 
     project: Mapped["Project"] = relationship(back_populates="members")
+
+
+def member_name(alias: str, display_name: str, username: str) -> str:
+    """What somebody is called inside a project, in one place.
+
+    Three sources with a clear order, and the reason each one exists: the alias is what this
+    person chose HERE, the display name is what they chose everywhere, the username is what
+    they cannot be without. Whoever writes this out a second time somewhere gets the order
+    wrong once, and then the same person carries two names on the same page.
+    """
+    return (alias or "").strip() or (display_name or "").strip() or username
 
 
 def default_ai_assign(role: ProjectRole) -> bool:
