@@ -1742,6 +1742,7 @@
   "mail.folders_loading": "Ordner werden geladen…",
   "mail.formatted": "Formatiert",
   "mail.forward": "Weiterleiten",
+  "mail.forwarded": "weitergeleitet",
   "mail.forwarded_message": "--- Weitergeleitete Nachricht ---",
   "mail.from_label": "Von",
   "mail.has_attachment": "hat einen Anhang",

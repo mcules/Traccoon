@@ -23,7 +23,8 @@ import {
  */
 interface Header {
   uid: number; subject: string; from: string; date: string; size: number;
-  seen: boolean; flagged: boolean; answered: boolean; has_attachment: boolean;
+  seen: boolean; flagged: boolean; answered: boolean; forwarded: boolean;
+  has_attachment: boolean;
   /** Where this message lies. Only interesting when searching the whole mailbox: then the
    *  hits come from several folders and a UID alone would open the wrong mail. */
   folder?: string;
@@ -45,6 +46,9 @@ interface Message {
   documents: { attachment: number; system: string; doc_id: string; doc_url: string;
                title: string; when: string }[];
   attachments: Attachment[]; seen: boolean; flagged: boolean;
+  /** Whether this one has already been dealt with. IMAP carries no date with either mark,
+   *  only the fact. */
+  answered: boolean; forwarded: boolean;
 }
 interface ImageRule { id: number; kind: "sender" | "domain" | "all"; value: string }
 interface Unsubscribed {
@@ -77,6 +81,10 @@ interface ComposeStart {
   text?: string;
   in_reply_to?: string;
   replaces_uid?: number;
+  /** The mail this one answers or passes on. It gets the mark once the sending worked. */
+  about_uid?: number;
+  about_folder?: string;
+  about_kind?: "reply" | "forward";
   attachments?: { filename: string; content_type: string; data_base64: string; size: number }[];
 }
 
@@ -1374,6 +1382,7 @@ const MessageRow = memo(function MessageRow({ m, index, folder: folder, showFold
             {m.has_attachment && <span title={tr("mail.has_attachment")}>📎</span>}
             {m.flagged && <span title={tr("mail.flagged")}>⭐</span>}
             {m.answered && <span title={tr("mail.answered")}>↩</span>}
+            {m.forwarded && <span title={tr("mail.forwarded")}>↪</span>}
             <span className="shrink-0 text-xs text-muted">{formatDateTime(m.date)}</span>
           </div>
           <div className="mt-0.5 truncate text-xs text-muted">{m.from}</div>
@@ -1627,7 +1636,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
    * `Reply-To` stands in the mail it takes precedence over the sender: that is exactly what it
    * is there for.
    */
-  const answerFields = (all: boolean): Record<string, string> => {
+  const answerFields = (all: boolean): ComposeStart => {
     const own = new Set((identities || []).map((i) => i.email.toLowerCase()));
     const addresses = (listing: Address[] | undefined) =>
       (listing || []).map((a) => a.addr).filter((a) => a && !own.has(a.toLowerCase()));
@@ -1644,6 +1653,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
       in_reply_to: m?.message_id || "",
       text: `\n\n> ${(m?.text || "").split("\n").join("\n> ")}`,
       identity: String(matchingIdentity() ?? ""),
+      about_uid: uid, about_folder: folder, about_kind: "reply",
     };
   };
 
@@ -1896,7 +1906,13 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   return (
     <Area
       fills column
-      title={m?.subject || "…"}
+      title={<>
+        {m?.subject || "…"}
+        {/* Beside the subject and not in a corner: whether this one has been dealt with is
+            the first thing one wants to know when coming back to it. */}
+        {m?.answered && <Tag color="green">↩ {tr("mail.answered")}</Tag>}
+        {m?.forwarded && <Tag color="blue">↪ {tr("mail.forwarded")}</Tag>}
+      </>}
       tools={<>
         {/* Back to the list is only a way where the list had to give up its place. In three
             columns it stands beside this one and the button would point at itself. */}
@@ -1930,6 +1946,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           text: `\n\n${tr("mail.forwarded_message")}\n`
             + `${tr("mail.from_label")}: ${(m?.from || []).map((a) => a.addr).join(", ")}\n`
             + `${tr("mail.date_label")}: ${m?.date || ""}\n${tr("mail.subject")}: ${m?.subject || ""}\n\n${m?.text || ""}`,
+          about_uid: uid, about_folder: folder, about_kind: "forward",
         })}>{tr("mail.forward")}</Rowbutton>}
         {/* Archive and spam appear only when the account names a target for them — a button
             that explains on being pressed that it cannot is none. */}
@@ -2292,6 +2309,10 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
       ({ filename, content_type, data_base64 })),
     // Picked up from the drafts folder: the old one goes when the new one stands.
     replaces_uid: start.replaces_uid ?? null,
+    // And the mail this one is about gets its mark, once the sending worked.
+    about_uid: start.about_uid ?? null,
+    about_folder: start.about_folder || "",
+    about_kind: start.about_kind || "",
   });
   const send = useMutation({
     mutationFn: () => api.post(`/mailbox/accounts/${accountId}/send`, base()),

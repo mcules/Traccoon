@@ -570,8 +570,20 @@ def _row(uid: int, entry: dict, folder: str = "") -> dict:
         "seen": "\\seen" in flags,
         "flagged": "\\flagged" in flags,
         "answered": "\\answered" in flags,
+        # `$Forwarded` is a keyword and not a standard flag: the protocol has one for
+        # answering and none for passing on, so the mail programs agreed on this name. A
+        # server that does not keep keywords simply never reports it, which is why nothing
+        # here depends on it.
+        "forwarded": FORWARDED.lower() in flags,
         "has_attachment": _has_attachment(entry.get(b"BODYSTRUCTURE")),
     }
+
+
+# What a mail is marked with once it has been answered or passed on. The first is a standard
+# flag, the second a keyword every mail program of the last twenty years writes but no server
+# has to keep.
+ANSWERED = "\\Answered"
+FORWARDED = "$Forwarded"
 
 
 LIST_FIELDS = ["ENVELOPE", "FLAGS", "RFC822.SIZE", "INTERNALDATE", "BODYSTRUCTURE"]
@@ -689,6 +701,7 @@ def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
             "counters": counters,
             "attachments": _attachments(msg),
             "seen": "\\seen" in flags, "flagged": "\\flagged" in flags,
+            "answered": "\\answered" in flags, "forwarded": FORWARDED.lower() in flags,
         }
 
 

@@ -111,3 +111,67 @@ async def test_a_removal_that_fails_does_not_break_the_send(db, client, monkeypa
         "replaces_uid": 17})
     assert r.status_code == 204
     assert watch["sent"], "the mail went out"
+
+
+@pytest.fixture
+def marks(monkeypatch):
+    """Which mail was marked with what, without an IMAP."""
+    seen = {"sent": [], "flags": [], "fail_flag": False}
+
+    async def send(account, ident, fields):
+        seen["sent"].append(fields)
+
+    async def flag(account, folder, uid, name, on):
+        if seen["fail_flag"]:
+            raise RuntimeError("the server keeps no keywords")
+        seen["flags"].append((folder, uid, name, on))
+
+    monkeypatch.setattr(mailbox, "send", send)
+    monkeypatch.setattr(mailbox, "flag", flag)
+    return seen
+
+
+async def test_an_answer_marks_the_mail_it_answers(db, client, marks):
+    """Otherwise nobody can see afterwards which of the twenty in the list is dealt with."""
+    anna = await make_user(db, "anna")
+    kid, ident = await _account_with_identity(db, client, anna)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "identity_id": ident.id, "to": ["du@example.org"], "subject": "Re: Frage",
+        "text": "Ja.", "about_uid": 12, "about_folder": "INBOX", "about_kind": "reply"})
+    assert r.status_code == 204
+    assert marks["flags"] == [("INBOX", 12, "\\Answered", True)]
+
+
+async def test_passing_one_on_marks_it_differently(db, client, marks):
+    """The protocol has a flag for answering and none for passing on, so the mail programs
+    agreed on a keyword. Both must not end up as the same mark."""
+    anna = await make_user(db, "anna")
+    kid, ident = await _account_with_identity(db, client, anna)
+
+    await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "identity_id": ident.id, "to": ["du@example.org"], "subject": "Fwd: Frage",
+        "text": "Siehe unten.", "about_uid": 12, "about_folder": "INBOX",
+        "about_kind": "forward"})
+    assert marks["flags"] == [("INBOX", 12, "$Forwarded", True)]
+
+
+async def test_a_plain_mail_marks_nothing(db, client, marks):
+    anna = await make_user(db, "anna")
+    kid, ident = await _account_with_identity(db, client, anna)
+    await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "identity_id": ident.id, "to": ["du@example.org"], "subject": "Neu", "text": "x"})
+    assert marks["sent"] and marks["flags"] == []
+
+
+async def test_a_mark_that_fails_does_not_break_the_send(db, client, marks):
+    """Not every server keeps keywords. That is its right, and no reason to turn a mail that
+    went out into an error."""
+    marks["fail_flag"] = True
+    anna = await make_user(db, "anna")
+    kid, ident = await _account_with_identity(db, client, anna)
+
+    r = await client.post(f"/mailbox/accounts/{kid}/send", headers=auth(anna), json={
+        "identity_id": ident.id, "to": ["du@example.org"], "subject": "Fwd: x", "text": "y",
+        "about_uid": 12, "about_folder": "INBOX", "about_kind": "forward"})
+    assert r.status_code == 204 and marks["sent"], "the mail went out"

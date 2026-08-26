@@ -1742,6 +1742,7 @@
   "mail.folders_loading": "The folders are loading…",
   "mail.formatted": "Formatted",
   "mail.forward": "Forward",
+  "mail.forwarded": "passed on",
   "mail.forwarded_message": "--- Forwarded message ---",
   "mail.from_label": "From",
   "mail.has_attachment": "has an attachment",

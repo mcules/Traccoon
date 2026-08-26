@@ -962,6 +962,12 @@ class SendIn(BaseModel):
     # writing a new one and taking the old one away, and both halves have to be one request —
     # otherwise a failed send leaves the draft gone.
     replaces_uid: int | None = None
+    # The mail this one answers or passes on. Without it nobody can see afterwards which of
+    # the twenty in the list has already been dealt with, which is the first thing one wants
+    # to know when coming back to a folder.
+    about_uid: int | None = None
+    about_folder: str = ""
+    about_kind: str = ""             # reply | forward
 
 
 async def _fields(db: AsyncSession, kid: int, data: SendIn, user: User):
@@ -970,11 +976,33 @@ async def _fields(db: AsyncSession, kid: int, data: SendIn, user: User):
     if ident is None or ident.account_id != account.id:
         raise Error(400, "err.identity_not_of_account",
                      "The identity does not belong to this account")
-    fields = data.model_dump(exclude={"identity_id", "attachments", "replaces_uid"})
+    fields = data.model_dump(exclude={"identity_id", "attachments", "replaces_uid",
+                                      "about_uid", "about_folder", "about_kind"})
     fields["attachments"] = [
         {"filename": a.filename, "content_type": a.content_type,
          "data": base64.b64decode(a.data_base64)} for a in data.attachments]
     return account, ident, fields
+
+
+async def _mark_about(account, data: SendIn) -> None:
+    """Mark the mail this one answers or passes on.
+
+    Only after the sending worked: a mail marked as answered without an answer having gone
+    out is worse than no mark at all, because one believes it.
+
+    A server that keeps no keywords refuses `$Forwarded`. That is its right and no reason to
+    turn a sent mail into an error, so it is written down and otherwise ignored.
+    """
+    if data.about_uid is None or not data.about_folder:
+        return
+    flag = {"reply": mailbox.ANSWERED, "forward": mailbox.FORWARDED}.get(data.about_kind)
+    if not flag:
+        return
+    try:
+        await mailbox.flag(account, data.about_folder, data.about_uid, flag, True)
+    except Exception:  # noqa: BLE001
+        log.warning("the mark '%s' could not be set on %s:%s", flag, data.about_folder,
+                    data.about_uid, exc_info=True)
 
 
 async def _drop_replaced(account, data: SendIn) -> None:
@@ -1002,6 +1030,7 @@ async def send(kid: int, data: SendIn, user: User = Depends(get_current_user),
     if not fields.get("to"):
         raise Error(400, "err.no_recipient", "No recipient")
     await mailbox.send(account, ident, fields)
+    await _mark_about(account, data)
     await _drop_replaced(account, data)
     await cache.invalidate(account.id)
 
