@@ -1848,7 +1848,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   });
 
   /** Back into the writing window, with everything the draft already had. */
-  const continueDraft = async () => {
+  const editDraft = async () => {
     if (!m) return;
     setDraftBusy(true);
     const { files, failed } = await draftFiles();
@@ -1905,7 +1905,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
             answers to a mail that never arrived anywhere — the one thing one wants here is
             back into the writing window. */}
         {isDraft && (<>
-          <Rowbutton onClick={() => void continueDraft()} disabled={draftBusy}>
+          <Rowbutton onClick={() => void editDraft()} disabled={draftBusy}>
             {tr("mail.edit_draft")}
           </Rowbutton>
           <Rowbutton onClick={() => setSendDraftOpen(true)}
@@ -2308,7 +2308,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
     // Held in place: whoever is writing a mail otherwise loses half the text on a misplaced
     // click. It is closed through ✕, cancel, draft or send.
     <Dialog wide hold onClose={onClose}
-      title={tr(start.replaces_uid ? "mail.continue_draft" : "mail.compose")}
+      title={tr(start.replaces_uid ? "mail.edit_draft_title" : "mail.compose")}
       foot={
         <div className="flex items-center gap-2">
           <Rowbutton onClick={() => draft.mutate()}>{tr("mail.save_as_draft")}</Rowbutton>
