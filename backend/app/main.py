@@ -574,11 +574,16 @@ async def lifespan(app: FastAPI):
         from .services.lifecycle_flow import adopt_orphans
         await adopt_orphans(db)
     # Clear away previews from a crashed earlier life (does not block the start).
+    from .services.inbound import run_inbox
     from .services.testenv import cleanup_orphan_previews
     tasks = [
         asyncio.create_task(cleanup_orphan_previews()),
         asyncio.create_task(run_dispatcher()),
         asyncio.create_task(run_scheduler()),
+        # The lane that empties the inbox. Its own loop and not part of the scheduler beat:
+        # a delivery that has been taken in should be carried out in seconds, and on start
+        # this picks up whatever an update left standing.
+        asyncio.create_task(run_inbox()),
         asyncio.create_task(run_workflow_engine()),
         asyncio.create_task(event_bridge()),
         # A channel of its own for the office view: one user socket instead of N project

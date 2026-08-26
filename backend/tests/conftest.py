@@ -36,9 +36,13 @@ from app.models.enums import (  # noqa: E402
 # Modules that fetch a session of their own (engine, tick, test environments). So that they
 # see the same in-memory database in the test as the HTTP client, their `SessionLocal` is
 # rehung; otherwise the process engine would run against an empty second database.
+# Every module that opens a session of its OWN. Whatever is missing here writes past the test
+# database into the real one — which is not a theory: the inbox once wrote its notifications
+# about parked deliveries into the live database from inside a test run.
 _SESSION_MODULES = (
     "app.db", "app.services.workflow_engine", "app.services.dispatcher",
-    "app.services.scheduler", "app.services.testenv", "app.worker.__main__",
+    "app.services.inbound", "app.services.scheduler", "app.services.testenv",
+    "app.worker.__main__",
 )
 
 
@@ -264,6 +268,30 @@ async def make_webhook(db, owner: User, route: str, **fields) -> "WebhookSub":
     await convert(db)
     await db.refresh(sub)
     return sub
+
+
+async def hook(client, db, sub, payload: dict, headers: dict | None = None):
+    """Deliver a webhook over HTTP the way a foreign system does — and wait for the work.
+
+    Since deliveries are taken in first and carried out afterwards, a test that only posts
+    checks the receipt and nothing else. So this posts and then empties the inbox, so that the
+    assertions afterwards are about what the delivery BECAME.
+
+    Returns the row from `inbound_deliveries`: its status and outcome are what the caller used
+    to read out of the response body.
+    """
+    from app.models.ops import InboundDelivery
+    from app.services import inbound
+    from sqlalchemy import select as _select
+
+    answer = await client.post(f"/hooks/{sub.public_id}", json=payload, headers=headers or {})
+    if answer.status_code >= 400 or "delivery_id" not in answer.json():
+        return answer            # refused, or the synchronous way — nothing to empty
+    await inbound.drain(db)
+    row = (await db.execute(_select(InboundDelivery).where(
+        InboundDelivery.id == answer.json()["delivery_id"]))).scalar_one()
+    await db.refresh(row)
+    return row
 
 
 async def report(db, sub, payload: dict) -> list[int]:

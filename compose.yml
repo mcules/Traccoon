@@ -17,7 +17,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    # The append log is on, and that is not a detail: the task queue of the worker lives in
+    # here. With snapshots alone a hard stop costs everything that came in since the last one
+    # — up to a minute of work, silently. `everysec` costs one second in the worst case.
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes",
+              "--appendfsync", "everysec"]
     volumes:
       - ./data/redis:/data
     healthcheck:
@@ -296,6 +300,44 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DOCKER_STACKS_DIR:?DOCKER_STACKS_DIR required (see .env)}:${DOCKER_STACKS_DIR}
       - ./deployer/deploy_watch.py:/deploy_watch.py:ro
+
+  # The front door. Its own service so that it keeps standing while backend and frontend are
+  # being replaced — that is the whole reason it exists, and the reason it contains nothing
+  # but "take it in and write it down". Traefik routes /api/hooks/ here directly, past nginx
+  # and past the backend, so an update of either changes nothing for the senders.
+  ingest:
+    build: ./ingest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      SPOOL_FILE: /spool/pending.jsonl
+    volumes:
+      # Even without the database nothing may be lost: the delivery goes into a file here and
+      # is carried over on the next chance.
+      - ./data/ingest:/spool
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      # A higher priority than the catch-all router of the frontend, otherwise the host rule
+      # alone would win and the path would never get here.
+      - "traefik.http.routers.traccoon-ingest.rule=Host(`${TRACCOON_HOST}`) && PathPrefix(`/api/hooks/`)"
+      - "traefik.http.routers.traccoon-ingest.priority=100"
+      - "traefik.http.routers.traccoon-ingest.entrypoints=websecure"
+      - "traefik.http.routers.traccoon-ingest.tls.certresolver=le"
+      - "traefik.http.services.traccoon-ingest.loadbalancer.server.port=8900"
+      # The door takes deliveries in unchecked — the signature is verified by the house
+      # afterwards, which is exactly what lets this service hold no secrets. The price is that
+      # whoever knows an address can write rows, so the rate is capped here. The real senders
+      # are far below this: 36 deliveries in a week.
+      - "traefik.http.routers.traccoon-ingest.middlewares=traccoon-ingest-rate"
+      - "traefik.http.middlewares.traccoon-ingest-rate.ratelimit.average=30"
+      - "traefik.http.middlewares.traccoon-ingest-rate.ratelimit.burst=60"
 
   frontend:
     build: ./frontend

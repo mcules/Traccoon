@@ -12,12 +12,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.error import Error
 from ..db import get_session
 from ..models.enums import ProjectRole
-from ..models.ops import Job, JobRun, PermAction, Permission, WebhookCoalesce, WebhookSub
+from ..models.ops import (
+    InboundDelivery, Job, JobRun, PermAction, Permission, WebhookCoalesce, WebhookSub,
+)
 from ..models.user import User
+from ..services import inbound
+from ..services.inbound import (
+    context_of as _context, dig_payload as _dig_payload, fill as _fill,
+    reference_of as _reference, set_deep as _set_deep,
+)
 from .deps import (
     Access, build_access, get_current_user, is_owner_or_admin, owned_or_global,
-    require_role,
+    require_admin, require_role,
 )
+
+# The shaping of a payload into a context lives in the service, because that is where the
+# work happens now. The names stay here so that whoever imported them from the router, the
+# scheduler on its collection window, the tests on their way in, keeps finding them.
+__all__ = ["router", "_context", "_reference", "_dig_payload", "_fill", "_set_deep"]
 
 router = APIRouter(tags=["ops"])
 
@@ -37,7 +49,7 @@ class WebhookIn(BaseModel):
     event_key_header: str | None = None
     event_cooldowns: dict = {}
     alert_events: list = []
-    # A field of the payload OR a template out of several ({account}:{uid}) — that becomes the
+    # A field of the payload OR a template out of several ({account}:{uid}), that becomes the
     # a key against a double delivery.
     ref_field: str | None = None
     # mode=workflow: welche Definition startet.
@@ -156,19 +168,6 @@ async def delete_webhook(wid: int, user: User = Depends(get_current_user),
         await db.commit()
 
 
-def _dig_payload(data, path: str):
-    """Resolve a dot path in the payload (`event.attributes.alarm`, `posten.0.name`)."""
-    cur = data
-    for part in str(path).split("."):
-        if isinstance(cur, dict) and part in cur:
-            cur = cur[part]
-        elif isinstance(cur, list) and part.isdigit() and int(part) < len(cur):
-            cur = cur[int(part)]
-        else:
-            return None
-    return cur
-
-
 # Hard ceiling for a held-open request. Whoever waits here occupies a connection, and a
 # sender that runs into ITS own timeout meanwhile gets nothing out of a longer wait.
 ANSWER_MAX_SEC = 120
@@ -225,199 +224,124 @@ async def _wait_on_answer(instance_id: int, sub: WebhookSub) -> dict:
             "answer": answer}
 
 
-def _fill(tpl: str, payload) -> str:
-    """Fills `{field}` from the payload, `{a.b.c}` deeply as well.
+# ── The inbox, for looking at and for repeating ─────────────────────────────
 
-    Nested payloads are the normal case as soon as the sender is not Traccoon:
-    `{position.address}` or `{event.attributes.alarm}` were not addressable before.
-    """
-    out = tpl
-    for hits in set(re.findall(r"\{([A-Za-z0-9_.]+)\}", tpl)):
-        value = _dig_payload(payload, hits)
-        if value is not None:
-            out = out.replace("{" + hits + "}", str(value))
-    return out
+def _delivery_out(row: InboundDelivery) -> dict:
+    return {
+        "id": row.id, "channel": row.channel, "target": row.target, "route": row.route,
+        "status": row.status, "attempts": row.attempts, "last_error": row.last_error,
+        "outcome": row.outcome, "received_at": row.received_at,
+        "next_try_at": row.next_try_at, "finished_at": row.finished_at,
+        "size": len(row.body or b""),
+    }
 
 
-def _set_deep(target: dict, path: str, value) -> None:
-    """`intake.agent` legt {"intake": {"agent": …}} an — ein Punkt im ZIEL verschachtelt."""
-    parts = [t for t in str(path).split(".") if t]
-    if not parts:
-        return
-    node = target
-    for t in parts[:-1]:
-        next_one = node.get(t)
-        if not isinstance(next_one, dict):
-            next_one = {}
-            node[t] = next_one
-        node = next_one
-    node[parts[-1]] = value
+@router.get("/inbound")
+async def list_inbound(status: str = "", limit: int = 100,
+                       _: User = Depends(require_admin),
+                       db: AsyncSession = Depends(get_session)):
+    """What came in from outside. Newest first, because a delivery is asked about while it is
+    still fresh, and a parked one is asked about the moment the message arrives."""
+    q = select(InboundDelivery).order_by(InboundDelivery.id.desc()).limit(max(1, min(limit, 500)))
+    if status:
+        q = q.where(InboundDelivery.status.in_([s for s in status.split(",") if s]))
+    rows = (await db.execute(q)).scalars().all()
+    return [_delivery_out(r) for r in rows]
 
 
-def _context(sub: WebhookSub, payload) -> dict:
-    """The context of the run — in one place, for every kind of delivery.
-
-    `context_map` fetches values from the payload (a dotted path; an **empty** path = the
-    whole payload, so it lands under a key of its own instead of flat in the context),
-    `context_fixed` sets fixed values in whose text `{field}` is filled from the payload.
-    Without either, the payload is the context, as before.
-    """
-    nutz = payload if isinstance(payload, dict) else {"payload": payload}
-    cmap = sub.context_map or {}
-    fixed = sub.context_fixed or {}
-    if not cmap and not fixed:
-        return nutz
-    ctx: dict = {}
-    for target, path in cmap.items():
-        _set_deep(ctx, str(target), nutz if not path else _dig_payload(nutz, str(path)))
-    for target, value in fixed.items():
-        _set_deep(ctx, str(target), _fill(value, nutz) if isinstance(value, str) else value)
-    return ctx
+@router.get("/inbound/{did}/body")
+async def inbound_body(did: int, _: User = Depends(require_admin),
+                       db: AsyncSession = Depends(get_session)):
+    """The payload as it arrived. The reason for looking at a parked delivery at all is
+    usually the question what actually stood in it."""
+    row = await db.get(InboundDelivery, did)
+    if row is None:
+        raise Error(404, "err.delivery_not_found", "Delivery not found")
+    return {"id": row.id, "headers": row.headers,
+            "body": (row.body or b"").decode("utf-8", "replace")}
 
 
-def _reference(sub: WebhookSub, payload) -> str | None:
-    """The key against double delivery: a field of the payload or a template.
-
-    A key out of several fields (`{account}:{uid}`) is the normal case as soon as the foreign
-    system sends no id of its own — this exact composition used to sit hard-wired in the mail
-    intake and was available to no other trigger.
-    """
-    field = (sub.ref_field or "").strip()
-    nutz = payload if isinstance(payload, dict) else {}
-    if not field:
-        return None
-    value = _fill(field, nutz) if "{" in field else _dig_payload(nutz, field)
-    return str(value) if value not in (None, "") else None
+@router.post("/inbound/{did}/retry")
+async def inbound_retry(did: int, _: User = Depends(require_admin),
+                        db: AsyncSession = Depends(get_session)):
+    """Try it again, right now. For whatever stood still because something else was broken."""
+    row = await db.get(InboundDelivery, did)
+    if row is None:
+        raise Error(404, "err.delivery_not_found", "Delivery not found")
+    row.status, row.attempts, row.next_try_at = "new", 0, None
+    row.finished_at, row.last_error, row.outcome = None, "", ""
+    await db.flush()
+    await inbound.work_one(db, row)
+    await db.commit()
+    await db.refresh(row)
+    return _delivery_out(row)
 
 
 @router.post("/hooks/{public_id}", status_code=202)
 async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = Depends(get_session)):
-    """Public inbound endpoint by GUID. HMAC check (X-Webhook-Signature, hex, without a prefix)."""
+    """Public inbound endpoint by GUID. Takes the delivery in; the work happens afterwards.
+
+    The answer is a receipt and not a result, and that is the whole change: whatever goes
+    wrong later, a missing flow, a restart in the middle, a bug of ours, costs at most a
+    repeat, never the payload. Nobody sending to us tries twice.
+
+    The signature is deliberately NOT checked here. It is checked when the work is done, over
+    exactly the bytes that were stored, which is what lets a small separate receiver stand at
+    this door while the rest of the house is being rebuilt: it needs no secrets at all.
+
+    The one exception is a caller that waits for the answer of the flow (`response_timeout`).
+    That one cannot be served from a queue, it wants the answer, not a receipt, so it keeps
+    running through synchronously.
+    """
     sub = (await db.execute(
         select(WebhookSub).where(WebhookSub.public_id == public_id))).scalar_one_or_none()
     if sub is None or not sub.enabled:
         raise Error(404, "err.unknown_route", "Unknown route")
-    route = sub.route  # label for coalescing, notify and the idempotency source
     raw = await request.body()
-    if sub.secret:
-        sig = request.headers.get("X-Webhook-Signature", "")
-        expected = hmac.new(sub.secret.encode(), raw, hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected):
-            raise Error(401, "err.invalid_signature", "Invalid signature")
-    try:
-        payload = await request.json()
-    except Exception:
-        payload = {}
+    headers = dict(request.headers)
 
-    # Where the event type comes from: from a header (X-GitHub-Event) or, when the sender
-    # sets none, from the payload itself (`payload:event.type`). Without the second way
-    # everything that sends headers could be filtered and nothing else; Traccar for instance
-    # reports every ignition and every alarm over the same URL, without a header.
-    event = ""
-    if sub.event_header:
-        if sub.event_header.startswith("payload:"):
-            event = str(_dig_payload(payload, sub.event_header[len("payload:"):]) or "")
-        else:
-            event = request.headers.get(sub.event_header, "")
-    if sub.event_filter:
-        allowed = [e.strip() for e in sub.event_filter.split(",") if e.strip()]
-        if event not in allowed:
-            return {"accepted": True, "ignored": True, "event": event}
-
-    # Alarm events skip the collection window: they are meant to run through, not to wait for
-    # the summary. WHAT gets reported is up to the flow (a notify node) — the webhook itself
-    # sends nothing any more, otherwise the message would hang on it again.
-    immediate = bool(event) and event in (sub.alert_events or [])
-
-    # Coalescing: within the cooldown window only collect, the scheduler summarises.
-    cooldown = 0 if immediate else (int((sub.event_cooldowns or {}).get(event, 0)) if event else 0)
-    if cooldown > 0:
-        now = dt.datetime.now(tz=dt.timezone.utc)
-        ekey = (request.headers.get(sub.event_key_header, "") if sub.event_key_header else "") or event
-        open_win = (await db.execute(select(WebhookCoalesce).where(
-            WebhookCoalesce.route == route, WebhookCoalesce.event_key == ekey,
-            WebhookCoalesce.flushed.is_(False), WebhookCoalesce.window_until > now,
-        ).with_for_update())).scalars().first()
-        if open_win is not None:
-            # JSON column: assign a new list, otherwise SQLAlchemy does not detect the change.
-            open_win.payloads = [*open_win.payloads, payload]
-            await db.commit()
-            return {"accepted": True, "coalesced": True, "event": event}
-        # The first delivery runs through normally but opens the window for follow-up events.
-        db.add(WebhookCoalesce(route=route, event_key=ekey,
-                               window_until=now + dt.timedelta(seconds=cooldown), payloads=[]))
-
-    # ── Zustellung ───────────────────────────────────────────────────────────
-    # A webhook receives and checks; what BECOMES of it is written in the flow. That is why
-    # there are only two ways left: start a flow or report an event. Reporting, creating a
-    # ticket and assigning the assistant were modes of their own with columns of their own on
-    # the webhook (`agent`, `prompt_tmpl`, `auto_run`, `notify_chat`, `title_template` …) —
-    # today they are nodes and thereby available to EVERY trigger, not only to webhooks.
-    # Bestehende Webhooks stellt `services/webhook_modes.py` beim Start um.
-    ctx = _context(sub, payload)
-    src_ref = _reference(sub, payload)
-
-    if sub.mode == "event":
-        # Reports an event; who listens to it the flows decide themselves through the trigger
-        # on their start node. Name: `event_name` or `event` from the payload.
-        from ..services.events import emit
-        name = (sub.event_name or (payload.get("event") if isinstance(payload, dict) else "")
-                or f"webhook.{route}")
-        ids = await emit(db, str(name), project_id=sub.project_id, payload=ctx,
-                         actor_id=sub.owner_user_id, source_ref=src_ref)
-        return {"accepted": True, "mode": "event", "event": name, "instances": ids}
-
-    # mode == "workflow": exactly one instance of this definition.
-    from ..models.workflow import WorkflowDefinition, WorkflowInstance
-    from ..services.workflow_engine import start_workflow
-    if sub.workflow_definition_id is None:
-        raise Error(400, "err.webhook_without_workflow_definition_id",
-                     "Webhook without workflow_definition_id")
-    definition = await db.get(WorkflowDefinition, sub.workflow_definition_id)
-    if definition is None or definition.current_version_id is None:
-        raise Error(400, "err.workflow_definition_missing_not",
-                     "The workflow definition is missing or not published")
-    if src_ref:
-        dup = (await db.execute(select(WorkflowInstance).where(
-            WorkflowInstance.source == f"webhook:{route}",
-            WorkflowInstance.source_ref == src_ref))).scalar_one_or_none()
-        if dup is not None:
-            return {"accepted": True, "duplicate": True, "instance_id": dup.id}
-    # What the run hangs off is said by the payload: the start node names the field the
-    # artifact stands in (ticket key, ticket id, unit id). Without this binding a flow
-    # with a ticket subject would run into nothing: its actions (setting a state,
-    # commenting, assigning) would find nothing to act on.
-    from ..services.workflow_subject import subject_from_payload
-    issue_id, asset_id, error = await subject_from_payload(
-        db, definition, payload if isinstance(payload, dict) else {}, ctx,
-        owner_id=sub.owner_user_id)
-    if error:
-        raise HTTPException(400, error)
-    inst = await start_workflow(
-        db, definition, subject_kind=definition.subject_kind, context=ctx,
-        issue_id=issue_id, hardware_asset_id=asset_id,
-        actor_id=sub.owner_user_id, source=f"webhook:{route}", source_ref=src_ref,
-    )
     if int(sub.response_timeout or 0) > 0:
-        # The caller wants the answer of the flow, not only the receipt. What goes back
-        # is what the flow wrote: a dict answer IS the body (so the far side sees exactly
-        # the fields it was promised), anything else is wrapped.
-        from fastapi.responses import JSONResponse
-        result = await _wait_on_answer(inst.id, sub)
-        answer = result["answer"]
-        if isinstance(answer, dict):
-            base = answer
-        elif answer is None:
-            base = {"accepted": True, "mode": "workflow", "answer": None,
-                     "instance_id": inst.id, "status": result["status"],
-                     "done": result["done"]}
-        else:
-            base = {"answer": answer}
-        return JSONResponse(base, status_code=200 if answer is not None else 202)
-    return {"accepted": True, "mode": "workflow", "instance_id": inst.id,
-            "status": inst.status.value,
-            **({"issue_id": issue_id} if issue_id else {}),
-            **({"hardware_asset_id": asset_id} if asset_id else {})}
+        return await _answering_webhook(db, sub, raw, headers)
+
+    row = await inbound.store(db, channel="webhook", target=public_id, route=sub.route,
+                              body=raw, headers=headers)
+    await db.commit()
+    return {"accepted": True, "delivery_id": row.id}
+
+
+async def _answering_webhook(db: AsyncSession, sub: WebhookSub, raw: bytes, headers: dict):
+    """The synchronous way, for a caller that wants the answer of the flow.
+
+    Kept apart on purpose: everything in here happens while somebody is waiting, so it cannot
+    be repeated and cannot be parked. If it throws, the caller sees it, which is the honest
+    outcome when the promise was an answer.
+    """
+    from fastapi.responses import JSONResponse
+    try:
+        result = await inbound.deliver(db, sub, raw, headers)
+    except inbound.Dropped as why:
+        await db.commit()
+        return JSONResponse({"accepted": True, "ignored": True, "reason": str(why)},
+                            status_code=202)
+    except inbound.Retry as why:
+        raise Error(400, "err.delivery_not_possible",
+                    "The delivery cannot be carried out: {why}", why=str(why))
+    inst_id = result.get("instance_id")
+    if inst_id is None:
+        await db.commit()
+        return JSONResponse(result, status_code=202)
+    await db.commit()
+    answer_result = await _wait_on_answer(inst_id, sub)
+    answer = answer_result["answer"]
+    if isinstance(answer, dict):
+        base = answer
+    elif answer is None:
+        base = {"accepted": True, "mode": "workflow", "answer": None,
+                "instance_id": inst_id, "status": answer_result["status"],
+                "done": answer_result["done"]}
+    else:
+        base = {"answer": answer}
+    return JSONResponse(base, status_code=200 if answer is not None else 202)
 
 
 # ================= Jobs =================
@@ -426,7 +350,7 @@ class JobIn(BaseModel):
     name: str
     # The schedule: cron | interval | once. Unlike `kind` this is checked, and the reason
     # stands in `services/scheduler.SCHEDULE_KINDS`: an unknown value does not break the job
-    # but silences it — it is simply never due, while the UI shows "enabled". Exactly that way
+    # but silences it, it is simply never due, while the UI shows "enabled". Exactly that way
     # a job lay dead for 13 days, because `prompt` stood there, that is the kind of work
     # instead of the schedule.
     type: str = "interval"
@@ -505,7 +429,7 @@ async def create_job(data: JobIn, user: User = Depends(get_current_user),
     await db.flush()
     # Whoever still enters an old kind (a template, the agent tool, an old script) gets a flow
     # right away. Otherwise a path would stay open here that a later restart would have to
-    # collect — and until then the job would run differently from what is shown.
+    # collect, and until then the job would run differently from what is shown.
     from ..services.job_modes import OLD_KINDS, as_flow
     if job.kind in OLD_KINDS:
         await as_flow(db, job)

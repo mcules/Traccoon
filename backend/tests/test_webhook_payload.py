@@ -11,7 +11,7 @@ from app.models.notification import Notification
 from app.models.ops import WebhookSub
 from sqlalchemy import select
 
-from conftest import auth, make_user, make_webhook
+from conftest import auth, hook, make_user, make_webhook
 
 pytestmark = pytest.mark.asyncio
 
@@ -34,8 +34,10 @@ async def _hook(db, owner, **fields) -> WebhookSub:
                               **fields)
 
 
-async def _report(client, w, payload=PAYLOAD):
-    return await client.post(f"/hooks/{w.public_id}", json=payload)
+async def _report(client, db, w, payload=PAYLOAD, headers=None):
+    """Deliver and work off: a delivery is taken in first, so a bare post would only ever
+    check the receipt."""
+    return await hook(client, db, w, payload, headers)
 
 
 async def _last(db) -> list[Notification]:
@@ -45,8 +47,8 @@ async def _last(db) -> list[Notification]:
 async def test_deep_fields_are_substituted(client, db):
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker1")
-    r = await _report(client, w)
-    assert r.status_code == 202
+    r = await _report(client, db, w)
+    assert r.status == "done"
     (n,) = await _last(db)
     assert n.body == "Shelter: vibration"
 
@@ -58,11 +60,11 @@ async def test_a_filter_from_the_payload(client, db):
                     event_header="payload:event.attributes.alarm", event_filter="vibration")
     ignition = {"event": {"id": 7, "type": "ignitionOn", "attributes": {}},
                 "device": {"name": "Shelter"}}
-    r = await _report(client, w, ignition)
-    assert r.json()["ignored"] is True
+    r = await _report(client, db, w, ignition)
+    assert r.status == "dropped" and "filtered" in r.outcome
     assert await _last(db) == []
 
-    assert (await _report(client, w)).status_code == 202
+    assert (await _report(client, db, w)).status == "done"
     assert len(await _last(db)) == 1
 
 
@@ -70,33 +72,31 @@ async def test_the_header_filter_stays(client, db):
     """The previous way must not change: GitHub and company send headers."""
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="gh", event_header="X-GitHub-Event", event_filter="push")
-    r = await client.post(f"/hooks/{w.public_id}", json={"a": 1},
-                          headers={"X-GitHub-Event": "issues"})
-    assert r.json()["ignored"] is True
-    r = await client.post(f"/hooks/{w.public_id}", json={"a": 1},
-                          headers={"X-GitHub-Event": "push"})
-    assert r.status_code == 202 and len(await _last(db)) == 1
+    r = await _report(client, db, w, {"a": 1}, {"X-GitHub-Event": "issues"})
+    assert r.status == "dropped" and "filtered" in r.outcome
+    r = await _report(client, db, w, {"a": 1}, {"X-GitHub-Event": "push"})
+    assert r.status == "done" and len(await _last(db)) == 1
 
 
 async def test_the_same_report_only_once(client, db):
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker3", ref_field="event.id")
-    assert (await _report(client, w)).status_code == 202
-    second = await _report(client, w)
-    assert second.json().get("duplicate") is True
+    assert (await _report(client, db, w)).status == "done"
+    second = await _report(client, db, w)
+    assert second.status == "dropped" and "already delivered" in second.outcome
     assert len(await _last(db)) == 1
 
     # Another event is not a repetition.
     different = {**PAYLOAD, "event": {**PAYLOAD["event"], "id": 1892}}
-    assert (await _report(client, w, different)).status_code == 202
+    assert (await _report(client, db, w, different)).status == "done"
     assert len(await _last(db)) == 2
 
 
 async def test_without_a_reference_field_no_suppression(client, db):
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker4")
-    await _report(client, w)
-    await _report(client, w)
+    await _report(client, db, w)
+    await _report(client, db, w)
     assert len(await _last(db)) == 2
 
 
@@ -125,10 +125,10 @@ async def test_workflow_mode_recognises_repetitions(client, db):
     db.add(w)
     await db.commit()
 
-    first = await _report(client, w)
-    assert first.status_code == 202 and not first.json().get("duplicate")
-    second = await _report(client, w)
-    assert second.json().get("duplicate") is True
+    first = await _report(client, db, w)
+    assert first.status == "done"
+    second = await _report(client, db, w)
+    assert second.status == "dropped" and "already delivered" in second.outcome
     runs = (await db.execute(select(WorkflowInstance))).scalars().all()
     assert len(runs) == 1
 

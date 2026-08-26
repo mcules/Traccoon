@@ -9,14 +9,17 @@ import { SystemSwitchPanel } from "../components/AccountPanels";
 import {
   Actions, Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field,
   Errorrow, ICON, IconButton, Listing, ListingEmpty, ListRow, BUTTON } from "../components/ui";
+import InboundPanel from "../components/InboundPanel";
 import ProviderModelsPanel from "../components/ProviderModelsPanel";
 import TranslationsPanel from "../components/TranslationsPanel";
 
 // Destinations no longer have a tab of their own: they stand under the settings with a
 // scope switch (global | me | project), because it was the same panel three times over.
-type Tab = "users" | "cost" | "models" | "maintenance" | "mail" | "artifacts" | "translations";
+type Tab = "users" | "cost" | "models" | "inbound" | "maintenance" | "mail" | "artifacts"
+  | "translations";
 const TABS: [Tab, string][] = [
   ["users", "admin.users"], ["cost", "admin.costs"], ["models", "admin.models"],
+  ["inbound", "inbound.title"],
   ["maintenance", "admin.maintenance"], ["mail", "admin.email"],
   ["artifacts", "admin.artifacts"], ["translations", "admin.translations"],
 ];
@@ -28,14 +31,15 @@ export default function Admin() {
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "users") as Tab;
   usePageChrome(tr("nav.admin"), TABS.map(([key, label]) => ({
     key, label: tr(label), to: `/admin/${key}`,
-    icon: { users: "👥", cost: "💶", models: "🧠", maintenance: "🔧", mail: "✉️",
-            artifacts: "📦", translations: "🌐" }[key],
+    icon: { users: "👥", cost: "💶", models: "🧠", inbound: "📥", maintenance: "🔧",
+            mail: "✉️", artifacts: "📦", translations: "🌐" }[key],
   })), tab, "side");
   return (
     <div>
       {tab === "users" && <Users />}
       {tab === "cost" && <Cost />}
       {tab === "models" && <ProviderModelsPanel />}
+      {tab === "inbound" && <InboundPanel />}
       {tab === "maintenance" && <Maintenance />}
       {tab === "mail" && <MailConfig />}
       {tab === "artifacts" && <ArtifactTypesPanel />}

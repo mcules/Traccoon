@@ -2,8 +2,8 @@ import datetime as dt
 import enum
 
 from sqlalchemy import (
-    Boolean, DateTime, Enum as SAEnum, Float, ForeignKey, Integer, JSON, String,
-    Text, UniqueConstraint, func,
+    Boolean, DateTime, Enum as SAEnum, Float, ForeignKey, Integer, JSON, LargeBinary,
+    String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -84,7 +84,7 @@ class WebhookSub(TimestampMixin, Base):
     context_fixed: Mapped[dict] = mapped_column(JSON, default=dict)  # {ziel: fester Wert}
     # ── Altlast der alten Modi ───────────────────────────────────────────────
     # These columns carried the domain logic that stands in the flow today. They stay until
-    # `webhook_modes.convert()` has run everywhere — after that nobody reads them any more.
+    # `webhook_modes.convert()` has run everywhere, after that nobody reads them any more.
     agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Modus 'assistant' (E-Mail): projektlose AssistantTask + lokale Vorklassifizierung durch
     # this agent (its provider, model and token). Empty = no classification (passthrough).
@@ -112,7 +112,7 @@ class WebhookSub(TimestampMixin, Base):
     permissions_json: Mapped[list] = mapped_column(JSON, default=list)  # policy for project-less tasks
     # Answer back to the caller (mode 'workflow'): how many seconds the request may be held
     # open until the flow has produced its answer (0 = answer at once, as before). What is
-    # sent back is what the flow itself wrote — `antwort` in the context (action `antwort`),
+    # sent back is what the flow itself wrote, `antwort` in the context (action `antwort`),
     # or, when a map stands here, exactly the fields it names ({field: context.path}).
     response_timeout: Mapped[int] = mapped_column(Integer, default=0)
     response_map: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -128,6 +128,62 @@ class WebhookCoalesce(Base):
     window_until: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
     payloads: Mapped[list] = mapped_column(JSON, default=list)
     flushed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class InboundDelivery(Base):
+    """Something arrived from outside, before anybody worked on it.
+
+    The point of this table is a promise: once a delivery has landed here, it cannot get lost
+    any more. Before, a webhook was carried out inside the request, signature, flow start,
+    answer, and whatever threw in the middle took the payload with it. Nobody sending to us
+    tries twice: the archive hook, the house automation, the tracker and the mail watcher all
+    fire exactly once.
+
+    So the raw body is stored, unread and unchecked, and everything else happens afterwards
+    and may be repeated. The signature is verified when it is worked on, not when it is taken
+    in, that way the front door needs no secrets, which is what lets a small separate
+    receiver stand there while the rest of the house is being rebuilt.
+    """
+    __tablename__ = "inbound_deliveries"
+
+    # Every column carries a server default, and that is not tidiness: a second writer stands
+    # at this table, the receiver at the front door, which speaks plain SQL and knows nothing
+    # of this class. What it does not name has to fill itself in.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Which door it came through. `webhook` is the only one so far; the column exists because
+    # the next one (a mail, a message) belongs in the same table and not in a second one.
+    channel: Mapped[str] = mapped_column(String(30), default="webhook",
+                                         server_default="webhook", index=True)
+    # The public id of the route. Deliberately not a foreign key: a delivery for a route that
+    # was deleted in the meantime is still evidence, and losing it to a cascade would be the
+    # exact opposite of what this table is for.
+    target: Mapped[str] = mapped_column(String(120), default="", server_default="",
+                                        index=True)
+    # The label of the route at the time it arrived, for reading the list later.
+    route: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    # Raw, byte for byte: the signature is computed over exactly these bytes, so anything that
+    # re-encodes them (JSON in, JSON out) would break the check later.
+    # The only column without a server default: whoever writes here always brings the body,
+    # and a portable default for a byte column does not exist (`''::bytea` is Postgres and
+    # nothing else, which the test database refuses outright).
+    body: Mapped[bytes] = mapped_column(LargeBinary, default=b"")
+    headers: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}")
+    received_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True)
+
+    # new | done | dropped | parked. `dropped` is a delivery that was correctly not carried
+    # out (filter, duplicate, collected), not a failure, and not something to try again.
+    status: Mapped[str] = mapped_column(String(20), default="new", server_default="new",
+                                        index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_error: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # When the next attempt is due. NULL = right away.
+    next_try_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+    # What became of it, in one line: the instance, the events, or why it was dropped.
+    outcome: Mapped[str] = mapped_column(String(500), default="", server_default="")
 
 
 class Job(TimestampMixin, Base):

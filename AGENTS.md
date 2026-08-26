@@ -53,6 +53,21 @@ this one:
   ever had to be *some* key.
 - Traccoon's own name, its `traccoon_*` tools and its repository URL stay.
 
+## What comes from outside is taken in before it is worked on
+
+Anything a foreign system sends (a webhook, a report, a mail) lands in
+`inbound_deliveries` first and is carried out afterwards (`services/inbound.py`). Do not add
+a second way in that does the work inside the request: nobody who sends to us tries twice,
+and a restart in the middle would then cost the payload.
+
+Two consequences that are easy to get wrong:
+
+* The signature is checked when the delivery is **worked on**, over the stored bytes. That is
+  what lets the small receiver at the front door (`ingest/`) hold no secrets and keep standing
+  while backend and frontend are being replaced.
+* That receiver speaks plain SQL and knows nothing of the models. Every column it does not
+  name has to carry a server default.
+
 ## Comments explain the why
 
 The code says what happens. A comment says why it is this way and not another, preferably
@@ -78,7 +93,7 @@ and have no sentence of their own to name.
 `frontend/DESIGN.md` says which building blocks a page is made of (`Bereich`, `Liste`,
 `ListenZeile`, `Etikett`, `Zustand`, `Zeilenknopf` … in `src/components/ui.tsx`) and when
 each one is taken. Read it BEFORE writing markup: whoever builds a chain of classes by hand
-that already exists there produces exactly the differences that file exists to abolish — five
+that already exists there produces exactly the differences that file exists to abolish, five
 tabs of the same page had grown five answers to the same question.
 
 ## Building and checking

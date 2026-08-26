@@ -176,10 +176,12 @@ async def test_the_webhook_really_starts_the_flow(client, db):
     payload = {"quelle": "Zabbix", "vorgang": {"id": 42, "titel": "Störung"}}
     raw = _json.dumps(payload).encode()
     sig = hmac.new(hook["secret"].encode(), raw, hashlib.sha256).hexdigest()
-    r = await client.post(f"/hooks/{hook['public_id']}", content=raw,
-                          headers={"content-type": "application/json",
-                                   "X-Webhook-Signature": sig})
-    assert r.status_code in (200, 202), r.text
+    answer = await client.post(f"/hooks/{hook['public_id']}", content=raw,
+                               headers={"content-type": "application/json",
+                                        "X-Webhook-Signature": sig})
+    assert answer.status_code == 202, answer.text
+    from app.services import inbound
+    await inbound.drain(db)
 
     inst = (await db.execute(select(WorkflowInstance).where(
         WorkflowInstance.definition_id == d.id))).scalars().all()
@@ -228,16 +230,30 @@ async def _with_subjectfield(db, owner, field: str | None, subject=WorkflowSubje
     return d
 
 
-async def _call(client, hook, payload: dict):
+async def _call(client, db, hook, payload: dict):
+    """Deliver signed — and wait for the work.
+
+    A delivery is taken in first and carried out afterwards, so a bare post would only ever
+    check the receipt. What comes back is the row from the inbox: its status says what became
+    of the delivery.
+    """
     import hashlib
     import hmac
     import json as _json
 
+    from app.models.ops import InboundDelivery
+    from app.services import inbound
+
     raw = _json.dumps(payload).encode()
     sig = hmac.new(hook["secret"].encode(), raw, hashlib.sha256).hexdigest()
-    return await client.post(f"/hooks/{hook['public_id']}", content=raw,
-                             headers={"content-type": "application/json",
-                                      "X-Webhook-Signature": sig})
+    answer = await client.post(f"/hooks/{hook['public_id']}", content=raw,
+                               headers={"content-type": "application/json",
+                                        "X-Webhook-Signature": sig})
+    assert answer.status_code == 202, answer.text
+    await inbound.drain(db)
+    row = await db.get(InboundDelivery, answer.json()["delivery_id"])
+    await db.refresh(row)
+    return row
 
 
 async def test_the_webhook_binds_the_ticket_from_the_payload(client, db):
@@ -248,9 +264,9 @@ async def test_the_webhook_binds_the_ticket_from_the_payload(client, db):
     d = await _with_subjectfield(db, boss, "vorgang.ticket")
     hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(boss))).json()
 
-    r = await _call(client, hook, {"vorgang": {"ticket": "ABC-7"}})
-    assert r.status_code in (200, 202), r.text
-    assert r.json()["issue_id"] == issue.id
+    r = await _call(client, db, hook, {"vorgang": {"ticket": "ABC-7"}})
+    assert r.status == "done", r.last_error
+    assert str(issue.id) in r.outcome
 
     inst = (await db.execute(select(WorkflowInstance).where(
         WorkflowInstance.definition_id == d.id))).scalars().one()
@@ -264,8 +280,8 @@ async def test_the_number_works_too(client, db):
     _, issue = await _ticket(db, boss, "ABC-9")
     d = await _with_subjectfield(db, boss, "id")
     hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(boss))).json()
-    r = await _call(client, hook, {"id": issue.id})
-    assert r.json()["issue_id"] == issue.id
+    r = await _call(client, db, hook, {"id": issue.id})
+    assert r.status == "done" and str(issue.id) in r.outcome
 
 
 async def test_a_missing_field_says_so_clearly(client, db):
@@ -275,13 +291,15 @@ async def test_a_missing_field_says_so_clearly(client, db):
     d = await _with_subjectfield(db, boss, "vorgang.ticket")
     hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(boss))).json()
 
-    r = await _call(client, hook, {"etwas": "anderes"})
-    assert r.status_code == 400 and "vorgang.ticket" in r.text
+    # It waits instead of vanishing: the ticket named in the payload may be created a moment
+    # later. What it must not do is stay silent about why.
+    r = await _call(client, db, hook, {"etwas": "anderes"})
+    assert r.status == "new" and "vorgang.ticket" in r.last_error
 
     empty = await _with_subjectfield(db, boss, None)
     hook2 = (await client.post(f"/workflows/{empty.id}/webhook", headers=auth(boss))).json()
-    r2 = await _call(client, hook2, {"vorgang": {"ticket": "ABC-3"}})
-    assert r2.status_code == 400 and "names no field" in r2.text
+    r2 = await _call(client, db, hook2, {"vorgang": {"ticket": "ABC-3"}})
+    assert r2.status == "new" and "names no field" in r2.last_error
 
 
 async def test_a_foreign_ticket_stays_foreign(client, db):
@@ -293,13 +311,13 @@ async def test_a_foreign_ticket_stays_foreign(client, db):
 
     d = await _with_subjectfield(db, anna, "vorgang.ticket")
     hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(anna))).json()
-    r = await _call(client, hook, {"vorgang": {"ticket": "GEH-4"}})
-    assert r.status_code == 400 and "Rechte" in r.text
+    r = await _call(client, db, hook, {"vorgang": {"ticket": "GEH-4"}})
+    assert r.status == "new" and "Rechte" in r.last_error
 
 
 async def test_a_flow_without_an_artifact_needs_no_field(client, db):
     boss = await make_user(db, "chef", admin=True)
     d = await _with_subjectfield(db, boss, None, subject=WorkflowSubjectKind.standalone)
     hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(boss))).json()
-    r = await _call(client, hook, {"irgendwas": 1})
-    assert r.status_code in (200, 202), r.text
+    r = await _call(client, db, hook, {"irgendwas": 1})
+    assert r.status == "done", r.last_error
