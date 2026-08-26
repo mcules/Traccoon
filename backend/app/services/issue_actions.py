@@ -124,6 +124,28 @@ async def clear_assignee(db: AsyncSession, issue: Issue, access) -> None:
     issue.assignee_user_id = None
 
 
+async def set_sprint(db: AsyncSession, issue: Issue, access, *, sprint_id: int | None) -> None:
+    """Into a sprint, or back into the backlog (`None`).
+
+    A sprint hangs off a board, and a board off a project, so the check goes over the board:
+    without it a ticket could be moved into the sprint of a foreign project, which would put
+    it on a board its people never chose to show it on.
+    """
+    require_write(access)
+    if sprint_id is None:
+        issue.sprint_id = None
+        return
+    from ..models.ticket import Board, Sprint
+    ok = (await db.execute(
+        select(Sprint.id).join(Board, Board.id == Sprint.board_id)
+        .where(Sprint.id == sprint_id, Board.project_id == issue.project_id)
+    )).scalar_one_or_none()
+    if ok is None:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.sprint_does_not_belong_project",
+                     "The sprint does not belong to the project")
+    issue.sprint_id = sprint_id
+
+
 # ── Archive and delete ──────────────────────────────────────────────────────
 
 async def _stop_testenv(db: AsyncSession, issue: Issue, access) -> None:

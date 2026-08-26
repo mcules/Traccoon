@@ -112,11 +112,12 @@ class BulkIn(BaseModel):
     `action`, so one shape instead of six.
     """
     keys: list[str]
-    action: Literal["status", "priority", "assignee", "archive", "unarchive", "delete",
-                    "assign_agent"]
+    action: Literal["status", "priority", "assignee", "sprint", "archive", "unarchive",
+                    "delete", "assign_agent"]
     status_id: int | None = None
     priority: Priority | None = None
     user_id: int | None = None          # None at "assignee" clears it
+    sprint_id: int | None = None        # None at "sprint" puts it back into the backlog
     agent: str | None = None
 
 

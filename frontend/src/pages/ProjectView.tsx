@@ -194,7 +194,8 @@ export default function ProjectView() {
           {view === "backlog" && <Backlog project={project} meta={meta} issues={issues} onOpen={openTicket} />}
           {view === "archive" && (
             (archivedIssues && archivedIssues.length > 0)
-              ? <IssueList project={project} meta={meta} issues={archivedIssues} onOpen={openTicket} />
+              ? <IssueList project={project} meta={meta} issues={archivedIssues} onOpen={openTicket}
+                    archived />
               : <div className="text-sm text-muted">{tr("project_view.no_archived_tickets")}</div>
           )}
         </>

@@ -177,3 +177,59 @@ async def test_too_many_at_once_is_refused(db, client):
                           json={"keys": [f"ABC-{n}" for n in range(300)], "action": "archive"})
     assert r.status_code == 400
     assert r.json()["key"] == "err.too_many_tickets_at_once"
+
+
+async def test_a_selection_moves_into_a_sprint_and_back(db, client):
+    """The backlog moves tickets the same way as everything else: over the selection."""
+    from app.models.ticket import Board, Sprint
+
+    boss, proj, t, stats = await _project(db)
+    board = Board(project_id=proj.id, name="Board")
+    db.add(board)
+    await db.commit()
+    await db.refresh(board)
+    sprint = Sprint(board_id=board.id, name="Sprint 1")
+    db.add(sprint)
+    await db.commit()
+    await db.refresh(sprint)
+    a = await _make(db, proj, t, stats, boss, 1)
+    b = await _make(db, proj, t, stats, boss, 2)
+
+    r = await client.post(f"/projects/{proj.id}/issues/bulk", headers=auth(boss),
+                          json={"keys": [a.key, b.key], "action": "sprint",
+                                "sprint_id": sprint.id})
+    assert r.json()["done"] == 2
+    await db.refresh(a)
+    assert a.sprint_id == sprint.id
+
+    r = await client.post(f"/projects/{proj.id}/issues/bulk", headers=auth(boss),
+                          json={"keys": [a.key], "action": "sprint", "sprint_id": None})
+    assert r.json()["done"] == 1
+    await db.refresh(a)
+    assert a.sprint_id is None
+
+
+async def test_a_foreign_sprint_is_refused(db, client):
+    """A sprint hangs off a board and that off a project. Without the check a ticket could be
+    put on a board whose people never chose to show it."""
+    from app.models.ticket import Board, Sprint
+
+    boss, proj, t, stats = await _project(db)
+    other = await make_project(db, "XYZ", "Another project")
+    board = Board(project_id=other.id, name="Foreign board")
+    db.add(board)
+    await db.commit()
+    await db.refresh(board)
+    foreign = Sprint(board_id=board.id, name="Foreign sprint")
+    db.add(foreign)
+    await db.commit()
+    await db.refresh(foreign)
+    a = await _make(db, proj, t, stats, boss, 1)
+
+    r = await client.post(f"/projects/{proj.id}/issues/bulk", headers=auth(boss),
+                          json={"keys": [a.key], "action": "sprint", "sprint_id": foreign.id})
+    body = r.json()
+    assert body["done"] == 0
+    assert body["failed"][0]["error_key"] == "err.sprint_does_not_belong_project"
+    await db.refresh(a)
+    assert a.sprint_id is None

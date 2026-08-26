@@ -493,6 +493,8 @@ async def bulk_issues(
                     await actions.clear_assignee(db, issue, access)
                 else:
                     await actions.set_assignee(db, issue, access, user_id=data.user_id)
+            elif data.action == "sprint":
+                await actions.set_sprint(db, issue, access, sprint_id=data.sprint_id)
             elif data.action == "archive":
                 await actions.archive(db, issue, access)
             elif data.action == "unarchive":
