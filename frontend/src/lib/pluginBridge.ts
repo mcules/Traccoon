@@ -105,17 +105,102 @@ const CALLS: Record<string, Call> = {
   },
 };
 
+/**
+ * What a plugin may hand the host **unasked**: the breakdown behind its tile.
+ *
+ * The one message that goes the other way. A tile is a figure like the host's own ones, and
+ * behind those stands a list of where the number comes from — but the tile is a frame the
+ * host must not point into (no `allow-same-origin`), and its content takes no mouse at all
+ * (`pointer-events-none`, so that a click belongs to the host and not to foreign code). A
+ * tooltip inside the plugin would therefore never open, and the plugin has to say what
+ * stands in it. The host draws it, over its own card.
+ *
+ * Everything that arrives is text and nothing else: strings, cut to length, at most a dozen
+ * lines. Whatever a plugin sends beyond that is dropped, not rendered.
+ */
+export type TileNote = { title: string; rows: { label: string; value: string }[] };
+
+/**
+ * One note per figure instead of one per tile.
+ *
+ * "12 open" over four stacks is the same unanswered question as "7 waiting" over eight
+ * projects, and the host's own figures each carry their own list for exactly that reason. A
+ * tile that sends a single note for its whole card gives the same answer wherever one points
+ * — which is no answer at all once the card holds three numbers.
+ *
+ * The plugin says where each figure sits (the bridge measures it), the host lays an invisible
+ * zone over that place. The rectangle is in the frame's pixels, and the frame covers the card
+ * edge to edge, so they are the card's pixels too.
+ */
+export type TileZone = TileNote & { key: string; rect: Rect };
+type Rect = { x: number; y: number; w: number; h: number };
+
+/** At most this many zones per tile — a tile with more figures than this is a page. */
+const MAX_ZONES = 8;
+
+function rowsOf(raw: any): TileNote["rows"] {
+  const cut = (v: any) => String(v ?? "").slice(0, 80);
+  const rows = Array.isArray(raw?.rows) ? raw.rows.slice(0, 12) : [];
+  return rows.map((r: any) => ({ label: cut(r?.label), value: cut(r?.value) }))
+             .filter((r: TileNote["rows"][number]) => r.label);
+}
+
+/**
+ * A rectangle we are willing to lay over our own card.
+ *
+ * Everything here comes from foreign code, so nothing is taken on trust: no negative or
+ * unreal numbers, and a zone may not grow past the tile it belongs to. A plugin that asked
+ * for a 10000px zone would otherwise spread a hover target of its own choosing across the
+ * page around it.
+ */
+function rectOf(raw: any): Rect | null {
+  const n = (v: any, max: number) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? Math.min(Math.max(x, 0), max) : null;
+  };
+  const x = n(raw?.x, 4096), y = n(raw?.y, 4096);
+  const w = n(raw?.w, 4096), h = n(raw?.h, 4096);
+  if (x === null || y === null || !w || !h) return null;
+  return { x, y, w, h };
+}
+
+export type TileNotes = { whole: TileNote | null; zones: TileZone[] };
+
+function noteOf(raw: any): TileNotes | null {
+  if (!raw || typeof raw !== "object") return null;
+  const cut = (v: any) => String(v ?? "").slice(0, 80);
+
+  if (Array.isArray(raw.zones)) {
+    const zones: TileZone[] = [];
+    for (const z of raw.zones.slice(0, MAX_ZONES)) {
+      const rect = rectOf(z?.rect);
+      const rows = rowsOf(z);
+      if (rect && rows.length) {
+        zones.push({ key: cut(z?.key) || String(zones.length), title: cut(z?.title), rows, rect });
+      }
+    }
+    return zones.length ? { whole: null, zones } : null;
+  }
+
+  const rows = rowsOf(raw);
+  return rows.length ? { whole: { title: cut(raw.title), rows }, zones: [] } : null;
+}
+
 /** Answer the questions of exactly this iframe, for as long as it is on the page. */
 export function usePluginBridge(
   slug: string,
   frame: RefObject<HTMLIFrameElement | null>,
   readsGranted: string[],
+  onNote?: (note: TileNotes | null) => void,
 ) {
   const { user } = useAuth();
   // The grants in a ref: the listener is installed once but must always see the current
   // state — otherwise it would hang on whatever was true at the first render.
   const granted = useRef<string[]>([]);
   granted.current = readsGranted;
+  // Same reason: the listener is installed once and must call the current receiver.
+  const note = useRef<typeof onNote>(undefined);
+  note.current = onNote;
 
   useEffect(() => {
     if (!slug) return;
@@ -136,6 +221,7 @@ export function usePluginBridge(
       if (!d || d.source !== "plugin") return;
       // Only from exactly this iframe — not from another window joining in.
       if (e.source !== frame.current?.contentWindow) return;
+      if (d.note !== undefined) return note.current?.(noteOf(d.note));
       if (d.ready) return;
       if (typeof d.id !== "number") return;
 

@@ -75,9 +75,77 @@
       create: function (table, row) { return ask("store.create", { table: table, row: row }); },
       remove: function (table, id) { return ask("store.delete", { table: table, id: id }); },
     },
+    /**
+     * The breakdown behind a tile's figures.
+     *
+     * A tile is a figure like the host's own ones, and behind those stands a list of where
+     * the number comes from. The tile cannot draw that list itself: its frame takes no mouse
+     * (a click on it belongs to the host, not to foreign code), so a tooltip in here would
+     * never open. The plugin says what stands in it, the host draws it over its own card.
+     *
+     * `note` covers the whole tile, `notes` gives every figure its own — pass the element
+     * each one belongs to and the bridge measures it. Measuring here and not in the plugin
+     * is the point: the host needs the rectangle, every plugin would otherwise write the
+     * same `getBoundingClientRect` loop, and none of them would remember to redo it when the
+     * tile is resized. This does, on its own.
+     *
+     * Text only, at most a dozen rows, and the host cuts what is too long.
+     */
+    tile: {
+      note: function (note) { zones = []; send({ note: note || null }); },
+      notes: function (list) {
+        zones = (list || []).filter(function (z) { return z && z.el; });
+        measure();
+      },
+    },
     /** For anything the conveniences above do not cover. */
     call: ask,
   };
+
+  // -------------------------------------------------------------- tile notes
+
+  var zones = [];
+  var pendingMeasure = 0;
+
+  function send(payload) {
+    payload.source = "plugin";
+    parent.postMessage(payload, "*");
+  }
+
+  /**
+   * Where each figure sits, in the frame's own pixels.
+   *
+   * The host lays the frame over its card edge to edge, so these are the card's pixels too
+   * and it can put its hover zones straight onto them. A figure that has been laid out to
+   * nothing (hidden, not yet drawn) is left out rather than sent as a zero-sized target.
+   */
+  function measure() {
+    pendingMeasure = 0;
+    if (!zones.length) return send({ note: null });
+    var out = [];
+    for (var i = 0; i < zones.length; i++) {
+      var z = zones[i];
+      var box = z.el.getBoundingClientRect();
+      if (!box.width || !box.height) continue;
+      out.push({
+        key: z.key || String(i),
+        title: z.title,
+        rows: z.rows,
+        rect: { x: box.left, y: box.top, w: box.width, h: box.height },
+      });
+    }
+    send({ note: out.length ? { zones: out } : null });
+  }
+
+  function remeasure() {
+    if (pendingMeasure) return;
+    pendingMeasure = requestAnimationFrame(measure);
+  }
+
+  // The tile is resized by the host — its card follows the grid, and below `xl` the whole row
+  // changes shape. Every rectangle sent before that is then pointing at the wrong place.
+  if (window.ResizeObserver) new ResizeObserver(remeasure).observe(document.documentElement);
+  window.addEventListener("resize", remeasure);
 
   // Tell the host the page is up.
   parent.postMessage({ source: "plugin", ready: true }, "*");
