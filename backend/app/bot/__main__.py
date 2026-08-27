@@ -306,7 +306,9 @@ async def _done(cq: CallbackQuery, note: str,
     msg = cq.message
     if msg is None:
         return
-    line = f"<i>{safe(note)} · {_now().strftime('%d.%m. %H:%M')}</i>"
+    # `.astimezone()` and not the bare moment: `_now()` is UTC, and formatting it directly
+    # printed UTC into a message a person reads with their own clock in view.
+    line = f"<i>{safe(note)} · {_now().astimezone().strftime('%d.%m. %H:%M')}</i>"
     try:
         # html_text keeps the formatting of the original message (bold, lines).
         await msg.edit_text(f"{msg.html_text}\n\n{line}", parse_mode="HTML",

@@ -41,6 +41,12 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
+      # The wall clock of the container. Nothing in the database hangs on it — every
+      # timestamp there is written in UTC (`datetime.now(tz=utc)`) and stays that way, and a
+      # job schedule is read in the zone of its owner (services/scheduler.py). What this does
+      # move is the hour in the log lines and the date an agent is handed at the start of its
+      # run: on UTC it was told yesterday's date for the first two hours after midnight.
+      TZ: ${TZ:-Europe/Berlin}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
@@ -109,6 +115,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
+      # Same clock as the backend, and here it matters most: the date in the opening prompt
+      # of an agent run and the day a memory file is filed under come from it.
+      TZ: ${TZ:-Europe/Berlin}
       WORKSPACE_ROOT: /workspace
       DEPLOYER_URL: ${DEPLOYER_URL:-http://deployer:8661}
       SHOTTER_URL: ${SHOTTER_URL:-http://shotter:8700}
@@ -143,6 +152,10 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
+      # The clock the times in the messages are read by. Together with `.astimezone()` at the
+      # confirmation line in bot/__main__.py — a UTC moment formatted straight out prints UTC no
+      # matter what stands here, which is how "done · 08:48" reached a reader sitting at 10:48.
+      TZ: ${TZ:-Europe/Berlin}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALLOWED_IDS: ${TELEGRAM_ALLOWED_IDS:-}
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
