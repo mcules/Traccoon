@@ -357,10 +357,24 @@ async def my_dashboard(u: User = Depends(get_current_user), db: AsyncSession = D
       acceptance, question or hold, error). "Mine" means I assigned the agent
       (`assigned_by_user_id`) OR the ticket is assigned to me as a person (`assignee_user_id`).
     - `assigned`: tickets assigned to me that are still open and NOT already in `action`.
+
+    Plus what the ticket lists cannot say:
+    - `running`: the runs of my agents that are working **right now** — the counter alone
+      answered "something is running" and left the "what" to the office.
+    - `job_errors`: my jobs that fell over in the last day. Nobody looks into the job list on
+      spec, so a silently failing job stayed unnoticed until somebody missed its result.
+    - `costs`: what my runs burned in a day and in a week. Tokens next to the money on
+      purpose: whoever pays over a subscription reads a 0.00 there and would otherwise think
+      nothing had happened.
+    - `state`: whether anything can start at all. Without it a quiet page has two readings —
+      "nothing to do" and "the runner has been gone since this morning" — and they look
+      exactly the same.
     """
     from sqlalchemy import func, or_, select
 
+    from ..models.agents import CostEntry, Run
     from ..models.notification import Notification
+    from ..models.ops import Job, JobRun
     from ..models.project import Project, ProjectMember
     from ..models.ticket import Issue, WorkflowStatus
 
@@ -411,10 +425,68 @@ async def my_dashboard(u: User = Depends(get_current_user), db: AsyncSession = D
         select(func.count()).select_from(Issue)
         .where(mine, Issue.resolved_at.isnot(None), Issue.resolved_at >= since))).scalar_one()
 
+    # What is working right now: the runs themselves, not the ticket flag. `owner_id` is on
+    # the run, so run-less work (assistant, job) is included instead of falling through the
+    # ticket join.
+    running_rows = (await db.execute(
+        select(Run, Issue, Project)
+        .outerjoin(Issue, Issue.id == Run.issue_id)
+        .outerjoin(Project, Project.id == func.coalesce(Run.project_id, Issue.project_id))
+        .where(Run.owner_id == u.id, Run.status == "running", Run.archived.is_(False))
+        .order_by(Run.started_at.desc()).limit(20))).all()
+    # The address of the room in the office, from the one place that knows it: a ticket is a
+    # room (planning, execution, subagents belong together), a run without a ticket addresses
+    # through its root. Without it the start page could say THAT something is running and
+    # never show what it is doing.
+    from ..services.office import session_id
+    running = [{
+        "run_id": r.id, "agent": r.agent, "phase": r.phase, "model": r.model,
+        "issue_key": issue.key if issue else None,
+        "summary": issue.summary if issue else (r.task_id or ""),
+        "project_key": proj.key if proj else None,
+        "sid": session_id(r),
+        "started_at": r.started_at,
+    } for r, issue, proj in running_rows]
+
+    # Jobs of mine that fell over within the last day. One row per failed run, newest first;
+    # more than a handful of them is a broken job, not a list to read to the end.
+    day = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=1)
+    job_rows = (await db.execute(
+        select(JobRun, Job).join(Job, Job.id == JobRun.job_id)
+        .where(Job.user_id == u.id, JobRun.status == "error", JobRun.started_at >= day)
+        .order_by(JobRun.started_at.desc()).limit(10))).all()
+    job_errors = [{
+        "job_id": j.id, "name": j.name, "kind": j.kind,
+        "started_at": run.started_at,
+        # Only the first line: what stands here is a hint, and the whole trace belongs in the
+        # job history where there is room for it.
+        "error": (run.error or "").strip().splitlines()[0][:200] if run.error else "",
+    } for run, j in job_rows]
+
+    async def burnt(start: dt.datetime) -> dict:
+        row = (await db.execute(
+            select(func.coalesce(func.sum(CostEntry.cost_usd), 0.0),
+                   func.coalesce(func.sum(CostEntry.input_tokens), 0),
+                   func.coalesce(func.sum(CostEntry.output_tokens), 0))
+            .join(Run, Run.id == CostEntry.run_id)
+            .where(Run.owner_id == u.id, CostEntry.created_at >= start))).one()
+        return {"usd": round(float(row[0]), 4), "tokens": int(row[1]) + int(row[2])}
+
+    costs = {"day": await burnt(day), "week": await burnt(since)}
+
+    # The brakes, in the order in which they bite: no runner at all, the whole house stopped,
+    # the end of my own working day.
+    from ..core.redis import get_user_flag, runner_connected
+    from ..services.agent_gate import system_paused
+    state = {"runner": await runner_connected(), "paused": await system_paused(),
+             "shift_end": bool(await get_user_flag("shift_end", u.id))}
+
     return {
         "action": action, "assigned": assigned,
+        "running": running, "job_errors": job_errors, "costs": costs, "state": state,
         "stats": {"projects": projects, "action": len(action), "assigned": len(assigned),
-                  "working": working, "unread": unread, "done_7d": done_recent},
+                  "working": working, "unread": unread, "done_7d": done_recent,
+                  "job_errors": len(job_errors)},
     }
 
 

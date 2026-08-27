@@ -103,6 +103,22 @@ def no_mcp(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def mail_cache_apart(monkeypatch, request):
+    """Every test gets its own corner of the mailbox cache.
+
+    `mailbox_cache` talks to Redis directly, and inside the container that Redis answers. The
+    keys hang off the account id, and every test starts counting at 1 — so the second test to
+    create an account read the numbers of the first and passed a sum nobody had computed.
+
+    Deliberately not switched off: there is a test about exactly this cache. What changes is
+    only the drawer it writes into, one per test, and those entries expire by themselves.
+    """
+    import app.services.mailbox_cache as cachemod
+
+    monkeypatch.setattr(cachemod, "PREFIX", f"traccoon:test:{abs(hash(request.node.nodeid))}")
+
+
+@pytest.fixture(autouse=True)
 def redis_stub(monkeypatch):
     """Redis and worker replacement for all tests.
 
@@ -133,6 +149,12 @@ def redis_stub(monkeypatch):
     async def run_alive(task_id):
         return False
 
+    # Without this the onboarding step and the start page ask the REAL Redis whether a runner
+    # is beating — inside the test container that answers, and then the test depends on
+    # whether a worker happens to be running next door.
+    async def runner_connected():
+        return False
+
     async def peek_result(task_id):
         return _next(task_id)
 
@@ -151,7 +173,7 @@ def redis_stub(monkeypatch):
     stubs = {
         "publish_event": publish_event, "enqueue_task": enqueue_task,
         "wait_result": wait_result, "peek_result": peek_result, "get_flag": get_flag,
-        "lauf_lebt": run_alive,
+        "lauf_lebt": run_alive, "runner_connected": runner_connected,
         "get_user_flag": get_user_flag, "set_flag": set_flag, "publish_kill": publish_kill,
     }
     for name, fn in stubs.items():

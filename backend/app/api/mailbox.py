@@ -177,6 +177,42 @@ async def unread(user: User = Depends(get_current_user),
             "total": sum(e["unseen"] or 0 for e in result)}
 
 
+@router.get("/counts")
+async def counts(user: User = Depends(get_current_user),
+                 db: AsyncSession = Depends(get_session)):
+    """New mail, spam and drafts across all mailboxes — the mail card of the start page.
+
+    Three numbers instead of one, and the same shape as `/unread`: side by side over the
+    mailboxes, from the cache while nothing has happened on the account, and a mailbox that
+    is unreachable contributes nothing instead of tearing the whole card down with it.
+    """
+    import asyncio
+
+    rows = (await db.execute(select(MailAccount).where(
+        MailAccount.owner_user_id == user.id,
+        MailAccount.enabled.is_(True)).order_by(MailAccount.name))).scalars().all()
+
+    async def one(account: MailAccount) -> dict | None:
+        try:
+            got = await cache.cached(account.id, "counts", cache.TTL_UNREAD,
+                                      lambda: mailbox.counts(account))
+            return {"name": account.name, **got}
+        except Exception:  # noqa: BLE001 — a silent server must not blow the overview up
+            return None
+
+    result = [e for e in await asyncio.gather(*(one(k) for k in rows)) if e]
+    return {"unread": sum(e["unread"] for e in result),
+            "spam": sum(e["spam"] for e in result),
+            "drafts": sum(e["drafts"] for e in result),
+            # The sum is the figure, the breakdown is what stands behind it: "12 spam" says
+            # nothing about which of three mailboxes is drowning. It hangs on the figure as
+            # its tooltip, so the card stays a card.
+            "boxes": result,
+            # How many mailboxes the numbers come from: with two of three reachable, a small
+            # number is an incomplete answer, not a quiet one.
+            "accounts": len(result), "accounts_total": len(rows)}
+
+
 @router.get("/mcp-tools")
 async def tools(_: User = Depends(get_current_user)):
     """The catalog: what a mailbox CAN release to agents, with the kind of permission."""

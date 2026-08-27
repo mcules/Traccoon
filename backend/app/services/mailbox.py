@@ -922,6 +922,45 @@ def _unread_sync(account: MailAccount, folder: str = "INBOX") -> int:
         return int(state.get(b"UNSEEN", 0))
 
 
+def _counts_sync(account: MailAccount) -> dict:
+    """The three numbers of the start page: new mail, spam, drafts — in one connection.
+
+    Deliberately not over `_folder_sync(count=True)`: that asks one STATUS per folder, and
+    with three dozen folders it takes the best part of a second for three numbers. Here
+    exactly the three folders are asked that are wanted.
+
+    Which folder is the spam and which the drafts folder is decided the same way as
+    everywhere else: what the server marks (RFC 6154), and where it marks nothing, what
+    stands on the account. A folder that does not exist is a zero and not an error — not
+    every mailbox has a drafts folder, and the start page must not fall over because of it.
+
+    Unread for spam, the plain number for drafts: what is unread in the spam folder is what
+    one has not yet looked past; a draft is never unread, it simply lies there.
+    """
+    junk, drafts = account.folder_junk, account.folder_drafts
+    with _imap(account) as client:
+        try:
+            for flags, _sep, name in client.list_folders():
+                marker = {f.decode().lower() for f in flags}
+                if "\\junk" in marker:
+                    junk = name
+                elif "\\drafts" in marker:
+                    drafts = name
+        except Exception:  # noqa: BLE001 — then the entries of the account carry it alone
+            pass
+
+        def status(folder: str, key: str) -> int:
+            if not folder:
+                return 0
+            try:
+                return int(client.folder_status(folder, [key]).get(key.encode(), 0))
+            except Exception:  # noqa: BLE001 — a folder that is not there counts as zero
+                return 0
+
+        return {"unread": status("INBOX", "UNSEEN"), "spam": status(junk, "UNSEEN"),
+                "drafts": status(drafts, "MESSAGES")}
+
+
 def _all_read_sync(account: MailAccount, folder: str) -> int:
     """Sets \\Seen on everything unread and says how many there were.
 
@@ -1202,6 +1241,10 @@ async def move(account: MailAccount, folder_name: str, uid: int, target: str) ->
 
 async def unread(account: MailAccount, folder_name: str = "INBOX") -> int:
     return await asyncio.to_thread(_unread_sync, account, folder_name)
+
+
+async def counts(account: MailAccount) -> dict:
+    return await asyncio.to_thread(_counts_sync, account)
 
 
 async def all_read(account: MailAccount, folder_name: str) -> int:
