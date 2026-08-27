@@ -1273,6 +1273,100 @@ async def _require_approval_right(db: AsyncSession, user: User, inst: WorkflowIn
                      "Role {role} is required", role=minimum.value)
 
 
+async def _may_handle(db: AsyncSession, user: User, inst: WorkflowInstance) -> None:
+    """Who may lay hands on a run — restart it, remove it.
+
+    With a project the membership decides, as everywhere. Without one `_instance_access` says
+    nothing at all (it has no project to ask), and for a run that is exactly the hole through
+    which somebody else's mail flow would be within reach: the rule of `start_instance` holds
+    here too — a template of the house belongs to everyone, a free flow to whoever made it.
+    """
+    await _instance_access(db, user, inst, ProjectRole.member)
+    if inst.project_id is not None:
+        return
+    d = await db.get(WorkflowDefinition, inst.definition_id)
+    if d is not None and not d.slot and not (_belongs(d, user) or _is_admin(user)):
+        raise Error(status.HTTP_403_FORBIDDEN, "err.flow_belongs_somebody_else",
+                     "This flow belongs to somebody else")
+
+
+@router.post("/workflow-instances/{iid:int}/restart", response_model=InstanceOut,
+             status_code=201)
+async def restart_instance(
+    iid: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Run the same flow again — same subject, same start context, the published version.
+
+    Not a resumption: the failed run stays what it was, and its steps stay readable. What
+    comes out is a **new** run from the first node, because the fault usually lay outside the
+    flow (a service that was gone, a module that was missing), and after the fix the shortest
+    way is the whole way once more.
+
+    The old run then stands on `cancelled` and thereby leaves the operations list: what has
+    been dealt with must not go on asking for attention. Whoever wants to look at it finds it
+    under "show finished ones as well".
+    """
+    inst = await _get_instance(db, iid)
+    await _may_handle(db, user, inst)
+    from ..models.enums import WorkflowInstanceStatus, WorkflowTokenState
+    if inst.status not in (WorkflowInstanceStatus.failed, WorkflowInstanceStatus.cancelled):
+        raise Error(status.HTTP_409_CONFLICT, "err.only_ended_runs_restart",
+                     "Only a failed or cancelled run can be restarted")
+    d = await _get_def(db, inst.definition_id)
+    if d.current_version_id is None:
+        raise Error(status.HTTP_409_CONFLICT, "err.workflow_has_no_published_version",
+                     "The workflow has no published version")
+    try:
+        fresh = await engine.start_workflow(
+            db, d, subject_kind=inst.subject_kind, issue_id=inst.issue_id,
+            hardware_asset_id=inst.hardware_asset_id, context=dict(inst.context or {}),
+            actor_id=user.id, source="restart", source_ref=str(inst.id),
+        )
+    except ValueError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
+    # Only now: had the start failed, the old run would be gone from the list without a
+    # successor, and with it the error message one needs in order to fix anything.
+    old = await db.get(WorkflowInstance, iid)
+    if old is not None and old.status == WorkflowInstanceStatus.failed:
+        old.status = WorkflowInstanceStatus.cancelled
+        old.finished_at = old.finished_at or dt.datetime.now(tz=dt.timezone.utc)
+        for t in (await db.execute(select(WorkflowToken).where(
+                WorkflowToken.instance_id == iid))).scalars().all():
+            t.state = WorkflowTokenState.consumed
+        await db.commit()
+    return await _load_instance_out(db, fresh)
+
+
+@router.delete("/workflow-instances/{iid:int}", status_code=204)
+async def delete_instance(
+    iid: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Remove a run that has ended, with its tokens and its steps.
+
+    Only an ended one. A running run has to be stopped first — deleting it under the engine
+    would leave a token pointing into nothing, and the engine would go looking for an
+    instance that is no longer there.
+
+    What hangs off the run loosely (an assistant task, a job run) keeps its row and loses
+    only the reference; what belongs to it (tokens, steps) goes with it. One thing has no
+    foreign key and therefore no automatism: a ticket carries the id of its lifecycle run as
+    a plain number, and that number has to be cleared here, otherwise the ticket points at a
+    run that no longer exists.
+    """
+    inst = await _get_instance(db, iid)
+    await _may_handle(db, user, inst)
+    from ..models.enums import WorkflowInstanceStatus
+    if inst.status in (WorkflowInstanceStatus.running, WorkflowInstanceStatus.waiting):
+        raise Error(status.HTTP_409_CONFLICT, "err.stop_run_before_deleting",
+                     "Stop the run before deleting it")
+    from ..models.ticket import Issue
+    for issue in (await db.execute(select(Issue).where(
+            Issue.workflow_instance_id == iid))).scalars().all():
+        issue.workflow_instance_id = None
+    await db.delete(inst)
+    await db.commit()
+
+
 @router.post("/workflow-instances/{iid:int}/cancel", response_model=InstanceOut)
 async def cancel_instance(
     iid: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
