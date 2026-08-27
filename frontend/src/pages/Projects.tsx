@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import Onboarding from "../components/Onboarding";
 import MyWork from "../components/MyWork";
+import PluginTiles from "../components/PluginTiles";
 import { Tag, BUTTON} from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
@@ -37,6 +38,7 @@ export default function Projects() {
     <div>
       <Onboarding />
       <MyWork />
+      <PluginTiles />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">{tr("projects.projects")}</h1>
         <button onClick={() => setShow(!show)} className={BUTTON.primary}>

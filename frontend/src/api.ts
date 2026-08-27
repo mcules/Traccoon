@@ -346,10 +346,13 @@ export const seriesApi = {
 
 /** What a plugin contributes: pages only so far, more is not needed yet. */
 export interface PluginContribution {
-  type: "page";
+  /** `page` hangs in the area rail, `tile` on the dashboard. */
+  type: "page" | "tile";
   path: string;
   label: string;
   icon?: string;
+  /** Tiles only: how tall the frame is drawn (px, clamped by the host). */
+  height?: number;
 }
 
 export interface PluginInfo {
