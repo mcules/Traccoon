@@ -15,90 +15,98 @@ const PRIO_COLOR: Record<string, string> = {
 };
 const CAT_KEY: Record<string, string> = { todo: "common.open_state", in_progress: "common.in_progress", done: "common.done_state" };
 
-export default function MyWork() {
-  const { data } = useQuery({
+/**
+ * The personal work, in pieces.
+ *
+ * It used to be one block: a row of tiles plus every list below it. The start page has more
+ * to say today than tickets (what is running, what is stuck), and a closed block can only be
+ * put before or after that, never between. So the page composes, and every piece here shows
+ * itself only when it has something to say — a card reading "nothing here" three times over
+ * is noise, not an answer.
+ */
+export function useMyWork() {
+  return useQuery({
     queryKey: ["my-dashboard"],
     queryFn: () => api.get<MyDashboard>("/me/dashboard"),
     refetchInterval: 8000,
   });
-  const { data: wfTasks } = useQuery({
+}
+
+export function useMySteps() {
+  return useQuery({
     queryKey: ["workflow-tasks"],
     queryFn: () => workflowApi.myTasks(),
     refetchInterval: 8000,
   });
-  const [openTask, setOpenTask] = useState<WorkflowTaskLite | null>(null);
-  if (!data) return null;
+}
 
-  const s = data.stats;
-  const empty =
-    data.action.length === 0 && data.assigned.length === 0 && (wfTasks?.length ?? 0) === 0;
+/** Steps of a flow that wait for me: a form to fill, a decision to make. */
+export function MySteps() {
+  const { data: tasks } = useMySteps();
+  const [openTask, setOpenTask] = useState<WorkflowTaskLite | null>(null);
+  if (!tasks?.length) return null;
 
   return (
-    <div className="mb-6 space-y-4">
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
-        <Tile label={tr("my_work.waiting")} value={s.action}
-          color={s.action ? "text-yellow-400" : undefined} />
-        <Tile label={tr("my_work.assigned_me")} value={s.assigned} />
-        <Tile label={tr("my_work.running_now")} value={s.working}
-          color={s.working ? "text-sky-400" : undefined} />
-        <Tile label={tr("my_work.done_7_d")} value={s.done_7d} color="text-green-400" />
-        <Tile label={tr("my_work.projects")} value={s.projects} />
-        <Link to="/inbox" className="block">
-          <Tile label={tr("my_work.unread")} value={s.unread}
-            color={s.unread ? "text-brand" : undefined} />
-        </Link>
-      </div>
-
-      {(wfTasks?.length ?? 0) > 0 && (
-        <Section title={`🧭 ${tr("my_work.my_open_steps")}`} hint={tr("my_work.process_steps_waiting_tasks")}>
-          <div className="space-y-1.5">
-            {wfTasks!.map((t) => (
-              <button
-                key={t.step_id}
-                onClick={() => setOpenTask(t)}
-                className="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 text-left hover:border-brand"
-              >
-                <span className="rounded bg-card px-1.5 py-0.5 text-[11px] text-muted">
-                  {tr(NODE_TYPE_LABELS[t.node_type])}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  {t.node_config.label || t.definition_name}
-                </span>
-                {t.issue_key && <span className="shrink-0 font-mono text-xs text-muted">{t.issue_key}</span>}
-                {t.project_key && (
-                  <span className="hidden shrink-0 font-mono text-xs text-muted sm:inline">{t.project_key}</span>
-                )}
-                <span className="hidden shrink-0 text-xs text-muted lg:inline">{formatTime(t.entered_at)}</span>
-              </button>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {data.action.length > 0 && (
-        <Section title={`⚡ ${tr("my_work.needs")}`} hint={tr("my_work.agent_waiting_permission_review")}>
-          <ProjectGroups tickets={data.action} />
-        </Section>
-      )}
-
-      {data.assigned.length > 0 && (
-        <Section title={`📋 ${tr("my_work.assigned_me")}`} hint={tr("my_work.open_tickets_responsible")}>
-          <ProjectGroups tickets={data.assigned} />
-        </Section>
-      )}
-
-      {empty && (
-        <div className="rounded-lg border border-line bg-card p-4 text-sm text-muted">
-          🎉 {tr("my_work.nothing_waiting_no_open")}
+    <>
+      <Section title={`🧭 ${tr("my_work.my_open_steps")}`} hint={tr("my_work.process_steps_waiting_tasks")}>
+        <div className="space-y-1.5">
+          {tasks.map((t) => (
+            <button
+              key={t.step_id}
+              onClick={() => setOpenTask(t)}
+              className="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 text-left hover:border-brand"
+            >
+              <span className="rounded bg-card px-1.5 py-0.5 text-[11px] text-muted">
+                {tr(NODE_TYPE_LABELS[t.node_type])}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-sm">
+                {t.node_config.label || t.definition_name}
+              </span>
+              {t.issue_key && <span className="shrink-0 font-mono text-xs text-muted">{t.issue_key}</span>}
+              {t.project_key && (
+                <span className="hidden shrink-0 font-mono text-xs text-muted sm:inline">{t.project_key}</span>
+              )}
+              <span className="hidden shrink-0 text-xs text-muted lg:inline">{formatTime(t.entered_at)}</span>
+            </button>
+          ))}
         </div>
-      )}
-
+      </Section>
       {openTask && <TaskModal task={openTask} onClose={() => setOpenTask(null)} />}
-    </div>
+    </>
   );
 }
 
-function TaskModal({ task, onClose }: { task: WorkflowTaskLite; onClose: () => void }) {
+/** Tickets whose agent is standing still until I say something. */
+export function NeedsMe() {
+  const { data } = useMyWork();
+  if (!data?.action.length) return null;
+  return (
+    <Section title={`⚡ ${tr("my_work.needs")}`} hint={tr("my_work.agent_waiting_permission_review")}>
+      <ProjectGroups tickets={data.action} />
+    </Section>
+  );
+}
+
+/** Open tickets I am responsible for, without the ones that are already waiting for me. */
+export function AssignedToMe() {
+  const { data } = useMyWork();
+  if (!data?.assigned.length) return null;
+  return (
+    <Section title={`📋 ${tr("my_work.assigned_me")}`} hint={tr("my_work.open_tickets_responsible")}>
+      <ProjectGroups tickets={data.assigned} />
+    </Section>
+  );
+}
+
+/**
+ * The form of one step, over the page.
+ *
+ * Exported because the same step is reached from two places: from the list of my open steps,
+ * and from a flow in "stuck" that has been waiting for exactly this answer for two days.
+ * Whoever is standing in front of the reason should not first have to look for the place
+ * where one answers it.
+ */
+export function TaskModal({ task, onClose }: { task: WorkflowTaskLite; onClose: () => void }) {
   const { data: meta } = useQuery({
     queryKey: ["meta", task.project_id],
     queryFn: () => api.get<ProjectMeta>(`/projects/${task.project_id}/meta`),
@@ -185,15 +193,6 @@ function TicketLine({ t }: { t: MyTicket }) {
       <span className="hidden shrink-0 text-xs text-muted md:inline">{(CAT_KEY[t.category] ? tr(CAT_KEY[t.category]) : t.category)}</span>
       <span className="hidden shrink-0 text-xs text-muted lg:inline">{formatTime(t.updated_at)}</span>
     </Link>
-  );
-}
-
-function Tile({ label, value: value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <div className="rounded-lg border border-line bg-card p-2 sm:p-3">
-      <div className={`text-xl font-semibold sm:text-2xl ${color || "text-ink"}`}>{value}</div>
-      <div className="truncate text-[11px] leading-tight text-muted sm:text-xs" title={label}>{label}</div>
-    </div>
   );
 }
 

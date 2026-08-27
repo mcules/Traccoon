@@ -1,4 +1,5 @@
 import { ReactNode, RefObject, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { tr } from "../i18n";
 
 /**
@@ -16,7 +17,7 @@ import { tr } from "../i18n";
 /** Icons of the recurring actions. One place, so "delete" looks the same everywhere. */
 export const ICON = {
   fresh: "＋", edit: "✏️", remove: "🗑️", testing: "🧪", start: "▶️",
-  standard: "⭐", copy: "⧉", back: "↩", open: "↗",
+  again: "↻", standard: "⭐", copy: "⧉", back: "↩", open: "↗",
 } as const;
 
 /**
@@ -372,8 +373,11 @@ export function ListRow({ columns, dimmed = false, warning = false, dense = fals
  * From a step away that reads as five pages instead of one.
  */
 export function Area({ title: title, subtitle, hint: hint, tools: tools, fills = false,
-                      column = false, children }: {
+                      column = false, span = "", children }: {
   title?: ReactNode; subtitle?: ReactNode; hint?: ReactNode; tools?: ReactNode;
+  /** How wide the card stands in the grid around it (`md:col-span-2`). Only that — a card
+   *  does not get a free hand over its own look through the back door. */
+  span?: string;
   /** The card fills the height it is given, and what does not fit scrolls INSIDE it.
    *  For a page built of columns beside each other (the mailbox): without this the frame
    *  scrolls away with the content and the heading of a list leaves through the top edge. */
@@ -386,7 +390,7 @@ export function Area({ title: title, subtitle, hint: hint, tools: tools, fills =
   children: ReactNode;
 }) {
   return (
-    <div className={`rounded-lg border border-line bg-card p-4 ${
+    <div className={`rounded-lg border border-line bg-card p-4 ${span} ${
       fills ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-3"}`}>
       {title && (
         <div className="flex flex-wrap items-baseline gap-2">
@@ -519,6 +523,142 @@ export function SortBar({ fields, by, dir, onSort }: {
       })}
     </div>
   );
+}
+
+/**
+ * A tooltip of our own — for what does not fit on one line.
+ *
+ * The tooltip of the browser can do one thing well: a short sentence, after a second, in the
+ * font of the operating system. What it cannot do is a list. "12 spam" over three mailboxes
+ * wants to be read as three lines with the numbers under one another, and pressed into a
+ * `title` it becomes one long line with middle dots that tells whoever counts along which
+ * mailbox holds what.
+ *
+ * Positioned `fixed` from the measured place of the anchor, like `Menu`, and for the same
+ * reason: a card that scrolls inside itself cuts off anything hanging out of it. And
+ * `pointer-events-none`, so the tooltip can never take a click meant for what lies under it.
+ */
+export function Hover({ note: note, className = "", children }: {
+  note: ReactNode; className?: string; children: ReactNode;
+}) {
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const WIDTH = 190;
+  const HIGH = 140;   // a rough guess, only to decide between above and below
+
+  const show = () => {
+    const box = anchor.current?.getBoundingClientRect();
+    if (!box) return;
+    const room = window.innerHeight - box.bottom > HIGH;
+    setAt({
+      top: room ? box.bottom + 6 : Math.max(8, box.top - HIGH - 6),
+      left: Math.min(Math.max(8, box.left), window.innerWidth - WIDTH - 8),
+    });
+  };
+
+  // Scrolling moves the anchor and would leave the tooltip standing somewhere in the picture.
+  useEffect(() => {
+    if (!at) return;
+    const off = () => setAt(null);
+    window.addEventListener("scroll", off, true);
+    window.addEventListener("resize", off);
+    return () => {
+      window.removeEventListener("scroll", off, true);
+      window.removeEventListener("resize", off);
+    };
+  }, [at]);
+
+  return (
+    <span ref={anchor} className={className} onMouseEnter={show} onMouseLeave={() => setAt(null)}
+      onFocus={show} onBlur={() => setAt(null)}>
+      {children}
+      {at && (
+        <span style={{ top: at.top, left: at.left, minWidth: WIDTH }}
+          className="pointer-events-none fixed z-50 block rounded-lg border border-line bg-card p-2 text-xs shadow-2xl">
+          {note}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * What stands behind a number, as a list: where it lies, and how much of it lies there.
+ *
+ * The shape of every note in the house — a heading, then one line per place with the number
+ * to the right. Whoever writes their own is welcome to; what this abolishes is three
+ * slightly different tables of the same thing in three cards beside one another.
+ */
+export function Breakdown({ title: title, rows, foot }: {
+  title: string; rows: { label: string; value: ReactNode }[]; foot?: ReactNode;
+}) {
+  return (
+    <>
+      <span className="mb-1 block font-medium text-ink">{title}</span>
+      {rows.map((r) => (
+        <span key={r.label} className="flex items-baseline gap-3">
+          <span className="min-w-0 flex-1 truncate text-muted">{r.label}</span>
+          <span className="tabular-nums text-ink">{r.value}</span>
+        </span>
+      ))}
+      {rows.length === 0 && <span className="block text-muted">—</span>}
+      {foot && <span className="mt-1 block text-muted">{foot}</span>}
+    </>
+  );
+}
+
+/**
+ * A key figure: one number, one word under it.
+ *
+ * The shape stood twice, hand written and slightly different each time (start page, project
+ * dashboard) — once with a fixed padding, once with a smaller one for the phone. A row of
+ * figures is read across, and two rows that do not sit at the same height read as two
+ * different things.
+ *
+ * The colour is a role, not decoration: `wait` means somebody has to do something, `run`
+ * means it is happening by itself, `bad` means it is broken. A figure of zero deserves no
+ * colour — the caller passes the tone only when the number is worth one.
+ *
+ * With `to` the figure becomes the way to the place it counts. Without it, it stays a
+ * number, and then the list it belongs to stands right below.
+ */
+export type FigureTone = "quiet" | "wait" | "run" | "bad" | "good" | "brand";
+
+export function Figure({ label, value: value, tone = "quiet", hint: hint, to, title: title,
+                        note: note, bare = false }: {
+  label: string; value: ReactNode; tone?: FigureTone; hint?: string; to?: string; title?: string;
+  /** What stands behind the number — a list, not a sentence (see `Hover`). A figure with a
+   *  note carries no `title`: two tooltips over one thing is one too many. */
+  note?: ReactNode;
+  /** Inside a card: several figures share ONE frame, so the single one carries none. A box
+   *  in a box is two borders where the eye expects one thing. */
+  bare?: boolean;
+}) {
+  const colour = {
+    quiet: "text-ink", wait: "text-amber-300", run: "text-sky-400",
+    bad: "text-red-400", good: "text-emerald-400", brand: "text-brand",
+  }[tone];
+  const box = bare
+    ? `block ${to ? "transition-opacity hover:opacity-80" : ""}`
+    : `block rounded-lg border border-line bg-card p-2 sm:p-3 ${
+      to ? "transition-colors hover:border-brand" : ""}`;
+  const inner = (
+    <>
+      <div className={`text-xl font-semibold tabular-nums sm:text-2xl ${colour}`}>{value}</div>
+      {/* Wrapping, not cut off: three cards beside each other leave a figure some 85px of
+          width, and "Mir zugewiesen" ended after "Mir zuge…" there. Two short lines say the
+          whole word; the cards are the same height anyway. */}
+      {/* No `title` of its own any more: the label is written out in full since it may wrap,
+          and a tooltip repeating it would swallow the one the whole figure carries — which is
+          where the breakdown behind the number stands. */}
+      <div className="text-[11px] leading-tight text-muted sm:text-xs">{label}</div>
+      {hint && <div className="truncate text-[11px] leading-tight text-muted/70">{hint}</div>}
+    </>
+  );
+  const figure = to
+    ? <Link to={to} className={box} title={note ? undefined : (title || label)}>{inner}</Link>
+    : <div className={box} title={note ? undefined : title}>{inner}</div>;
+  return note ? <Hover note={note} className="block">{figure}</Hover> : figure;
 }
 
 /** State of an entry: a dot plus a word. Colour carries the urgency, the word the meaning. */

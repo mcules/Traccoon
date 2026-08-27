@@ -3,12 +3,16 @@ import { tr } from "../i18n";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
-import Onboarding from "../components/Onboarding";
-import MyWork from "../components/MyWork";
-import PluginTiles from "../components/PluginTiles";
 import { Tag, BUTTON} from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
+/**
+ * The project list, and only that.
+ *
+ * The own work, the setup steps and the plugin tiles used to stand above it — they belong to
+ * the person and now live on the start page (`/`). What is left here is the one question this
+ * area answers: which projects are there, and how do I get into one.
+ */
 export default function Projects() {
   // Title without a sub-menu; otherwise the one of the last visited page would stay.
   usePageChrome(tr("nav.projects"), []);
@@ -36,11 +40,8 @@ export default function Projects() {
 
   return (
     <div>
-      <Onboarding />
-      <MyWork />
-      <PluginTiles />
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{tr("projects.projects")}</h1>
+      {/* No heading of its own: the page name stands in the header. */}
+      <div className="mb-4 flex items-center justify-end">
         <button onClick={() => setShow(!show)} className={BUTTON.primary}>
           {tr("projects.new_project")}
         </button>

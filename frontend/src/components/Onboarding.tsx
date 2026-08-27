@@ -10,9 +10,9 @@ type Status = { steps: Step[]; ready: boolean; projects: number; dismissed: bool
 /** Target place per step; otherwise nobody knows where to click. */
 const TARGET: Record<string, { to: string; label: string }> = {
   claude_token: { to: "/settings", label: "onboarding.secret_vault" },
-  project: { to: "/", label: "onboarding.create_project" },
-  git: { to: "/", label: "onboarding.open_project" },
-  verify: { to: "/", label: "onboarding.open_project" },
+  project: { to: "/projects", label: "onboarding.create_project" },
+  git: { to: "/projects", label: "onboarding.open_project" },
+  verify: { to: "/projects", label: "onboarding.open_project" },
   telegram: { to: "/settings", label: "onboarding.settings" },
 };
 

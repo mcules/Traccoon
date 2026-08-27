@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { tr } from "../i18n";
 import { api, Project, ProjectCosts } from "../api";
-import { Area } from "./ui";
+import { Area, Figure } from "./ui";
 import DeploymentsPanel from "./DeploymentsPanel";
 
 const CAT_KEY: Record<string, string> = { todo: "common.open_state", in_progress: "common.in_progress", done: "common.done_state" };
@@ -26,13 +26,13 @@ export default function Dashboard({ project }: { project: Project }) {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Tile label={tr("dashboard.tickets")} value={t.total} />
-        <Tile label={tr("dashboard.waiting")} value={t.waiting_for_human}
-          color={t.waiting_for_human ? "text-yellow-400" : undefined} />
-        <Tile label={tr("dashboard.running_now")} value={t.working}
-          color={t.working ? "text-sky-400" : undefined} />
-        <Tile label={tr("dashboard.done_days_d", { days: data.window_days })} value={data.throughput.done_in_window}
-          color="text-green-400" />
+        <Figure label={tr("dashboard.tickets")} value={t.total} />
+        <Figure label={tr("dashboard.waiting")} value={t.waiting_for_human}
+          tone={t.waiting_for_human ? "wait" : "quiet"} />
+        <Figure label={tr("dashboard.running_now")} value={t.working}
+          tone={t.working ? "run" : "quiet"} />
+        <Figure label={tr("dashboard.done_days_d", { days: data.window_days })}
+          value={data.throughput.done_in_window} tone="good" />
       </div>
 
       <Karte title={tr("dashboard.tickets_state")}>
@@ -141,15 +141,6 @@ export default function Dashboard({ project }: { project: Project }) {
           </div>
         </Karte>
       )}
-    </div>
-  );
-}
-
-function Tile({ label, value: value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <div className="rounded-lg border border-line bg-card p-3">
-      <div className={`text-2xl font-semibold ${color || "text-ink"}`}>{value}</div>
-      <div className="text-xs text-muted">{label}</div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatDate } from "../lib/formatTime";
 import { tr } from "../i18n";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError, api, processApi, workflowApi,
@@ -259,7 +259,13 @@ function Operation() {
   const [err, setErr] = useState("");
   // Expanded run: graph plus log. A process that is stuck or has failed always raises the
   // same question: what came back, and why did it then continue there?
-  const [open, setOpen] = useState<number | null>(null);
+  //
+  // `?run=31` opens exactly that one right away: the start page points here from a standing
+  // flow, and whoever arrives from there was pointing at a run a moment ago — having to look
+  // for it again in a list of thirty is the opposite of a way there.
+  const [params] = useSearchParams();
+  const pointed = Number(params.get("run")) || null;
+  const [open, setOpen] = useState<number | null>(pointed);
 
   const sort = useListSort<ProcRun>("processes.operations", { by: "age", dir: "desc" },
                                     RUN_SORTABLE);
@@ -270,16 +276,30 @@ function Operation() {
     refetchInterval: 20000,
   });
 
+  const oops = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
+  const done = () => {
+    setErr("");
+    qc.invalidateQueries({ queryKey: ["proc-running"] });
+    qc.invalidateQueries({ queryKey: ["proc-stuck"] });
+  };
   const cancel = useMutation({
-    mutationFn: (iid: number) => workflowApi.cancel(iid),
-    onSuccess: () => {
-      setErr("");
-      qc.invalidateQueries({ queryKey: ["proc-running"] });
-    },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
+    mutationFn: (iid: number) => workflowApi.cancel(iid), onSuccess: done, onError: oops,
+  });
+  const again = useMutation({
+    mutationFn: (iid: number) => workflowApi.restart(iid), onSuccess: done, onError: oops,
+  });
+  const drop = useMutation({
+    mutationFn: (iid: number) => workflowApi.remove(iid),
+    onSuccess: () => { done(); setOpen(null); }, onError: oops,
   });
 
   const runs = sort.sorted(raw);
+  // A run that is pointed at but has already been dealt with (finished, cancelled) is not in
+  // the open list — then the list shows the finished ones too instead of staying empty on the
+  // very thing one came for.
+  useEffect(() => {
+    if (pointed && raw && !raw.some((l) => l.id === pointed) && !withFinish) setWithFinish(true);
+  }, [pointed, raw, withFinish]);
   const hang = runs.filter((l) => l.hangs).length;
 
   return (
@@ -340,6 +360,19 @@ function Operation() {
                   title={tr("processes.cancel_run")}>
                   {tr("processes.cancel")}
                 </Rowbutton>
+              )}
+              {/* A run that has ended has two handles the same as on the start page. Until
+                  now the only thing one could do with a failure was to cancel it — which it
+                  already was — so six identical ones stood in this list and stayed. */}
+              {(l.status === "failed" || l.status === "cancelled") && (
+                <>
+                  <Rowbutton onClick={() => again.mutate(l.id)} title={tr("ops.restart")}>
+                    {tr("ops.restart")}
+                  </Rowbutton>
+                  <Rowbutton danger onClick={() => drop.mutate(l.id)} title={tr("ops.delete_run")}>
+                    {tr("common.delete")}
+                  </Rowbutton>
+                </>
               )}
             </div>
             <div className="mt-1 text-xs text-muted">

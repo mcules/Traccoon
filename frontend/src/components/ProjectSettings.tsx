@@ -76,7 +76,7 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
   const [inheritMembers, setInheritMembers] = useState(project.inherit_members ?? true);
   const nav = useNavigate();
   const delProject = async () => {
-    try { await api.del(`/projects/${project.id}`); nav("/"); }
+    try { await api.del(`/projects/${project.id}`); nav("/projects"); }
     catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.deleting_failed")); }
   };
   const saveInherit = async (v: boolean) => {

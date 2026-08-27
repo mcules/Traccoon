@@ -218,10 +218,36 @@ export interface MyTicket {
   category: string; updated_at: string;
   project_id: number; project_key: string; project_name: string;
 }
+/** A run that is working right now. `issue_key` is empty for project-less work (assistant, job). */
+export interface RunningRun {
+  run_id: number; agent: string; phase: string; model: string;
+  issue_key: string | null; summary: string; project_key: string | null;
+  /** Address of the room in the office (`issue:412` or `run:88`) — where one watches it work. */
+  sid: string;
+  started_at: string;
+}
+/** A job of mine that fell over within the last day. `error` is the first line only. */
+export interface JobError {
+  job_id: number; name: string; kind: string; started_at: string; error: string;
+}
+/** What was burnt in a period. Tokens next to the money: a subscription costs 0.00 and still runs. */
+export interface Burn { usd: number; tokens: number }
+/** The three numbers of the mail card, per mailbox and as a sum. `accounts` says how many
+ *  mailboxes answered — the rest were silent and count as nothing, not as zero. */
+export interface MailBoxCount { name: string; unread: number; spam: number; drafts: number }
+export interface MailCounts {
+  unread: number; spam: number; drafts: number;
+  boxes: MailBoxCount[]; accounts: number; accounts_total: number;
+}
+
+/** Why nothing may be moving: no runner, the house stopped, my own working day ended. */
+export interface RunState { runner: boolean; paused: "" | "pause" | "update"; shift_end: boolean }
 export interface MyDashboard {
   action: MyTicket[]; assigned: MyTicket[];
+  running: RunningRun[]; job_errors: JobError[];
+  costs: { day: Burn; week: Burn }; state: RunState;
   stats: { projects: number; action: number; assigned: number;
-    working: number; unread: number; done_7d: number };
+    working: number; unread: number; done_7d: number; job_errors: number };
 }
 
 // ---------- Workflow-Engine ----------
@@ -543,6 +569,10 @@ export const workflowApi = {
   rejectStep: (iid: number, sid: number, body: { reason: string }) =>
     api.post<WfInst>(`/workflow-instances/${iid}/steps/${sid}/reject`, body),
   cancel: (iid: number) => api.post<WfInst>(`/workflow-instances/${iid}/cancel`),
+  /** Run the same flow again, same subject and same start context. The old run retires. */
+  restart: (iid: number) => api.post<WfInst>(`/workflow-instances/${iid}/restart`),
+  /** Remove a run that has ended, with its tokens and steps. A live one has to be stopped first. */
+  remove: (iid: number) => api.del(`/workflow-instances/${iid}`),
   myTasks: () => api.get<WfTask[]>(`/workflow-instances/tasks?assignee=me`),
 
   /** Spacing (px) for "arrange" in the editor, set globally by the admin. */

@@ -104,6 +104,9 @@ toggles), then the content.
 No hand-written `rounded-lg border border-line bg-card p-4` any more. Two areas below each
 other (triggers: triggers plus events) stand in a `space-y-4`.
 
+Standing in a grid beside others, `span` says how wide: `<Area span="md:col-span-2">`. Only
+that one thing — a card does not get a free hand over its own look through the back door.
+
 ### `Listing`, `ListRow`, `ListingEmpty` — the entries
 
 One surface, entries separated by lines, no sea of tiles.
@@ -175,6 +178,60 @@ value:
 
 Never `bg-amber-500/15` and its relatives by hand — the same meaning looked different on three
 pages that way.
+
+### `Figure` — one number worth looking at
+
+A row of key figures at the head of a page: waiting, running, stuck. One number, one word
+under it, optionally a `hint` line and a `to` that makes the figure the way to the place it
+counts.
+
+The colour is a role, like everywhere else: `wait` (somebody has to act), `run` (it is
+happening by itself), `bad` (broken), `good` (throughput), `brand` (the personal channel),
+`quiet` (a number without a message). **A zero gets no colour** — the caller passes the tone
+only when the number earns one, otherwise a page of green zeros teaches nothing.
+
+```tsx
+<Figure label={tr("my_work.waiting")} value={stats.action} tone={stats.action ? "wait" : "quiet"} />
+<Figure label={tr("ops.stuck")} value={stuck} tone={stuck ? "bad" : "quiet"} to="/processes/operations" />
+```
+
+Figures are for what one might have to **do**. A balance one merely glances at (throughput,
+costs of the week) is a quiet line of text beside the heading, not a tile with a big number.
+
+What stands *behind* a number goes into `note` — a `Hover` opens with it (see below). A figure
+with a note carries no `title`: two tooltips over one thing is one too many.
+
+Several figures inside one card take `bare`: they then share the frame of the card instead of
+each bringing one of their own. A box inside a box is two borders where the eye expects one
+thing — and it is what frees the room beside them for a second card.
+
+### `Hover` — a tooltip that may be a list
+
+The tooltip of the browser does one thing well: a short sentence, after a second, in the font
+of the operating system. It cannot do a list. Where the explanation is a breakdown — three
+mailboxes with three numbers — it belongs in a `Hover`: the mailboxes under one another, the
+numbers right aligned.
+
+`Breakdown` is that list: a heading, then one line per place with the number to the right.
+
+```tsx
+<Figure bare label="Spam" value={12} to="/mail" note={
+  <Breakdown title="Spam" rows={boxes.map((b) => ({ label: b.name, value: b.spam }))} />
+} />
+```
+
+A figure in the head of a page says *how much*, never *where* — "7 waiting" over eight
+projects is a question, not an answer. The note is where the answer goes, and it is the same
+question everywhere: which project, which mailbox, which stack.
+
+A plugin tile can hand its own breakdown to the host (`{source: "plugin", note: {title, rows}}`
+over the bridge). It has to: the frame of a tile takes no mouse at all, so a tooltip drawn
+inside it would never open.
+
+A short sentence stays a `title` — a card of its own for four words is a production. And the
+`Hover` never takes a click: it is `pointer-events-none` and hangs `fixed` off the measured
+place of its anchor, because a card that scrolls inside itself cuts off whatever reaches out
+of it.
 
 ### `State` — a dot plus a word
 

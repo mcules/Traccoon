@@ -31,9 +31,21 @@ export type NavEntry = {
   counter?: "inbox" | "mail";
 };
 
+/**
+ * The start page, and why it is not in the list below.
+ *
+ * The dashboard hangs on the Traccoon sign in the corner — the one gesture every interface
+ * has, and one that costs no room in the rail. On a phone there is no rail and no sign, so
+ * the burger menu takes this entry as its first one. One definition, two places, instead of
+ * a second area button that leads where the logo already leads.
+ */
+export function dashboardEntry(): NavEntry {
+  return { key: "dashboard", label: tr("nav.dashboard"), icon: "🦝", to: "/" };
+}
+
 export function primaryNavigation(isAdmin: boolean, plugins: NavEntry[] = []): NavEntry[] {
   return [
-    { key: "projekte", label: tr("layout.projects"), icon: "🗂️", to: "/" },
+    { key: "projekte", label: tr("layout.projects"), icon: "🗂️", to: "/projects" },
     { key: "inbox", label: tr("layout.inbox"), icon: "📥", to: "/inbox", counter: "inbox" },
     { key: "mail", label: "Mail", icon: "✉️", to: "/mail", counter: "mail" },
     { key: "bugs", label: tr("layout.bugs"), icon: "🐞", to: "/bugs" },
@@ -55,6 +67,6 @@ export function primaryNavigation(isAdmin: boolean, plugins: NavEntry[] = []): N
  * be active everywhere.
  */
 export function isArea(path: string, to: string): boolean {
-  if (to === "/") return path === "/" || path.startsWith("/projects");
+  if (to === "/") return path === "/";
   return path === to || path.startsWith(to + "/");
 }

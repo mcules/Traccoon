@@ -5,6 +5,7 @@ import { useAuth } from "./auth";
 import { useLanguage, useLanguageFromUser } from "./i18n/useLanguage";
 import Login from "./pages/Login";
 import AcceptInvite from "./pages/AcceptInvite";
+import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
 import ProjectView from "./pages/ProjectView";
 import TicketView from "./pages/TicketView";
@@ -116,7 +117,8 @@ export default function App() {
     <PageChromeProvider>
       <Layout>
         <Routes>
-        <Route path="/" element={<Projects />} />
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/projects" element={<Projects />} />
         <Route path="/inbox" element={<Inbox />} />
         <Route path="/bugs" element={<Bugs />} />
         <Route path="/mail" element={<Mail />} />

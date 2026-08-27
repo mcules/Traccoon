@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Project } from "../api";
 import { useAuth } from "../auth";
 import { useChrome, type ChromeTab } from "../pageChrome";
-import { primaryNavigation, isArea, RAIL_WIDTH, type NavEntry } from "../nav";
+import { primaryNavigation, dashboardEntry, isArea, RAIL_WIDTH, type NavEntry } from "../nav";
 import { pluginNav, usePlugins } from "../plugins";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
@@ -187,7 +187,12 @@ function AreaRail() {
 
   return (
     <nav className={`sticky top-0 hidden h-screen ${RAIL_WIDTH} shrink-0 flex-col items-center gap-1 border-r border-line bg-card py-3 md:flex`}>
-      <Link to="/" title={tr("layout.traccoon_start")} className="mb-2 text-2xl">🦝</Link>
+      {/* The sign is the way to the start page — and it shows when one is there, otherwise
+          it would be the only entry in the rail without a state. */}
+      <Link to="/" title={tr("layout.traccoon_start")}
+        className={`mb-2 rounded-lg px-2 py-1 text-2xl leading-none ${
+          loc.pathname === "/" ? "bg-surface" : "opacity-70 hover:opacity-100"
+        }`}>🦝</Link>
       {entries.map((e) => (
         <RailsButton key={e.key} entry={e} active={isArea(loc.pathname + loc.hash, e.to)}
           counter={e.counter === "inbox" ? waiting : e.counter === "mail" ? newMails : 0} />
@@ -230,7 +235,9 @@ function MobileMenu() {
   const loc = useLocation();
   const waiting = useInboxCounter();
   const newMails = useMailCounter();
-  const entries = primaryNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
+  // On a phone the rail with the Traccoon sign is not drawn, so the start page takes its
+  // place at the head of the list — otherwise it would be reachable by the address bar only.
+  const entries = [dashboardEntry(), ...primaryNavigation(user?.global_role === "admin", pluginNav(usePlugins()))];
   const close = () => setOpen(false);
 
   return (
@@ -308,6 +315,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isActive = (t: ChromeTab) => chrome.active ? t.key === chrome.active
     : (loc.pathname === t.to || current === t.to);
   const onProjectPage = /^\/projects\//.test(loc.pathname);
+  // On the project list itself the switcher would be a second, smaller copy of the page.
+  const onProjectList = loc.pathname === "/projects";
   const sideways = chrome.layout === "side" && chrome.tabs.length > 0;
   // Two separate decisions: `wide` takes the window instead of the reading column, `frame`
   // makes the page a box that ends at the lower edge and scrolls inside itself. A board is
@@ -328,9 +337,11 @@ export default function Layout({ children }: { children: ReactNode }) {
             )}
             {/* On a project-less page the switcher only takes up room on a phone —
                 that is where the page title stands, and the project list hangs in the menu. */}
-            <div className={!onProjectPage && chrome.title ? "hidden sm:block" : ""}>
-              <ProjectSwitcher />
-            </div>
+            {!onProjectList && (
+              <div className={!onProjectPage && chrome.title ? "hidden sm:block" : ""}>
+                <ProjectSwitcher />
+              </div>
+            )}
           </div>
 
           <div className="flex-1" />
