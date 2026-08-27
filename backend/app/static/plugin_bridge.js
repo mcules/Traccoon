@@ -61,6 +61,14 @@
     live: function (kind) { return ask("series.live", { kind: kind || "location" }); },
     /** This person's named places (geofences). */
     places: function () { return ask("places.list"); },
+    /**
+     * The plugin's own phrases from the catalogs of the house, in the language of the
+     * person. Keys are `<slug>.<name>`; the prefix is set by the host, not here.
+     *
+     * Fetched once as a map instead of a round trip per label: a list of a hundred rows
+     * would otherwise be a hundred messages before the first one is drawn.
+     */
+    texts: function () { return ask("i18n.texts"); },
     /** The plugin's own storage (tables from the manifest). */
     store: {
       list: function (table) { return ask("store.list", { table: table }); },

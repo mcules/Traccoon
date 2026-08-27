@@ -20,7 +20,7 @@ export default function PluginHost() {
   const [error, setError] = useState("");
 
   const plugin = useMemo(() => plugins.find((p) => p.slug === slug), [plugins, slug]);
-  usePageChrome(plugin?.name || tr("plugins.plugins"), []);
+  usePageChrome(plugin ? tr(plugin.name) : tr("plugins.plugins"), []);
 
   usePluginBridge(slug, frame, plugin?.reads_granted || []);
 
@@ -39,7 +39,7 @@ export default function PluginHost() {
       <iframe
         ref={frame}
         src={src}
-        title={plugin?.name || slug}
+        title={plugin ? tr(plugin.name) : slug}
         onError={() => setError(tr("plugins.plugin_cannot_loaded"))}
         className="h-full w-full border-0"
         sandbox="allow-scripts allow-popups allow-forms"

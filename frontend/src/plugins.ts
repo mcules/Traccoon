@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { pluginApi, type PluginInfo } from "./api";
+import { tr } from "./i18n";
 import type { NavEntry } from "./nav";
 
 /**
@@ -19,7 +20,13 @@ export function usePlugins(): PluginInfo[] {
   return data ?? [];
 }
 
-/** What the plugins contribute as pages, as entries of the area rail. */
+/**
+ * What the plugins contribute as pages, as entries of the area rail.
+ *
+ * A label from a manifest goes through `tr` like every other text: a plugin that wants to be
+ * translated names a key (`agentshield.title`), and one that does not simply keeps its
+ * words — `tr` gives back what it does not know.
+ */
 export function pluginNav(plugins: PluginInfo[]): NavEntry[] {
   const out: NavEntry[] = [];
   for (const p of plugins) {
@@ -30,7 +37,7 @@ export function pluginNav(plugins: PluginInfo[]): NavEntry[] {
       const anchor = (b.path || "").replace(/^\//, "");
       out.push({
         key: `plugin:${p.slug}:${anchor}`,
-        label: b.label || p.name,
+        label: tr(b.label || p.name),
         icon: b.icon || p.icon || "\u{1F9E9}",
         to: anchor ? `/p/${p.slug}#${anchor}` : `/p/${p.slug}`,
       });

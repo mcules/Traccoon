@@ -1,7 +1,7 @@
 import { RefObject, useEffect, useRef } from "react";
 import { api, type User } from "../api";
 import { useAuth } from "../auth";
-import { tr } from "../i18n";
+import { language, textsWithPrefix, tr } from "../i18n";
 
 /**
  * The bridge over which a plugin gets its data — and the list of what it may ask for.
@@ -78,6 +78,16 @@ const CALLS: Record<string, Call> = {
   "places.list": {
     right: () => "series:location",
     fetch: () => api.get("/places"),
+  },
+  // The phrases of a plugin live in the catalogs of the house like every other text — a
+  // plugin that carried its own would be the one corner an admin cannot correct and no
+  // translation reaches. It only gets its own: the prefix is its slug, set here, not by the
+  // caller.
+  "i18n.texts": {
+    fetch: async (_a, { slug }) => ({
+      language: language(),
+      texts: textsWithPrefix(`${slug}.`),
+    }),
   },
   "store.list": {
     fetch: (a, { slug }) =>

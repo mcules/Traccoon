@@ -52,6 +52,24 @@ export function tr(key: string, vars?: Record<string, string | number>): string 
 }
 
 /**
+ * Every text whose key starts with `prefix`, in the current language.
+ *
+ * For readers that cannot call `tr` per phrase: a plugin runs in an iframe of its own and
+ * asks the host once for its texts, instead of a round trip per label. The same three
+ * sources and the same order as `tr` — otherwise a plugin would show the shipped text while
+ * the interface around it already shows what an admin corrected at runtime.
+ */
+export function textsWithPrefix(prefix: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const source of [SHIPPED[SOURCELANGUAGE], SHIPPED[current], overrides]) {
+    for (const key of Object.keys(source || {})) {
+      if (key.startsWith(prefix)) out[key] = (source as Catalog)[key];
+    }
+  }
+  return out;
+}
+
+/**
  * One text, but only when this language really knows the key.
  *
  * The fallback chain of `tr` ends in German, which is right for the interface: a half

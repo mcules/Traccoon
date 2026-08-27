@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { PluginContribution, PluginInfo } from "../api";
 import { usePlugins } from "../plugins";
 import { usePluginBridge } from "../lib/pluginBridge";
+import { tr } from "../i18n";
 
 /**
  * What the plugins contribute to the dashboard.
@@ -45,13 +46,13 @@ function PluginTile({ plugin, tile }: { plugin: PluginInfo; tile: PluginContribu
   return (
     <Link
       to={`/p/${plugin.slug}`}
-      title={tile.label || plugin.name}
+      title={tr(tile.label || plugin.name)}
       className="block overflow-hidden rounded-lg border border-line bg-card hover:border-brand"
     >
       <iframe
         ref={frame}
         src={`/api/plugins/${plugin.slug}/app/#${anchor}`}
-        title={tile.label || plugin.name}
+        title={tr(tile.label || plugin.name)}
         style={{ height }}
         className="pointer-events-none block w-full border-0"
         sandbox="allow-scripts"

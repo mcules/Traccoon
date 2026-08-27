@@ -70,7 +70,7 @@ export default function PluginsPanel() {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-lg leading-none">{p.icon || "\u{1F9E9}"}</span>
-                <span className="font-medium text-ink">{p.name}</span>
+                <span className="font-medium text-ink">{tr(p.name)}</span>
                 <code className="font-mono text-xs text-muted">{p.slug} · {p.version}</code>
                 {!p.enabled && <Tag color="neutral">{tr("plugins.switched_off")}</Tag>}
                 <div className="flex-1" />
