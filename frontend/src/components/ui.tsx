@@ -894,3 +894,28 @@ export function Busy({ text, show, children }: {
     </div>
   );
 }
+
+/**
+ * `GradeIcon` — a grade as a sign, not as a sentence.
+ *
+ * The configuration audit gives every stack a grade (A, B, C, D, F — plus `?` where the scan
+ * broke). Written out, "grade B" behind thirteen names is thirteen times the same word; as a
+ * letter in its colour it is one glance for the whole list.
+ *
+ * The colour is a role like everywhere else, and it is not the only carrier: the letter says
+ * the same thing to whoever does not separate the colours. The title spells it out.
+ */
+export function GradeIcon({ grade, title }: { grade: string; title?: string }) {
+  const letter = String(grade || "?").toUpperCase().slice(0, 1);
+  const known = ["A", "B", "C", "D", "F"].includes(letter);
+  const fill = known ? `--grade-${letter.toLowerCase()}` : "--grade-unknown";
+  return (
+    <span title={title} style={{
+      background: `rgb(var(${fill}))`,
+      color: letter === "B" ? "rgb(var(--on-grade-b))" : "#fff",
+    }} className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center
+                  rounded-[5px] text-[11px] font-bold leading-none">
+      {letter}
+    </span>
+  );
+}

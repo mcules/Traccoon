@@ -233,6 +233,25 @@ A short sentence stays a `title` — a card of its own for four words is a produ
 place of its anchor, because a card that scrolls inside itself cuts off whatever reaches out
 of it.
 
+### `GradeIcon` — a grade as a sign
+
+A letter in its colour (A green · B yellow · C red · D and F deeper red · `?` grey), for a
+list where every row carries one. Written out, "grade B" thirteen times is thirteen times the
+same word. The letter is what carries it — the colour is a second reading, not the only one.
+
+### The charts (`components/charts.tsx`)
+
+`StackedHistory` for a course over time with axes and a reading box, `Sparkline` for the same
+picture inside a row, without axes. Bands are stacked with the **worst at the bottom**: it is
+the number one reads first, and a band floating on the others moves whenever any of them
+moves.
+
+Colours come from the tokens in `index.css` (`--critical` … `--info`), because inside an SVG
+a Tailwind class reaches nothing. A row curve carries **its own** scale — against a hundred
+findings elsewhere a stack going from two to four would draw two hairs of equal length, and
+the movement one came for would be the thing that is invisible. What compares across rows is
+the figure beside it, and a figure is a figure, not a height.
+
 ### `State` — a dot plus a word
 
 For **the one** state of an entry (published · draft only · off). The colour carries the

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import re
 from contextlib import asynccontextmanager
 
@@ -9,7 +10,8 @@ from sqlalchemy import text
 
 from . import models  # noqa: F401  (fills the metadata for create_all)
 from .api import (
-    admin, agents, artifacts as artifacts_api, auth, bugs as bugs_api, config, cost,
+    admin, agents, agentshield as agentshield_api, artifacts as artifacts_api, auth,
+    bugs as bugs_api, config, cost,
     dashboard, deployments,
     destinations, files, hardware, invitations,
     documents as documents_api,
@@ -29,6 +31,20 @@ from .api.ws import event_bridge
 from .api.office_ws import office_bridge, router as office_ws_router
 
 VERSION = "0.1.0"
+# Uvicorn configures only its own loggers. Without this, every log line of the services
+# (scheduler, retention, workflow engine, deployments) went nowhere: the module loggers
+# had no handler and their records were dropped. The worker and the bot have done this
+# from the start, the API had been missing it — which is why the container log showed
+# HTTP requests and nothing else. `force` because uvicorn has already touched the root
+# logger by the time this module is imported.
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper(),
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s", force=True)
+
+# httpx logs every outbound request at INFO. With the deployer polled every few seconds
+# that alone fills the log, and the lines one actually looks for drown in it.
+for _noisy in ("httpx", "httpcore"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 log = logging.getLogger("traccoon.start")
 
 
@@ -647,6 +663,7 @@ api.include_router(notifications.router)
 api.include_router(cost.router)
 api.include_router(skills.router)
 api.include_router(plugins.router)
+api.include_router(agentshield_api.router)
 api.include_router(agents.router)
 api.include_router(office.router)
 api.include_router(deployments.router)

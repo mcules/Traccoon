@@ -54,6 +54,10 @@ export function primaryNavigation(isAdmin: boolean, plugins: NavEntry[] = []): N
     // Plugins stand before the settings: they are areas like the others, and the settings
     // should stay the last item before the administration.
     ...plugins,
+    // Caretaking of the machine, like the administration itself: the findings name paths and
+    // rules of the agent configurations on the host, and that is nothing the other people in
+    // the house have a use for.
+    ...(isAdmin ? [{ key: "audit", label: tr("agentshield.title"), icon: "🛡️", to: "/audit" }] : []),
     { key: "settings", label: tr("layout.settings"), icon: "⚙️", to: "/settings" },
     ...(isAdmin ? [{ key: "admin", label: tr("layout.admin"), icon: "🛠️", to: "/admin" }] : []),
   ];

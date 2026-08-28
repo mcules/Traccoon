@@ -4,6 +4,8 @@ import { tr } from "../i18n";
 import { api, MailBoxCount, MailCounts, MyDashboard, RunState } from "../api";
 import Onboarding from "../components/Onboarding";
 import PluginTiles from "../components/PluginTiles";
+import { useAuth } from "../auth";
+import { formatTime } from "../lib/formatTime";
 import { AssignedToMe, MySteps, NeedsMe, useMyWork } from "../components/MyWork";
 import { Running, Stuck, useStuckFlows } from "../components/Operations";
 import { Area, Breakdown, Figure, FigureTone } from "../components/ui";
@@ -29,6 +31,7 @@ import { usePageChrome } from "../pageChrome";
 export default function Dashboard() {
   // Title without a sub-menu; otherwise the one of the last visited page would stay.
   usePageChrome(tr("nav.dashboard"), []);
+  const { user } = useAuth();
   const { data } = useMyWork();
   const { data: flows } = useStuckFlows();
   const { waiting, inbox } = useInbox();
@@ -102,6 +105,7 @@ export default function Dashboard() {
         </Area>
         <MailCard />
         <ReportsCard />
+        {user?.global_role === "admin" && <AuditCard />}
         <PluginTiles />
       </div>
 
@@ -232,10 +236,51 @@ const REPORT_KIND: { key: string; label: string; tone: FigureTone }[] = [
   { key: "question", label: "dash.reports_questions", tone: "wait" },
 ];
 
+interface AuditOverview {
+  open: Record<"critical" | "high" | "medium" | "low" | "info", number>;
+  ignored: number; fixed: number; stacks: number;
+  last_run: { started_at: string; configs: number } | null;
+}
+
 interface ReportCount {
   kind: string;
   count: number;
   apps: { app: string; count: number }[];
+}
+
+/**
+ * The configuration audit, in three numbers.
+ *
+ * Only what one might have to act on: critical, high, medium. Low and info exist and are on
+ * the page itself — on the start page they would be two more numbers that never mean
+ * anything and take the room of the ones that do.
+ */
+function AuditCard() {
+  const { data } = useQuery({
+    queryKey: ["audit-overview"],
+    queryFn: () => api.get<AuditOverview>("/agentshield/overview"),
+    // The scan runs once a day. Asking every eight seconds would be asking the same question
+    // a thousand times for one answer.
+    refetchInterval: 300_000,
+    retry: false,
+  });
+  const last = data?.last_run;
+  return (
+    <Area title={tr("agentshield.title")} subtitle={last ? (
+      <span className="font-sans">
+        {tr("agentshield.stacks_affected", { when: formatTime(last.started_at),
+                                             stacks: data?.stacks ?? 0 })}
+      </span>
+    ) : undefined}>
+      <div className="grid grid-cols-3">
+        {(["critical", "high", "medium"] as const).map((severity) => (
+          <Figure bare key={severity} label={tr(`agentshield.sev_${severity}`)}
+            value={data?.open[severity] ?? 0} to="/audit"
+            tone={data?.open[severity] ? (severity === "medium" ? "wait" : "bad") : "quiet"} />
+        ))}
+      </div>
+    </Area>
+  );
 }
 
 function ReportsCard() {

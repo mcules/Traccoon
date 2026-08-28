@@ -45,10 +45,9 @@ BUILTIN_EVENTS: list[tuple[str, str]] = [
     ("assistant.session_closed", "Unterhaltung geschlossen"),
     ("assistant.session_deleted", "Unterhaltung geloescht"),
     ("deployment.finished", "Deployment abgeschlossen"),
-    # Reported from outside by the AgentShield collector (POST /events with a token that
-    # carries the `plugin_data` scope). They stand here so the editor offers them like the
-    # rest — a trigger nobody can pick from the list is one that gets typed wrong once and
-    # then stays quiet.
+    # Reported by the configuration audit itself (`services/agentshield.py`), one per finding
+    # plus one for the run. They used to come from outside, from a collector with a token —
+    # now the audit is part of the house and reports like everything else does.
     ("agentshield.finding.new", "a configuration finding appeared"),
     ("agentshield.finding.fixed", "a configuration finding is gone"),
     ("agentshield.audit.finished", "the configuration audit finished"),

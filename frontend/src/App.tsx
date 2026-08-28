@@ -22,6 +22,7 @@ import PluginHost from "./pages/PluginHost";
 // Canvas, pixel world and engine of the office are a chunk of their own. Imported
 // statically it would lie in the main bundle and the split in ProjectView would be in vain.
 const Office = lazy(() => import("./pages/Office"));
+const ConfigAudit = lazy(() => import("./pages/ConfigAudit"));
 import Layout from "./components/Layout";
 import { PageChromeProvider } from "./pageChrome";
 
@@ -129,6 +130,7 @@ export default function App() {
         {/* Plugins live under a short prefix of their own — they are areas,
             but no built-in ones. */}
         <Route path="/p/:slug" element={<PluginHost />} />
+        <Route path="/audit" element={<ConfigAudit />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/:tab" element={<SettingsTab />} />
         <Route path="/documents/:key" element={<StorePage />} />

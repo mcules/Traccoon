@@ -12,6 +12,25 @@
      value in the config so that a box with a look of its own -- the terminal of the PM
      chat -- can redefine it for its inside without every component knowing about it. */
   --brand: 0 82 204;
+  /* The five severities of the configuration audit, and the grades the scanner gives. They
+     are roles like every other colour in the house: red is not "red", it is "critical". They
+     stand here and not in the page that uses them, because the chart draws them into SVG
+     where a Tailwind class does not reach. */
+  --critical: 176 0 32;
+  --high: 191 74 0;
+  --medium: 176 136 0;
+  --low: 90 106 128;
+  --info: 107 119 140;
+  /* Green only at the very top, red from C down in three depths — the same order the scale
+     of the tool has (A, B, C, D, F). `--on-grade-b` is the writing on the one fill that is
+     too bright to carry white. */
+  --grade-a: 30 126 52;
+  --grade-b: 214 158 0;
+  --grade-c: 200 40 40;
+  --grade-d: 154 18 18;
+  --grade-f: 106 10 10;
+  --grade-unknown: 138 145 158;
+  --on-grade-b: 23 43 77;
 }
 :root[data-theme="dark"] {
   --card: 34 39 46;
@@ -19,6 +38,18 @@
   --ink: 230 237 243;
   --muted: 139 148 158;
   --line: 48 54 61;
+  --critical: 255 123 123;
+  --high: 255 166 87;
+  --medium: 224 190 82;
+  --low: 150 162 178;
+  --info: 139 148 158;
+  --grade-a: 63 185 80;
+  --grade-b: 224 190 82;
+  --grade-c: 248 81 73;
+  --grade-d: 197 48 48;
+  --grade-f: 145 20 20;
+  --grade-unknown: 110 118 129;
+  --on-grade-b: 22 27 34;
 }
 
 html, body, #root { height: 100%; }

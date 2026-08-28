@@ -291,6 +291,23 @@ services:
       dockerfile: Dockerfile.filmer
     restart: unless-stopped
 
+  # The scanner of the configuration audit. It exists as a container of its own because it
+  # drives an npm tool over the `.claude` directories of the host — a binary and two mounts
+  # that have no business in the backend image. Everything else about the audit (comparing,
+  # the history, the events) is in the backend; this one only ever answers "what do you see
+  # right now". No port outwards, no credentials, like the shotter and the filmer.
+  agentshield:
+    build: ./agentshield
+    restart: unless-stopped
+    environment:
+      SCAN_ROOTS: "/scan/home,/scan/stacks/*/.claude"
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      # Read-only, and that is the whole permission this container has: it looks at
+      # configurations, it never changes one.
+      - ${AGENTSHIELD_HOME:-/home/deisold/.claude}:/scan/home:ro
+      - ${AGENTSHIELD_STACKS:-/opt/docker/stacks}:/scan/stacks:ro
+
   deployer:
     build: ./deployer
     restart: unless-stopped

@@ -1593,6 +1593,23 @@ async def _job_pause(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     return {"action": "job_pause", "paused": job.paused, "job_id": job.id}
 
 
+async def _agentshield_scan(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Run the configuration audit and put its summary into the context.
+
+    This used to be a `http_request` onto a destination — a flow that had to know a URL, a
+    token and the shape of an answer for something that is a part of the house. As a node it
+    is one word, and what follows it (report, open a ticket, stay quiet) is the flow's own
+    business as with every other step.
+    """
+    from . import agentshield
+
+    summary = await agentshield.scan(db, trigger=str(_interp(params.get("trigger"), ctx)
+                                                     or "job")[:40])
+    key = str(params.get("context_key") or "audit")
+    inst.context = {**ctx, key: summary}
+    return {"action": "agentshield_scan", **summary}
+
+
 async def _script(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Run a stored script — the same check as with the script job.
 
@@ -1755,6 +1772,9 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
 
     if action == "job_pause":
         return await _job_pause(db, inst, params, ctx)
+
+    if action == "agentshield_scan":
+        return await _agentshield_scan(db, inst, params, ctx)
 
     if action == "assistant_task":
         return await _assistant_task(db, inst, params, ctx, str(node.get("id") or ""))

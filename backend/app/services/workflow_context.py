@@ -184,6 +184,16 @@ ACTIONS: dict[str, list[dict]] = {
         _f("http.ok", "boolean", "ctx.the_response_was_successful_2xx"),
         _f("http.body", "text", "ctx.response_body_with_json_also_addressable_deep"),
     ],
+    # The audit writes its summary under `audit` (or wherever `context_key` says), so a flow
+    # can decide afterwards whether the numbers are worth a message.
+    "agentshield_scan": [
+        _f("audit.findings", "number", "ctx.how_many_findings_are_open"),
+        _f("audit.new", "number", "ctx.how_many_appeared_in_this_run"),
+        _f("audit.fixed", "number", "ctx.how_many_are_gone_since_the_run_before"),
+        _f("audit.critical", "number", "ctx.of_them_critical"),
+        _f("audit.high", "number", "ctx.of_them_high"),
+        _f("audit.configs", "number", "ctx.how_many_configurations_were_scanned"),
+    ],
     "accept_merge": [
         _f("merge.result", "text", "ctx.merged_conflict_pr_open"),
         _f("merge.escalate", "boolean", "ctx.the_conflict_belongs_to_a_human"),
