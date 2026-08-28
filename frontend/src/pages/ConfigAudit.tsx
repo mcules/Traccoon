@@ -4,7 +4,8 @@ import { api } from "../api";
 import { language, tr } from "../i18n";
 import { formatTime } from "../lib/formatTime";
 import {
-  Area, Button, BUTTON_SMALL, Figure, GradeIcon, Listing, ListingEmpty, ListRow, Tab, Tag,
+  Area, Breakdown, Button, BUTTON_SMALL, Figure, GradeIcon, Listing, ListingEmpty, ListRow,
+  Tab, Tag,
 } from "../components/ui";
 import { Band, Mark, Point, Sparkline, StackedHistory } from "../components/charts";
 import { usePageChrome } from "../pageChrome";
@@ -48,6 +49,7 @@ interface Run {
 interface Overview {
   open: Record<Severity, number>;
   ignored: number; fixed: number; stacks: number;
+  by_config: ({ config: string } & Record<Severity, number>)[];
   last_run: null | {
     id: number; started_at: string; finished_at: string | null; trigger: string;
     configs: number; findings: number; new_count: number; fixed_count: number;
@@ -194,10 +196,19 @@ export default function ConfigAudit() {
           </Button>
         </>}>
         <div className="grid grid-cols-3 gap-y-3 sm:grid-cols-6">
-          {SEVERITIES.map((s) => (
-            <Figure bare key={s} label={severityLabel(s)} value={overview.data?.open[s] ?? 0}
-              tone={overview.data?.open[s] ? SEVERITY_TONE[s] : "quiet"} />
-          ))}
+          {SEVERITIES.map((s) => {
+            // A figure says how much, the note says where: over thirteen configurations
+            // "five critical" is a question until one knows which stack carries them.
+            const rows = (overview.data?.by_config || [])
+              .filter((c) => c[s])
+              .map((c) => ({ label: c.config, value: c[s] }))
+              .sort((a, b) => b.value - a.value);
+            return (
+              <Figure bare key={s} label={severityLabel(s)} value={overview.data?.open[s] ?? 0}
+                note={rows.length ? <Breakdown title={severityLabel(s)} rows={rows} /> : undefined}
+                tone={overview.data?.open[s] ? SEVERITY_TONE[s] : "quiet"} />
+            );
+          })}
           <Figure bare label={tr("agentshield.state_ignored")} value={overview.data?.ignored ?? 0} />
         </div>
       </Area>

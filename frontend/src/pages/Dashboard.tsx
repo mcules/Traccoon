@@ -236,9 +236,12 @@ const REPORT_KIND: { key: string; label: string; tone: FigureTone }[] = [
   { key: "question", label: "dash.reports_questions", tone: "wait" },
 ];
 
+type Severity = "critical" | "high" | "medium" | "low" | "info";
+
 interface AuditOverview {
-  open: Record<"critical" | "high" | "medium" | "low" | "info", number>;
+  open: Record<Severity, number>;
   ignored: number; fixed: number; stacks: number;
+  by_config: ({ config: string } & Record<Severity, number>)[];
   last_run: { started_at: string; configs: number } | null;
 }
 
@@ -272,11 +275,23 @@ function AuditCard() {
   return (
     <Area title={tr("agentshield.title")}>
       <div className="grid grid-cols-3">
-        {(["critical", "high", "medium"] as const).map((severity) => (
-          <Figure bare key={severity} label={tr(`agentshield.sev_${severity}`)}
-            value={data?.open[severity] ?? 0} to="/audit"
-            tone={data?.open[severity] ? (severity === "medium" ? "wait" : "bad") : "quiet"} />
-        ))}
+        {(["critical", "high", "medium"] as const).map((severity) => {
+          const label = tr(`agentshield.sev_${severity}`);
+          // What lies behind the number: which stack carries how much of it, heaviest first.
+          // One list per number and not one for the tile — "where are the critical ones"
+          // answered with the same mixed table one gets anywhere else leaves the question
+          // the number raised standing.
+          const rows = (data?.by_config || [])
+            .filter((c) => c[severity])
+            .map((c) => ({ label: c.config, value: c[severity] }))
+            .sort((a, b) => b.value - a.value);
+          return (
+            <Figure bare key={severity} label={label}
+              value={data?.open[severity] ?? 0} to="/audit"
+              note={rows.length ? <Breakdown title={label} rows={rows} /> : undefined}
+              tone={data?.open[severity] ? (severity === "medium" ? "wait" : "bad") : "quiet"} />
+          );
+        })}
       </div>
       {last && (
         <div className="mt-2 text-xs text-muted">

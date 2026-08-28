@@ -78,6 +78,15 @@ async def overview(_: User = Depends(require_admin), db: AsyncSession = Depends(
     stacks = (await db.execute(
         select(func.count(func.distinct(ShieldFinding.config)))
         .where(ShieldFinding.status == "open"))).scalar_one()
+    # Behind every figure: which configuration contributes how much. A head figure says how
+    # much, never where — "five critical" over thirteen stacks is a question, not an answer,
+    # and the answer belongs in the note that opens over the number.
+    per_config: dict[str, dict[str, int]] = {}
+    for config, severity, count in (await db.execute(
+            select(ShieldFinding.config, ShieldFinding.severity, func.count(ShieldFinding.id))
+            .where(ShieldFinding.status == "open")
+            .group_by(ShieldFinding.config, ShieldFinding.severity))).all():
+        per_config.setdefault(config, {name: 0 for name in SEVERITIES})[severity] = count
     last = (await db.execute(
         select(ShieldRun).order_by(ShieldRun.started_at.desc()).limit(1))).scalar_one_or_none()
     return {
@@ -85,6 +94,7 @@ async def overview(_: User = Depends(require_admin), db: AsyncSession = Depends(
         "ignored": per_state.get("ignored", 0),
         "fixed": per_state.get("fixed", 0),
         "stacks": stacks,
+        "by_config": [{"config": name, **counts} for name, counts in sorted(per_config.items())],
         "last_run": None if last is None else {
             "id": last.id, "started_at": last.started_at, "finished_at": last.finished_at,
             "trigger": last.trigger, "configs": last.configs, "findings": last.findings,
