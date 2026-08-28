@@ -19,6 +19,7 @@ import email
 import email.policy
 import logging
 import os
+import re
 import smtplib
 import ssl
 import threading
@@ -252,6 +253,27 @@ def _is_tracker(tag: str, address: str) -> bool:
     return bool(numbers) and all(int(n) <= 2 for n in numbers[:2]) and len(numbers) >= 2
 
 
+# Die Mail wird auf weißem Grund gezeigt — also gilt für sie hell, egal was das System des
+# Lesers sagt.
+#
+# Warum das hier passieren muss und nicht im Rahmen: `color-scheme: light` auf dem Dokument
+# genügt nicht, der Browser meldet `prefers-color-scheme` weiter nach der Einstellung des
+# Benutzers (nachgemessen). Halbfertige Dunkelmodus-Regeln sind in Rundmails der Normalfall:
+# der Text wird auf Weiß gesetzt, der Kasten darunter bleibt weiß. An einer Rundmail gemessen
+# waren 13 von 23 Textstellen unlesbar, im Hellen keine einzige.
+#
+# Also: die Dunkelfrage wird falsch, die Hellfrage wahr. Kein Wegwerfen von Regeln, keine
+# geratenen Farben — nur die Antwort auf die Frage "welches Schema gilt hier".
+DARK_QUERY = re.compile(r"\(\s*prefers-color-scheme\s*:\s*dark\s*\)", re.I)
+LIGHT_QUERY = re.compile(r"\(\s*prefers-color-scheme\s*:\s*light\s*\)", re.I)
+
+
+def as_light(html: str) -> str:
+    """Dunkelmodus-Regeln stilllegen, Hellmodus-Regeln immer gelten lassen."""
+    html = DARK_QUERY.sub("(max-width: 0px)", html)
+    return LIGHT_QUERY.sub("(min-width: 0px)", html)
+
+
 def clean(html: str) -> tuple[str, bool, int]:
     """Returns (cleaned HTML, whether there are remote images, how many counters were removed).
 
@@ -296,7 +318,7 @@ def clean(html: str) -> tuple[str, bool, int]:
     # the text is a hole nobody can explain.
     if counted:
         clean = re.sub(r'<img\b[^>]*\bdata-counted="1"[^>]*>', "", clean, flags=re.I)
-    return clean, fern, counted
+    return as_light(clean), fern, counted
 
 
 def _kind(part, name: str) -> str:

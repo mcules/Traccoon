@@ -980,12 +980,20 @@ function FolderManagement({ accountId, account, chosen, onClose, onGone, onError
  */
 function HtmlView({ html, show }: { html: string; show: boolean }) {
   const content = show ? html.replace(/data-fern="/g, 'src="') : html;
+  /* Der Rahmen ist hell, und das muss er dem Inhalt sagen (`color-scheme: light`).
+     Ohne das richtet sich `prefers-color-scheme` IM Rahmen nach dem System des Lesers. Steht
+     das auf dunkel, wendet die Mail ihre Dunkelmodus-Regeln an — und die sind bei vielen
+     Absendern halbfertig: der Text wird weiß, der weiße Kasten darunter bleibt weiß.
+     Nachgemessen an einer Rundmail: 13 von 23 Textstellen unlesbar im Dunkeln, null im
+     Hellen. Post wird hier auf weißem Grund gezeigt, also gilt im Rahmen hell. */
   const policy = "default-src 'none'; style-src 'unsafe-inline'; font-src data:; "
     + (show ? "img-src data: https:;" : "img-src data:;");
   const document = `<!doctype html><html><head>
       <meta http-equiv="Content-Security-Policy" content="${policy}">
+      <meta name="color-scheme" content="light">
       <base target="_blank">
       <style>
+        :root { color-scheme: light; }
         body { font: 14px/1.5 system-ui, sans-serif; color: #1c1c1c; background: #ffffff;
                margin: 12px; overflow-wrap: break-word; overflow-x: auto; }
         a { color: #0645ad; } img { max-width: 100%; height: auto; }

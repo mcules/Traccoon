@@ -1053,6 +1053,36 @@ async def test_a_picture_in_the_style_block_counts_as_a_remote_one():
     assert own is False
 
 
+async def test_die_mail_wird_immer_im_hellen_gezeigt():
+    """Post steht hier auf weißem Grund - also gilt für sie hell, egal was das System sagt.
+
+    Halbfertige Dunkelmodus-Regeln sind in Rundmails der Normalfall: der Text wird auf Weiß
+    gesetzt, der Kasten darunter bleibt weiß. Gemessen an einer echten Rundmail waren im
+    Dunkeln 13 von 23 Textstellen unlesbar (Kontrast 1,0), im Hellen keine einzige. Deshalb
+    wird die Dunkelfrage falsch und die Hellfrage wahr - keine Regel wird weggeworfen, keine
+    Farbe geraten.
+    """
+    from app.services.mailbox import clean
+
+    html, _, _ = clean(
+        "<style>@media (prefers-color-scheme: dark) { body { color: #fff } }"
+        "@media (prefers-color-scheme:light) { body { color: #000 } }</style><p>Moin</p>")
+
+    assert "prefers-color-scheme" not in html
+    assert "(max-width: 0px) { body { color: #fff } }" in html
+    assert "(min-width: 0px) { body { color: #000 } }" in html
+    # Und der Text steht noch da: stillgelegt wird die Frage, nicht die Antwort.
+    assert "Moin" in html
+
+
+async def test_eine_mail_ohne_dunkelmodus_bleibt_unangetastet():
+    from app.services.mailbox import clean
+
+    html, _, _ = clean("<style>@media (max-width: 600px) { td { display: block } }</style>")
+
+    assert "(max-width: 600px)" in html
+
+
 # ── Bilder von fremden Servern ──────────────────────────────────────────────
 
 async def test_a_counting_pixel_never_comes_back():
