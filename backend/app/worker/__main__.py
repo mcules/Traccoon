@@ -301,6 +301,9 @@ async def handle(job: dict, redis: Redis) -> None:
             issue={"id": issue.id, "key": issue.key, "summary": issue.summary,
                    "description": issue.description, "plan": issue.plan},
             project={"id": project.id, "key": project.key, "system_prompt": project.system_prompt,
+                     # What the project is (stack, dependencies, open points) counts for the
+                     # run just as much as the instruction on how to work here.
+                     "description": project.description,
                      "stack_dir": project.workspace_dir, "live_url": "",
                      "vault_moc_path": project.vault_moc_path},
             mode=mode, permissions=permissions, ws_root=ws_root, gate_on=gate_on, tokens=tokens,
@@ -461,6 +464,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             issue={"id": issue.id, "key": issue.key, "summary": issue.summary,
                    "description": issue.description, "plan": issue.plan},
             project={"id": project.id, "key": project.key, "system_prompt": project.system_prompt,
+                     "description": project.description,
                      "stack_dir": project.workspace_dir, "live_url": ""},
             mode="execute", permissions=permissions, ws_root=ws_root, gate_on=gate_on, tokens=tokens,
             base_urls=base_urls,

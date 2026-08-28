@@ -31,6 +31,11 @@ class ProjectUpdate(BaseModel):
 
 class ProjectSettings(BaseModel):
     """Agent, git and deploy configuration of a project (without secrets)."""
+    # What the project is: the knowledge about it that outlives a single ticket. It sits in
+    # the settings and not only in `ProjectUpdate`, because that is where it is written and
+    # kept: the creation dialog asks for a name, the description grows afterwards. The agents
+    # are given it on every run (worker/runtime._project_knowledge).
+    description: str | None = None
     managed: bool | None = None
     has_hardware: bool | None = None
     pm_chat_enabled: bool | None = None

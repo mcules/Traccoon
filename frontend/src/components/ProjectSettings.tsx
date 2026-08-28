@@ -44,6 +44,7 @@ const TABS: [Tab, string, string][] = [
 const TAB_KEYS = TABS.map(([k]) => k);
 
 type Settings = {
+  description: string;
   managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; verify_command: string; review_enabled: boolean;
   auto_continue: boolean; auto_deploy: boolean; screenshot_enabled: boolean;
   plan_agent: string; exec_agent: string; default_provider: string; default_token_name: string;
@@ -154,6 +155,12 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
       )}
       {tab === "general" && (
       <Section title={tr("project_settings.general")}>
+        {/* The description stands first and with room: it is the only place where the
+            knowledge about a project is kept, and until now it could only be set through
+            the API, never written or corrected here. */}
+        <Field label={tr("project_settings.project_description")} textarea rows={10}
+          hint={tr("project_settings.hint_description")}
+          value={s.description} onChange={(v) => set({ description: v })} />
         <Check label={tr("project_settings.project_hardware")} hint={tr("project_settings.shows_the_hardware_tab_catalog_items_procurem")}
           on={s.has_hardware} onChange={(v) => set({ has_hardware: v })} />
         <Check label={tr("project_settings.managed_project")} hint={tr("project_settings.results_go_to_review_first_instead_of_straigh")}
@@ -397,14 +404,15 @@ function Check({ label, hint, on, onChange }: {
   );
 }
 
-function Field({ label, hint, value, onChange, textarea }: {
+function Field({ label, hint, value, onChange, textarea, rows = 3 }: {
   label: string; hint?: string; value: string; onChange: (v: string) => void; textarea?: boolean;
+  rows?: number;
 }) {
   return (
     <div>
       <label className="text-xs text-muted">{label}</label>
       {textarea ? (
-        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={3}
+        <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} rows={rows}
           className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
       ) : (
         <input value={value || ""} onChange={(e) => onChange(e.target.value)}

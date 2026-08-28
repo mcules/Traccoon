@@ -716,6 +716,39 @@ def _read_conventions(ws_root: str | None) -> str:
     return ""
 
 
+# The description of a project is the one place where what the thing under work IS can be
+# written down and kept: its stack, the interfaces it hangs on, what is still open. As much
+# space as the house rules would be too much for that, a single line too little.
+MAX_PROJECT_DESCRIPTION_CHARS = 6000
+
+
+def _project_knowledge(project: dict) -> str:
+    """The project description as standing knowledge for the run.
+
+    It was the only project text an agent never got to see: the house rules come out of the
+    worktree, the instruction out of `system_prompt`, and what the project actually is stood
+    in the settings and reached nobody. So the stack had to be read out of the code on every
+    run, and there was no place to write down for the agents what they are working on.
+    Knowledge first, instruction after: `system_prompt` keeps the last word, because it says
+    how work is done here.
+
+    It is marked as background on purpose. A description is written once and then ages, while
+    the ticket says what somebody wants today, and an agent that reads a description as an
+    assignment starts working off the open points it finds listed in there.
+    """
+    text = (project.get("description") or "").strip()
+    if not text:
+        return ""
+    if len(text) > MAX_PROJECT_DESCRIPTION_CHARS:
+        text = text[:MAX_PROJECT_DESCRIPTION_CHARS] + "\n\n… (shortened)"
+    key = (project.get("key") or "").strip()
+    return (f"# What this project is{f' ({key})' if key else ''}\n\n"
+            "Background knowledge from the project settings, not an assignment. It describes "
+            "the state of the project, so single sentences in it can be older than the code, "
+            "and where the code contradicts it the code counts. Your assignment stands in "
+            "the ticket.\n\n" + text)
+
+
 def _build_system_prompt(agent: AgentDef) -> str:
     today = dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     parts = [agent.system_prompt or f"Du bist {agent.role}.",
@@ -969,6 +1002,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     conventions = _read_conventions(ws_root)
     if conventions:
         messages.append({"role": "system", "content": conventions})
+    if (knowledge := _project_knowledge(project)):
+        messages.append({"role": "system", "content": knowledge})
     if project.get("system_prompt"):
         messages.append({"role": "system", "content": project["system_prompt"]})
     if mode == "plan" and issue.get("plan"):
