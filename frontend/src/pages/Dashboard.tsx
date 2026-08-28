@@ -265,13 +265,12 @@ function AuditCard() {
     retry: false,
   });
   const last = data?.last_run;
+  // When the last run was goes UNDER the numbers, not beside the heading. Beside it, the line
+  // wraps in a card this narrow and pushes the figures a row down — and then this one card's
+  // numbers stand lower than those of the three next to it, which is the first thing one sees
+  // when reading across the row.
   return (
-    <Area title={tr("agentshield.title")} subtitle={last ? (
-      <span className="font-sans">
-        {tr("agentshield.stacks_affected", { when: formatTime(last.started_at),
-                                             stacks: data?.stacks ?? 0 })}
-      </span>
-    ) : undefined}>
+    <Area title={tr("agentshield.title")}>
       <div className="grid grid-cols-3">
         {(["critical", "high", "medium"] as const).map((severity) => (
           <Figure bare key={severity} label={tr(`agentshield.sev_${severity}`)}
@@ -279,6 +278,12 @@ function AuditCard() {
             tone={data?.open[severity] ? (severity === "medium" ? "wait" : "bad") : "quiet"} />
         ))}
       </div>
+      {last && (
+        <div className="mt-2 text-xs text-muted">
+          {tr("agentshield.stacks_affected", { when: formatTime(last.started_at),
+                                               stacks: data?.stacks ?? 0 })}
+        </div>
+      )}
     </Area>
   );
 }
