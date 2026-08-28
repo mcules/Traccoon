@@ -24,6 +24,7 @@ const ACTION_LABEL: Record<string, string> = {
   accept_merge: "action.accept_merge",
   deploy: "action.deploy",
   comment: "action.comment",
+  report_mail: "action.report_mail",
   mail_classify: "action.mail_classify",
   spam_evaluate: "action.judge_spam",
   spam_card: "action.spam_card",

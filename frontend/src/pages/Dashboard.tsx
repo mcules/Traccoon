@@ -311,6 +311,16 @@ function ReportsCard() {
     // sits behind a query over every open one of them.
     refetchInterval: 60_000,
   });
+  /* Was wartet. Steht getrennt von den Zahlen nach Art, weil es etwas anderes verlangt:
+     die drei Zahlen oben sagen, wie viel liegen geblieben ist, diese beiden sagen, wer auf
+     uns wartet — einmal ungelesen (kenne ich noch nicht), einmal unbeantwortet (der Melder
+     hat noch nichts von uns gehört). Beides kann ohne das andere zutreffen. */
+  const { data: warten } = useQuery({
+    queryKey: ["bugs-waiting"],
+    queryFn: () => api.get<{ unread_posts: number; unread_reports: number;
+                             unanswered: number }>("/bugs/waiting"),
+    refetchInterval: 60_000,
+  });
   const known = new Set(REPORT_KIND.map((k) => k.key));
   const rest = data.filter((r) => !known.has(r.kind));
 
@@ -343,6 +353,14 @@ function ReportsCard() {
             value={rest.reduce((sum, r) => sum + r.count, 0)} to="/bugs"
             note={note(tr("dash.reports_other"), rest)} />
         )}
+        {/* Beide stehen immer da, auch als Null: gefragt war, wie viel wartet, und "nichts"
+            ist darauf eine Antwort. Farbe bekommt eine Zahl erst, wenn sie eine verdient. */}
+        <Figure bare label={tr("dash.reports_unread")} value={warten?.unread_posts ?? 0}
+          tone={warten?.unread_posts ? "brand" : "quiet"} to="/bugs?state=unread"
+          hint={tr("dash.reports_unread_hint", { count: warten?.unread_reports ?? 0 })} />
+        <Figure bare label={tr("dash.reports_unanswered")} value={warten?.unanswered ?? 0}
+          tone={warten?.unanswered ? "wait" : "quiet"} to="/bugs?state=unanswered"
+          hint={tr("dash.reports_unanswered_hint")} />
       </div>
     </Area>
   );

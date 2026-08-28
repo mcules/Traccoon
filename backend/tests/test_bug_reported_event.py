@@ -25,8 +25,10 @@ from conftest import auth, make_project, make_user
 
 
 async def _source(db, *, project=None) -> BugSource:
+    if project is None:
+        project = await make_project(db, "DEV", "Device programmer")
     source = BugSource(key="devprog", name="Device programmer", enabled=True,
-                       project_id=project.id if project else None)
+                       project_id=project.id)
     db.add(source)
     await db.commit()
     await db.refresh(source)

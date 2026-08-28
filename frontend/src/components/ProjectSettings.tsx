@@ -49,6 +49,10 @@ type Settings = {
   auto_continue: boolean; auto_deploy: boolean; screenshot_enabled: boolean;
   plan_agent: string; exec_agent: string; default_provider: string; default_token_name: string;
   vault_moc_path: string; system_prompt: string;
+  /* Which mailbox carries the answers to the reports of this project (login and server stay
+     in the mailbox), under which address they go out, and who formulates a draft. */
+  mail_account_id: number | null; reply_from: string; reply_name: string;
+  answer_agent: string; mail_account_name: string;
   workspace_dir: string; git_enabled: boolean; github_repo: string; work_in_branches: boolean;
   merge_target: string; push_after_merge: boolean; use_pull_request: boolean;
   testenv_enabled: boolean; testenv_mode: string; testenv_container_port: number;
@@ -66,6 +70,10 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
   const { data: myTokens } = useQuery({
     queryKey: ["provider-tokens"],
     queryFn: () => api.get<{ id: number; provider: string; name: string; is_default: boolean }[]>("/me/provider-tokens"),
+  });
+  const { data: mailboxes } = useQuery({
+    queryKey: ["mail-accounts"],
+    queryFn: () => api.get<{ id: number; name: string }[]>("/mailbox/accounts"),
   });
   const [s, setS] = useState<Settings | null>(null);
   const tab: Tab = (TAB_KEYS.includes(area as Tab) ? area : "general") as Tab;
@@ -98,7 +106,7 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
 
   const save = async () => {
     try {
-      const { git_token_set, testenv_env_set, ...body } = s;
+      const { git_token_set, testenv_env_set, mail_account_name, ...body } = s;
       await api.put(`/projects/${project.id}/settings`, body);
       await refetch();
       // has_hardware/managed/pm_chat control the tabs in ProjectView (from ["projects"]).
@@ -184,6 +192,33 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
           hint={tr("project_settings.hint_system_prompt")}
           value={s.system_prompt} onChange={(v) => set({ system_prompt: v })} />
       </Section>
+      )}
+
+      {tab === "general" && (
+        <Section title={tr("project_settings.reports")}>
+          <div>
+            <label className="text-xs text-muted">{tr("project_settings.reply_mailbox")}</label>
+            <select value={s.mail_account_id ?? ""}
+              onChange={(e) => set({ mail_account_id: e.target.value ? +e.target.value : null })}
+              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 text-ink">
+              <option value="">{tr("project_settings.no_reply_mailbox")}</option>
+              {mailboxes?.map((one) => (
+                <option key={one.id} value={one.id}>{one.name}</option>
+              ))}
+            </select>
+            <div className="mt-1 text-xs text-muted">{tr("project_settings.reply_mailbox_hint")}</div>
+          </div>
+          {/* The address is typed, not picked: on a catch-all domain it needs no mailbox of
+              its own — it is the same mailbox with another name on the envelope. */}
+          <div className="grid grid-cols-2 gap-2">
+            <Field label={tr("project_settings.reply_address")} hint={tr("project_settings.reply_address_hint")}
+              value={s.reply_from} onChange={(v) => set({ reply_from: v })} />
+            <Field label={tr("project_settings.reply_name")} hint={tr("project_settings.reply_name_hint")}
+              value={s.reply_name} onChange={(v) => set({ reply_name: v })} />
+          </div>
+          <Field label={tr("project_settings.answer_agent")} hint={tr("project_settings.answer_agent_hint")}
+            value={s.answer_agent} onChange={(v) => set({ answer_agent: v })} />
+        </Section>
       )}
 
       {tab === "general" && project.parent_id != null && (

@@ -261,6 +261,23 @@ async def identities(kid: int, user: User = Depends(get_current_user),
     return rows
 
 
+@router.get("/identities", response_model=list[IdentityOut])
+async def all_identities(user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    """Every sender address of this person, across their mailboxes.
+
+    The per-mailbox list above is the one the mail client uses, where an account is always
+    chosen already. Everywhere else the question is the other way round — "under which
+    address does this go out?" — and fetching four lists to answer it would be four requests
+    for one dropdown.
+    """
+    rows = (await db.execute(
+        select(MailIdentity).join(MailAccount, MailAccount.id == MailIdentity.account_id)
+        .where(MailAccount.owner_user_id == user.id)
+        .order_by(MailIdentity.account_id, MailIdentity.id))).scalars().all()
+    return rows
+
+
 @router.post("/accounts/{kid}/identities", response_model=IdentityOut, status_code=201)
 async def identity_create(kid: int, data: IdentityIn,
                              user: User = Depends(get_current_user),

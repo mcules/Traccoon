@@ -58,7 +58,7 @@ export type AutoActionName =
   | "stop_agent"
   // The mail inbox. No slot of its own any more: it is nobody's default but one person's
   // flow, and comes out of the template `mail-intake`.
-  | "mail_classify" | "spam_evaluate" | "spam_card" | "spam_apply"
+  | "report_mail" | "mail_classify" | "spam_evaluate" | "spam_card" | "spam_apply"
   | "mail_assistant_task" | "mail_assistant_card" | "mail_assistant_run"
   // The assistant in general (without a mail, without a ticket) and the answer of a flow
   | "assistant_task" | "assistant_session" | "answer"

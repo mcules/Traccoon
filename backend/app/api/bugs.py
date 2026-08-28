@@ -24,11 +24,13 @@ from ..models.bugs import BugSource, ReportImage, ReportPost
 from ..models.project import Project
 from ..models.user import User
 from ..schemas.bug import (
-    AppPostIn, BugAppCount, BugKindCount, BugOut, BugReportAck, BugReportIn, BugSourceIn,
-    BugSourceOut, BugStatusIn, BugToTicketIn, PostIn, PostOut, ThreadOut,
+    AppPostIn, BugAppCount, BugIn, BugKindCount, BugOut, BugReportAck, BugReportIn,
+    BugReporterIn, BugSourceIn, BugSourceOut, BugStatusIn, BugToTicketIn, DraftIn, DraftOut,
+    PostIn, PostOut, ThreadOut,
 )
 from ..services import artifact_fields as fields_svc
 from ..services import bugs as svc
+from ..services import report_mail
 from .deps import get_current_user, require_admin
 
 router = APIRouter(tags=["bugs"])
@@ -77,7 +79,13 @@ async def list_bugs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """All reports, newest first. `state=open` shows what nobody has judged yet."""
+    """All reports, newest first.
+
+    `state=open` shows what nobody has judged yet, `state=unread` what the other side has
+    said and this person has not seen, `state=unanswered` wo der letzte Satz nicht von uns
+    ist. `unread` ist bewusst nicht auf offene Meldungen beschränkt: eine Antwort auf etwas
+    längst Abgehaktes ist genau die, die verloren geht.
+    """
     # Not `kind`: that name belongs to the query parameter here, and the artifact type would
     # quietly shadow it. The filter below then compared a string against an ORM object and
     # every list came back empty.
@@ -85,12 +93,108 @@ async def list_bugs(
     q = select(Artifact).where(Artifact.type_id == report_type.id).order_by(Artifact.id.desc())
     if state == "open":
         q = q.where(Artifact.status_key.in_(svc.OPEN_STATUS))
+    elif state == "unread":
+        pass                      # gefiltert wird unten, wo die Zählung steht
+    elif state == "unanswered":
+        q = q.where(Artifact.id.in_(await svc.unanswered(db)))
     elif state:
         q = q.where(Artifact.status_key == state)
     rows = list((await db.execute(q.limit(500))).scalars().all())
-    out = [await _out(db, row) for row in rows]
+    unread = await svc.unread_of(db, user.id, [row.id for row in rows])
+    out = [await _out(db, row, unread=unread.get(row.id, 0)) for row in rows]
     return [row for row in out
-            if (not app or row.app == app) and (not kind or row.kind == kind)]
+            if (not app or row.app == app) and (not kind or row.kind == kind)
+            and (state != "unread" or row.unread > 0)]
+
+
+@router.post("/bugs", response_model=BugOut, status_code=201)
+async def open_report(
+    data: BugIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Open a report from here — the conversation whose first sentence is ours.
+
+    The endpoint for reporting programs (`/bugs/report`) is not this one and must not become
+    it: that one authenticates with a program token and may do exactly one thing. Here a
+    person with a login writes, and may say who they are talking to.
+    """
+    artifact = await svc.create_here(
+        db, user, title=data.title, kind=data.kind, details=data.details,
+        contact=data.contact, reply_email=data.reply_email,
+        account_id=await _my_account(db, user, data.account_id), mail_from=data.mail_from,
+        project_id=data.project_id)
+    return await _out(db, artifact)
+
+
+@router.post("/bugs/{bug_id}/reporter", response_model=BugOut)
+async def set_reporter(
+    bug_id: int,
+    data: BugReporterIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Who the reporter is and how they are reached.
+
+    Most reports arrive without an address — a callsign in the contact field, the mail
+    address somewhere in the text. Typing it in here is what turns such a report into a
+    conversation instead of a dead end.
+    """
+    artifact = await _bug(db, bug_id)
+    if data.contact is not None:
+        await svc.set_field(db, artifact, "contact", data.contact.strip()[:svc.LIMITS["contact"]])
+    if data.reply_email is not None:
+        address = svc._address(data.reply_email)
+        if data.reply_email.strip() and not address:
+            raise Error(status.HTTP_400_BAD_REQUEST, "err.no_mail_address",
+                        "'{value}' is not a mail address", value=data.reply_email.strip())
+        await svc.set_field(db, artifact, "reply_email", address)
+    return await _out(db, artifact)
+
+
+@router.post("/bugs/{bug_id}/draft", response_model=DraftOut)
+async def draft_answer(
+    bug_id: int,
+    data: DraftIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Eine Antwort in Worte fassen lassen — oder die vorhandene überarbeiten.
+
+    Dasselbe Tor für beides: ohne Entwurf entsteht eine erste Fassung, mit Entwurf und
+    Anmerkungen eine überarbeitete. Beides kommt ins Formular zurück und nirgendwo sonst.
+
+    Bewusst kein `send` und kein `internal`: dieser Endpunkt liefert Text. Wer antworten
+    will, liest ihn, ändert ihn und drückt denselben Knopf wie für einen selbst getippten
+    Satz. Eine Maschine, die im Namen des Hauses von sich aus einem Fremden antwortet, ist
+    genau das, was hieraus nie werden darf.
+    """
+    from ..services.report_draft import NoDraftAgent, draft_answer as write
+
+    artifact = await _bug(db, bug_id)
+    try:
+        text, agent = await write(db, artifact, owner_id=user.id,
+                                  draft=data.draft, comments=data.comments)
+    except NoDraftAgent as why:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.no_draft_agent", "{reason}",
+                    reason=str(why)) from why
+    return DraftOut(text=text, agent=agent)
+
+
+async def _my_account(db: AsyncSession, user: User, account_id: int | None) -> int | None:
+    """A mailbox of this person, or nothing.
+
+    A check and not a lookup: an account carries a login with a password in it, and naming a
+    number must not be enough to send mail out of a stranger's mailbox.
+    """
+    if not account_id:
+        return None
+    from ..models.mail import MailAccount
+    account = await db.get(MailAccount, account_id)
+    if account is None or account.owner_user_id != user.id:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.mail_account_not_found",
+                    "This mailbox does not exist")
+    return account.id
 
 
 @router.get("/bugs/summary", response_model=list[BugKindCount])
@@ -143,13 +247,30 @@ async def summary(
     return sorted(out, key=lambda k: (-k.count, k.kind))
 
 
+@router.get("/bugs/waiting")
+async def waiting(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Was wartet: ungelesene Antworten und unbeantwortete Meldungen.
+
+    Drei Zahlen, weil sie drei verschiedene Dinge sagen. `unread_posts` sind Sätze, die
+    diese Person nicht kennt, `unread_reports` die Gespräche, in denen sie stehen (fünf
+    Antworten in einer Meldung sind ein Gespräch, fünf in fünf Meldungen sind fünf Leute).
+    `unanswered` zählt, wo der letzte Satz nicht von uns ist — das kann gelesen und trotzdem
+    unbeantwortet sein, und genau dieser Fall ist der häufigste.
+    """
+    return await svc.waiting(db, user.id)
+
+
 @router.get("/bugs/{bug_id}", response_model=BugOut)
 async def get_bug(
     bug_id: int,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    return await _out(db, await _bug(db, bug_id))
+    unread = await svc.unread_of(db, user.id, [bug_id])
+    return await _out(db, await _bug(db, bug_id), unread=unread.get(bug_id, 0))
 
 
 @router.post("/bugs/{bug_id}/status", response_model=BugOut)
@@ -212,7 +333,7 @@ async def _bug(db: AsyncSession, bug_id: int) -> Artifact:
     return artifact
 
 
-async def _out(db: AsyncSession, artifact: Artifact) -> BugOut:
+async def _out(db: AsyncSession, artifact: Artifact, *, unread: int = 0) -> BugOut:
     values = await fields_svc.values_of(db, artifact.id)
 
     def one(key: str) -> str:
@@ -226,6 +347,10 @@ async def _out(db: AsyncSession, artifact: Artifact) -> BugOut:
         environment=one("environment"), details=one("details"), technical=one("technical"),
         ticket=one("ticket"), project_id=artifact.project_id, created_at=artifact.created_at,
         images=await svc.images_of_report(db, artifact.id),
+        reply_email=one("reply_email"),
+        mail_ready=bool(one("reply_email"))
+        and await report_mail.sender_of(db, artifact) is not None,
+        unread=unread,
     )
 
 
@@ -237,7 +362,7 @@ async def list_sources(
     db: AsyncSession = Depends(get_session),
 ):
     rows = (await db.execute(select(BugSource).order_by(BugSource.key))).scalars().all()
-    return [_source_out(row) for row in rows]
+    return [await _source_out(db, row) for row in rows]
 
 
 @router.post("/bug-sources", response_model=BugSourceOut, status_code=201)
@@ -252,6 +377,7 @@ async def create_source(
     if there is not None:
         raise Error(status.HTTP_409_CONFLICT, "err.bug_source_exists",
                     "A program named '{key}' is already registered", key=data.key)
+    await _project(db, data.project_id)
     source = BugSource(key=data.key, name=data.name, project_id=data.project_id,
                        hourly_limit=data.hourly_limit, description=data.description,
                        enabled=data.enabled, callback_url=data.callback_url)
@@ -260,9 +386,36 @@ async def create_source(
     db.add(source)
     await db.commit()
     await db.refresh(source)
-    out = _source_out(source)
+    out = await _source_out(db, source)
     out.token = token
     return out
+
+
+@router.put("/bug-sources/{source_id}", response_model=BugSourceOut)
+async def change_source(
+    source_id: int,
+    data: BugSourceIn,
+    user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+):
+    """Change a registered program. The token stays as it is — it is renewed elsewhere.
+
+    Only the key does not change: programs report under it, and its reports are found by it.
+    """
+    source = await db.get(BugSource, source_id)
+    if source is None:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.bug_source_not_found",
+                    "Reporting program not found")
+    await _project(db, data.project_id)
+    source.name = data.name
+    source.project_id = data.project_id
+    source.hourly_limit = data.hourly_limit
+    source.description = data.description
+    source.enabled = data.enabled
+    source.callback_url = data.callback_url
+    await db.commit()
+    await db.refresh(source)
+    return await _source_out(db, source)
 
 
 @router.post("/bug-sources/{source_id}/token", response_model=BugSourceOut)
@@ -278,17 +431,30 @@ async def renew_token(
     token = svc.new_token()
     svc.set_token(source, token)
     await db.commit()
-    out = _source_out(source)
+    out = await _source_out(db, source)
     out.token = token
     return out
 
 
-def _source_out(source: BugSource) -> BugSourceOut:
+async def _project(db: AsyncSession, project_id: int) -> Project:
+    """The project a reporting program belongs to. Without one there is no program."""
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
+    return project
+
+
+async def _source_out(db: AsyncSession, source: BugSource) -> BugSourceOut:
+    from ..models.mail import MailIdentity
+    project = await db.get(Project, source.project_id) if source.project_id else None
+    identity = (await db.get(MailIdentity, project.reply_identity_id)
+                if project is not None and project.reply_identity_id else None)
     return BugSourceOut(
         id=source.id, key=source.key, name=source.name, project_id=source.project_id,
         callback_url=source.callback_url,
         hourly_limit=source.hourly_limit, description=source.description,
         enabled=source.enabled, token_hint=source.token_hint,
+        reply_email=identity.email if identity is not None else "",
     )
 
 
@@ -300,9 +466,16 @@ async def read_posts(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """Everything that was said, internal notes included: this is the view with a login."""
+    """Everything that was said, internal notes included: this is the view with a login.
+
+    Wer hier liest, hat gelesen: der Lesestand dieser Person wird dabei nachgezogen. Deshalb
+    steht das Setzen hier und nicht am Antworten — wer nachsieht und nichts sagt, kennt die
+    Antwort trotzdem.
+    """
     artifact = await _bug(db, bug_id)
-    return await _posts_out(db, artifact, with_internal=True)
+    posts = await _posts_out(db, artifact, with_internal=True)
+    await svc.mark_read(db, user.id, artifact.id)
+    return posts
 
 
 @router.post("/bugs/{bug_id}/posts", response_model=PostOut, status_code=201)
@@ -315,9 +488,15 @@ async def write_post(
     artifact = await _bug(db, bug_id)
     post = await svc.add_post(db, artifact, data.body, author=user, internal=data.internal)
     if not data.internal:
-        # Only the public answer rings: an internal note is none of the reporter's business,
-        # and even the fact that one exists is not.
+        # Only the public answer travels: an internal note is none of the reporter's
+        # business, and even the fact that one exists is not.
+        #
+        # Both ways, when both are known. A reporter who has the program open reads it there
+        # and gets a mail about the same sentence — that is a repetition, not a mistake:
+        # which of the two they look at is theirs to decide, and the way that stays silent
+        # is the one that costs an answer.
         await svc.notify_source(db, artifact, event="answer", post=post)
+        await report_mail.send_answer(db, artifact, post)
     return _post_out(post, {}, mine=True)
 
 
@@ -461,6 +640,9 @@ async def app_write_post(
     artifact = await _app_bug(db, source, bug_id, data.external_ref)
     post = await svc.add_post(db, artifact, data.body, author_label=data.author or data.external_ref,
                               external_ref=data.external_ref)
+    # Dieselbe Glocke wie bei einer Antwort per Mail. Vorher fiel eine Antwort aus dem
+    # Programm lautlos in die Liste, und wer nicht zufällig hinsah, ließ den Melder warten.
+    await report_mail.ring(db, artifact, post, data.author or data.external_ref)
     return _post_out(post, {}, mine=True)
 
 
@@ -590,7 +772,10 @@ async def _posts_out(db: AsyncSession, artifact, *, with_internal: bool,
 
 def _post_out(post, images: dict, *, mine: bool = False) -> PostOut:
     return PostOut(id=post.id, body=post.body, author=post.author_label or "?",
-                   internal=post.internal, team=not post.external_ref, mine=mine,
+                   internal=post.internal, via=post.via or "web",
+                   # An entry that came in by mail is not ours either, even though it carries
+                   # no reference to a user of the program.
+                   team=not post.external_ref and post.via != "mail", mine=mine,
                    images=images.get(post.id, []), created_at=post.created_at)
 
 

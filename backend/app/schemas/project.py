@@ -50,6 +50,16 @@ class ProjectSettings(BaseModel):
     default_provider: str | None = None
     default_token_name: str | None = None
     vault_moc_path: str | None = None
+    # ── Reports ─────────────────────────────────────────────────────────────
+    # Which of one's own mailboxes carries the answers (login and server stay there), and
+    # under which address they go out. Both empty: the reports of this project are answered
+    # where they can be read, not by mail.
+    mail_account_id: int | None = None
+    reply_from: str | None = None
+    reply_name: str | None = None
+    # Which agent formulates a draft. Empty = the classifying agent of the mail intake. It
+    # proposes; sending stays with the person, always.
+    answer_agent: str | None = None
     system_prompt: str | None = None
     workspace_dir: str | None = None
     # Git
@@ -73,6 +83,9 @@ class ProjectSettings(BaseModel):
 class ProjectSettingsOut(ProjectSettings):
     git_token_set: bool = False
     testenv_env_set: bool = False
+    # The name of the chosen mailbox. Read only, so that the form can say which one it is
+    # instead of showing a number.
+    mail_account_name: str = ""
 
 
 class ProjectOut(BaseModel):

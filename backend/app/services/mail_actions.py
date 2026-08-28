@@ -282,7 +282,72 @@ async def assistant_run(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
             "reason": "it already runs as part of the creation"}
 
 
+async def report_intake(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Is this mail about a report? Then it belongs in its thread and nowhere else.
+
+    Stands at the very front of the mail intake, before classifying and before the spam
+    check: an answer of a reporter is neither a matter for the assistant nor a mail anybody
+    has to judge — it is the second half of a conversation this house started itself.
+
+    What it writes into the context:
+
+        report.handled   the mail is dealt with, the flow may end here
+        report.id        which report it belongs to
+        report.way       how it was recognised (reference · address · message-id · subject)
+        report.new       a report was made out of it (nobody had written before)
+
+    `open_new` (default on) decides whether a mail that answers nothing may become a report.
+    It only ever takes hold for mails to an address that a reporting program was given — see
+    `report_mail.sources_by_address`; the private mail of a person is watched by the same
+    watcher and must never turn into a report.
+    """
+    from . import report_mail
+
+    payload = _mail(ctx)
+    nothing = {"handled": False, "id": None, "way": "", "new": False, "filed": False}
+    try:
+        # First: is this one of our own answers coming back? Both copies of it are pushed in
+        # like any other mail, and it is already in the thread.
+        own = await report_mail.ours(db, payload)
+        if own is not None:
+            report = {"handled": True, "id": own.id, "way": "own", "new": False,
+                      "filed": False}
+            inst.context = {**ctx, "report": report}
+            return {"action": "report_mail", **report}
+
+        found = await report_mail.match(db, payload)
+        if found is not None:
+            artifact, way = found
+            post = await report_mail.file_reply(db, artifact, payload)
+            report = {"handled": True, "id": artifact.id, "way": way, "new": False,
+                      # Already in there: a mail delivered twice is not a second answer.
+                      "filed": post is not None}
+        else:
+            artifact = None
+            if params.get("open_new") is None or _yes(params.get("open_new")):
+                artifact = await report_mail.new_from_mail(db, payload)
+            report = ({"handled": True, "id": artifact.id, "way": "address", "new": True,
+                       "filed": True} if artifact is not None else dict(nothing))
+    except Exception:  # noqa: BLE001
+        # This step stands in front of EVERY incoming mail. Whatever goes wrong in here, the
+        # mail has to carry on its normal way — a report that is not recognised is a nuisance,
+        # a mail that disappears is a loss.
+        log.exception("the report check stumbled, the mail carries on as an ordinary one")
+        await db.rollback()
+        report = dict(nothing)
+    inst.context = {**ctx, "report": report}
+    return {"action": "report_mail", **report}
+
+
+def _yes(value) -> bool:
+    """A switch out of the graph, which may arrive as a word."""
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "0", "no", "false", "nein", "aus")
+    return bool(value)
+
+
 HANDLER = {
+    "report_mail": report_intake,
     "mail_classify": classify,
     "spam_evaluate": spam_judge,
     "spam_card": spam_card,

@@ -2,8 +2,8 @@
   "server.notify.end_of_day": "End of day · {date}",
   "server.notify.film_quiet": "🌙 A quiet day in the office, no runs.",
   "server.notify.job": "Job: {name}",
-  "server.notify.mail_intake": "📥 {title}",
   "server.notify.mail_from": "from {sender}",
+  "server.notify.mail_intake": "📥 {title}",
   "server.notify.spam_suspicion": "🚩 {count} suspected spam cases",
   "server.notify.webhook_more": "{route}: {count} more events ({event_key})",
   "server.notify.worker_down": "⚠ Worker is down",
@@ -19,5 +19,6 @@
   "server.onboarding.telegram": "Connect chat",
   "server.onboarding.telegram_hint": "Notifications and approvals through the messenger.",
   "server.onboarding.verify": "Set a verify command",
-  "server.onboarding.verify_hint": "For instance \"npm run build\", otherwise nobody can show that the work is green."
+  "server.onboarding.verify_hint": "For instance \"npm run build\", otherwise nobody can show that the work is green.",
+  "server.report.mail_footer": "You can simply reply to this mail — your answer lands on your report {tag}."
 }

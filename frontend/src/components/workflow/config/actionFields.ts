@@ -516,6 +516,16 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     ],
   },
 
+  report_mail: {
+    subjects: ["standalone"],
+    summary: "action_fields.report_mail_summary",
+    fields: [
+      { key: "open_new", label: "action_fields.report_mail_open_new", type: "boolean", default: true,
+        hint: "action_fields.report_mail_open_new_hint" },
+    ],
+    outcomes: "action_fields.report_mail_outcome",
+  },
+
   mail_classify: {
     subjects: ["standalone"],
     summary: "action_fields.classifies_the_incoming_mail_in_house_categor",

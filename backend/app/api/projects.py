@@ -192,10 +192,26 @@ async def update_project(
 _SETTINGS_FIELDS = tuple(ProjectSettings.model_fields)
 
 
-def _settings_out(p: Project) -> ProjectSettingsOut:
+async def _settings_out(db: AsyncSession, p: Project) -> ProjectSettingsOut:
+    from ..models.mail import MailAccount
+    account = await db.get(MailAccount, p.mail_account_id) if p.mail_account_id else None
     return ProjectSettingsOut(**{f: getattr(p, f) for f in _SETTINGS_FIELDS},
                               git_token_set=bool(p.git_token_enc),
-                              testenv_env_set=bool(p.testenv_env_enc))
+                              testenv_env_set=bool(p.testenv_env_enc),
+                              mail_account_name=account.name if account is not None else "")
+
+
+async def _own_account(db: AsyncSession, user, account_id: int) -> None:
+    """Refuse a mailbox that does not belong to the person setting it.
+
+    An account carries a login with a password in it. Naming a number must not be enough to
+    make a project answer out of somebody else's mailbox.
+    """
+    from ..models.mail import MailAccount
+    account = await db.get(MailAccount, account_id)
+    if account is None or account.owner_user_id != user.id:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.mail_account_not_found",
+                    "This mailbox does not exist")
 
 
 class TestenvEnvIn(BaseModel):
@@ -215,8 +231,9 @@ async def set_testenv_env(
 
 
 @router.get("/projects/{project_id}/settings", response_model=ProjectSettingsOut)
-async def get_settings(access: Access = Depends(require_role(ProjectRole.maintainer))):
-    return _settings_out(access.project)
+async def get_settings(access: Access = Depends(require_role(ProjectRole.maintainer)),
+                       db: AsyncSession = Depends(get_session)):
+    return await _settings_out(db, access.project)
 
 
 @router.put("/projects/{project_id}/settings", response_model=ProjectSettingsOut)
@@ -226,11 +243,14 @@ async def update_settings(
     db: AsyncSession = Depends(get_session),
 ):
     p = access.project
-    for field, value in data.model_dump(exclude_unset=True).items():
+    values = data.model_dump(exclude_unset=True)
+    if values.get("mail_account_id"):
+        await _own_account(db, access.user, int(values["mail_account_id"]))
+    for field, value in values.items():
         setattr(p, field, value)
     await db.commit()
     await db.refresh(p)
-    return _settings_out(p)
+    return await _settings_out(db, p)
 
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -238,6 +258,16 @@ async def delete_project(
     access: Access = Depends(require_role(ProjectRole.owner)),
     db: AsyncSession = Depends(get_session),
 ):
+    # A reporting program hangs off its project (address, board, tickets). Deleting the
+    # project underneath it would leave a token in a stranger's device reporting into a
+    # hole — so it is said here, in words, instead of failing later as a database error.
+    from ..models.bugs import BugSource
+    reporting = (await db.execute(select(BugSource.key).where(
+        BugSource.project_id == access.project.id))).scalars().all()
+    if reporting:
+        raise Error(status.HTTP_409_CONFLICT, "err.project_carries_reporting_programs",
+                    "The project still carries the reporting programs {programs} — "
+                    "move them first", programs=", ".join(reporting))
     await db.delete(access.project)
     await db.commit()
 

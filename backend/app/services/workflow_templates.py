@@ -219,6 +219,12 @@ def _mail_intake() -> dict:
     `mail` (raw payload of the watcher) and `eingang` (settings of the trigger); everything
     else is written by the steps themselves (see `services/mail_actions.py`).
 
+    The first question is not about spam at all: is this mail the answer to a report? Then
+    it belongs in that thread and the flow is over — a reporter who writes back is not a
+    matter for the assistant, and judging their sentence as if a stranger had sent it is how
+    an answer ends up in the spam folder. A mail to the address of a reporting program that
+    answers nothing becomes a new report there; every other mail carries on below.
+
     The order of the branches is the guard rail of the detection:
 
         detection off        → let through (the emergency stop goes before everything)
@@ -250,16 +256,37 @@ def _mail_intake() -> dict:
             "label": "Mail eingegangen",
             "trigger": {"event": "mail.received"},
         }),
-        _n("classify", "auto_action", 0, 1,
+        # Before everything else: is this the answer to a report of ours? Then it belongs in
+        # its thread, and neither the spam check nor the assistant has anything to do with
+        # it. Standing first is the point — a conversation the house started itself must not
+        # be judged as if a stranger had written it.
+        _n("meldung", "auto_action", 0, 1,
+           _action("report_mail", "Zu einer Meldung?")),
+        _n("ist_meldung", "decision", 0, 2, {
+            "label": "Antwort auf eine Meldung?",
+            "branches": [
+                {"handle": "meldung", "label": "gehört zu einer Meldung",
+                 "guard": {"==": [{"var": "report.handled"}, True]}},
+                {"handle": "weiter", "label": "ordinary mail"},
+            ],
+            "default_handle": "weiter",
+        }),
+        # Filed, and the mailbox should show that: an answer that lies unread in the inbox
+        # gets read a second time by a person who then has nothing left to do.
+        _n("meldung_gelesen", "auto_action", 1, 2,
+           _action("mail_flag", "Als gelesen markieren", flag="seen", on=True)),
+        _n("end_meldung", "end", 1, 3,
+           {"label": "In der Meldung abgelegt", "outcome": "completed"}),
+        _n("classify", "auto_action", 0, 3,
            _action("mail_classify", "Mail einordnen")),
-        _n("evaluate", "auto_action", 0, 2,
+        _n("evaluate", "auto_action", 0, 4,
            _action("spam_evaluate", "Spam beurteilen")),
         # Every reason gets its own exit although four of them lead to the same step: the
         # history of an instance should show WHY a mail was let through ("sender known" is
         # something other than "inconspicuous"). Two branches with the same exit name would
         # moreover be two exits with the same identifier on the same node, and which edge
         # hangs off it would be a matter of chance.
-        _n("weiche", "decision", 0, 3, {
+        _n("weiche", "decision", 0, 5, {
             "label": "Spam?",
             "branches": [
                 {"handle": "aus", "label": "detection off",
@@ -381,7 +408,11 @@ def _mail_intake() -> dict:
     ]
 
     edges = [
-        _e("start", "classify"),
+        _e("start", "meldung"),
+        _e("meldung", "ist_meldung"),
+        _e("ist_meldung", "meldung_gelesen", "meldung", "belongs to a report"),
+        _e("meldung_gelesen", "end_meldung"),
+        _e("ist_meldung", "classify", "weiter"),
         _e("classify", "evaluate"),
         _e("evaluate", "weiche"),
 

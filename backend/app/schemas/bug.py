@@ -30,6 +30,10 @@ class BugReportIn(BaseModel):
     # Who reported it over there. The reference is how the program finds its own user again
     # (a game, say: the player id), the contact is what a human reads.
     external_ref: str = ""
+    # Where the reporter reads an answer. A program that knows the mail address of its user
+    # sends it along; without it the answer only exists in the program (and in Traccoon),
+    # and whoever does not come back never learns it.
+    reply_email: str = ""
 
 
 class BugReportAck(BaseModel):
@@ -54,10 +58,47 @@ class BugOut(BaseModel):
     ticket: str
     project_id: int | None
     created_at: dt.datetime | None
+    # Where an answer would go by mail — and whether it would go at all. `mail_ready` is
+    # false when the address is there but no mailbox answers for this report; the interface
+    # has to say that BEFORE somebody writes, not afterwards.
+    reply_email: str = ""
+    mail_ready: bool = False
+    # Wie viele Einträge der Gegenseite der Leser noch nicht gesehen hat. Was wir selbst
+    # geschrieben haben, zählt nie: wir waren dabei.
+    unread: int = 0
 
 
 class BugStatusIn(BaseModel):
     status: str
+
+
+class BugIn(BaseModel):
+    """A report opened here instead of arriving from somewhere.
+
+    Everything about it is optional except the heading and, in practice, a way to reach the
+    other side: a conversation with nobody to talk to is a note.
+    """
+    title: str = Field(min_length=1)
+    kind: str = "question"
+    details: str = ""
+    contact: str = ""
+    reply_email: str = ""
+    # Out of which of one's own mailboxes, and under which address. Without both the report
+    # stays inside the house and is answered where it can be read. With a project that has a
+    # mailbox of its own, both may stay empty — then that one applies.
+    account_id: int | None = None
+    mail_from: str = ""
+    project_id: int | None = None
+
+
+class BugReporterIn(BaseModel):
+    """Correcting who the reporter is and how they are reached.
+
+    Needed because most reports arrive without an address: a callsign in `contact`, and the
+    mail address only in the third sentence of the text.
+    """
+    contact: str | None = None
+    reply_email: str | None = None
 
 
 class BugToTicketIn(BaseModel):
@@ -66,11 +107,42 @@ class BugToTicketIn(BaseModel):
     description: str = ""
 
 
+class DraftIn(BaseModel):
+    """Woran der Entwurf sich halten soll, über die Unterhaltung hinaus.
+
+    Zwei Dinge, und sie sind nicht dasselbe: `draft` ist der Text, wie er gerade im Feld
+    steht, `comments` sind die Anmerkungen dazu ("kürzer", "frag nach der Version", "nicht
+    so förmlich"). Mit Entwurf ist es eine Überarbeitung, ohne eine erste Fassung.
+
+    Die Anmerkungen kommen als Liste und nicht als ein Text: sie sind über mehrere Runden
+    entstanden, und ihre Reihenfolge ist die Reihenfolge, in der jemand sie gesagt hat. Die
+    letzte ist die frischeste — sie sticht eine frühere, wenn beide sich widersprechen.
+    """
+    draft: str = ""
+    comments: list[str] = []
+
+
+class DraftOut(BaseModel):
+    """A proposal, nothing more.
+
+    There is deliberately no endpoint that writes this into the thread or sends it: a draft
+    becomes an answer by a person reading it, changing it and pressing the button — the same
+    button as for one they typed themselves.
+    """
+    text: str
+    # Which agent wrote it. Stands here so that a bad draft can be traced to a model instead
+    # of to the feature.
+    agent: str = ""
+
+
 class BugSourceIn(BaseModel):
     key: str = Field(min_length=2, max_length=40)
     name: str = Field(min_length=1)
     callback_url: str = ""
-    project_id: int | None = None
+    # Required: a program reports INTO a project. The project carries the address its reports
+    # are answered from and the board the tickets grow on — without one a report lands
+    # nowhere and can be answered by nobody.
+    project_id: int
     hourly_limit: int = 20
     description: str = ""
     enabled: bool = True
@@ -81,6 +153,9 @@ class BugSourceOut(BaseModel):
     key: str
     name: str
     callback_url: str = ""
+    # The address this program answers from — it belongs to the project and is only shown
+    # here, where the question "how is this program reachable" is asked.
+    reply_email: str = ""
     project_id: int | None
     hourly_limit: int
     description: str
@@ -96,6 +171,10 @@ class PostOut(BaseModel):
     body: str
     author: str
     internal: bool
+    # Which way this entry took: `web`, `app` or `mail`. The reporting program does not care,
+    # the list here does: whoever answers wants to see that the last sentence came in by
+    # mail and will be read there.
+    via: str = "web"
     # Written here, in Traccoon. The reporting program shows its own people who is talking to
     # them: the team, or somebody like themselves.
     team: bool = False

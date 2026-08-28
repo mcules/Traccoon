@@ -126,6 +126,12 @@ ACTIONS: dict[str, list[dict]] = {
         _f("assistant.output", "text", "ctx.the_assistant_s_answer_only_with_wait"),
         _f("assistant.status", "text", "ctx.done_or_error_only_with_wait"),
     ],
+    "report_mail": [
+        _f("report.handled", "boolean", "ctx.the_mail_belongs_to_a_report_and_is_dealt_with"),
+        _f("report.id", "number", "ctx.which_report"),
+        _f("report.way", "text", "ctx.how_it_was_recognised"),
+        _f("report.new", "boolean", "ctx.a_report_was_made_out_of_the_mail"),
+    ],
     "mail_flag": [],
     "mail_move": [],
     "mail_attachment": [

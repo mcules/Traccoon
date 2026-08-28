@@ -25,7 +25,7 @@ import threading
 import time
 from contextlib import contextmanager
 from email.message import EmailMessage
-from email.utils import formataddr, parseaddr
+from email.utils import formataddr, make_msgid, parseaddr
 
 from imapclient import IMAPClient
 
@@ -1112,12 +1112,21 @@ def build_message(identity: MailIdentity, fields: dict) -> EmailMessage:
         msg["Cc"] = ", ".join(fields["cc"])
     if fields.get("bcc"):
         msg["Bcc"] = ", ".join(fields["bcc"])
-    if identity.reply_to:
-        msg["Reply-To"] = identity.reply_to
+    if fields.get("reply_to") or identity.reply_to:
+        msg["Reply-To"] = fields.get("reply_to") or identity.reply_to
     msg["Subject"] = fields.get("subject") or ""
     if fields.get("in_reply_to"):
         msg["In-Reply-To"] = fields["in_reply_to"]
         msg["References"] = fields["in_reply_to"]
+    # Every mail gets a Message-ID, and it is set HERE.
+    #
+    # `smtplib.send_message` adds none, and not every server fills one in. A mail without one
+    # is a mail nobody can refer to afterwards: the answer to it cannot be filed under it
+    # (`report_mail`), the two copies of it — the one in Sent and the delivered one — cannot
+    # be told apart, and our own spam rules count a missing Message-ID against the sender.
+    # Whoever needs a particular one (a report puts its reference in there) passes it in.
+    msg["Message-ID"] = fields.get("message_id") or make_msgid(
+        domain=(identity.email.rpartition("@")[2] or None))
     body = fields.get("text") or ""
     if identity.signature:
         body = f"{body}\n\n-- \n{identity.signature}"

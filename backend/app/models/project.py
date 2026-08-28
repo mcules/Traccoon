@@ -71,6 +71,31 @@ class Project(TimestampMixin, Base):
     auto_continue: Mapped[bool] = mapped_column(Boolean, default=True)
     comment_triggers_agent: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # ── How the reports of this project are answered ────────────────────────
+    # The mailbox that carries the answer: server, login and password stay where they are
+    # maintained (`mail_accounts`), and nothing of them is repeated here. A project borrows a
+    # mailbox, it does not get one of its own.
+    #
+    # It sits on the project and not on the reporting program because that is where it
+    # belongs: a program reports INTO a project, and whoever looks after the project answers.
+    # Two programs of one project answer from the same address, which is the thing one would
+    # otherwise have to keep in step by hand.
+    mail_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("mail_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Under which address. A free address and not one of the identities on file, because on a
+    # catch-all domain `reports-of-the-programmer@…` needs no mailbox of its own — it is the
+    # same mailbox with another name on the envelope. What the server is allowed to send is
+    # decided by the server; an address it refuses shows up as a failed answer, not as a
+    # silence.
+    reply_from: Mapped[str] = mapped_column(String(320), default="")
+    reply_name: Mapped[str] = mapped_column(String(120), default="")
+    # Which agent formulates a draft answer (a role, as with `plan_agent`). It has to run over
+    # an API (`openai`), not over a subscription CLI: a draft is written while somebody waits
+    # in front of the form. Empty = the classifying agent of the mail intake.
+    #
+    # A draft is a draft. Nothing here ever sends anything — see `api/bugs.draft_answer`.
+    answer_agent: Mapped[str] = mapped_column(String(100), default="")
+
     # Deploy / Betrieb
     auto_deploy: Mapped[bool] = mapped_column(Boolean, default=False)
     screenshot_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

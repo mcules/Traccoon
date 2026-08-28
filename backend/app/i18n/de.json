@@ -2,8 +2,8 @@
   "server.notify.end_of_day": "Feierabend · {date}",
   "server.notify.film_quiet": "🌙 Heute war es still im Büro — keine Läufe.",
   "server.notify.job": "Job: {name}",
-  "server.notify.mail_intake": "📥 {title}",
   "server.notify.mail_from": "von {sender}",
+  "server.notify.mail_intake": "📥 {title}",
   "server.notify.spam_suspicion": "🚩 {count} Spam-Verdachtsfälle",
   "server.notify.webhook_more": "{route}: {count} weitere Ereignisse ({event_key})",
   "server.notify.worker_down": "⚠ Worker steht",
@@ -19,5 +19,6 @@
   "server.onboarding.telegram": "Chat verbinden",
   "server.onboarding.telegram_hint": "Benachrichtigungen und Freigaben per Chat.",
   "server.onboarding.verify": "Prüfbefehl setzen",
-  "server.onboarding.verify_hint": "Zum Beispiel „npm run build“ — sonst kann niemand belegen, dass die Arbeit grün ist."
+  "server.onboarding.verify_hint": "Zum Beispiel „npm run build“ — sonst kann niemand belegen, dass die Arbeit grün ist.",
+  "server.report.mail_footer": "Sie können direkt auf diese E-Mail antworten — Ihre Antwort landet bei Ihrer Meldung {tag}."
 }

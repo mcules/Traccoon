@@ -11,10 +11,15 @@ from app.models.enums import ProjectRole
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.services import bugs as svc
 
+from conftest import make_project
+
 
 async def make_source(db, key="devprog", project=None, limit=20):
-    source = BugSource(key=key, name=key.title(), hourly_limit=limit,
-                       project_id=project.id if project else None)
+    """A reporting program. Its project is not optional: the reports of a program land in a
+    project, are answered from its address and become tickets on its board."""
+    if project is None:
+        project = await make_project(db, key[:3].upper(), key.title())
+    source = BugSource(key=key, name=key.title(), hourly_limit=limit, project_id=project.id)
     token = svc.new_token()
     svc.set_token(source, token)
     db.add(source)
