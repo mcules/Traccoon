@@ -13,18 +13,19 @@ typed their callsign into a form and wants to know whether it arrived.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Header, Request, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from ..core.error import Error
 from ..db import get_session
-from ..models.artifact import Artifact
+from ..models.artifact import Artifact, ArtifactValue
 from ..models.bugs import BugSource, ReportImage, ReportPost
 from ..models.project import Project
 from ..models.user import User
 from ..schemas.bug import (
-    AppPostIn, BugOut, BugReportAck, BugReportIn, BugSourceIn, BugSourceOut, BugStatusIn,
-    BugToTicketIn, PostIn, PostOut, ThreadOut,
+    AppPostIn, BugAppCount, BugKindCount, BugOut, BugReportAck, BugReportIn, BugSourceIn,
+    BugSourceOut, BugStatusIn, BugToTicketIn, PostIn, PostOut, ThreadOut,
 )
 from ..services import artifact_fields as fields_svc
 from ..services import bugs as svc
@@ -83,13 +84,63 @@ async def list_bugs(
     report_type = await svc.ensure_type(db)
     q = select(Artifact).where(Artifact.type_id == report_type.id).order_by(Artifact.id.desc())
     if state == "open":
-        q = q.where(Artifact.status_key.in_(("new", "seen")))
+        q = q.where(Artifact.status_key.in_(svc.OPEN_STATUS))
     elif state:
         q = q.where(Artifact.status_key == state)
     rows = list((await db.execute(q.limit(500))).scalars().all())
     out = [await _out(db, row) for row in rows]
     return [row for row in out
             if (not app or row.app == app) and (not kind or row.kind == kind)]
+
+
+@router.get("/bugs/summary", response_model=list[BugKindCount])
+async def summary(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """How many reports wait, per kind and per reporting program.
+
+    For the box on the start page. "Open" means the same as in the list (`state=open`):
+    new and seen, everything nobody has decided about.
+
+    Counted in the database rather than by fetching the list and adding it up in the
+    browser: the start page asks by itself every minute, and five hundred reports with
+    their whole text behind four numbers would be the most expensive request of the page.
+
+    A report whose kind nobody set comes back under the empty kind instead of falling out
+    of the count — a figure that is smaller than the list below it is worse than an
+    unnamed line.
+    """
+    report_type = await svc.ensure_type(db)
+    fields = {f.key: f for f in await fields_svc.fields_of(db, report_type.id,
+                                                           only_active=False)}
+    # A missing field joins nothing: `-1` is no field id, so the outer join keeps the report
+    # and leaves the value empty. Only happens on a half migrated register.
+    def field_id(key: str) -> int:
+        field = fields.get(key)
+        return field.id if field is not None else -1
+
+    kinds, apps = aliased(ArtifactValue), aliased(ArtifactValue)
+    rows = (await db.execute(
+        select(func.coalesce(kinds.value_text, ""), func.coalesce(apps.value_text, ""),
+               func.count(Artifact.id))
+        .select_from(Artifact)
+        .outerjoin(kinds, and_(kinds.artifact_id == Artifact.id,
+                               kinds.field_id == field_id("kind")))
+        .outerjoin(apps, and_(apps.artifact_id == Artifact.id,
+                              apps.field_id == field_id("app")))
+        .where(Artifact.type_id == report_type.id,
+               Artifact.status_key.in_(svc.OPEN_STATUS))
+        .group_by(kinds.value_text, apps.value_text))).all()
+
+    per_kind: dict[str, list[BugAppCount]] = {}
+    for kind_value, app, count in rows:
+        per_kind.setdefault(kind_value, []).append(BugAppCount(app=app, count=count))
+    out = [BugKindCount(kind=kind_value,
+                        count=sum(a.count for a in per_app),
+                        apps=sorted(per_app, key=lambda a: (-a.count, a.app)))
+           for kind_value, per_app in per_kind.items()]
+    return sorted(out, key=lambda k: (-k.count, k.kind))
 
 
 @router.get("/bugs/{bug_id}", response_model=BugOut)

@@ -132,3 +132,21 @@ class ThreadOut(BaseModel):
     # that just got an answer must move up.
     updated_at: dt.datetime | None
     posts: list[PostOut]
+
+
+class BugAppCount(BaseModel):
+    """How much of one kind came out of one reporting program. Empty program = unnamed."""
+    app: str = ""
+    count: int
+
+
+class BugKindCount(BaseModel):
+    """How many open reports of one kind wait, and where they came from.
+
+    The programs travel with the figure because the number alone says only that something
+    is waiting: three broken things out of one program are one fault, three out of three
+    programs are three.
+    """
+    kind: str = ""
+    count: int
+    apps: list[BugAppCount] = []

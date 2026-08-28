@@ -6,7 +6,7 @@ import Onboarding from "../components/Onboarding";
 import PluginTiles from "../components/PluginTiles";
 import { AssignedToMe, MySteps, NeedsMe, useMyWork } from "../components/MyWork";
 import { Running, Stuck, useStuckFlows } from "../components/Operations";
-import { Area, Breakdown, Figure } from "../components/ui";
+import { Area, Breakdown, Figure, FigureTone } from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 /**
@@ -64,10 +64,14 @@ export default function Dashboard() {
           full width — five frames for five numbers, and no room left beside them for
           anything else; the plugin tiles stood at the foot, under three lists, where a count
           that wants to be seen is not. */}
-      {/* Four columns, of which the work takes two: it carries five figures against three,
-          and squeezed into a third of the row its words broke in the middle. Below `xl` the
-          row is two columns wide and the work takes the whole first line. */}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {/* Five columns, of which the work takes two: it carries five figures against three
+          and one, and squeezed into a fifth of the row its words broke in the middle. The
+          other four cards hold one line together — work, mailbox, reports, and what the
+          plugins contribute — because the head of the page is meant to be read across in one
+          go. Below `xl` the row is two columns wide and the work takes the whole first line.
+          A second plugin tile pushes itself into the next row; four in a line is what fits,
+          not a promise. */}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Area title={tr("dash.your_work")} subtitle={<Week data={data} />} span="md:col-span-2">
           <div className="grid grid-cols-3 gap-y-3 sm:grid-cols-5">
             <Figure bare label={tr("my_work.waiting")} value={stats?.action ?? 0}
@@ -97,6 +101,7 @@ export default function Dashboard() {
           </div>
         </Area>
         <MailCard />
+        <ReportsCard />
         <PluginTiles />
       </div>
 
@@ -195,6 +200,84 @@ function MailCard() {
           tone={data?.spam ? "wait" : "quiet"} to="/mail" />
         <Figure bare label={tr("mail.role_drafts")} value={data?.drafts ?? 0}
           note={per(tr("mail.role_drafts"), "drafts")} to="/mail" />
+      </div>
+    </Area>
+  );
+}
+
+/**
+ * What people reported, before anybody made work of it.
+ *
+ * The reports are the step before the ticket: somebody ran into something, wishes for
+ * something or wants to know something, and until it is judged it lies on `/bugs` and
+ * nowhere else. That was the whole problem — a page one has to remember to visit is a page
+ * one visits after the third mail asking whether anybody read it.
+ *
+ * Three figures rather than one with the kinds behind it: the kind decides the hurry (three
+ * broken things are an evening, three wishes are a quarter), and a hurry one has to hover
+ * for is a hurry one reads too late. They fit — the mailbox carries three of them in a cell
+ * of the same width.
+ *
+ * The three keep their places whether they have anything in them or not; a figure that moves
+ * as it fills up cannot be read at a glance. A kind nobody set gets a fourth place beside
+ * them, and only then, so that this box and the list it leads to stay the same number.
+ */
+const REPORT_KIND: { key: string; label: string; tone: FigureTone }[] = [
+  // Short words, unlike the sentences the report page tags with ("Something is broken"):
+  // there they stand in a row of their own, here in a column some 70 pixels wide.
+  // The colour is the role: something broken is somebody who cannot use the program right
+  // now, a question is somebody waiting for an answer, a wish waits without hurting.
+  { key: "bug", label: "dash.reports_bugs", tone: "bad" },
+  { key: "feature", label: "dash.reports_wishes", tone: "quiet" },
+  { key: "question", label: "dash.reports_questions", tone: "wait" },
+];
+
+interface ReportCount {
+  kind: string;
+  count: number;
+  apps: { app: string; count: number }[];
+}
+
+function ReportsCard() {
+  const { data = [] } = useQuery({
+    queryKey: ["bug-summary"],
+    queryFn: () => api.get<ReportCount[]>("/bugs/summary"),
+    // Rarer than the rest of the page: a report comes in a few times a week, and the answer
+    // sits behind a query over every open one of them.
+    refetchInterval: 60_000,
+  });
+  const known = new Set(REPORT_KIND.map((k) => k.key));
+  const rest = data.filter((r) => !known.has(r.kind));
+
+  /** Behind the number: which program the reports came out of. Three broken things out of
+   *  one program are one fault; out of three they are three. */
+  const note = (label: string, rows: ReportCount[]) => {
+    const tally = new Map<string, number>();
+    for (const r of rows) {
+      for (const a of r.apps) {
+        const app = a.app || tr("dash.no_program");
+        tally.set(app, (tally.get(app) || 0) + a.count);
+      }
+    }
+    return <Breakdown title={label} rows={[...tally].map(([l, value]) => ({ label: l, value }))} />;
+  };
+
+  return (
+    <Area title={tr("bugs.title")}>
+      <div className="grid grid-cols-3">
+        {REPORT_KIND.map(({ key, label, tone }) => {
+          const found = data.find((r) => r.kind === key);
+          return (
+            <Figure bare key={key} label={tr(label)} value={found?.count ?? 0}
+              tone={found?.count ? tone : "quiet"} to="/bugs"
+              note={found && note(tr(label), [found])} />
+          );
+        })}
+        {rest.length > 0 && (
+          <Figure bare label={tr("dash.reports_other")}
+            value={rest.reduce((sum, r) => sum + r.count, 0)} to="/bugs"
+            note={note(tr("dash.reports_other"), rest)} />
+        )}
       </div>
     </Area>
   );

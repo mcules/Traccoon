@@ -53,6 +53,12 @@ STATUS: list[tuple[str, str, str, bool]] = [
     ("duplicate", "Duplicate", "done", False),
 ]
 
+# What "open" means for a report: nobody has decided about it yet. Seen counts as open —
+# somebody has looked, and looking is not deciding. Stands here because the list and the
+# figure on the start page have to mean the same thing by it; two hand written tuples drift
+# apart the first time a state is added.
+OPEN_STATUS: tuple[str, ...] = ("new", "seen")
+
 # That program has carried the same matter for as long, in German words. The two lists
 # have to meet somewhere, and the meeting point stands here rather than over there: whoever
 # connects the next program looks in one place for how its states are called.

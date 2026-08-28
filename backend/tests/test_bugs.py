@@ -283,3 +283,40 @@ async def test_a_picture_belongs_to_its_entry(client, db, helpers):
     assert faden["posts"][0]["images"][0]["filename"] == "schirm.png"
     runter = await client.get(f"/bugs/images/{hoch.json()['id']}", headers=helpers.auth(person))
     assert runter.content == bild
+
+
+@pytest.mark.asyncio
+async def test_the_summary_counts_the_open_ones_per_kind(client, db, helpers):
+    """The box on the start page: how much waits, of which kind, out of which program.
+
+    Judged reports must not be in it — the box asks what is left to do, and a page that
+    counts the finished ones along with it can never be worked off.
+    """
+    _, one = await make_source(db, key="devprog")
+    _, two = await make_source(db, key="radio")
+    for kind, token in (("bug", one), ("bug", two), ("feature", one), ("question", one)):
+        answer = await client.post("/bugs/report", json={**REPORT, "kind": kind},
+                                   headers={"X-Bug-Token": token})
+        assert answer.status_code == 201, answer.text
+    person = await helpers.make_user(db, "chef", admin=True)
+
+    # One of them is decided: out of the count, though it stays in the list.
+    wishes = [b for b in (await client.get("/bugs", headers=helpers.auth(person))).json()
+              if b["kind"] == "feature"]
+    await client.post(f"/bugs/{wishes[0]['id']}/status", json={"status": "rejected"},
+                      headers=helpers.auth(person))
+
+    # Looked at is not decided: a seen report keeps its place in the figure.
+    bugs = [b for b in (await client.get("/bugs", headers=helpers.auth(person))).json()
+            if b["kind"] == "bug"]
+    await client.post(f"/bugs/{bugs[0]['id']}/status", json={"status": "seen"},
+                      headers=helpers.auth(person))
+
+    summary = await client.get("/bugs/summary", headers=helpers.auth(person))
+
+    assert summary.status_code == 200, summary.text
+    assert summary.json() == [
+        {"kind": "bug", "count": 2,
+         "apps": [{"app": "devprog", "count": 1}, {"app": "radio", "count": 1}]},
+        {"kind": "question", "count": 1, "apps": [{"app": "devprog", "count": 1}]},
+    ]
