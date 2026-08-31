@@ -56,6 +56,7 @@ CATALOGUE: dict[str, dict[str, Any]] = {
     "health.body-fat": {"name": "Body fat", "unit": "%", "min": 1, "max": 80},
     "health.steps": {"name": "Steps", "unit": "steps", "min": 0, "max": 200000},
     "health.distance": {"name": "Distance", "unit": "m", "min": 0, "max": 1000000},
+    "health.speed": {"name": "Speed", "unit": "m/s", "min": 0, "max": 150},
     "health.calories-total": {
         "name": "Calories burned total", "unit": "kcal", "min": 0, "max": 30000},
     "health.calories-active": {
