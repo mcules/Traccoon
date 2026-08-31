@@ -36,6 +36,7 @@ interface Token {
 const SCOPES: [string, string, string][] = [
   ["assistant", "tokens.scope_assistant", "tokens.scope_assistant_hint"],
   ["tickets", "tokens.scope_tickets", "tokens.scope_tickets_hint"],
+  ["series_ingest", "tokens.scope_series_ingest", "tokens.scope_series_ingest_hint"],
   ["full", "tokens.scope_full", "tokens.scope_full_hint"],
 ];
 

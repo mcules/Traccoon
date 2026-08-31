@@ -133,17 +133,38 @@ async def ingest(db: AsyncSession, series: Series, points: list[dict],
     return await _values_ingest(db, series, points, source)
 
 
+async def _known(db: AsyncSession, series: Series, points: list[dict]) -> set[tuple]:
+    """Which readings of this batch already lie in the series.
+
+    Asked once for the whole batch instead of once per point: a backfill brings ninety days
+    in chunks, and a query per row would turn that into tens of thousands of round trips.
+    The mark is the timestamp PLUS the value, not the timestamp alone. A sender that polls
+    with overlapping windows delivers the same reading again (that is what makes it a
+    duplicate), while two different readings at the same second are two facts, and a device
+    that corrects a value keeps the correction.
+    """
+    stamps = [_with_zone(p.get("ts")) for p in points if p.get("ts")]
+    if not stamps:
+        return set()
+    rows = (await db.execute(
+        select(SeriesPoint.ts, SeriesPoint.value, SeriesPoint.body).where(
+            SeriesPoint.series_id == series.id, SeriesPoint.ts.in_(stamps)))).all()
+    return {(_with_zone(ts), value, body or "") for ts, value, body in rows}
+
+
 async def _values_ingest(db: AsyncSession, series: Series, points: list[dict],
                            source: str) -> dict:
     """Numbers and texts: write, update the state, prune with texts.
 
     No rest filter: a measurement that has not changed is still a statement ("the device is
-    alive and reports 22 %"), and a text is a new one every time anyway.
+    alive and reports 22 %"), and a text is a new one every time anyway. What IS filtered is
+    the literal repetition of a reading already stored, see `_known`.
     """
     limits = series.settings or {}
     below, above = limits.get("min"), limits.get("max")
-    written, discarded = 0, 0
+    written, discarded, twice = 0, 0, 0
     last, last_ts = None, None
+    known = await _known(db, series, points)
 
     for p in sorted(points, key=lambda x: x.get("ts") or _now()):
         ts = _with_zone(p.get("ts")) or _now()
@@ -160,6 +181,7 @@ async def _values_ingest(db: AsyncSession, series: Series, points: list[dict],
                 discarded += 1
                 continue
             entry.value = float(value)
+            mark = (ts, entry.value, "")
         else:
             text = str(p.get("body") or "")
             if not text.strip():
@@ -168,6 +190,11 @@ async def _values_ingest(db: AsyncSession, series: Series, points: list[dict],
             entry.title = str(p.get("title") or "")[:200]
             entry.body = text
             entry.format = str(p.get("format") or "markdown")
+            mark = (ts, None, text)
+        if mark in known:
+            twice += 1
+            continue
+        known.add(mark)
         db.add(entry)
         written += 1
         last, last_ts = entry, ts
@@ -186,7 +213,7 @@ async def _values_ingest(db: AsyncSession, series: Series, points: list[dict],
             series.still_at = None
         await _prune(db, series)
 
-    return {"accepted": written, "skipped": discarded, "still": 0,
+    return {"accepted": written, "skipped": discarded, "duplicate": twice, "still": 0,
             "betreten": [], "verlassen": []}
 
 

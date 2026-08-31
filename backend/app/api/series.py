@@ -22,7 +22,7 @@ from ..models.enums import GlobalRole
 from ..models.series import KINDS, Series, SeriesPlace, SeriesPoint, SeriesShare
 from ..models.user import User
 from ..services import series as service
-from ..services import series_formats
+from ..services import series_formats, series_health
 from .deps import get_current_user
 
 router = APIRouter(tags=["series"])
@@ -64,6 +64,47 @@ async def ingest_post(token: str, request: Request, db: AsyncSession = Depends(g
 async def ingest_get(token: str, request: Request, db: AsyncSession = Depends(get_session)):
     """Traccar and OsmAnd: everything stands in the address."""
     return await _ingest(db, token, {}, dict(request.query_params))
+
+
+@router.post("/ingest", status_code=202)
+async def ingest_many(request: Request, user: User = Depends(get_current_user),
+                      db: AsyncSession = Depends(get_session)):
+    """Many series in one delivery, authenticated by a personal access token.
+
+    The door next to it (`/ingest/{token}`) binds one token to one series, which is right for
+    a tracker and wrong for a phone that mirrors a watch: it carries twenty kinds of reading
+    and would need twenty secrets in its settings. Here the payload names the series and the
+    bearer names the person, so one token that can be revoked covers all of them.
+
+    Series under `health.` are created on the way in when they are missing. Anything else is
+    dropped: the sender may fill its own corner, not sow the list full.
+    """
+    try:
+        payload = await request.json()
+    except Exception:  # noqa: BLE001 - a broken body is a dropped delivery, not a stack trace
+        payload = {}
+    if not series_health.looks_like(payload):
+        return {"accepted": 0, "skipped": 0, "duplicate": 0, "series": {}, "ignored": True}
+
+    total = {"accepted": 0, "skipped": 0, "duplicate": 0}
+    per_series: dict[str, dict] = {}
+    for key, points in series_health.normalise(payload).items():
+        kind = series_health.kind_of(key, points[0])
+        row = await service.series(db, user.id, key, kind=kind, create=True,
+                                   name=series_health.name_of(key))
+        if not row.settings:
+            # Only on a fresh series: whoever has adjusted the limits by hand keeps them, and
+            # the unit of the first point must not overwrite the one that was chosen.
+            unit = next((str(p["unit"]) for p in points if p.get("unit")), "")
+            row.settings = series_health.settings_for(key, unit)
+        got = await service.ingest(db, row, points, source="health")
+        per_series[key] = {"accepted": got["accepted"], "skipped": got["skipped"],
+                           "duplicate": got.get("duplicate", 0)}
+        for field in total:
+            total[field] += per_series[key][field]
+
+    await db.commit()
+    return {**total, "series": per_series}
 
 
 # ── Reihen ───────────────────────────────────────────────────────────────────

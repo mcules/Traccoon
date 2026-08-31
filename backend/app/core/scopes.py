@@ -19,10 +19,11 @@ from __future__ import annotations
 ASSISTANT = "assistant"
 TICKETS = "tickets"
 PLUGIN_DATA = "plugin_data"
+SERIES_INGEST = "series_ingest"
 FULL = "full"
 
 # What may be handed out on a create call, in the order the interface offers them.
-ALL_SCOPES: tuple[str, ...] = (ASSISTANT, TICKETS, PLUGIN_DATA, FULL)
+ALL_SCOPES: tuple[str, ...] = (ASSISTANT, TICKETS, PLUGIN_DATA, SERIES_INGEST, FULL)
 
 # (method or None for any, route template). A pattern ending in `*` matches by prefix,
 # everything else has to be equal.
@@ -48,6 +49,15 @@ GRANTS: dict[str, tuple[tuple[str | None, str], ...]] = {
         # Reporting an event is part of collecting: whoever brings the finding in should be
         # able to say so, otherwise every flow would have to poll the table.
         ("POST", "/events"),
+        ("GET", "/auth/me"),
+    ),
+    # For a device that fills series of its own: a phone with health readings, a logger with
+    # measurements. It writes points and may look up which series it writes into; it reaches
+    # no ticket, no mail and no other person's data. Deliberately not `full`, because this
+    # token lives in a configuration screen on a phone that can get lost.
+    SERIES_INGEST: (
+        ("POST", "/ingest"),
+        ("GET", "/series"),
         ("GET", "/auth/me"),
     ),
     TICKETS: (
