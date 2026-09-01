@@ -6,6 +6,8 @@ is explicitly meant for it reaches the outside: `http_request` and `webhook` cal
 systems, everything else stays inside Traccoon.
 
 Supported actions:
+  series_read         {series, target?, window_days?, silence_hours?, context_key?}
+                                                where a series stands and where it heads
   set_context         {set:{key:val,...}}       write variables into instance.context
   set_status          {status, reason?, notify?} set the state of the bound artifact
                                                 (ticket: plus board column, message, event)
@@ -907,6 +909,63 @@ async def _series_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
     inst.context = {**ctx, key_ctx: state}
     return {"action": "metric_read", "series": key, "value": state["value"],
             "age_hours": alter, "silent": still, "report_silence": report}
+
+
+async def _series_state(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Read a data series: where it stands, where it is heading, whether it went quiet.
+
+    The counterpart of `series_record`, and the one thing the new model was missing: it could
+    be written from a flow but not read, so every watchdog still hung off the old metric
+    series. What it answers follows `metric_read` field for field, so a flow moving over
+    changes its action and nothing else.
+
+    Parameters (`reihe`, `ziel`, `still_ab` work in German too):
+      series         key of the series, needed
+      target         the value the forecast aims at (default 0)
+      window_days    how far back the trend reads (default 30)
+      silence_hours  report when nothing has arrived for this long
+      context_key    where the answer goes (default `series`)
+
+    A text series answers with its newest entry instead of a trend: a heading and a body have
+    no direction, but "when did something last arrive" is the same question for both.
+    """
+    from . import series as series_service
+
+    key = str(_interp(params.get("series") or "", ctx)).strip()
+    if not key:
+        raise ValueError("reihe_lesen: no series given")
+    key_ctx = str(params.get("context_key") or "series")
+    silence_from = _number(params, ctx, "silence_hours", "silent_from")
+
+    owner = await _owner(db, inst)
+    row = await series_service.series(db, owner, key)
+    if row is None:
+        # Not an error: a typo in the key would otherwise be a red run every hour. The flow
+        # decides for itself whether it cares (`found`).
+        answer = {"series": key, "found": False, "silent": False,
+                  "report_silence": False, "value": None}
+        inst.context = {**ctx, key_ctx: answer}
+        return {"action": "series_read", **answer}
+
+    if row.kind == "text":
+        state = await series_service.latest(db, row)
+        age = state.get("age_hours")
+    else:
+        state = await series_service.trend(
+            db, row, target=_number(params, ctx, "target"),
+            window_days=int(_number(params, ctx, "window_days",
+                                    default=float(series_service.WINDOW_DAYS))))
+        age = state.get("age_hours")
+
+    silent = bool(silence_from > 0 and age is not None and age >= silence_from)
+    report = series_service.silence_report(row, age, silence_from)
+    state = {**state, "series": key, "kind": row.kind, "found": True,
+             "age_hours": age, "silence_hours": silence_from,
+             "silent": silent, "report_silence": report}
+    inst.context = {**ctx, key_ctx: state}
+    return {"action": "series_read", "series": key, "kind": row.kind,
+            "value": state.get("value"), "age_hours": age,
+            "silent": silent, "report_silence": report}
 
 
 async def _mail_account(db, params: dict, ctx: dict):
@@ -1826,6 +1885,9 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
 
     if action == "note_append":
         return await _note_append(db, inst, params, ctx)
+
+    if action == "series_read":
+        return await _series_state(db, inst, params, ctx)
 
     if action == "series_record":
         return await _series_write(db, inst, params, ctx)
