@@ -155,3 +155,23 @@ async def test_a_fixed_source_still_works(db):
     await db.commit()
 
     assert (await db.execute(select(SeriesPoint))).scalar_one().source == "health-bridge"
+
+
+async def test_a_source_too_long_for_the_column_is_clipped(db):
+    """Postgres refuses an oversized value instead of truncating it, and the refusal lands in
+    the middle of the transaction: the instance cannot even write down its own failure and
+    sits on `running` with no steps. Health Connect names a phone's own records
+    `com.android.healthconnect.phone.<32 hex>`, which is sixty-two characters."""
+    user = await make_user(db, "traeger")
+    await _series(db, user, key="health.steps")
+    long_origin = "com.android.healthconnect.phone.j9754583666453b1bbd65e1aaa17bf5e4"
+    inst = await _instance(db, user, {"element": {"value": 1790, "source": long_origin}})
+
+    await run_action(db, inst, _node({
+        "action": "series_record", "series": "health.steps",
+        "value": "{{element.value}}", "source": "{{element.source}}"}))
+    await db.commit()
+
+    point = (await db.execute(select(SeriesPoint))).scalar_one()
+    assert point.source == long_origin[:30]
+    assert len(point.source) == 30

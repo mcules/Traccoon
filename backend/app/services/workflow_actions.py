@@ -1464,6 +1464,11 @@ async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
     return {"action": "series_record", **aus}
 
 
+# The width of `SeriesPoint.source`. Named here rather than imported: the models are loaded
+# lazily inside the actions, and a constant that drifts is worse than one that is stated.
+SOURCE_MAX = 30
+
+
 def _point_context(params: dict, ctx: dict) -> dict:
     """The extra fields of a point: what a device sends along but nothing searches by.
 
@@ -1489,7 +1494,15 @@ def _entry_build(kind: str, params: dict, ctx: dict, formats) -> tuple[dict, str
     ts = formats.moment(_interp(params.get("ts"), ctx))
     # Through `_interp` like every other text parameter. Without it a flow could only ever
     # name a fixed source, and a delivery that carries several origins would lose them.
-    source = str(_interp(params.get("source"), ctx) or "flow")
+    #
+    # Clipped like the title next to it, and for a harder reason: `SeriesPoint.source` is
+    # thirty characters wide, Postgres does not truncate but refuses the row, and the refusal
+    # lands in the middle of the transaction. The instance then cannot even write down its own
+    # failure and sits on `running` with no steps, which looks like a hang and not like a
+    # rejected value. Health Connect names a phone's own records
+    # `com.android.healthconnect.phone.<32 hex>`: sixty-two characters, and every flow that
+    # passes an origin through would fall over it.
+    source = str(_interp(params.get("source"), ctx) or "flow")[:SOURCE_MAX]
     context = _point_context(params, ctx)
 
     if kind == "location":
