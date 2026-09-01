@@ -348,3 +348,86 @@ async def _report(db: AsyncSession, series: Series, place: SeriesPlace, event: s
     except Exception as exc:  # noqa: BLE001
         log.warning("Ereignis %s fuer %s/%s nicht gemeldet: %s",
                     event, series.key, place.key, exc)
+
+# ── Lesen ────────────────────────────────────────────────────────────────────
+
+# The maths and the thresholds come from `services/metrics`: the same question over the same
+# shape of data, and two copies of a least squares fit would drift apart the first time one
+# of them is corrected. Only the table underneath differs.
+from .metrics import MIN_POINTS, MIN_SPAN_DAYS, WINDOW_DAYS, line_fit  # noqa: E402
+from .metrics import silence_report  # noqa: E402  (`still_at` sits on this row as well)
+
+
+async def points(db: AsyncSession, series_id: int, *, since: dt.datetime | None = None,
+                 limit: int = 500) -> list[SeriesPoint]:
+    question = select(SeriesPoint).where(SeriesPoint.series_id == series_id)
+    if since is not None:
+        question = question.where(SeriesPoint.ts >= since)
+    return list((await db.execute(question.order_by(SeriesPoint.ts.desc()).limit(limit)))
+                .scalars().all())[::-1]
+
+
+async def trend(db: AsyncSession, series: Series, *, target: float = 0.0,
+                window_days: int = WINDOW_DAYS) -> dict:
+    """Where a number series is heading, and when it reaches the target value.
+
+    The counterpart of `metrics.trend` for the kind that replaced it. `days_left` stays None
+    as long as no direction can be read: too few points, too short a span, or a series moving
+    away from its target. No number is more honest than one invented out of two readings.
+
+    The age of the last value belongs to every answer, including the short ones: a series
+    that has been quiet for weeks would otherwise keep serving its old line, and nobody would
+    notice that it stopped being fed.
+    """
+    state = series.state or {}
+    since = _now() - dt.timedelta(days=window_days)
+    ps = [p for p in await points(db, series.id, since=since) if p.value is not None]
+    last = _with_zone(series.last_at) if series.last_at else None
+    out = {
+        "points": len(ps),
+        "value": state.get("value"),
+        "unit": (series.settings or {}).get("unit", ""),
+        "per_day": None, "days_left": None, "empty_at": None, "fit": None,
+        "last_at": last.isoformat() if last else None,
+        "age_hours": (round((_now() - last).total_seconds() / 3600.0, 2) if last else None),
+        "first_value": ps[0].value if ps else None,
+        "first_at": _with_zone(ps[0].ts).isoformat() if ps else None,
+    }
+    if len(ps) < MIN_POINTS:
+        return out
+    base = _with_zone(ps[0].ts)
+    values = [((_with_zone(p.ts) - base).total_seconds() / 86400.0, p.value) for p in ps]
+    out["span_days"] = round(values[-1][0], 2)
+    if values[-1][0] < MIN_SPAN_DAYS:
+        return out
+    a, b, r2 = line_fit(values)
+    out["per_day"] = round(a, 4)
+    out["fit"] = round(r2, 3)
+    now_x = (_now() - base).total_seconds() / 86400.0
+    current = a * now_x + b
+    if abs(a) > 1e-9:
+        remainder = (target - current) / a
+        if remainder >= 0:
+            out["days_left"] = round(remainder, 1)
+            out["empty_at"] = (_now() + dt.timedelta(days=remainder)).date().isoformat()
+    return out
+
+
+async def latest(db: AsyncSession, series: Series) -> dict:
+    """The newest entry of a text series: what a store's `document_read` answered.
+
+    The age comes along because it is the same question a number series answers with its
+    trend: when did something last arrive. Computed here, where the clock already is.
+    """
+    rows = await points(db, series.id, limit=1)
+    if not rows:
+        return {"title": "", "body": "", "format": "", "ts": None, "age_hours": None,
+                "points": series.points or 0}
+    p = rows[-1]
+    ts = _with_zone(p.ts) if p.ts else None
+    return {
+        "title": p.title, "body": p.body, "format": p.format,
+        "ts": ts.isoformat() if ts else None,
+        "age_hours": (round((_now() - ts).total_seconds() / 3600.0, 2) if ts else None),
+        "points": series.points or 0,
+    }
