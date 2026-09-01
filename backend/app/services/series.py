@@ -178,6 +178,13 @@ async def _values_ingest(db: AsyncSession, series: Series, points: list[dict],
         if sofar is None or last_ts >= sofar:
             state = dict(series.state or {})
             if series.kind == "number":
+                # A clear rise means somebody refilled it, so the old warning no longer
+                # applies and the next emptying may warn again.
+                before = state.get("value")
+                if (before is not None and last.value is not None
+                        and last.value - before >= REFILL_JUMP):
+                    series.warned_at = None
+                    series.warned_value = None
                 state["value"] = last.value
             else:
                 state["title"] = last.title
@@ -354,8 +361,28 @@ async def _report(db: AsyncSession, series: Series, place: SeriesPlace, event: s
 # The maths and the thresholds come from `services/metrics`: the same question over the same
 # shape of data, and two copies of a least squares fit would drift apart the first time one
 # of them is corrected. Only the table underneath differs.
-from .metrics import MIN_POINTS, MIN_SPAN_DAYS, WINDOW_DAYS, line_fit  # noqa: E402
+from .metrics import MIN_POINTS, MIN_SPAN_DAYS, REFILL_JUMP, WINDOW_DAYS, line_fit  # noqa: E402
 from .metrics import silence_report  # noqa: E402  (`still_at` sits on this row as well)
+
+
+def forewarn(series: Series, days_left: float | None, forewarn_days: float) -> bool:
+    """Whether to warn NOW that a series runs out, exactly once per refill.
+
+    Built like `silence_report` and for the same reason: a watchdog running every hour must
+    not say the same thing every hour. After three days one mutes it and misses the one that
+    mattered. The mark sits on the series and not in the flow, because it describes the state
+    of the series and has to survive a restart.
+
+    The mark expires when somebody refills (see `_values_ingest`), so a new battery may warn
+    again.
+    """
+    if days_left is None or forewarn_days <= 0 or days_left > forewarn_days:
+        return False
+    if series.warned_at is not None:
+        return False
+    series.warned_at = _now()
+    series.warned_value = (series.state or {}).get("value")
+    return True
 
 
 async def points(db: AsyncSession, series_id: int, *, since: dt.datetime | None = None,

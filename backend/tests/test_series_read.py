@@ -184,3 +184,81 @@ async def test_the_answer_lands_where_the_flow_asked_for_it(db):
 
     assert inst.context["akku"]["value"] == 50.0
     assert (await db.execute(select(Series))).scalars().first() is not None
+
+
+async def test_it_warns_once_before_the_series_runs_out(db):
+    """The battery pre-warning: the flow branches on it, so it must fire once and not every
+    hour, and it must come back after a refill."""
+    user = await make_user(db, "waechter")
+    row = await _falling(db, user, key="akku.warnt")
+    inst = await _instance(db, user)
+
+    first = await run_action(db, inst, _node({
+        "series": "akku.warnt", "target": 0, "forewarn_days": 14}))
+    second = await run_action(db, inst, _node({
+        "series": "akku.warnt", "target": 0, "forewarn_days": 14}))
+
+    assert first["warn"] is True
+    assert second["warn"] is False
+    assert row.warned_at is not None and row.warned_value == 50.0
+
+
+async def test_far_from_the_target_nothing_is_warned(db):
+    user = await make_user(db, "waechter")
+    await _falling(db, user, key="akku.ruhig")
+    inst = await _instance(db, user)
+
+    out = await run_action(db, inst, _node({
+        "series": "akku.ruhig", "target": 0, "forewarn_days": 2}))
+
+    assert out["warn"] is False
+
+
+async def test_a_refill_lets_it_warn_again(db):
+    """A new battery is a new phase: the mark expires when the value clearly rises."""
+    from app.services import series as service
+    user = await make_user(db, "waechter")
+    row = await _falling(db, user, key="akku.neu")
+    inst = await _instance(db, user)
+    await run_action(db, inst, _node({
+        "series": "akku.neu", "target": 0, "forewarn_days": 14}))
+    assert row.warned_at is not None
+
+    await service.ingest(db, row, [{"ts": dt.datetime.now(tz=dt.timezone.utc), "value": 100.0}])
+    await db.commit()
+
+    assert row.warned_at is None and row.warned_value is None
+
+
+async def test_a_created_series_keeps_unit_and_limits(db):
+    """A flow that creates a series per device would otherwise leave every one of them
+    without an axis label and without a floor."""
+    user = await make_user(db, "waechter")
+    inst = await _instance(db, user)
+
+    await run_action(db, inst, {"id": "w", "type": "auto_action", "data": {"config": {
+        "action": {"action": "series_record", "params": {
+            "series": "akku.neuling", "value": "42", "name": "Akku Neuling",
+            "unit": "%", "min": 1, "max": 100}}}}})
+    await db.commit()
+
+    row = (await db.execute(select(Series).where(Series.key == "akku.neuling"))).scalar_one()
+    assert row.settings == {"unit": "%", "min": 1.0, "max": 100.0}
+    assert row.name == "Akku Neuling"
+
+
+async def test_an_existing_series_keeps_what_a_person_set(db):
+    """Only at creation: whoever adjusts the limits by hand keeps them."""
+    user = await make_user(db, "waechter")
+    row = Series(owner_user_id=user.id, key="akku.alt", kind="number", name="alt",
+                 settings={"unit": "%", "min": 5, "max": 95})
+    db.add(row)
+    await db.commit()
+    inst = await _instance(db, user)
+
+    await run_action(db, inst, {"id": "w", "type": "auto_action", "data": {"config": {
+        "action": {"action": "series_record", "params": {
+            "series": "akku.alt", "value": "42", "unit": "V", "min": 0, "max": 1000}}}}})
+    await db.commit()
+
+    assert row.settings == {"unit": "%", "min": 5, "max": 95}

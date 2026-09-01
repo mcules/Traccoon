@@ -29,6 +29,9 @@ MIN_SPAN_DAYS = 0.5
 # How far a value has to rise for the series to count as refilled (new battery, topped up
 # tank), which also expires a warning that was already sent.
 AUFFUELL_SPRUNG = 10.0
+# The same threshold under the name the rest of the house uses. The old spelling stays until
+# the metric series themselves are gone.
+REFILL_JUMP = AUFFUELL_SPRUNG
 
 
 def _now() -> dt.datetime:
