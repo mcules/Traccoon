@@ -216,12 +216,20 @@ async def show_token(key: str, user: User = Depends(get_current_user),
 # ── Punkte ───────────────────────────────────────────────────────────────────
 
 def _point_out(p: SeriesPoint, kind: str) -> dict:
+    """One point as a reader sees it.
+
+    `context` only where there is one, and only for the kinds that keep it in that column.
+    A location carries its extras in `extra` and spreads them flat, which is what the map
+    reads; adding an empty `context` next to it would be a second empty box in every one of
+    a hundred thousand rows of a trace.
+    """
     basis = {"id": p.id, "ts": p.ts.isoformat() if p.ts else None, "source": p.source}
     if kind == "location":
         return {**basis, "lat": p.lat, "lon": p.lon, **(p.extra or {})}
+    extra = {"context": p.context} if p.context else {}
     if kind == "text":
-        return {**basis, "title": p.title, "body": p.body, "format": p.format}
-    return {**basis, "value": p.value}
+        return {**basis, "title": p.title, "body": p.body, "format": p.format, **extra}
+    return {**basis, "value": p.value, **extra}
 
 
 @router.get("/series/{key:path}/points")
