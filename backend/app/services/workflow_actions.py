@@ -924,6 +924,7 @@ async def _series_state(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
       target         the value the forecast aims at (default 0)
       window_days    how far back the trend reads (default 30)
       silence_hours  report when nothing has arrived for this long
+      forewarn_days  report when the target is less than this many days away
       context_key    where the answer goes (default `series`)
 
     A text series answers with its newest entry instead of a trend: a heading and a body have
@@ -936,6 +937,7 @@ async def _series_state(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
         raise ValueError("reihe_lesen: no series given")
     key_ctx = str(params.get("context_key") or "series")
     silence_from = _number(params, ctx, "silence_hours", "silent_from")
+    forewarn_days = _number(params, ctx, "forewarn_days", "warn_days")
 
     owner = await _owner(db, inst)
     row = await series_service.series(db, owner, key)
@@ -959,13 +961,18 @@ async def _series_state(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
 
     silent = bool(silence_from > 0 and age is not None and age >= silence_from)
     report = series_service.silence_report(row, age, silence_from)
+    # The forecast and the silence are two different questions: one says when something runs
+    # out, the other notices that nothing arrives at all, including the case where the far
+    # side is down and can no longer report its own failure.
+    warn = series_service.forewarn(row, state.get("days_left"), forewarn_days)
     state = {**state, "series": key, "kind": row.kind, "found": True,
              "age_hours": age, "silence_hours": silence_from,
-             "silent": silent, "report_silence": report}
+             "silent": silent, "report_silence": report,
+             "forewarn_days": forewarn_days, "warn": warn}
     inst.context = {**ctx, key_ctx: state}
     return {"action": "series_read", "series": key, "kind": row.kind,
             "value": state.get("value"), "age_hours": age,
-            "silent": silent, "report_silence": report}
+            "silent": silent, "report_silence": report, "warn": warn}
 
 
 async def _mail_account(db, params: dict, ctx: dict):
@@ -1510,6 +1517,20 @@ async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
         db, owner, key, kind=kind, create=True,
         name=str(_interp(params.get("name") or "", ctx)).strip(),
         color=str(params.get("color") or ""))
+    if existing is None:
+        # Only at creation, like the name and the colour above: unit and plausibility limits
+        # describe the series, and whoever adjusts them by hand afterwards keeps them. A flow
+        # that creates a series per device would otherwise leave every one of them without an
+        # axis label and without a floor.
+        fresh = {}
+        unit = str(_interp(params.get("unit") or "", ctx)).strip()
+        if unit:
+            fresh["unit"] = unit[:20]
+        for limit in ("min", "max"):
+            if params.get(limit) not in (None, ""):
+                fresh[limit] = _number(params, ctx, limit)
+        if fresh:
+            series_row.settings = {**(series_row.settings or {}), **fresh}
 
     result = await series.ingest(db, series_row, [entry])
     state = series_row.state or {}
