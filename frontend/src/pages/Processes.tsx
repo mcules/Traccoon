@@ -13,7 +13,6 @@ import {
 } from "../components/ui";
 import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 import { projectPath } from "../projectTabs";
-import MetricseriesPanel from "../components/workflow/MetricSeriesPanel";
 import StoresPanel from "../components/workflow/StoresPanel";
 import LocationsPanel from "../components/workflow/PlacesPanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
@@ -32,12 +31,11 @@ import { useListSort } from "../components/useListSort";
  * They used to stand in the settings, in the wrong place, because flows are a load bearing
  * part of Traccoon beside the assistant and the projects and not a side setting.
  */
-type Tab = "own" | "default" | "operations" | "triggers" | "metrics" | "documents"
-  | "locations";
+type Tab = "own" | "default" | "operations" | "triggers" | "documents" | "locations";
 const TABS: [Tab, string][] = [
   ["own", "processes.own"], ["default", "processes.default_set"],
   ["operations", "processes.operations"], ["triggers", "processes.triggers"],
-  ["metrics", "processes.series"], ["documents", "processes.storage"],
+  ["documents", "processes.storage"],
   ["locations", "processes.locations"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
@@ -58,7 +56,6 @@ export default function Processes() {
           because `events.listeners` looks for triggers, not for
           sets. Whoever wants a flow differently creates one of their own. */}
       {tab === "own" && <OwnWorkflowsPanel />}
-      {tab === "metrics" && <MetricseriesPanel />}
       {tab === "documents" && <StoresPanel />}
       {tab === "locations" && <LocationsPanel />}
       {tab === "default" && <StandardPreset />}
