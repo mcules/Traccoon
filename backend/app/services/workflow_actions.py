@@ -1414,6 +1414,8 @@ async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
       ts           timestamp (default: now) — unix seconds or ISO
       accuracy · altitude · speed · course · battery   what a device otherwise sends along
       name · color display name and colour when the series is newly created
+      context      extra fields for the point: a path into the context ("element.context")
+                   or a dict of templates ({"pulse": "{{element.pulse}}"})
       source       where the point came from (default `flow`)
       required     abort without a value instead of passing over it
       context_key  where the result goes (default `series`)
@@ -1462,10 +1464,33 @@ async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
     return {"action": "series_record", **aus}
 
 
+def _point_context(params: dict, ctx: dict) -> dict:
+    """The extra fields of a point: what a device sends along but nothing searches by.
+
+    Two ways of naming it, because both already exist in the house. A **path** works like the
+    list of a loop node (`context: "element.context"`) and hands the object over whole, which
+    is what a sender that already groups its extras wants. A **dict** is templated field by
+    field (`{"pulse": "{{element.pulse}}"}`) for a flow that assembles them itself.
+
+    Not through `_interp`: that fills text and would turn a dict into its JSON as a string.
+    """
+    raw = params.get("context")
+    if isinstance(raw, dict):
+        return _interp_deep(raw, ctx)
+    if isinstance(raw, str) and raw.strip():
+        from .workflow_expr import evaluate
+        value = evaluate(raw.strip().strip("{} "), ctx)
+        return value if isinstance(value, dict) else {}
+    return {}
+
+
 def _entry_build(kind: str, params: dict, ctx: dict, formats) -> tuple[dict, str]:
     """Turn the parameters into a point. The second return value names what is missing."""
     ts = formats.moment(_interp(params.get("ts"), ctx))
-    source = str(params.get("source") or "flow")
+    # Through `_interp` like every other text parameter. Without it a flow could only ever
+    # name a fixed source, and a delivery that carries several origins would lose them.
+    source = str(_interp(params.get("source"), ctx) or "flow")
+    context = _point_context(params, ctx)
 
     if kind == "location":
         # Through the same format layer as the ingest path: then the same rules apply here for
@@ -1490,6 +1515,7 @@ def _entry_build(kind: str, params: dict, ctx: dict, formats) -> tuple[dict, str
         if not title:
             title = next((z.strip("# ").strip() for z in text.splitlines() if z.strip()), "")
         return {"title": title[:200], "body": text, "ts": ts, "source": source,
+                "context": context,
                 "format": str(params.get("format") or "markdown")}, ""
 
     raw = _interp(params.get("value"), ctx)
@@ -1498,7 +1524,7 @@ def _entry_build(kind: str, params: dict, ctx: dict, formats) -> tuple[dict, str
     if raw is None or (isinstance(raw, str) and raw.lower() in ("", "none", "null")):
         return {}, "no value in the payload"
     try:
-        return {"value": float(raw), "ts": ts, "source": source}, ""
+        return {"value": float(raw), "ts": ts, "source": source, "context": context}, ""
     except (TypeError, ValueError):
         return {}, f"'{raw}' is not a number"
 
