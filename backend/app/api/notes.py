@@ -116,13 +116,24 @@ def _vault_of(user: User) -> str:
     return path
 
 
+def _is_https(request: Request) -> bool:
+    """Did this reach us over https? The proxy in front is what knows."""
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    return (forwarded or request.url.scheme) == "https"
+
+
 @router.post("/session")
-async def open_session(response: Response, user: User = Depends(get_current_user)) -> dict[str, Any]:
+async def open_session(request: Request, response: Response,
+                       user: User = Depends(get_current_user)) -> dict[str, Any]:
     """Hand out the reading cookie. The notes page asks for this when it opens."""
     _vault_of(user)
     response.set_cookie(
         ASSET_COOKIE, _asset_token(user.id),
-        max_age=ASSET_TTL, httponly=True, samesite="lax", secure=True,
+        max_age=ASSET_TTL, httponly=True, samesite="lax",
+        # `Secure` only where it can be honoured. A browser silently throws a
+        # secure cookie away on a plain connection, and the whole area then looks
+        # broken for a reason nothing reports: no pictures, no live channel.
+        secure=_is_https(request),
         # Narrow on purpose: it is worth nothing anywhere else in the house.
         path="/api/notes",
     )
