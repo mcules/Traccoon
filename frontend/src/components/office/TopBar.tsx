@@ -274,7 +274,7 @@ export default function TopBar({
                 aria-pressed={speed === t}
                 title={`Wiedergabe in ${t}-facher Geschwindigkeit`}
                 className={"px-2 py-0.5 text-xs "
-                  + (speed === t ? "bg-brand text-white" : "text-muted hover:bg-surface")}>
+                  + (speed === t ? "bg-brand text-onbrand" : "text-muted hover:bg-surface")}>
                 {t}×
               </button>
             ))}

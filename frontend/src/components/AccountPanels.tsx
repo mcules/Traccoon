@@ -199,7 +199,7 @@ export function NightWindowPanel() {
         {DAYS.map((d, i) => (
           <button key={d} onClick={() => tagUm(i)}
             className={`rounded px-2 py-1 text-xs ${days.includes(i)
-              ? "bg-brand text-white" : "border border-line text-muted"}`}>{tr(`common.tag_${d}`)}</button>
+              ? "bg-brand text-onbrand" : "border border-line text-muted"}`}>{tr(`common.tag_${d}`)}</button>
         ))}
       </div>
       <Toggle label={tr("preferences_panel.ignore_window")} hint={tr("preferences_panel.night_tickets_run_any")}

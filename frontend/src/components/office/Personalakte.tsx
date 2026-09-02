@@ -227,7 +227,7 @@ export default function Personnelfile({
             <button key={f.h} type="button" onClick={() => setHours(f.h)}
               aria-pressed={hours === f.h}
               title={`Kennzahlen ${f.long}`}
-              className={"px-1.5 py-0.5 " + (hours === f.h ? "bg-brand text-white" : "text-muted hover:bg-surface")}>
+              className={"px-1.5 py-0.5 " + (hours === f.h ? "bg-brand text-onbrand" : "text-muted hover:bg-surface")}>
               {f.kurz}
             </button>
           ))}

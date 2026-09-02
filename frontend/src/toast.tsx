@@ -65,7 +65,7 @@ const TONE: Record<ToastKind, string> = {
   success: "border-emerald-500 bg-emerald-700 text-white",
   error: "border-red-500 bg-red-700 text-white",
   warning: "border-amber-400 bg-amber-600 text-white",
-  info: "border-brand bg-brand text-white",
+  info: "border-brand bg-brand text-onbrand",
 };
 
 export function Toasts() {

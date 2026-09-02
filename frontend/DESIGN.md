@@ -21,6 +21,11 @@ page colour; without a card they would stand on the page background in the same 
 one would see nothing but text. The other way round: what stands directly on the page (a
 popover, a menu, a tile without an area) carries `bg-card`.
 
+**The accent is `brand`, and what is legible on it is `onbrand`.** Two tokens, not one,
+because the accent is not the same in both themes: light in the dark theme and dark in the
+light one. Never write `text-white` on an accent surface: in the dark theme that is 1.79:1
+and unreadable. `text-onbrand` is 9.67:1 there and 4.61:1 in the light theme.
+
 Borders are always `border-line`, text is `text-ink` (what matters) or `text-muted`
 (everything explanatory). The accent colour is `brand` — it marks where one is and what the
 main way is.
@@ -29,7 +34,7 @@ main way is.
 
 ### `Button` — every action
 
-**A button is blue. Grey means switched off, nothing else.**
+**A button carries the accent. Grey means switched off, nothing else.**
 
 It used to be the other way round: most buttons had a grey border, and in a header with four
 of them every single one went under — while the colour that actually means "there is nothing
@@ -37,14 +42,14 @@ to get here" was the normal state.
 
 Four variants, no more are needed:
 
-**Blue is the surface, not the writing.** A button with a blue border and blue letters is
+**The accent is the surface, not the writing.** A button with an accent border and accent letters is
 still mostly background — and therefore almost as quiet as the grey one it was meant to
 replace.
 
 | Variant | Look | What for |
 |---------|------|----------|
-| `primary` | filled blue | the one action this surface is about |
-| `secondary` (the default) | filled blue | everything else one can do |
+| `primary` | filled with the accent | the one action this surface is about |
+| `secondary` (the default) | filled with the accent | everything else one can do |
 | `confirm` | filled green | agree, approve, accept |
 | `danger` | filled red | what one does not do by accident |
 
@@ -73,7 +78,7 @@ button stands on `open` again, otherwise it shows a result that applied to somet
 In rows and toolbars the same buttons in small: `BUTTON_SMALL.*`. Colour and meaning stay,
 only the height does not pull the row apart.
 
-`IconButton` follows the same rule — a blue border, a blue sign, but without a fill: a list of
+`IconButton` follows the same rule — an accent border, an accent sign, but without a fill: a list of
 twenty rows with three handles each would otherwise be fireworks.
 
 Buttons with a mechanism of their own (a toggle, a file picker, a tab) stay `<button>` but
@@ -81,11 +86,11 @@ take the same classes: `className={BUTTON.primary}` / `BUTTON.secondary` / `BUTT
 One source, two ways in — new code is written with `<Button>`.
 
 Actions **without a surface** (a "show more", a × to remove something, a link in the middle of
-prose) take `BUTTON_TEXT.secondary` or `.danger`: blue or red letters, no surface. Here too
+prose) take `BUTTON_TEXT.secondary` or `.danger`: accent or red letters, no surface. Here too
 grey means switched off.
 
 **Not** covered by that are real toggles (a tab that is active or inactive): there grey means
-"not chosen right now", not "switched off", and blue marks the choice.
+"not chosen right now", not "switched off", and the accent marks the choice.
 
 ### `Area` — the frame of a tab
 

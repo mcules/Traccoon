@@ -188,7 +188,7 @@ export default function Board({
             return (
               <button key={s.id} onClick={() => setMobileCol(s.id)}
                 className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
-                  active ? "border-brand bg-brand text-white" : "border-line text-muted hover:text-ink"
+                  active ? "border-brand bg-brand text-onbrand" : "border-line text-muted hover:text-ink"
                 }`}>
                 <span>{s.name}</span>
                 <span className={`rounded-full px-1 ${active ? "bg-white/20" : "bg-surface"}`}>{n}</span>

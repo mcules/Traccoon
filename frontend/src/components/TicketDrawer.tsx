@@ -293,7 +293,7 @@ export default function TicketDrawer({
     : "max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-line bg-card p-5 shadow-2xl";
   // Archiving and deleting right at the top beside the ticket id (clear icon buttons).
   // An icon button in the sidebar: blue like every button, only without a label.
-  const iconBtn = "rounded-md border border-brand bg-brand p-1.5 text-lg leading-none text-white";
+  const iconBtn = "rounded-md border border-brand bg-brand p-1.5 text-lg leading-none text-onbrand";
   const headerActions = issue && (canWrite || canManage) && (
     <div className="flex items-center gap-1.5">
       {canWrite && issue.archived && (
@@ -328,7 +328,7 @@ export default function TicketDrawer({
       {two && issue && (
         <button onClick={() => setEditLayout((v) => !v)} title={tr("ticket_drawer.rearrange_blocks_drag_and_drop")}
           className={`rounded-md border px-2.5 py-1 text-xs ${
-            editLayout ? "border-brand bg-brand text-white" : "border-line text-muted hover:bg-surface hover:text-ink"
+            editLayout ? "border-brand bg-brand text-onbrand" : "border-line text-muted hover:bg-surface hover:text-ink"
           }`}>
           {editLayout ? tr("ticket_drawer.layout_done") : tr("ticket_drawer.layout_edit")}
         </button>
@@ -415,7 +415,7 @@ export default function TicketDrawer({
     <div className="mb-4 flex items-center gap-2">
       <button disabled={!dirty || !draft.summary.trim() || save.isPending}
         onClick={() => save.mutate()}
-        className="rounded bg-brand px-4 py-1.5 text-white disabled:cursor-not-allowed disabled:opacity-40">
+        className="rounded bg-brand px-4 py-1.5 text-onbrand disabled:cursor-not-allowed disabled:opacity-40">
         {save.isPending ? "Speichert…" : tr("ticket_drawer.save")}
       </button>
       {dirty && (

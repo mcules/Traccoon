@@ -274,7 +274,7 @@ export default function AssistantChat() {
                   {showArchive ? "↩" : "🗄"}
                 </button>
               )}
-              <div className="max-w-[80%] rounded-lg rounded-br-sm bg-brand px-3 py-2 text-sm text-white whitespace-pre-wrap">
+              <div className="max-w-[80%] rounded-lg rounded-br-sm bg-brand px-3 py-2 text-sm text-onbrand whitespace-pre-wrap">
                 {m.text}
               </div>
             </div>

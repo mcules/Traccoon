@@ -215,7 +215,7 @@ function RailsButton({ entry: entry, active, counter: counter }: {
       <span className="text-lg leading-none">{entry.icon}</span>
       <span className="w-full truncate text-center text-[10px] leading-tight">{entry.label}</span>
       {counter > 0 && (
-        <span className="absolute right-1 top-1 rounded-full bg-brand px-1 text-[10px] font-medium text-white tabular-nums">
+        <span className="absolute right-1 top-1 rounded-full bg-brand px-1 text-[10px] font-medium text-onbrand tabular-nums">
           {counter}
         </span>
       )}
@@ -259,7 +259,7 @@ function MobileMenu() {
                 <span>{e.icon}</span>
                 <span className="flex-1">{e.label}</span>
                 {((e.counter === "inbox" && waiting > 0) || (e.counter === "mail" && newMails > 0)) && (
-                  <span className="rounded-full bg-brand px-1.5 text-xs text-white tabular-nums">
+                  <span className="rounded-full bg-brand px-1.5 text-xs text-onbrand tabular-nums">
                     {e.counter === "inbox" ? waiting : newMails}
                   </span>
                 )}

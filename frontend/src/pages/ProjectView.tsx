@@ -170,7 +170,7 @@ export default function ProjectView() {
               <Link key={k} to={projectPath(project.key, tab, k)}
                 className={`rounded-md border px-3 py-1 text-sm ${
                   view === k
-                    ? "border-brand bg-brand text-white"
+                    ? "border-brand bg-brand text-onbrand"
                     : "border-line text-muted hover:bg-surface hover:text-ink"
                 }`}>
                 {label}

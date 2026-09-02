@@ -104,13 +104,13 @@ export default function Hardware({ project }: { project: Project }) {
                     <div className="mb-2.5 inline-flex rounded border border-line bg-surface p-0.5 text-xs">
                       <button
                         onClick={() => setView("klassisch")}
-                        className={`rounded px-2 py-0.5 ${view === "klassisch" ? "bg-brand text-white" : "text-muted hover:text-ink"}`}
+                        className={`rounded px-2 py-0.5 ${view === "klassisch" ? "bg-brand text-onbrand" : "text-muted hover:text-ink"}`}
                       >
                         Klassische Schritte
                       </button>
                       <button
                         onClick={() => setView("workflow")}
-                        className={`rounded px-2 py-0.5 ${view === "workflow" ? "bg-brand text-white" : "text-muted hover:text-ink"}`}
+                        className={`rounded px-2 py-0.5 ${view === "workflow" ? "bg-brand text-onbrand" : "text-muted hover:text-ink"}`}
                       >
                         🧭 Workflow
                       </button>

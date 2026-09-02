@@ -319,7 +319,7 @@ export function DestinationsArea({ projectId }: { projectId?: number }) {
         {areas.map(([k, label]) => (
           <button key={k} onClick={() => setScope(k)}
             className={`rounded-md border px-3 py-1 text-sm ${
-              scope === k ? "border-brand bg-brand text-white"
+              scope === k ? "border-brand bg-brand text-onbrand"
                           : "border-line text-muted hover:bg-surface hover:text-ink"}`}>
             {label}
           </button>

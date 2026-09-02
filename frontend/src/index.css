@@ -8,10 +8,18 @@
   --ink: 23 43 77;
   --muted: 107 119 140;
   --line: 223 225 230;
-  /* The blue of the house, the same in both themes. It is a variable and not a fixed
-     value in the config so that a box with a look of its own -- the terminal of the PM
-     chat -- can redefine it for its inside without every component knowing about it. */
-  --brand: 0 82 204;
+  /* The accent of the house. It comes from the note area, whose lavender reads
+     softer than the blue that stood here before, and unlike that blue it is NOT
+     the same in both themes: the light one has to carry white writing, the dark
+     one is far too pale for that and carries dark writing instead. Which is why
+     `--on-brand` exists and why nothing paints `text-white` on this colour any
+     more. Measured: 4.61:1 light, 9.67:1 dark, both above the 4.5 that normal
+     text needs.
+     It stays a variable rather than a value in the config so that a box with a
+     look of its own -- the terminal of the PM chat -- can redefine it for its
+     inside without every component knowing. */
+  --brand: 74 101 252;
+  --on-brand: 255 255 255;
   /* The five severities of the configuration audit, and the grades the scanner gives. They
      are roles like every other colour in the house: red is not "red", it is "critical". They
      stand here and not in the page that uses them, because the chart draws them into SVG
@@ -38,6 +46,8 @@
   --ink: 230 237 243;
   --muted: 139 148 158;
   --line: 48 54 61;
+  --brand: 180 190 254;
+  --on-brand: 22 27 34;
   --critical: 255 123 123;
   --high: 255 166 87;
   --medium: 224 190 82;

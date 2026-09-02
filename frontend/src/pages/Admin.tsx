@@ -10,18 +10,20 @@ import {
   Actions, Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field,
   Errorrow, ICON, IconButton, Listing, ListingEmpty, ListRow, BUTTON } from "../components/ui";
 import InboundPanel from "../components/InboundPanel";
+import LogsPanel from "../components/LogsPanel";
 import ProviderModelsPanel from "../components/ProviderModelsPanel";
 import TranslationsPanel from "../components/TranslationsPanel";
 
 // Destinations no longer have a tab of their own: they stand under the settings with a
 // scope switch (global | me | project), because it was the same panel three times over.
 type Tab = "users" | "cost" | "models" | "inbound" | "maintenance" | "mail" | "artifacts"
-  | "translations";
+  | "translations" | "logs";
 const TABS: [Tab, string][] = [
   ["users", "admin.users"], ["cost", "admin.costs"], ["models", "admin.models"],
   ["inbound", "inbound.title"],
   ["maintenance", "admin.maintenance"], ["mail", "admin.email"],
   ["artifacts", "admin.artifacts"], ["translations", "admin.translations"],
+  ["logs", "logs.title"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -32,7 +34,7 @@ export default function Admin() {
   usePageChrome(tr("nav.admin"), TABS.map(([key, label]) => ({
     key, label: tr(label), to: `/admin/${key}`,
     icon: { users: "👥", cost: "💶", models: "🧠", inbound: "📥", maintenance: "🔧",
-            mail: "✉️", artifacts: "📦", translations: "🌐" }[key],
+            mail: "✉️", artifacts: "📦", translations: "🌐", logs: "📜" }[key],
   })), tab, "side");
   return (
     <div>
@@ -44,6 +46,7 @@ export default function Admin() {
       {tab === "mail" && <MailConfig />}
       {tab === "artifacts" && <ArtifactTypesPanel />}
       {tab === "translations" && <TranslationsPanel />}
+      {tab === "logs" && <LogsPanel />}
     </div>
   );
 }

@@ -163,7 +163,7 @@ export default function NewTicketModal({
           <button onClick={onClose}
             className={BUTTON.secondary}>{tr("new_ticket_modal.cancel")}</button>
           <button disabled={!canSave} onClick={() => create.mutate()}
-            className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">
+            className="rounded bg-brand px-4 py-1.5 text-sm text-onbrand disabled:cursor-not-allowed disabled:opacity-40">
             {tr(create.isPending ? "new_ticket_modal.creating" : "common.save")}
           </button>
         </div>

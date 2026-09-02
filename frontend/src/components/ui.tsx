@@ -58,13 +58,13 @@ const BASE = "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-m
 // still mostly background — and thereby almost as quiet as the grey one it was meant to
 // replace.
 const COLOR = {
-  primary: "border border-brand bg-brand text-white hover:bg-brand/90",
+  primary: "border border-brand bg-brand text-onbrand hover:bg-brand/90",
   // Green is no arbitrariness but a meaning like red: "I agree" — release, accept, confirm.
   // That is why it stays instead of being absorbed into blue.
   confirm: "border border-green-600 bg-green-600 text-white hover:bg-green-600/90",
   // Visually the same: "primary" says in the code what the surface is about and is no promise
   // of a different look. Whoever wants to grade them later changes this one line.
-  secondary: "border border-brand bg-brand text-white hover:bg-brand/90",
+  secondary: "border border-brand bg-brand text-onbrand hover:bg-brand/90",
   danger: "border border-red-600 bg-red-600 text-white hover:bg-red-600/90",
 } as const;
 export const BUTTON = {
@@ -149,9 +149,9 @@ export function IconButton({ icon, title: title, onClick, danger = false, disabl
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm
         leading-none transition-colors disabled:border-line disabled:text-muted
         disabled:opacity-60 ${
-        active ? "border-brand bg-brand text-white ring-2 ring-brand/40"
+        active ? "border-brand bg-brand text-onbrand ring-2 ring-brand/40"
           : danger ? "border-red-600 bg-red-600 text-white hover:bg-red-600/90"
-                   : "border-brand bg-brand text-white hover:bg-brand/90"
+                   : "border-brand bg-brand text-onbrand hover:bg-brand/90"
       }`}
     >
       {icon}

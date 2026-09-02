@@ -6,6 +6,9 @@ export default {
     extend: {
       colors: {
         brand: "rgb(var(--brand) / <alpha-value>)",
+        // What is legible ON the accent. Two values, because the accent is light
+        // in the dark theme and dark in the light one.
+        onbrand: "rgb(var(--on-brand) / <alpha-value>)",
         card: "rgb(var(--card) / <alpha-value>)",
         surface: "rgb(var(--surface) / <alpha-value>)",
         ink: "rgb(var(--ink) / <alpha-value>)",

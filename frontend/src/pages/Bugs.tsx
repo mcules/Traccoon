@@ -50,7 +50,12 @@ const KIND: Record<string, { label: string; color: TagColor }> = {
 const STATE: Record<string, { label: string; color: TagColor }> = {
   new: { label: "bugs.state_new", color: "brand" },
   seen: { label: "bugs.state_seen", color: "blue" },
+  in_progress: { label: "bugs.state_in_progress", color: "yellow" },
   ticket: { label: "bugs.state_ticket", color: "green" },
+  /* Settled without a ticket: answered, explained, gone by itself. Without this state a
+     report of that sort only had "duplicate" or "rejected" left, and both say something
+     about the reporter that is not true. */
+  done: { label: "bugs.state_done", color: "green" },
   rejected: { label: "bugs.state_rejected", color: "neutral" },
   duplicate: { label: "bugs.state_duplicate", color: "neutral" },
 };
@@ -208,6 +213,10 @@ export default function Bugs() {
                       <button className={BUTTON_SMALL.secondary}
                         onClick={() => judge.mutate({ id: bug.id, status: "seen" })}>
                         {tr("bugs.mark_seen")}
+                      </button>
+                      <button className={BUTTON_SMALL.secondary}
+                        onClick={() => judge.mutate({ id: bug.id, status: "done" })}>
+                        {tr("bugs.mark_done")}
                       </button>
                       <button className={BUTTON_SMALL.secondary}
                         onClick={() => judge.mutate({ id: bug.id, status: "duplicate" })}>

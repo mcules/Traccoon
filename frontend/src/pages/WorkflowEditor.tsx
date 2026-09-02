@@ -521,7 +521,7 @@ export default function WorkflowEditor() {
             {(["flaeche", "baustein"] as const).map((a) => (
               <button key={a} type="button" onClick={() => setColumn(a)}
                 className={`px-2 py-1 text-xs ${column === a
-                  ? "bg-brand text-white" : "text-muted hover:text-ink"}`}>
+                  ? "bg-brand text-onbrand" : "text-muted hover:text-ink"}`}>
                 {tr(a === "flaeche" ? "editor.canvas" : "editor.block")}
               </button>
             ))}
