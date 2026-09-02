@@ -3237,5 +3237,12 @@
   "bugs.filter_unanswered_count": "Unbeantwortet ({count})",
   "dash.reports_unread_hint": "Beiträge, die du noch nicht gesehen hast, in {count} Meldungen.",
   "dash.reports_unanswered": "Unbeantwortet",
-  "dash.reports_unanswered_hint": "Meldungen, in denen der letzte Satz nicht von uns ist. Da wartet jemand."
+  "dash.reports_unanswered_hint": "Meldungen, in denen der letzte Satz nicht von uns ist. Da wartet jemand.",
+  "bugs.mark_done": "Erledigt",
+  "bugs.state_done": "Erledigt",
+  "bugs.state_in_progress": "In Arbeit",
+  "err.notes_no_vault": "Dieses Konto hat keinen Notiz-Vault",
+  "err.notes_unconfigured": "Der Notizbereich ist nicht eingerichtet",
+  "err.notes_unreachable": "Der Notizbereich antwortet nicht: {reason}",
+  "nav.notes": "Notizen"
 }

@@ -16,6 +16,7 @@ import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Account from "./pages/Account";
 import Bugs from "./pages/Bugs";
+import Notes from "./pages/Notes";
 import Inbox from "./pages/Inbox";
 import Mail from "./pages/Mail";
 import PluginHost from "./pages/PluginHost";
@@ -130,6 +131,7 @@ export default function App() {
         {/* Plugins live under a short prefix of their own — they are areas,
             but no built-in ones. */}
         <Route path="/p/:slug" element={<PluginHost />} />
+        <Route path="/notes" element={<Notes />} />
         <Route path="/audit" element={<ConfigAudit />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/:tab" element={<SettingsTab />} />
