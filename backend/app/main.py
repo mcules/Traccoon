@@ -17,7 +17,7 @@ from .api import (
     documents as documents_api,
     series as series_api, i18n as i18n_api, issues, lifecycle, mail, mailbox, mcp_server, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
     projects, repo, office,
-    runs, secrets, skills, testenv, tokens as tokens_api, users, workflows, ws,
+    runs, secrets, skills, testenv, tokens as tokens_api, users, workflows, ws, notes,
 )
 from .config import settings
 from .core.error import Error, error_handler
@@ -494,6 +494,10 @@ async def lifespan(app: FastAPI):
                 # A renamed model attribute is a renamed column. The tests run against SQLite
                 # and create the table freshly from the model every time — they cannot see
                 # this break at all. Postgres can.
+                # One vault per person. Empty means this account has no note area,
+                # which is the state every account starts in.
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS vault_path VARCHAR(500) "
+                "DEFAULT '' NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads_granted JSON "
@@ -656,6 +660,7 @@ api.include_router(artifacts_api.router)
 api.include_router(bugs_api.router)
 api.include_router(mail.router)
 api.include_router(mailbox.router)
+api.include_router(notes.router)
 api.include_router(mcp_server.router)
 api.include_router(secrets.router)
 api.include_router(permissions.router)

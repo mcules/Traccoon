@@ -1,0 +1,62 @@
+# Places that may still carry a word from tools/name-denylist.txt, and why.
+#
+# This is a burn-down list, not a permission system. Every line is work that has
+# not happened yet, and the list is meant to reach zero. A line whose file no
+# longer carries the name is reported as stale, so the list cannot quietly turn
+# into a list of files nobody checks any more.
+#
+# Format: one repository-relative path per line, then # and the reason.
+#
+# ── Group 1: the tool names of a third party MCP server ───────────────────────
+# Today the note vault is served by a separate program, and the agents reach it
+# through an MCP server whose tool names carry that program's name. A tool name
+# is an address: renaming it here would only mean calling a tool that does not
+# exist.
+#
+# These have a date now. The separate program is being switched off, the note
+# workspace moves in here, and it brings its own MCP server. When the six tool
+# groups are pointed at it, all seventeen lines below go in one commit, and the
+# agents in this house stop taking the detour entirely: they write into the
+# vault in-process.
+backend/app/services/workflow_actions.py   # default tool of the note_append action
+backend/app/worker/curator.py              # calls the note tools by name
+backend/app/worker/runtime.py              # loads project context through them
+backend/app/worker/tools_memory.py         # the agents' memory lives on those tools
+frontend/src/components/office/toolAct.ts  # maps a tool name to what the room shows
+frontend/src/components/AssistantPolicies.tsx  # example in a placeholder
+frontend/tools/office-check.mjs            # fixture for the room check
+backend/tests/test_workflow_tools.py       # fixtures for the above
+backend/tests/test_workflow_dryrun.py      # fixtures for the above
+backend/tests/test_note_action.py          # fixtures for the above
+backend/tests/test_memory.py               # fixtures for the above
+backend/tests/test_curator.py              # fixtures for the above
+backend/tests/test_office_worker.py        # fixtures for the above
+backend/tests/test_office_normalize.py     # fixtures for the above
+backend/tests/test_api_tokens.py           # fixtures for the above
+backend/tests/test_assistant_sessions.py   # fixtures for the above
+backend/tests/test_mojibake.py             # a real answer of that server, as a sample
+#
+# ── Group 2: prose that names the neighbouring program ────────────────────────
+# Comments and docstrings that explain where something reads from or writes to.
+# They are correct today and become wrong on their own once the workspace moves
+# in: then the vault is ours, and the sentence has to say what it is rather than
+# which program it belonged to. Each of these lines is fixed by the change that
+# touches the file anyway, not by a campaign of its own.
+AGENTS.md                                  # says where documentation lives
+README.md                                  # names a client of the token API
+backend/app/api/me.py                      # memory folder in the vault
+backend/app/models/user.py                 # same field, other side
+backend/app/models/assistant.py            # names the plugin that opens sessions
+backend/app/services/assistant_sessions.py # same
+backend/app/services/vault_contacts.py     # reads contacts out of the vault
+backend/alembic/versions/d2e8b45c91af_gedaechtnis.py   # migration comment, history
+backend/alembic/versions/d4a7c2b91f63_spam_erkennung.py # migration comment, history
+frontend/src/components/AccountPanels.tsx  # explains the memory folder setting
+frontend/src/i18n/de.json                  # the same sentences as catalog keys
+frontend/src/i18n/en.json                  # the same sentences as catalog keys
+#
+# ── Group 3: the mount ────────────────────────────────────────────────────────
+# The vault sits at a path on the host whose folder name carries the program it
+# was made with. The path belongs in .env, not in a default value in a file the
+# whole world can read. First thing to fix in stage 0.
+compose.yml                                # default value of VAULT_HOST_PATH

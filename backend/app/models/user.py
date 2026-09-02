@@ -76,6 +76,10 @@ class User(TimestampMixin, Base):
     # the beginning of every run. Access runs over the MCP group of THIS user, so the memory
     # is necessarily personal. Empty = no memory (the function is off).
     vault_memory_path: Mapped[str] = mapped_column(String(500), default="")
+    # The folder of notes that belongs to this person. Empty = no note area.
+    # One vault per person: what is personal hangs off the owner here, the same
+    # way stores, mail accounts and destinations already do.
+    vault_path: Mapped[str] = mapped_column(String(500), default="")
 
     max_runners: Mapped[int] = mapped_column(Integer, default=3)
     # When the personal assistant reports over Telegram or the bell:

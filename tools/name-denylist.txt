@@ -1,0 +1,10 @@
+# Words that must not appear in this repository, one per line, matched
+# case-insensitively as a substring. Blank lines and lines starting with # are
+# ignored. See tools/check-names.mjs.
+#
+# The note workspace grew out of a clone of a third party program and carries
+# its name in 800 places. While that program was a neighbouring system we talked
+# to, the name was legitimate. Once the workspace lives here it replaces that
+# program, and every remaining mention is a leftover. This list is what keeps it
+# from coming back.
+obsidian

@@ -70,6 +70,9 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+      # The note workspace, still a service of its own. The bridge in api/notes.py
+      # passes requests to it, so the browser only ever talks to us.
+      NOTES_BASE_URL: ${NOTES_BASE_URL:-http://obsidian-web:8787}
       MCPJUNGLE_BASE: ${MCPJUNGLE_BASE:-http://mcpjungle:8080}
       MCPJUNGLE_ADMIN_TOKEN: ${MCPJUNGLE_ADMIN_TOKEN:-}
       VAULT_PATH: /vault

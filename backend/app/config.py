@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # database (WebhookSub plus classifying and handler agent): deliberately NO MAIL_* env or file config any more.
 
     # MCPJungle: self-service provisioning of the user MCP group (backend on the mcp-backends network).
+    # The note workspace, still a service of its own while it is being rewritten.
+    # Empty = the notes area answers 503 instead of guessing an address.
+    notes_base_url: str = ""                        # NOTES_BASE_URL
+
     mcpjungle_base: str = "http://mcpjungle:8080"   # MCPJUNGLE_BASE
     mcpjungle_admin_token: str = ""                 # MCPJUNGLE_ADMIN_TOKEN
 
