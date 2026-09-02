@@ -27,14 +27,18 @@ import hmac
 import time
 from typing import Any
 
+import asyncio
+
 import httpx
-from fastapi import APIRouter, Depends, Header, Request, Response, status
+import websockets
+from fastapi import APIRouter, Depends, Header, Request, Response, WebSocket, status
+from websockets.exceptions import WebSocketException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..core.error import Error
-from ..db import get_session
+from ..db import SessionLocal, get_session
 from ..models.enums import UserStatus
 from ..models.user import User
 from .deps import get_current_user
@@ -129,6 +133,68 @@ async def open_session(response: Response, user: User = Depends(get_current_user
 async def close_session(response: Response, _user: User = Depends(get_current_user)) -> dict[str, Any]:
     response.delete_cookie(ASSET_COOKIE, path="/api/notes")
     return {"ok": True}
+
+
+@router.websocket("/ws")
+async def live(websocket: WebSocket) -> None:
+    """Pass the live channel through: what changes on the disk, as it happens.
+
+    The browser cannot set a header when it opens a socket, so this is the one
+    place the reading cookie is the whole login. It is enough: the channel only
+    ever sends, it takes nothing (see the note server, which has no message
+    handler at all). Whatever a client pushed in here would be dropped on the
+    floor, and this end reads it only to notice when the other side is gone.
+
+    Declared before the catch-all above it so the intent is readable; Starlette
+    would separate the two by scope anyway.
+    """
+    uid = _asset_user_id(websocket.cookies.get(ASSET_COOKIE) or "")
+    if uid is None or not settings.notes_base_url:
+        await websocket.close(code=1008)
+        return
+    async with SessionLocal() as db:
+        user = await db.get(User, uid)
+        if user is None or user.status != UserStatus.active or not (user.vault_path or "").strip():
+            await websocket.close(code=1008)
+            return
+        who = user.username or user.email or str(user.id)
+
+    upstream_url = settings.notes_base_url.replace("http://", "ws://", 1).replace(
+        "https://", "wss://", 1).rstrip("/") + "/ws"
+    await websocket.accept()
+    try:
+        async with websockets.connect(
+            upstream_url, additional_headers={"Remote-User": who},
+            open_timeout=10, ping_interval=20,
+        ) as upstream:
+
+            async def to_browser() -> None:
+                async for message in upstream:
+                    if isinstance(message, bytes):
+                        await websocket.send_bytes(message)
+                    else:
+                        await websocket.send_text(message)
+
+            async def drain_browser() -> None:
+                # Only to learn that the tab went away: the channel is one way.
+                while True:
+                    await websocket.receive()
+
+            done, pending = await asyncio.wait(
+                [asyncio.create_task(to_browser()), asyncio.create_task(drain_browser())],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+    except (WebSocketException, OSError, asyncio.TimeoutError):
+        # The far side is down or went away. Nothing to say about it: the page
+        # reconnects on its own, and a stack trace per reload helps nobody.
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass  # already closed from the other end
 
 
 @router.api_route("/{path:path}",
