@@ -95,6 +95,9 @@ services:
       # Both mounts belong together — if it is missing over there, the bot never finds the file
       # and the message goes out as text (quietly, but without the film).
       - ./data/film:/data/film
+      # What the note workspace answers today, recorded before it is rewritten.
+      # Not in the repository: it is the content of somebody's notes.
+      - ./data/notes-reference:/data/notes-reference
       # Obsidian vault READ ONLY: the spam detection pulls the known addresses out of it
       # (the acquittal list). The vault is a Syncthing replica — writing into it here would mean
       # writing against Obsidian and the sync.
