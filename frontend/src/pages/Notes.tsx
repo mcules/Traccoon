@@ -15,6 +15,12 @@
 // `RAIL_LEAVEBLANK` keeps the area rail free. A full screen with no way out is a trap, and
 // this is the area one stands in longest.
 //
+// Below `md` there is no rail: the way to every other area is the burger in the header, and
+// the header is what a full screen covers. So on a phone this page starts under it instead
+// of over it. Measured rather than guessed: that header is 57px there. Without this the area
+// was exactly the trap the paragraph above is about, and worse, because the browser's back
+// button was the only way out.
+//
 // ── What is loaded here, and what is not ────────────────────────────────────────────────────
 //
 // The workspace under `src/notes/` is a large piece of a former application: an editor, a
@@ -33,7 +39,7 @@ const Workbench = lazy(() => import("../notes/Workbench"));
 
 export default function Notes(): JSX.Element {
   return (
-    <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${RAIL_LEAVEBLANK}`}>
+    <div className={`fixed inset-x-0 bottom-0 top-[57px] z-30 flex flex-col bg-surface md:top-0 ${RAIL_LEAVEBLANK}`}>
       <Suspense fallback={<div className="p-6"><Spinner /></div>}>
         <Workbench />
       </Suspense>

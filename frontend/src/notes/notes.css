@@ -2124,17 +2124,16 @@ div.dataview-error-box {
   --tc-line: #30363d;
 }
 .theme-light, .theme-dark {
-  /* The blue of the house is the same in both themes — it marks where one is
-     and what the main way is, and a colour that shifts with the theme would
-     stop meaning that. */
-  --accent-h: 216;
-  --accent-s: 100%;
-  --accent-l: 40%;
-  /* --color-accent resolves where it is DEFINED, not where it is used: leaving
-     it on :root would keep the original hue no matter what h/s/l say here. */
-  --color-accent: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
-  --color-accent-1: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
-  --color-accent-2: hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) + 8%));
+  /* The accent is the house's, read straight from it rather than copied. It used
+     to be spelled out here as a hue, and when the house changed its accent this
+     area quietly kept the old one: one blue button in the middle of a lavender
+     application, and nothing to tell you where it came from.
+     `--text-on-accent` follows for the same reason it exists in the house: the
+     dark accent is pale, and white writing on it is unreadable. */
+  --color-accent: rgb(var(--brand));
+  --color-accent-1: rgb(var(--brand));
+  --color-accent-2: color-mix(in srgb, rgb(var(--brand)) 85%, white);
+  --text-on-accent: rgb(var(--on-brand));
 
   --background-primary: var(--tc-card);
   --background-primary-alt: var(--tc-surface);
@@ -2152,14 +2151,11 @@ div.dataview-error-box {
   --titlebar-background: var(--tc-surface);
   --titlebar-background-focused: var(--tc-surface);
 }
-.theme-dark {
-  /* On dark ground the same blue is too heavy to read against; lifting it keeps
-     the role and restores the contrast. */
-  --accent-l: 58%;
-  --color-accent: hsl(var(--accent-h), var(--accent-s), 58%);
-  --color-accent-1: hsl(var(--accent-h), var(--accent-s), 58%);
-  --color-accent-2: hsl(var(--accent-h), var(--accent-s), 66%);
-}
+/* There used to be a block here lifting the accent for dark ground, from the days
+   when it was one blue for both themes. The house has two accents now and the
+   dark one is already the light of the pair, so lifting it again only produced a
+   purple nobody chose: the lines it computed from had been removed above, and it
+   silently fell back to the hue this file started life with. */
 
 /* The theme container carries the text colour for everything inside it. This is
    the root of the dark-mode readability problem: nothing set a colour on the
