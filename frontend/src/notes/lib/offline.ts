@@ -34,13 +34,28 @@ function shellUrls(): string[] {
   return [...new Set(urls)];
 }
 
+/** Flip when a worker scoped to `/notes` is actually served. */
+const SHIPS_A_WORKER = false;
+
 export function installOffline(): void {
   if (registered || !('serviceWorker' in navigator)) return;
   registered = true;
 
   const register = async () => {
+    // No worker is shipped in this house yet, and that is a decision rather than
+    // an omission. A worker registered at the root controls every page, so after
+    // a deploy it would hand a stale shell to the whole application, not just to
+    // the notes. Doing it right means serving the script so its scope is `/notes`
+    // alone, and that is its own piece of work. Until then this returns instead
+    // of asking for a file that is not there.
+    //
+    // What is lost with it: reading a note without a network, which the
+    // standalone application could. `keepOffline` below still collects what
+    // would be worth keeping, so nothing has to be rebuilt when the worker
+    // arrives.
+    if (!SHIPS_A_WORKER) return;
     try {
-      await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.register('/notes-sw.js', { scope: '/notes' });
     } catch {
       return; // no workers here; nothing else to do
     }
