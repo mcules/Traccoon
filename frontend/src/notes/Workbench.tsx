@@ -47,7 +47,22 @@ export default function App() {
   const save = useStore((s) => s.save);
   const toast = useStore((s) => s.toast);
   const [checking, setChecking] = useState(true);
-  const [theme, setTheme] = useState<'theme-dark' | 'theme-light'>('theme-light');
+  // Light or dark is the house's decision, not a second setting of this area.
+  // It stands on `<html data-theme>`, and the wrapper class here only translates
+  // it into the vocabulary this stylesheet was written in. Watched rather than
+  // read once: switching it in the account page has to reach an open note
+  // without a reload, and the switch happens outside this tree entirely.
+  const [theme, setTheme] = useState<'theme-dark' | 'theme-light'>(
+    () => (document.documentElement.dataset.theme === 'light' ? 'theme-light' : 'theme-dark'),
+  );
+  useEffect(() => {
+    const root = document.documentElement;
+    const apply = () => setTheme(root.dataset.theme === 'light' ? 'theme-light' : 'theme-dark');
+    apply();
+    const watch = new MutationObserver(apply);
+    watch.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => watch.disconnect();
+  }, []);
   const appRef = useRef<HTMLDivElement>(null);
   // A share from another app arrives as a page load on /share-to; the address
   // is cleaned up as soon as it has been dealt with, so a reload does not ask
@@ -90,10 +105,6 @@ export default function App() {
           return useStore.getState().openFile(deepLink);
         }
       })
-      .catch(() => {});
-    api
-      .getSettings()
-      .then((s) => setTheme(s?.ui?.theme === 'dark' ? 'theme-dark' : 'theme-light'))
       .catch(() => {});
     // Commands first, then the vault's key bindings on top of their defaults.
     registerCoreCommands();

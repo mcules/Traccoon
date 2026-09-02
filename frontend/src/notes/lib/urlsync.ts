@@ -1,26 +1,30 @@
-// Deep-link URL sync (FR-10): the browser URL mirrors the open note as
-// /note/<vault-relative-path>; the views that are not notes get plain names of
-// their own (/graph, /calendar) rather than a pseudo path pushed through the
-// note route, which produced the unreadable /note/calendar%3A//view.
-// Opening such a URL after
-// login opens the note; browser back/forward navigate via popstate.
+// Deep links: the address mirrors the open note, so a link to one can be sent
+// and a reload comes back to where one was.
+//
+// Everything lives under `/notes`, and that is not decoration. This is one area
+// of a larger application now; an address outside that prefix leaves the router
+// of the house, and a reload then lands on the start page with the note gone.
+// The views that are not notes get plain names rather than a pseudo path pushed
+// through the note route, which used to produce an unreadable `calendar%3A//view`.
 import { useStore, GRAPH_PATH, CALENDAR_PATH } from './store';
 import { popConsumedByOverlay } from './overlayHistory';
 
+const AREA = '/notes';
+
 export function pathToUrl(path: string | null): string {
-  if (!path) return '/';
-  if (path === GRAPH_PATH) return '/graph';
-  if (path === CALENDAR_PATH) return '/calendar';
-  return `/note/${path.split('/').map(encodeURIComponent).join('/')}`;
+  if (!path) return AREA;
+  if (path === GRAPH_PATH) return `${AREA}/graph`;
+  if (path === CALENDAR_PATH) return `${AREA}/calendar`;
+  return `${AREA}/n/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 /** Vault path encoded in a location pathname, or null if it isn't a deep link. */
 export function urlToPath(pathname: string): string | null {
-  if (pathname === '/graph') return GRAPH_PATH;
-  if (pathname === '/calendar') return CALENDAR_PATH;
-  if (pathname.startsWith('/note/')) {
+  if (pathname === `${AREA}/graph`) return GRAPH_PATH;
+  if (pathname === `${AREA}/calendar`) return CALENDAR_PATH;
+  if (pathname.startsWith(`${AREA}/n/`)) {
     try {
-      const rel = pathname.slice('/note/'.length).split('/').map(decodeURIComponent).join('/');
+      const rel = pathname.slice(`${AREA}/n/`.length).split('/').map(decodeURIComponent).join('/');
       return rel || null;
     } catch {
       return null;

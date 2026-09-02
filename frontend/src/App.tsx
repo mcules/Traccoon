@@ -40,6 +40,17 @@ function OldAddress({ to }: { to: string }) {
 }
 
 /**
+ * The notes used to live at `/note/<path>`, in their own application. Those
+ * addresses stand in bookmarks and in notes, so they are carried over rather
+ * than dropped. The path is everything after the prefix, and it keeps its
+ * encoding: a vault path has spaces and umlauts in it.
+ */
+function OldNoteAddress() {
+  const rest = useParams()["*"] ?? "";
+  return <Navigate to={rest ? `/notes/n/${rest}` : "/notes"} replace />;
+}
+
+/**
  * Addresses are English — the sections in them too.
  *
  * Gewachsen war beides gemischt: `/account/meldungen` neben `/settings/webhooks`, im
@@ -131,7 +142,12 @@ export default function App() {
         {/* Plugins live under a short prefix of their own — they are areas,
             but no built-in ones. */}
         <Route path="/p/:slug" element={<PluginHost />} />
+        {/* The area keeps its own addresses below itself: `/notes/n/<path>` for a
+            note, plus `/notes/graph` and `/notes/calendar`. All of them render the
+            same page, which reads the address itself and opens what it names. */}
         <Route path="/notes" element={<Notes />} />
+        <Route path="/notes/*" element={<Notes />} />
+        <Route path="/note/*" element={<OldNoteAddress />} />
         <Route path="/audit" element={<ConfigAudit />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/:tab" element={<SettingsTab />} />

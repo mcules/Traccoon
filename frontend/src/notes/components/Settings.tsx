@@ -266,11 +266,11 @@ function ApiKeys() {
   );
 }
 
+/** Light or dark is not here: the house owns that, in the account settings. What
+ *  is left is what only this area has, the colours of the folder tree. */
 function Appearance({ s }: { s: any }) {
-  const [theme, setTheme] = useState(s.ui.theme);
   const [stil, setStil] = useState<string>(s.ui.rainbowStyle ?? '');
   const [deckkraft, setDeckkraft] = useState<number>(s.ui.rainbowOpacity || 1);
-  const save = async (t: string) => { setTheme(t); await api.putSettings({ ui: { theme: t } }); location.reload(); };
   /** Speichern und sofort anwenden — Farben will man sehen, nicht beschreiben. */
   const farbenSpeichern = async (next: { rainbowStyle?: string; rainbowOpacity?: number }) => {
     await api.putSettings({ ui: next });
@@ -280,12 +280,6 @@ function Appearance({ s }: { s: any }) {
   return (
     <div>
       <h2>Aussehen</h2>
-      <Row name="Theme">
-        <select className="text-input" value={theme} onChange={(e) => save(e.target.value)}>
-          <option value="dark">Dunkel</option>
-          <option value="light">Hell</option>
-        </select>
-      </Row>
       <Row
         name="Farbige Ordner"
         desc="Ohne eigene Wahl gilt, was im Vault eingestellt ist (Theme über Style Settings)."
