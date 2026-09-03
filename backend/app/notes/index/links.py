@@ -17,6 +17,7 @@ from pathlib import Path, PurePosixPath
 
 from .. import paths
 from ..model.note import link_key, parse, strip_note_suffix
+from ..query.evaluate import Doc
 from ..vault.files import Vault
 
 NOTE_SUFFIXES = (".md", ".markdown")
@@ -38,6 +39,13 @@ class LinkGraph:
     raw_links: dict[str, list[str]] = field(default_factory=dict)
     # rel -> tags declared in that note
     tags: dict[str, list[str]] = field(default_factory=dict)
+    # rel -> the note as a search sees it. Kept here because the parse that
+    # builds the graph has already done the work, and reading six thousand notes
+    # a second time for every search is the difference between an answer and a
+    # wait.
+    docs: dict[str, Doc] = field(default_factory=dict)
+    # rel -> its headings, which the word index weighs more heavily than body text
+    headings: dict[str, list[str]] = field(default_factory=dict)
 
     def keys_of(self, rel: str) -> tuple[str, str]:
         """The two names a note can be linked by: its bare name and its path."""
@@ -61,6 +69,8 @@ class LinkGraph:
         self.outgoing.clear()
         self.raw_links.clear()
         self.tags.clear()
+        self.docs.clear()
+        self.headings.clear()
         for rel in notes:
             self._read(vault, rel)
 
@@ -73,6 +83,8 @@ class LinkGraph:
             self.outgoing.pop(rel, None)
             self.raw_links.pop(rel, None)
             self.tags.pop(rel, None)
+            self.docs.pop(rel, None)
+            self.headings.pop(rel, None)
             # Only drop a name that still points here: two notes can share a
             # bare name, and dropping it blindly would unresolve the other one.
             for key in (bare, full):
@@ -85,7 +97,8 @@ class LinkGraph:
 
     def _read(self, vault: Vault, rel: str) -> None:
         try:
-            note = parse(rel, vault.read_text(rel))
+            raw = vault.read_text(rel)
+            note = parse(rel, raw)
         except (OSError, paths.OutsideVault):
             # A file that cannot be read is still in the graph, with nothing in
             # it. Leaving it out would make it look like a note nobody links
@@ -93,10 +106,19 @@ class LinkGraph:
             self.outgoing[rel] = set()
             self.raw_links[rel] = []
             self.tags[rel] = []
+            self.docs.pop(rel, None)
+            self.headings.pop(rel, None)
             return
         self.outgoing[rel] = {link_key(t) for t in note.links}
         self.raw_links[rel] = note.links
         self.tags[rel] = note.tags
+        # The raw text, not the body: a search on the other side looks into the
+        # frontmatter block as well, and a note found there and not here is a
+        # note that went missing from somebody's search.
+        self.docs[rel] = Doc(path=rel, filename=PurePosixPath(rel).name,
+                             content=raw, tags=note.tags,
+                             frontmatter=note.frontmatter)
+        self.headings[rel] = note.headings
 
     # ------------------------------------------------------------------ asking
 

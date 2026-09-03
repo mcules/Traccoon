@@ -30,6 +30,8 @@ from ..models.user import User
 from ..notes import paths
 from ..notes.index.links import LinkGraph
 from ..notes.index.watch import watch
+from ..notes.query.run import run as run_search
+from ..notes.query.words import WordIndex
 from ..notes.vault.files import Vault, content_hash, is_text, mime_for
 from .deps import get_current_user
 
@@ -45,6 +47,7 @@ router = APIRouter(prefix="/notes-native", tags=["notes"])
 # way; the watcher next to it is what stops the copy from drifting away from the
 # disk, which is a failure that says nothing while it happens.
 _graphs: dict[str, LinkGraph] = {}
+_words: dict[str, WordIndex] = {}
 _watchers: dict[str, asyncio.Task] = {}
 
 
@@ -55,6 +58,9 @@ def graph_of(v: Vault) -> LinkGraph:
         graph = LinkGraph()
         graph.build(v)
         _graphs[key] = graph
+        index = WordIndex()
+        index.build(graph.docs, graph.headings)
+        _words[key] = index
     task = _watchers.get(key)
     if task is None or task.done():
         try:
@@ -155,6 +161,14 @@ async def resolve_link(target: str = Query(...),
             treffer = v.by_basename().get(PurePosixPath(target).name.lower())
             found = treffer[0] if treffer else None
     return {"target": target, "path": found}
+
+
+@router.get("/search")
+async def search(q: str = Query(""), user: User = Depends(get_current_user)) -> dict:
+    v = vault_of(user)
+    graph = graph_of(v)
+    hits = run_search(graph, q, _words.get(str(v.root)))
+    return {"query": q, "hits": [h.as_json() for h in hits]}
 
 
 @router.get("/health", response_class=PlainTextResponse)
