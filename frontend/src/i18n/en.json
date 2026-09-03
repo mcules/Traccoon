@@ -3600,5 +3600,12 @@
   "notes_msg.open_the_note_to_add_a_property": "Open the note to add a property",
   "notes_msg.open_the_note_to_search_inside_it": "Open the note to search inside it",
   "notes_msg.zeichnung_gespeichert": "Drawing saved",
-  "notes_msg.arbeitet_gerade": "is working"
+  "notes_msg.arbeitet_gerade": "is working",
+  "err.finding_not_found": "No such finding",
+  "err.invalid_status": "That is not a status",
+  "err.no_draft_agent": "{reason}",
+  "err.no_mail_address": "'{value}' is not a mail address",
+  "err.only_ended_runs_restart": "Only a failed or cancelled run can be restarted",
+  "err.project_carries_reporting_programs": "The project still carries the reporting programs {programs} — move them first",
+  "err.stop_run_before_deleting": "Stop the run before deleting it"
 }

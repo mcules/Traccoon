@@ -3600,5 +3600,12 @@
   "notes_msg.open_the_note_to_add_a_property": "Zum Ergänzen einer Eigenschaft die Notiz öffnen",
   "notes_msg.open_the_note_to_search_inside_it": "Zum Suchen in der Notiz diese öffnen",
   "notes_msg.zeichnung_gespeichert": "Zeichnung gespeichert",
-  "notes_msg.arbeitet_gerade": "arbeitet gerade"
+  "notes_msg.arbeitet_gerade": "arbeitet gerade",
+  "err.finding_not_found": "Diesen Befund gibt es nicht",
+  "err.invalid_status": "Das ist kein Zustand",
+  "err.no_draft_agent": "{reason}",
+  "err.no_mail_address": "'{value}' ist keine Mailadresse",
+  "err.only_ended_runs_restart": "Nur ein fehlgeschlagener oder abgebrochener Lauf lässt sich neu starten",
+  "err.project_carries_reporting_programs": "Am Projekt hängen noch die Meldeprogramme {programs} — die zuerst umhängen",
+  "err.stop_run_before_deleting": "Den Lauf erst anhalten, dann löschen"
 }
