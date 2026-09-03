@@ -299,3 +299,44 @@ def test_without_a_folder_nothing_is_kept_and_nothing_breaks(tmp_path) -> None:
     ws.save("A.md", "zwei\n")
     assert ws.snapshots("A.md") == []
     assert read(ws, "A.md") == "zwei\n"
+
+
+# ---------------------------------------------------------------- ownership
+
+@pytest.mark.skipif(__import__("os").geteuid() != 0,
+                    reason="only root can hand a file to another account")
+def test_a_new_note_belongs_to_the_vault_and_not_to_this_service(tmp_path) -> None:
+    """This runs as root, the file sync does not. A note created here as root
+    can be read by the sync but not written by it, so the next change made on
+    another device fails on this machine — quietly, because nobody watches a
+    sync for errors."""
+    import os
+    root = tmp_path / "vault"
+    root.mkdir()
+    os.chown(root, 1000, 1000)
+    os.chmod(root, 0o755)
+    v = Vault(root)
+    write.write_text(v, "Ordner/Neu.md", "eins\n")
+    note = (root / "Ordner/Neu.md").stat()
+    folder = (root / "Ordner").stat()
+    assert (note.st_uid, note.st_gid, note.st_mode & 0o777) == (1000, 1000, 0o644)
+    assert (folder.st_uid, folder.st_gid) == (1000, 1000)
+
+
+@pytest.mark.skipif(__import__("os").geteuid() != 0,
+                    reason="only root can hand a file to another account")
+def test_replacing_a_note_keeps_the_permissions_it_had(tmp_path) -> None:
+    """A save goes through a new file, so without this the handful of notes
+    somebody deliberately locked down would all come back as ordinary ones."""
+    import os
+    root = tmp_path / "vault"
+    root.mkdir()
+    os.chown(root, 1000, 1000)
+    v = Vault(root)
+    locked = root / "Geheim.md"
+    locked.write_text("eins\n", encoding="utf-8")
+    os.chown(locked, 1000, 1000)
+    os.chmod(locked, 0o600)
+    write.write_text(v, "Geheim.md", "zwei\n")
+    after = locked.stat()
+    assert (after.st_uid, after.st_gid, after.st_mode & 0o777) == (1000, 1000, 0o600)

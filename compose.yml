@@ -118,10 +118,19 @@ services:
       # What a save replaces, kept for a fortnight. Outside the vault on purpose: copies
       # inside it would be carried to every device by the sync and turn up in searches.
       - ./data/notes-recovery:/data/notes-recovery
-      # Obsidian vault READ ONLY: the spam detection pulls the known addresses out of it
-      # (the acquittal list). The vault is a Syncthing replica — writing into it here would mean
-      # writing against Obsidian and the sync.
-      - ${VAULT_HOST_PATH:-/opt/docker/stacks/syncthing/data/sync/Sync/Obsidian/Second Brain}:/vault:ro
+      # The note vault, now read AND write. It was read only for as long as another program
+      # wrote into the same folder; that program is switched off, and this is what took its
+      # place — the note area writes here, and so does the assistant.
+      #
+      # It stays a replica the file sync carries to every device, which is why two things in
+      # notes/vault/write.py are not optional: a write goes through a scratch file whose name
+      # the sync's ignore list matches, and a new file is given the owner of the vault rather
+      # than of this service. This runs as root; the sync does not, and a note it cannot write
+      # fails on the next change made on a phone, quietly.
+      #
+      # Deliberately NOT `user: "1000:1000"` on the service: this same container also writes
+      # /workspace and /data/film, both of which belong to root, and it would lose those.
+      - ${VAULT_HOST_PATH:-/opt/docker/stacks/syncthing/data/sync/Sync/Obsidian/Second Brain}:/vault
     networks:
       default:
         aliases:

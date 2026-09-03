@@ -18,9 +18,19 @@ something when it is forgotten:
   * **Deleting moves rather than deletes.** Into a folder in the vault that
     starts with a dot, so nothing indexes it and nothing searches it, and the
     layout under it is kept so a note can go back where it came from.
+  * **A new file belongs to whoever owns the vault, not to whoever wrote it.**
+    This service runs as root and the vault belongs to the account the file sync
+    runs as. A note created here as root can be read by the sync but not written
+    by it, so the next change made on a phone fails on this machine — quietly,
+    because a sync error is not something anybody watches. Replacing an existing
+    note keeps that note's own owner and permissions instead, which is the only
+    way the handful of notes somebody deliberately locked down stay locked down;
+    the write goes through a new file, so without this they would all come back
+    as ordinary ones.
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -33,9 +43,51 @@ from .files import Vault
 
 NOTE_SUFFIX_RE = re.compile(r"\.(md|markdown)$", re.I)
 
+log = logging.getLogger("notes.write")
+
 
 class NotInTrash(Exception):
     """A path that is not in the trash, where one was expected."""
+
+
+def _adopt(root: Path, target: Path, scratch: Path) -> None:
+    """Give the scratch file the identity the finished file should have.
+
+    From the file it replaces when there is one, from the vault itself when
+    there is not. Done before the rename, so the file is never briefly there
+    with the wrong owner.
+
+    Never raises. Not being allowed to do this means this is not running as
+    root, and then it is already writing as the right account.
+    """
+    try:
+        try:
+            have = target.stat()
+            uid, gid, mode = have.st_uid, have.st_gid, have.st_mode & 0o777
+        except FileNotFoundError:
+            here = root.stat()
+            # The vault's own permissions without the execute bit: a folder is
+            # entered, a note is not.
+            uid, gid, mode = here.st_uid, here.st_gid, (here.st_mode & 0o666)
+        os.chown(scratch, uid, gid)
+        os.chmod(scratch, mode)
+    except OSError:
+        log.debug("notes: could not hand %s the owner of the vault", scratch)
+
+
+def _adopt_folder(root: Path, folder: Path) -> None:
+    """The same for a folder that had to be made on the way."""
+    try:
+        here = root.stat()
+        for parent in [folder, *folder.parents]:
+            if parent == root or root not in parent.parents:
+                break
+            st = parent.stat()
+            if st.st_uid == here.st_uid and st.st_gid == here.st_gid:
+                break               # this one and everything above it are fine
+            os.chown(parent, here.st_uid, here.st_gid)
+    except OSError:
+        log.debug("notes: could not hand the folders of %s the owner of the vault", folder)
 
 
 def _temp_sibling(abs_path: Path) -> Path:
@@ -54,12 +106,15 @@ def write_text(vault: Vault, rel: str, text: str) -> None:
     ends its lines with two characters keeps them, and rewriting them would make
     every device see the whole file as changed for a change nobody made.
     """
-    abs_path = paths.resolve(Path(vault.root), rel)
+    root = Path(vault.root)
+    abs_path = paths.resolve(root, rel)
     abs_path.parent.mkdir(parents=True, exist_ok=True)
+    _adopt_folder(root, abs_path.parent)
     tmp = _temp_sibling(abs_path)
     try:
         with tmp.open("w", encoding="utf-8", newline="") as fh:
             fh.write(text)
+        _adopt(root, abs_path, tmp)
         os.replace(tmp, abs_path)
     except OSError:
         tmp.unlink(missing_ok=True)
@@ -67,11 +122,14 @@ def write_text(vault: Vault, rel: str, text: str) -> None:
 
 
 def write_bytes(vault: Vault, rel: str, data: bytes) -> None:
-    abs_path = paths.resolve(Path(vault.root), rel)
+    root = Path(vault.root)
+    abs_path = paths.resolve(root, rel)
     abs_path.parent.mkdir(parents=True, exist_ok=True)
+    _adopt_folder(root, abs_path.parent)
     tmp = _temp_sibling(abs_path)
     try:
         tmp.write_bytes(data)
+        _adopt(root, abs_path, tmp)
         os.replace(tmp, abs_path)
     except OSError:
         tmp.unlink(missing_ok=True)
@@ -79,7 +137,10 @@ def write_bytes(vault: Vault, rel: str, data: bytes) -> None:
 
 
 def create_folder(vault: Vault, rel: str) -> None:
-    paths.resolve(Path(vault.root), rel).mkdir(parents=True, exist_ok=True)
+    root = Path(vault.root)
+    folder = paths.resolve(root, rel)
+    folder.mkdir(parents=True, exist_ok=True)
+    _adopt_folder(root, folder)
 
 
 def exists(vault: Vault, rel: str) -> bool:
@@ -94,6 +155,7 @@ def rename(vault: Vault, source: str, target: str) -> None:
     abs_from = paths.resolve(root, source, must_exist=True)
     abs_to = paths.resolve(root, target)
     abs_to.parent.mkdir(parents=True, exist_ok=True)
+    _adopt_folder(root, abs_to.parent)
     os.rename(abs_from, abs_to)
 
 
