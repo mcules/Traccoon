@@ -13,7 +13,7 @@ from app.models.enums import HoldReason, PurchaseStatus, StatusCategory, TicketA
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.services import artifacts as kind
 from sqlalchemy import select
-from conftest import make_asset, make_project
+from conftest import a_reporter, make_asset, make_project
 
 APP = pathlib.Path(__file__).resolve().parent.parent / "app"
 # Direct assignment is allowed here: the implementation itself respectively the creation of a
@@ -53,7 +53,7 @@ async def _ticket(db, proj) -> Issue:
     s = (await db.execute(select(WorkflowStatus).where(
         WorkflowStatus.project_id == proj.id, WorkflowStatus.name == "To Do"))).scalar_one()
     i = Issue(project_id=proj.id, number=1, key="TST-1", type_id=t.id, status_id=s.id,
-              summary="Ein Ticket", reporter_id=1, rank="0001")
+              summary="Ein Ticket", reporter_id=(await a_reporter(db)).id, rank="0001")
     db.add(i)
     await db.commit()
     return i

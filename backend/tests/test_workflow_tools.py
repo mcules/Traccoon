@@ -45,8 +45,12 @@ async def anna(db):
     user = await make_user(db, "anna")
     db.add(McpServer(name="obsidian", transport="http", url="http://obsidian:3010/mcp",
                      enabled=True, user_id=user.id))
+    # Somebody else's server, and somebody else has to exist for it: a server
+    # owned by a user id nobody has is a row the database refuses, and the point
+    # of the test is the person next door, not a hole in the table.
+    other = await make_user(db, "nachbar")
     db.add(McpServer(name="fremd", transport="http", url="http://fremd:3010/mcp",
-                     enabled=True, user_id=user.id + 999))
+                     enabled=True, user_id=other.id))
     await db.commit()
     return user
 

@@ -17,7 +17,7 @@ from app.api.deployments import LIMIT_MAX, LOG_HEAD_CHARS, SINCE_HOURS_MAX
 from app.models.enums import ProjectRole, StatusCategory
 from app.models.ops import Deployment
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
-from conftest import add_member, auth, make_project, make_user
+from conftest import a_reporter, add_member, auth, make_project, make_user
 
 NOW = dt.datetime.now(dt.timezone.utc)
 
@@ -42,7 +42,7 @@ async def ticket(db, project, number: int = 1) -> Issue:
     db.add_all([kind, status, IssueCounter(project_id=project.id, last_number=0)])
     await db.commit()
     i = Issue(project_id=project.id, number=number, key=f"{project.key}-{number}",
-              type_id=kind.id, status_id=status.id, summary="Tu was", reporter_id=1, rank="1")
+              type_id=kind.id, status_id=status.id, summary="Tu was", reporter_id=(await a_reporter(db)).id, rank="1")
     db.add(i)
     await db.commit()
     return i

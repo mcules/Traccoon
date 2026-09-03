@@ -11,7 +11,7 @@ from app.models.enums import ProjectRole, StatusCategory, TicketAgentStatus
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.services import artifact_fields as fields
 from app.services import artifacts as svc
-from conftest import add_member, auth, make_asset, make_project, make_user
+from conftest import a_reporter, add_member, auth, make_asset, make_project, make_user
 from sqlalchemy import select
 
 
@@ -30,7 +30,7 @@ async def _ticket(db, proj, number=1) -> Issue:
         db.add_all([t, s, IssueCounter(project_id=proj.id, last_number=0)])
         await db.commit()
     i = Issue(project_id=proj.id, number=number, key=f"{proj.key}-{number}", type_id=t.id,
-              status_id=s.id, summary="Ein Ticket", reporter_id=1, rank=f"{number:04d}")
+              status_id=s.id, summary="Ein Ticket", reporter_id=(await a_reporter(db)).id, rank=f"{number:04d}")
     db.add(i)
     await db.commit()
     return i

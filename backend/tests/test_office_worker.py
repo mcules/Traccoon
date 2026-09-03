@@ -20,7 +20,7 @@ from app.models.enums import StatusCategory
 from app.services import office
 from app.worker import runtime as rt
 from app.worker.providers.base import ChatResponse, ProviderError, ToolCall
-from conftest import make_project, make_user
+from conftest import a_reporter, make_project, make_user
 from sqlalchemy import select
 
 
@@ -138,7 +138,7 @@ async def ticket(db, project):
     db.add_all([kind, status, IssueCounter(project_id=project.id, last_number=0)])
     await db.commit()
     i = Issue(project_id=project.id, number=1, key=f"{project.key}-1", type_id=kind.id,
-              status_id=status.id, summary="Tu was", description="Bitte.", reporter_id=1, rank="1")
+              status_id=status.id, summary="Tu was", description="Bitte.", reporter_id=(await a_reporter(db)).id, rank="1")
     db.add(i)
     await db.commit()
     return i

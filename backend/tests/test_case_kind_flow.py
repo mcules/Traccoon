@@ -10,7 +10,7 @@ from app.models.enums import ProjectRole, StatusCategory
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.services import workflow_sets as sets
 from app.services.workflow_seed import ensure_builtin_set
-from conftest import add_member, auth, make_project, make_user
+from conftest import a_reporter, add_member, auth, make_project, make_user
 from sqlalchemy import select
 
 SLOT = "ticket_lifecycle"
@@ -81,7 +81,7 @@ async def test_the_lifecycle_starts_the_flow_of_the_case_kind(db):
     column = (await db.execute(select(WorkflowStatus).where(
         WorkflowStatus.project_id == proj.id))).scalars().first()
     ticket = Issue(project_id=proj.id, number=1, key="VGA-1", type_id=bug.id,
-                   status_id=column.id, summary="Ein Bug", reporter_id=1, rank="0001",
+                   status_id=column.id, summary="Ein Bug", reporter_id=(await a_reporter(db)).id, rank="0001",
                    assigned_agent="dev")
     db.add(ticket)
     await db.commit()

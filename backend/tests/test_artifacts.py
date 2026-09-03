@@ -12,7 +12,7 @@ from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.services import artifact_fields as fields
 from app.services import artifacts as kind
 from sqlalchemy import select
-from conftest import auth, make_asset, make_project, make_user
+from conftest import a_reporter, auth, make_asset, make_project, make_user
 
 
 @pytest.fixture
@@ -50,7 +50,7 @@ async def test_setting_state_affects_the_ticket(db, register):
     columns = {s.name: s for s in (await db.execute(
         select(WorkflowStatus).where(WorkflowStatus.project_id == proj.id))).scalars().all()}
     issue = Issue(project_id=proj.id, number=1, key="TST-1", type_id=t.id,
-                  status_id=columns["To Do"].id, summary="X", reporter_id=1, rank="1")
+                  status_id=columns["To Do"].id, summary="X", reporter_id=(await a_reporter(db)).id, rank="1")
     db.add(issue)
     await db.commit()
 
@@ -178,7 +178,7 @@ async def test_foreign_projects_stay_invisible(client, db, register):
     db.add_all([t, s, IssueCounter(project_id=foreign.id, last_number=0)])
     await db.commit()
     db.add(Issue(project_id=foreign.id, number=1, key="FRD-1", type_id=t.id, status_id=s.id,
-                 summary="Geheim", reporter_id=1, rank="0001"))
+                 summary="Geheim", reporter_id=(await a_reporter(db)).id, rank="0001"))
     await db.commit()
     await kind.reconcile(db)
 

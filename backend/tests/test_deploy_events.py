@@ -24,7 +24,7 @@ from app.services import deploy_watch as dw
 from app.services.office import (
     RunCtx, SEQ_SLOTS, deploy_anchor_step_id, deployment_events, publish_step,
 )
-from conftest import auth, make_project, make_user
+from conftest import a_reporter, auth, make_project, make_user
 
 NOW = dt.datetime.now(dt.timezone.utc)
 
@@ -51,7 +51,7 @@ async def ticket(db, project, number: int = 1) -> Issue:
     db.add_all([kind, status, IssueCounter(project_id=project.id, last_number=0)])
     await db.commit()
     i = Issue(project_id=project.id, number=number, key=f"{project.key}-{number}",
-              type_id=kind.id, status_id=status.id, summary="Tu was", reporter_id=1, rank="1")
+              type_id=kind.id, status_id=status.id, summary="Tu was", reporter_id=(await a_reporter(db)).id, rank="1")
     db.add(i)
     await db.commit()
     return i

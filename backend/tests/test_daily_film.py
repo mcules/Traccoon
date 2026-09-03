@@ -26,7 +26,7 @@ from app.models.ops import Job, JobRun
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.services import office_film as of
 from app.services import scheduler
-from conftest import make_project
+from conftest import a_reporter, make_project
 
 # The window of all tests: one full day in UTC. Deliberately hard wired: a window derived
 # from the clock would make the test depend on the time of day.
@@ -44,7 +44,7 @@ async def ticket(db, project, number: int, summary: str = "Tu was") -> Issue:
     db.add_all([kind, status])
     await db.commit()
     i = Issue(project_id=project.id, number=number, key=f"{project.key}-{number}",
-              type_id=kind.id, status_id=status.id, summary=summary, reporter_id=1, rank="1")
+              type_id=kind.id, status_id=status.id, summary=summary, reporter_id=(await a_reporter(db)).id, rank="1")
     db.add(i)
     await db.commit()
     return i

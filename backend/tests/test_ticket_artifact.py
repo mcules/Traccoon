@@ -9,7 +9,7 @@ from app.models.enums import StatusCategory, TicketAgentStatus, WorkflowSubjectK
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.services import artifacts as kind
 from sqlalchemy import select
-from conftest import make_asset, make_project, make_user
+from conftest import a_reporter, make_asset, make_project, make_user
 import pytest
 
 
@@ -22,7 +22,7 @@ async def _ticket(db, proj, summary="Ein Ticket", number=1, status=None) -> Issu
         db.add_all([t, s, IssueCounter(project_id=proj.id, last_number=0)])
         await db.commit()
     i = Issue(project_id=proj.id, number=number, key=f"{proj.key}-{number}", type_id=t.id,
-              status_id=s.id, summary=summary, reporter_id=1, rank=f"{number:04d}",
+              status_id=s.id, summary=summary, reporter_id=(await a_reporter(db)).id, rank=f"{number:04d}",
               agent_status=status)
     db.add(i)
     await db.commit()

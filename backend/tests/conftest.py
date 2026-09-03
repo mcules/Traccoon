@@ -19,6 +19,7 @@ os.environ.setdefault("DEV_CREATE_ALL", "false")
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import event, select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -52,6 +53,19 @@ async def db(monkeypatch):
     engine = create_async_engine(
         "sqlite+aiosqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool,
     )
+
+    # SQLite ignores foreign keys unless asked to, Postgres never does. Without
+    # this, every `ON DELETE CASCADE` and `ON DELETE SET NULL` in the models is
+    # a declaration no test can measure, and a wrong one would only show up in
+    # production. It also means a test may not invent an id that points at
+    # nothing: rows that exist only in a test are exactly the rows nobody
+    # notices are impossible.
+    @event.listens_for(engine.sync_engine, "connect")
+    def _keys_are_kept(conn, _record):  # noqa: ANN001
+        cur = conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -218,6 +232,21 @@ async def make_user(db, username: str, admin: bool = False) -> User:
     return u
 
 
+async def a_reporter(db) -> User:
+    """Somebody for a ticket to point at.
+
+    Tests used to write `reporter_id=1` and get away with it because SQLite was
+    not enforcing foreign keys: the ticket pointed at a person who did not
+    exist. Postgres would have refused it, and a test that asserts anything
+    about a reporter was asserting about nobody.
+
+    Reuses whoever the test already made, so a fixture that has a person keeps
+    that person as the reporter rather than gaining a second one.
+    """
+    row = (await db.execute(select(User).order_by(User.id))).scalars().first()
+    return row if row is not None else await make_user(db, "reporter")
+
+
 def auth(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
@@ -304,13 +333,12 @@ async def hook(client, db, sub, payload: dict, headers: dict | None = None):
     """
     from app.models.ops import InboundDelivery
     from app.services import inbound
-    from sqlalchemy import select as _select
 
     answer = await client.post(f"/hooks/{sub.public_id}", json=payload, headers=headers or {})
     if answer.status_code >= 400 or "delivery_id" not in answer.json():
         return answer            # refused, or the synchronous way — nothing to empty
     await inbound.drain(db)
-    row = (await db.execute(_select(InboundDelivery).where(
+    row = (await db.execute(select(InboundDelivery).where(
         InboundDelivery.id == answer.json()["delivery_id"]))).scalar_one()
     await db.refresh(row)
     return row

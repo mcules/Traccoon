@@ -17,7 +17,7 @@ from app.services.workflow_seed import (
     build_acceptance, build_hardware_procurement, build_ticket_intake,
     build_ticket_lifecycle,
 )
-from conftest import make_asset, make_project
+from conftest import a_reporter, make_asset, make_project
 
 
 def _node(action: str, **params) -> dict:
@@ -51,7 +51,7 @@ async def _ticket(db, proj):
     db.add_all([t, s, IssueCounter(project_id=proj.id, last_number=0)])
     await db.commit()
     i = Issue(project_id=proj.id, number=1, key=f"{proj.key}-1", type_id=t.id, status_id=s.id,
-              summary="Ein Ticket", reporter_id=1, rank="0001")
+              summary="Ein Ticket", reporter_id=(await a_reporter(db)).id, rank="0001")
     db.add(i)
     await db.commit()
     return i

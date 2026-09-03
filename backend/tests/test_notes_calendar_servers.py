@@ -117,14 +117,12 @@ async def test_losing_the_login_leaves_the_calendars_as_subscriptions(db) -> Non
                       server_id=server.id, caldav_id="privat", write_access="manual"), user, db)
     assert made["writable"] is True
     await nn.drop_calendar_server(server.id, user, db)
+    await db.refresh(await db.get(NotesCalendar, made["id"]))
     left = (await nn.calendars(user, db))["calendars"]
     assert len(left) == 1
     assert left[0]["url"] == "https://example.invalid/dav/privat/"
-    # That the calendar then reads as a subscription is the database's doing,
-    # and SQLite keeps foreign keys switched off unless asked — so what is
-    # checked here is the rule Postgres acts on.
-    key, = NotesCalendar.__table__.c.server_id.foreign_keys
-    assert key.ondelete == "SET NULL"
+    assert left[0]["server_id"] is None
+    assert left[0]["writable"] is False
 
 
 @pytest.mark.asyncio

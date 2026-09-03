@@ -5,7 +5,7 @@ sets no "done" without a clean merge.
 import app.services.workflow_engine as enginemod
 from app.models.enums import ProjectRole, StatusCategory, TicketAgentStatus
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
-from conftest import add_member, auth, make_project, make_user
+from conftest import a_reporter, add_member, auth, make_project, make_user
 
 
 async def _seed_board(db, project):
@@ -31,7 +31,7 @@ async def _seed_board(db, project):
 
 async def _make_issue(db, project, type_id, status_id, agent_status=None):
     i = Issue(project_id=project.id, number=1, key=f"{project.key}-1", type_id=type_id,
-              status_id=status_id, summary="Test", reporter_id=1, rank="0001",
+              status_id=status_id, summary="Test", reporter_id=(await a_reporter(db)).id, rank="0001",
               agent_status=agent_status)
     db.add(i)
     await db.commit()
