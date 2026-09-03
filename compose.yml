@@ -351,6 +351,9 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       SPOOL_FILE: /spool/pending.jsonl
+      # The same zone as the rest of the house. The database stays on UTC, which is
+      # where timestamps belong; this is about what a local wall clock reads.
+      TZ: ${TZ:-Europe/Berlin}
     volumes:
       # Even without the database nothing may be lost: the delivery goes into a file here and
       # is carried over on the next chance.
