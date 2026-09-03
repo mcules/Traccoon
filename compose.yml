@@ -87,6 +87,11 @@ services:
       # carry the copies to every device and searches do not find them. Empty means
       # nothing is kept.
       NOTES_RECOVERY_DIR: ${NOTES_RECOVERY_DIR:-/data/notes-recovery}
+      # The repository the older versions of a note come out of. Read only, and
+      # beside the vault rather than inside it — a repository inside a vault is
+      # carried to every device by the sync, which happened once and cost 246 MB
+      # on five of them.
+      NOTES_HISTORY_DIR: ${NOTES_HISTORY_DIR:-/history/vault.git}
       MCPJUNGLE_BASE: ${MCPJUNGLE_BASE:-http://mcpjungle:8080}
       MCPJUNGLE_ADMIN_TOKEN: ${MCPJUNGLE_ADMIN_TOKEN:-}
       VAULT_PATH: /vault
@@ -128,6 +133,9 @@ services:
       # Deliberately NOT `user: "1000:1000"` on the service: this same container also writes
       # /workspace and /data/film, both of which belong to root, and it would lose those.
       - ${VAULT_HOST_PATH:-/opt/docker/stacks/syncthing/data/sync/Sync/Obsidian/Second Brain}:/vault
+      # The versions, read only. The backup writes this once an hour; nothing
+      # here writes to it, and the mount says so rather than trusting the code.
+      - ${VAULT_HISTORY_PATH:-/opt/docker/stacks/vault-backup/data/vault.git}:/history/vault.git:ro
     networks:
       default:
         aliases:

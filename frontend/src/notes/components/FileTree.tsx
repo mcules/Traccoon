@@ -279,7 +279,7 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
   };
   const copyUrl = () => {
     navigator.clipboard?.writeText(`${location.origin}${pathToUrl(node.path)}`).catch(() => {});
-    notify('URL copied');
+    notify(tr("notes_menu.url_copied"));
   };
 
   // Same menu from two gestures: right-click on a desktop, a long press on a

@@ -220,10 +220,11 @@ export default function Workspace() {
           label: tr("notes_menu.copy_link_path"),
           onClick: () => {
             navigator.clipboard?.writeText(`${location.origin}${pathToUrl(path)}`).catch(() => {});
-            notify('URL copied');
+            notify(tr("notes_menu.url_copied"));
           },
         },
-        { label: 'Open version history', icon: 'clock', onClick: () => setVersionHistory(path) },
+        { label: tr("notes_menu.open_version_history"), icon: 'clock',
+          onClick: () => setVersionHistory(path) },
         ...(isMd
           ? [
               {

@@ -57,7 +57,8 @@ export interface CalEvent {
   cancelled: boolean;
 }
 
-export interface GitCommit {
+/** One kept version of a note, as the backup wrote it. */
+export interface NoteVersion {
   hash: string;
   date: string;
   message: string;
@@ -500,20 +501,16 @@ export const api = {
       `/api/settings/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`,
     ),
 
-  // git
-  gitStatus: () => req<any>('/api/git/status'),
-  gitInit: () => req<any>('/api/git/init', { method: 'POST' }),
-  gitClone: () => req<any>('/api/git/clone', { method: 'POST' }),
-  gitPull: () => req<{ message: string }>('/api/git/pull', { method: 'POST' }),
-  gitCommit: (message?: string) =>
-    req<{ message: string }>('/api/git/commit', { method: 'POST', body: JSON.stringify({ message }) }),
-  gitPush: () => req<{ message: string }>('/api/git/push', { method: 'POST' }),
-  gitSync: (message?: string) =>
-    req<{ ok: boolean; log: string[] }>('/api/git/sync', { method: 'POST', body: JSON.stringify({ message }) }),
-  gitLog: (path: string) =>
-    req<{ commits: GitCommit[] }>(`/api/git/log?path=${encodeURIComponent(path)}`),
-  gitShow: (hash: string, path: string) =>
-    req<{ content: string }>(`/api/git/show?hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(path)}`),
+  // The older versions of a note. Reading only: they come out of the hourly
+  // backup beside the vault, and nothing here writes to it. The six calls that
+  // did — init, clone, pull, commit, push, sync — are gone with the service
+  // that answered them.
+  historyInfo: () => native<{ has: boolean; last: string | null }>('/history'),
+  historyLog: (path: string) =>
+    native<{ commits: NoteVersion[] }>(`/history/log?path=${encodeURIComponent(path)}`),
+  historyShow: (hash: string, path: string) =>
+    native<{ content: string }>(
+      `/history/show?hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(path)}`),
 
   // api keys
   listKeys: () => req<{ keys: any[] }>('/api/keys/'),

@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     # nothing is kept: writing somebody's notes to a second place is not a thing
     # to start doing without being asked.
     notes_recovery_dir: str = ""                    # NOTES_RECOVERY_DIR
+    # The repository the older versions of a note are read out of. It sits
+    # beside the vault, not inside it, and is mounted read only: a repository
+    # inside a vault is carried to every device by the synchronisation. Empty
+    # means a vault without a history, which is what a new one has.
+    notes_history_dir: str = ""                     # NOTES_HISTORY_DIR
 
     mcpjungle_base: str = "http://mcpjungle:8080"   # MCPJUNGLE_BASE
     mcpjungle_admin_token: str = ""                 # MCPJUNGLE_ADMIN_TOKEN

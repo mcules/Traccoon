@@ -19,7 +19,7 @@ export default function BookmarksPanel() {
 
   const copyUrl = (p: string) => {
     navigator.clipboard?.writeText(`${location.origin}${pathToUrl(p)}`).catch(() => {});
-    notify('URL copied');
+    notify(tr("notes_menu.url_copied"));
   };
 
   // Drag a row onto a folder in the file tree to move the underlying file

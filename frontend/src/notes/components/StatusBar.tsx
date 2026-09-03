@@ -10,8 +10,6 @@ export default function StatusBar() {
   const content = useStore((s) => s.content);
   const activePath = useStore((s) => s.activePath);
   const dirty = useStore((s) => s.dirty);
-  const loadTree = useStore((s) => s.loadTree);
-  const notify = useStore((s) => s.notify);
   const viewMode = useStore((s) => s.viewMode);
   const setViewMode = useStore((s) => s.setViewMode);
   const online = useStore((s) => s.online);
@@ -24,31 +22,16 @@ export default function StatusBar() {
     const id = setInterval(tick, 3000);
     return () => clearInterval(id);
   }, []);
-  const [git, setGit] = useState<any>(null);
-  const [syncing, setSyncing] = useState(false);
-
-  const refresh = () => api.gitStatus().then(setGit).catch(() => setGit(null));
+  // How fresh the kept versions are. There is nothing to press here: the
+  // versions come from the hourly backup beside the vault, which writes on its
+  // own, and this side only ever reads them.
+  const [history, setHistory] = useState<{ has: boolean; last: string | null } | null>(null);
   useEffect(() => {
+    const refresh = () => api.historyInfo().then(setHistory).catch(() => setHistory(null));
     refresh();
-    const id = setInterval(refresh, 15000);
+    const id = setInterval(refresh, 60000);
     return () => clearInterval(id);
   }, []);
-
-  const sync = async () => {
-    if (syncing) return;
-    setSyncing(true);
-    notify('Syncing…');
-    try {
-      const r = await api.gitSync();
-      notify(r.ok ? 'Synced ✓' : `Sync: ${r.log.at(-1)}`);
-      await loadTree();
-      await refresh();
-    } catch (e: any) {
-      notify(`Sync failed: ${e.message}`);
-    } finally {
-      setSyncing(false);
-    }
-  };
 
   const isText = activePath && /\.(md|markdown|txt)$/i.test(activePath);
   const words = isText ? content.trim().split(/\s+/).filter(Boolean).length : 0;
@@ -69,27 +52,23 @@ export default function StatusBar() {
     return () => clearInterval(id);
   }, []);
 
-  /** "vor 12 Minuten" — how long ago the last backup ran. */
+  /** How long ago the last backup ran, in words. */
   const ago = (iso: string | null): string => {
     if (!iso) return '';
     const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
     if (!Number.isFinite(min) || min < 0) return '';
-    if (min < 1) return 'gerade eben';
-    if (min < 60) return `vor ${min} min`;
+    if (min < 1) return tr("notes_versions.just_now");
+    if (min < 60) return tr("notes_versions.minutes_ago", { n: min });
     const h = Math.round(min / 60);
-    return h < 48 ? `vor ${h} h` : `vor ${Math.round(h / 24)} Tagen`;
+    return h < 48 ? tr("notes_versions.hours_ago", { n: h })
+                  : tr("notes_versions.days_ago", { n: Math.round(h / 24) });
   };
 
-  // Sync off is the normal state here: the versions come from the hourly backup
-  // beside the vault, and what matters then is how fresh that is — not the state
-  // of a working tree nobody commits to.
-  const gitLabel = !git?.enabled
-    ? git?.hasHistory
-      ? `Sicherung ${ago(git.historyLast) || 'vorhanden'}`
-      : tr("notes_versions.no_vault_backup")
-    : git.clean
-      ? `git ${git.branch}${git.ahead ? ` ↑${git.ahead}` : ''}${git.behind ? ` ↓${git.behind}` : ''}`
-      : `${git.modified + git.notAdded} offene Änderungen`;
+  // What matters is how fresh the kept versions are. The state of a working
+  // tree nobody commits to used to stand here as well; there is no such tree.
+  const historyLabel = !history?.has
+    ? tr("notes_versions.no_vault_backup")
+    : tr("notes_versions.backup_age", { age: ago(history.last) || tr("notes_versions.present") });
 
   return (
     <div className="status-bar">
@@ -116,13 +95,9 @@ export default function StatusBar() {
           {viewMode === 'reading' ? 'Leseansicht' : viewMode === 'source' ? 'Quelltext' : 'Bearbeiten'}
         </span>
       )}
-      <span
-        className="clickable"
-        title={git?.enabled ? 'Jetzt abgleichen' : tr("notes_versions.from_backup")}
-        onClick={git?.enabled ? sync : undefined}
-      >
-        <Icon name="refresh-cw" size={13} style={syncing ? { animation: 'spin 1s linear infinite' } : undefined} />
-        {gitLabel}
+      <span title={tr("notes_versions.from_backup")}>
+        <Icon name="clock" size={13} />
+        {historyLabel}
       </span>
     </div>
   );

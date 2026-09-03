@@ -54,6 +54,20 @@ def _clean(rel: str) -> PurePosixPath:
     return PurePosixPath(text)
 
 
+def checked(rel: str) -> str:
+    """The path, cleaned, or a refusal — without touching a disk.
+
+    The disk check below needs a root to resolve against. Not everything that
+    takes a vault path has one: the version history addresses a note inside a
+    repository, where there is no directory to walk. The part of the check that
+    is about the path itself belongs in one place all the same.
+    """
+    parts = _clean(rel)
+    if parts.is_absolute() or any(p == ".." for p in parts.parts):
+        raise OutsideVault(rel)
+    return parts.as_posix()
+
+
 def resolve(root: Path, rel: str, *, must_exist: bool = False) -> Path:
     """Turn a vault-relative path into a place on the disk, or refuse.
 
@@ -61,9 +75,7 @@ def resolve(root: Path, rel: str, *, must_exist: bool = False) -> Path:
     catches a link pointing out of the vault. For writing the file is not there
     yet, so the parent is resolved instead and the name is joined onto it.
     """
-    parts = _clean(rel)
-    if parts.is_absolute() or any(p == ".." for p in parts.parts):
-        raise OutsideVault(rel)
+    parts = PurePosixPath(checked(rel))
 
     base = root.resolve()
     target = (base / parts).resolve() if must_exist else _resolve_parent(base, parts)

@@ -38,10 +38,13 @@ from ..models.notes import NotesCalendar
 from ..models.user import User
 from ..notes import live, paths
 from ..core.timezones import zone_of
+from ..config import settings
+from ..notes import history as note_history
 from ..notes.calendar import caldav as cal_dav
 from ..notes.calendar import daily as cal_daily
 from ..notes.calendar import fetch as cal_fetch
 from ..notes.calendar import store as cal_store
+from ..notes.dv import settings as note_settings
 from ..notes.dv import tasks as dv_tasks
 from ..notes.dv.bases import run as dv_bases
 from ..notes.dv.dql import evaluate_inline, execute as run_query, file_object
@@ -868,6 +871,63 @@ async def calendar_tidy(body: TidyIn, user: User = Depends(get_current_user),
         if not body.dryRun:
             _writing(lambda t=folded.text, r=rel: ws.save(r, t), rel)
     return {"files": files, "total": total, "dryRun": body.dryRun}
+
+
+# ---------------------------------------------------------------- the versions
+#
+# Reading only. The six routes of the side this replaces that write — init,
+# clone, pull, commit, push, sync — are not ported: the setting that drove them
+# was off, and the one time one of them ran it put a 246 MB repository inside
+# the vault, which the synchronisation then carried to five devices.
+
+
+def _history() -> note_history.History:
+    return note_history.open_history(settings.notes_history_dir)
+
+
+@router.get("/history")
+async def history_info(user: User = Depends(get_current_user)) -> dict:
+    """Whether this vault has older versions, and how fresh they are."""
+    try:
+        return _history().info()
+    except note_history.NoHistory:
+        return {"has": False, "last": None}
+
+
+@router.get("/history/log")
+async def history_log(path: str = Query(""), limit: int = Query(50),
+                      user: User = Depends(get_current_user)) -> dict:
+    """The versions of one note, newest first."""
+    if not path.strip():
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_path_required",
+                    "Which note?")
+    try:
+        return {"commits": [c.as_json() for c in _history().log(path, limit)]}
+    except paths.OutsideVault:
+        # The same answer as for a note that is not there, as everywhere else
+        # here: telling the two apart says whether a path exists outside.
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_not_found",
+                    "No such note: {path}", path=path) from None
+    except note_history.NoHistory:
+        return {"commits": []}
+
+
+@router.get("/history/show")
+async def history_show(hash: str = Query(""), path: str = Query(""),
+                       user: User = Depends(get_current_user)) -> dict:
+    """One note as it stood in one version."""
+    if not hash.strip() or not path.strip():
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_version_incomplete",
+                    "A version needs a commit and a note")
+    try:
+        return {"content": _history().show(hash, path)}
+    except paths.OutsideVault:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_not_found",
+                    "No such note: {path}", path=path) from None
+    except note_history.NoHistory as err:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_version_not_found",
+                    "This version of the note is not there: {why}",
+                    why=str(err)) from None
 
 
 # ------------------------------------------------------------------- CalDAV
