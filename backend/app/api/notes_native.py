@@ -54,6 +54,7 @@ from ..notes.calendar import fetch as cal_fetch
 from ..notes.calendar import store as cal_store
 from ..notes.dv import settings as note_settings
 from ..notes.dv import tasks as dv_tasks
+from ..notes.dv import tasktoggle as dv_toggle
 from ..notes.dv.bases import run as dv_bases
 from ..notes.dv.dql import evaluate_inline, execute as run_query, file_object
 from ..notes.query import matches as note_matches
@@ -910,6 +911,112 @@ async def calendar_tidy(body: TidyIn, user: User = Depends(get_current_user),
         if not body.dryRun:
             _writing(lambda t=folded.text, r=rel: ws.save(r, t), rel)
     return {"files": files, "total": total, "dryRun": body.dryRun}
+
+
+# ------------------------------------------- ticking a task off, and the blocks
+
+
+class ToggleIn(BaseModel):
+    path: str
+    line: int
+    # What the caller believes stands there. A result can be a minute old, and
+    # the note may have been written since.
+    text: str = ""
+    checked: bool = False
+    # "tasks" writes a done date and brings the next instance of a recurring
+    # task with it; "dataview" only flips the box, because that language's own
+    # completion tracking is off.
+    mode: str = "dataview"
+
+
+@router.post("/dataview/task")
+async def toggle_task(body: ToggleIn, user: User = Depends(get_current_user)) -> dict:
+    """Tick a task off in the note it lives in."""
+    if not body.path.strip() or body.line < 0:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_path_required",
+                    "Which note?")
+    ws = workspace_of(user)
+    raw = _guard(lambda: ws.vault.read_text(body.path), body.path)
+    lines = raw.split("\n")
+    if body.line >= len(lines):
+        raise Error(status.HTTP_409_CONFLICT, "err.notes_task_moved",
+                    "That task is no longer where it was — open the note again")
+    # Windows line endings stay: the carriage return is taken off for matching
+    # and put back for writing, so ticking one task off does not rewrite every
+    # line of the file for everything syncing it.
+    written = lines[body.line]
+    cr = "\r" if written.endswith("\r") else ""
+    current = written[:-1] if cr else written
+
+    said = dv_toggle.text_of(current)
+    if said is None or (body.text and said.strip() != body.text.strip()):
+        raise Error(status.HTTP_409_CONFLICT, "err.notes_task_moved",
+                    "That task is no longer where it was — open the note again")
+    out = dv_toggle.toggled(current, body.checked, body.mode)
+    if out is None:
+        raise Error(status.HTTP_409_CONFLICT, "err.notes_task_moved",
+                    "That task is no longer where it was — open the note again")
+    lines[body.line:body.line + 1] = [f"{l}{cr}" for l in out]
+    _writing(lambda: ws.save(body.path, "\n".join(lines)), body.path)
+    return {"ok": True, "recurred": len(out) > 1}
+
+
+class ToggleLinesIn(BaseModel):
+    line: str
+    checked: bool = False
+    mode: str = "tasks"
+
+
+@router.post("/dataview/task/lines")
+async def toggle_task_lines(body: ToggleLinesIn,
+                            user: User = Depends(get_current_user)) -> dict:
+    """What a tick would produce — worked out, never written.
+
+    When the task sits in the note somebody has open, the change has to go
+    through the editor's own document: writing the file behind its back leaves
+    a stale buffer that saves the tick away again a moment later.
+    """
+    out = dv_toggle.toggled(body.line, body.checked, body.mode)
+    if out is None:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_not_a_task",
+                    "That line is not a task")
+    return {"lines": out}
+
+
+# The blocks of the query language that are program rather than query. The page
+# may not build a function from a string — its content policy forbids it — so
+# the code is registered here and handed back as a real module from this origin.
+# What is held is only ever code an authenticated session just sent, and a
+# session that can register code can equally well write it into a note.
+_scripts = note_templates.Modules()
+LONGEST_SCRIPT = 200_000
+
+
+class ScriptIn(BaseModel):
+    code: str
+
+
+@router.post("/dataview/script")
+async def register_script(body: ScriptIn, user: User = Depends(get_current_user)) -> dict:
+    if len(body.code) > LONGEST_SCRIPT:
+        raise Error(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "err.notes_script_too_long",
+                    "That block is too long to run")
+    wrapped = ("export default async function block(dv, app, input, container) {\n"
+               f"{body.code}\n}}\n")
+    return {"id": _scripts.put(note_templates.Compiled(code=wrapped, interactive=False))}
+
+
+@router.get("/dataview/script/{script_id}.mjs")
+async def serve_script(script_id: str, user: User = Depends(browser_user)):
+    code = _scripts.get(script_id)
+    if code is None:
+        return PlainTextResponse(
+            'export default async function () {\n'
+            '  throw new Error("This block is no longer held — open the note again.");\n'
+            '}\n',
+            status_code=status.HTTP_404_NOT_FOUND, media_type="text/javascript")
+    return PlainTextResponse(code, media_type="text/javascript",
+                             headers={"Cache-Control": "private, max-age=300"})
 
 
 # ---------------------------------------------------- what the vault decides

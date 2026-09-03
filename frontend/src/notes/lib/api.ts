@@ -527,10 +527,10 @@ export const api = {
   dvTasks: (query: string) =>
     native<DvTasksResult>('/dataview/tasks', { method: 'POST', body: JSON.stringify({ query }) }),
   dvRegisterScript: (code: string) =>
-    req<{ id: string }>('/api/dataview/script', { method: 'POST', body: JSON.stringify({ code }) }),
+    native<{ id: string }>('/dataview/script', { method: 'POST', body: JSON.stringify({ code }) }),
   dvToggleTask: (body: { path: string; line: number; text: string; checked: boolean; mode?: 'tasks' | 'dataview' }) =>
-    req<{ ok: true }>('/api/dataview/task', { method: 'POST', body: JSON.stringify(body) }),
+    native<{ ok: true }>('/dataview/task', { method: 'POST', body: JSON.stringify(body) }),
   /** What a tick would make of one task line — computed, not written. */
   dvTaskLines: (body: { line: string; checked: boolean; mode?: 'tasks' | 'dataview' }) =>
-    req<{ lines: string[] }>('/api/dataview/task/lines', { method: 'POST', body: JSON.stringify(body) }),
+    native<{ lines: string[] }>('/dataview/task/lines', { method: 'POST', body: JSON.stringify(body) }),
 };

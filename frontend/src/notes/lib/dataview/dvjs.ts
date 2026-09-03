@@ -360,7 +360,7 @@ function compile(code: string): Promise<BlockFn> {
     // Not through the fetch wrapper: this is a real module import, so the address
     // has to carry the bridge prefix itself. The reading cookie is what lets it
     // through, the same as for images.
-    .then((r) => import(/* @vite-ignore */ `/api/notes/dataview/script/${r.id}.mjs`))
+    .then((r) => import(/* @vite-ignore */ `/api/notes-native/dataview/script/${r.id}.mjs`))
     .then((mod: { default: BlockFn }) => mod.default);
   scriptCache.set(code, p);
   return p;

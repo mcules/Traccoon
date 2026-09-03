@@ -3579,5 +3579,8 @@
   "notes_versions.restore": "Diese Fassung wiederherstellen",
   "err.notes_not_a_drawing": "Das ist keine Zeichnung: {path}",
   "err.notes_property_incomplete": "Ein Eigenschaftstyp braucht einen Namen und eine Art",
-  "err.notes_no_vault_config": "Dieser Vault hat keinen Konfigurationsordner"
+  "err.notes_no_vault_config": "Dieser Vault hat keinen Konfigurationsordner",
+  "err.notes_task_moved": "Diese Aufgabe steht nicht mehr dort — die Notiz neu öffnen",
+  "err.notes_not_a_task": "Diese Zeile ist keine Aufgabe",
+  "err.notes_script_too_long": "Dieser Block ist zu lang zum Ausführen"
 }
