@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { tr } from "../../i18n";
+import { tr, language } from "../../i18n";
 import { api } from '../lib/api';
 import { useStore } from '../lib/store';
 import { displayHotkey, listCommands, normalizeHotkey } from '../lib/commands';
@@ -32,7 +32,7 @@ export default function HotkeySettings() {
     () =>
       listCommands()
         .filter((c) => !filter.trim() || c.name.toLowerCase().includes(filter.toLowerCase()) || c.id.includes(filter))
-        .sort((a, b) => a.name.localeCompare(b.name, 'de')),
+        .sort((a, b) => a.name.localeCompare(b.name, language())),
     [filter, custom],
   );
 

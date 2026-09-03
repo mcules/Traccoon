@@ -2,7 +2,7 @@
 // in the same lazy chunk as the code that needs it.
 import './notes.css';
 import { useEffect, useRef, useState } from 'react';
-import { api } from './lib/api';
+import { api, houseToken } from './lib/api';
 import { useStore } from './lib/store';
 import { runCommand } from './lib/commands';
 import { hotkeyCommand, loadHotkeys } from './lib/hotkeys';
@@ -224,9 +224,13 @@ export default function App() {
     // change — and with it every live update, without anything looking broken.
     const connect = () => {
       if (closed) return;
-      // Through the bridge, like everything else. The reading cookie is what
-      // gets it past the door: a browser cannot set a header on a socket.
-      ws = new WebSocket(`${proto}://${location.host}/api/notes/ws`);
+      // The house's own channel. The token rides in the address because a
+      // browser cannot put a header on a socket — same reason the bridge
+      // needed a cookie for this one thing.
+      const token = houseToken() ?? '';
+      ws = new WebSocket(
+        `${proto}://${location.host}/api/notes-native/ws?token=${encodeURIComponent(token)}`,
+      );
       ws.onmessage = onMessage;
       ws.onopen = () => {
         attempt = 0;

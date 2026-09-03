@@ -22,7 +22,7 @@ import logging
 from pathlib import Path, PurePosixPath
 
 from fastapi import (APIRouter, Depends, File, Form, Query, Response,
-                     UploadFile, status)
+                     UploadFile, WebSocket, WebSocketDisconnect, status)
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -31,15 +31,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.error import Error
 from ..core.security import encrypt_secret
-from ..db import get_session
+from ..db import SessionLocal, get_session
 from ..models.notes import NotesCalendar
 from ..models.user import User
-from ..notes import paths
+from ..notes import live, paths
 from ..notes.dv import tasks as dv_tasks
 from ..notes.dv.bases import run as dv_bases
 from ..notes.dv.dql import evaluate_inline, execute as run_query, file_object
 from ..notes.query.run import run as run_search
 from ..notes.registry import vault_of, workspace_of
+from ..core import scopes as scopes_mod
+from ..services import api_tokens
 from ..notes.settings import options as vault_options
 from ..notes.vault import write as vault_write
 from ..notes.vault.files import content_hash, is_text, mime_for
@@ -83,8 +85,17 @@ async def content(path: str = Query(...), user: User = Depends(get_current_user)
     The hash travels with the text: the editor keeps it as the identity of the
     version it is working on and hands it back when it saves, which is how a save
     tells "still the file I read" from "somebody got there first".
+
+    A path that is not there is tried once more as a bare name. An embed is
+    written `![[picture.jpg]]` without saying which folder it lives in, and
+    without this every one of them would be a broken image.
     """
-    v = vault_of(user)
+    ws = workspace_of(user)
+    v = ws.vault
+    if not vault_write.exists(v, path):
+        found = ws.vault.by_basename().get(PurePosixPath(path).name.lower())
+        if found:
+            path = found[0]
     if is_text(path):
         text = _guard(lambda: v.read_text(path), path)
         return {"path": path, "content": text, "encoding": "utf8",
@@ -130,10 +141,16 @@ async def resolve_link(target: str = Query(...),
 
 
 @router.get("/search")
-async def search(q: str = Query(""), user: User = Depends(get_current_user)) -> dict:
+async def search(q: str = Query(""), limit: int | None = Query(None),
+                 user: User = Depends(get_current_user)) -> dict:
+    """Search the vault. Without a limit every match comes back — the panel
+    renders them a screenful at a time and a cut here would hide the tail."""
     ws = workspace_of(user)
     hits = run_search(ws.graph, q, ws.words)
-    return {"query": q, "hits": [h.as_json() for h in hits]}
+    total = len(hits)
+    if limit and limit > 0:
+        hits = hits[:limit]
+    return {"query": q, "total": total, "hits": [h.as_json() for h in hits]}
 
 
 @router.get("/health", response_class=PlainTextResponse)
@@ -585,3 +602,49 @@ async def drop_calendar(cid: int, user: User = Depends(get_current_user),
     await db.delete(row)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --------------------------------------------------------------- live channel
+
+
+@router.websocket("/ws")
+async def live_channel(websocket: WebSocket, token: str = "") -> None:
+    """What changed in the vault, while a window is open.
+
+    Same entrance as every request, through `api_tokens.authenticate` — a socket
+    is neither a weaker nor a stronger way in. The token rides in the address
+    because a browser cannot put a header on a socket; that is also why the
+    bridge needed a cookie for it.
+    """
+    async with SessionLocal() as db:
+        result = await api_tokens.authenticate(db, token)
+        if result.user is None:
+            await websocket.close(code=4401 if result.error in (
+                api_tokens.BAD_TOKEN, api_tokens.BAD_UNKNOWN_USER) else 4403)
+            return
+        # Deny by default here too. No scope names this route, so a token made
+        # for the tool server cannot listen in on somebody's window — only a
+        # session, or a token that was deliberately given everything.
+        if not scopes_mod.allowed(result.scopes, "GET", "/notes-native/ws"):
+            await websocket.close(code=4403)
+            return
+        try:
+            v = vault_of(result.user)
+        except Error:
+            await websocket.close(code=4404)
+            return
+        key = str(v.root)
+        # Asking for the workspace is what starts the watcher, so a window that
+        # is only listening still gets an index that follows the disk.
+        workspace_of(result.user)
+
+    await websocket.accept()
+    live.join(key, websocket)
+    try:
+        while True:
+            # One way. Receiving happens only so a disconnect is noticed.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        live.leave(key, websocket)

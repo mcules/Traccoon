@@ -202,3 +202,10 @@ async def test_an_attachment_arrives_as_bytes(user) -> None:
 async def test_a_tool_nobody_offers_says_so(user) -> None:
     with pytest.raises(LookupError):
         await call(user, "notes_erase_everything")
+
+
+def test_the_note_scope_does_not_open_the_live_channel() -> None:
+    """A token made for the tool server has no business listening in on
+    somebody's open window."""
+    assert not scopes.allowed({scopes.NOTES}, "GET", "/notes-native/ws")
+    assert scopes.allowed(None, "GET", "/notes-native/ws")     # a session may

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { tr } from "../../i18n";
+import { tr, language } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api, type BaseResult, type BaseRow } from '../lib/api';
 import Icon from './Icon';
@@ -61,7 +61,7 @@ function Cell({ value, onOpen }: { value: unknown; onOpen: (path: string) => voi
     }
     if (o.kind === 'date') {
       const d = new Date(Number(o.ts));
-      return <span>{o.hasTime ? d.toLocaleString('de-DE') : d.toLocaleDateString('de-DE')}</span>;
+      return <span>{o.hasTime ? d.toLocaleString(language()) : d.toLocaleDateString(language())}</span>;
     }
     return <span>{JSON.stringify(value)}</span>;
   }
@@ -82,7 +82,7 @@ const text = (v: unknown): string => {
 function compareValues(a: unknown, b: unknown): number {
   if (typeof a === 'number' && typeof b === 'number') return a - b;
   if (typeof a === 'boolean' || typeof b === 'boolean') return Number(!!a) - Number(!!b);
-  return text(a).localeCompare(text(b), 'de', { numeric: true });
+  return text(a).localeCompare(text(b), language(), { numeric: true });
 }
 
 export default function BaseView() {

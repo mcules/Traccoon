@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { tr } from "../../i18n";
+import { tr, language } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import Icon from './Icon';
@@ -110,7 +110,7 @@ export default function ExcalidrawView() {
         <Suspense fallback={<div className="base-empty-state">{tr("notes_drawing.tool_loading")}</div>}>
           <Excalidraw
             initialData={{ elements: scene.elements as never, appState: scene.appState as never, files: scene.files as never, scrollToContent: true }}
-            langCode="de-DE"
+            langCode={language()}
             onChange={(elements: readonly unknown[], appState: unknown, files: unknown) => {
               const next = {
                 elements: [...elements],

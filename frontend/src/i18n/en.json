@@ -3553,5 +3553,6 @@
   "notes_task.group_priority_low": "Priority: low",
   "notes_task.group_priority_lowest": "Priority: lowest",
   "notes_task.group_priority_medium": "Priority: medium",
-  "notes_task.group_priority_none": "Priority: none"
+  "notes_task.group_priority_none": "Priority: none",
+  "notes_versions.characters": "{n} characters"
 }

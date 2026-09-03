@@ -7,6 +7,7 @@
  */
 
 import { api } from '../api';
+import { language } from "../../../i18n";
 
 export interface DataviewSettings {
   renderNullAs: string;
@@ -72,7 +73,7 @@ export function ensurePluginSettings(): Promise<void> {
   loading ??= api
     .dvSettings()
     .then((s) => {
-      dv = { ...DATAVIEW_FALLBACK, ...(s.dataview ?? {}) };
+      dv = { ...DATAVIEW_FALLBACK, ...(s.query ?? {}) };
       tasks = { ...TASKS_FALLBACK, ...(s.tasks ?? {}) };
     })
     .catch(() => {
@@ -81,10 +82,10 @@ export function ensurePluginSettings(): Promise<void> {
   return loading;
 }
 
-const MONTHS_LONG = Array.from({ length: 12 }, (_, i) => new Date(2020, i, 1).toLocaleString('de-DE', { month: 'long' }));
-const MONTHS_SHORT = Array.from({ length: 12 }, (_, i) => new Date(2020, i, 1).toLocaleString('de-DE', { month: 'short' }));
-const DAYS_LONG = Array.from({ length: 7 }, (_, i) => new Date(2020, 10, 1 + i).toLocaleString('de-DE', { weekday: 'long' }));
-const DAYS_SHORT = Array.from({ length: 7 }, (_, i) => new Date(2020, 10, 1 + i).toLocaleString('de-DE', { weekday: 'short' }));
+const MONTHS_LONG = Array.from({ length: 12 }, (_, i) => new Date(2020, i, 1).toLocaleString(language(), { month: 'long' }));
+const MONTHS_SHORT = Array.from({ length: 12 }, (_, i) => new Date(2020, i, 1).toLocaleString(language(), { month: 'short' }));
+const DAYS_LONG = Array.from({ length: 7 }, (_, i) => new Date(2020, 10, 1 + i).toLocaleString(language(), { weekday: 'long' }));
+const DAYS_SHORT = Array.from({ length: 7 }, (_, i) => new Date(2020, 10, 1 + i).toLocaleString(language(), { weekday: 'short' }));
 
 /** Luxon-style format tokens, the subset the plugins' formats use. */
 export function formatWithTokens(d: Date, fmt: string): string {

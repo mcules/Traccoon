@@ -22,6 +22,7 @@ from fastapi import status
 from ..config import settings
 from ..core.error import Error
 from ..models.user import User
+from . import live
 from .dv import settings as note_settings
 from .index.watch import watch
 from .settings import options as vault_options
@@ -95,14 +96,31 @@ def workspace_of(user: User) -> Workspace:
     task = _watchers.get(key)
     if task is None or task.done():
         try:
-            _watchers[key] = asyncio.create_task(
-                watch(v, lambda rel, gone, _w=ws: _w.touch(rel, removed=gone)))
+            _watchers[key] = asyncio.create_task(watch(v, _follow(key, ws)))
         except RuntimeError:
             # No loop running: a test, or a script importing this. The indexes
             # are still correct, they just will not follow the disk, and saying
             # so in the log is better than refusing to answer.
             log.warning("notes: no event loop, the index will not follow %s", key)
     return ws
+
+
+def _follow(key: str, ws: Workspace):
+    """What one changed file means: the indexes learn it, and every open window
+    is told. Both in one place, so a window cannot hear about a change before
+    the index has taken it — which would send it to read the old text."""
+    def change(rel: str, gone: bool) -> None:
+        ws.touch(rel, removed=gone)
+        message = {"type": "fs", "event": "delete" if gone else "change", "path": rel}
+        if not gone:
+            doc = ws.graph.docs.get(rel)
+            if doc is not None:
+                from .vault.files import content_hash
+                # The version this change produced. A window that made the change
+                # itself recognises its own hash and does not re-read.
+                message["hash"] = content_hash(doc.content)
+        live.announce(key, message)
+    return change
 
 
 def forget_all() -> None:

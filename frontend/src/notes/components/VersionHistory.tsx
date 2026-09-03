@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { tr } from "../../i18n";
+import { tr, language } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api, type GitCommit } from '../lib/api';
 import Icon from './Icon';
@@ -127,7 +127,7 @@ export default function VersionHistory() {
                 >
                   <div className="vh-item-msg">{i === 0 ? 'Zuletzt ersetzt' : 'Zwischenstand'}</div>
                   <div className="vh-item-meta">
-                    {new Date(sn.ts).toLocaleString('de-DE')} · {sn.size} Zeichen
+                    {new Date(sn.ts).toLocaleString(language())} · {tr("notes_versions.characters", { n: sn.size })}
                   </div>
                 </div>
               ))}

@@ -106,7 +106,7 @@ export default function CalendarView() {
 
   /** The calendars this range actually contains, in a stable order. */
   const calendars = useMemo(
-    () => [...new Set(events.map((e) => e.calendar))].sort((a, b) => a.localeCompare(b, 'de')),
+    () => [...new Set(events.map((e) => e.calendar))].sort((a, b) => a.localeCompare(b, language())),
     [events],
   );
 

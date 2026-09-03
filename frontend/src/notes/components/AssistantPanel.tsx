@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { tr } from "../../i18n";
+import { tr, language } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api, type AssistantMessage, type AssistantSession } from '../lib/api';
 import { getActiveEditor } from '../lib/activeEditor';
@@ -205,7 +205,7 @@ export default function AssistantPanel() {
   const wann = (s: AssistantSession) => {
     const t = s.last_message_at ?? s.created_at;
     const d = new Date(t);
-    return isNaN(d.getTime()) ? '' : d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return isNaN(d.getTime()) ? '' : d.toLocaleString(language(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
   return (

@@ -110,7 +110,7 @@ const BASE = '/api/notes';
 // other by changing which of the two helpers it uses, and nothing else.
 const NATIVE = '/api/notes-native';
 
-function houseToken(): string | null {
+export function houseToken(): string | null {
   try {
     return localStorage.getItem('traccoon_token');
   } catch {
@@ -240,8 +240,8 @@ export const api = {
 
   // bases (.base tables)
   baseView: (path: string, view?: string) =>
-    req<BaseResult>(
-      `/api/bases/view?path=${encodeURIComponent(path)}${view ? `&view=${encodeURIComponent(view)}` : ''}`,
+    native<BaseResult>(
+      `/bases/view?path=${encodeURIComponent(path)}${view ? `&view=${encodeURIComponent(view)}` : ''}`,
     ),
 
   // excalidraw drawings
@@ -282,10 +282,10 @@ export const api = {
     }),
 
   // files
-  tree: () => req<TreeNode>('/api/files/'),
+  tree: () => native<TreeNode>('/files/'),
   read: (path: string) =>
-    req<{ path: string; content: string; hash?: string }>(
-      `/api/files/content?path=${encodeURIComponent(path)}`,
+    native<{ path: string; content: string; hash?: string }>(
+      `/files/content?path=${encodeURIComponent(path)}`,
     ),
   /**
    * `baseHash` makes the write conditional: it only lands while the file still
@@ -454,8 +454,8 @@ export const api = {
   // search & links
   // limit omitted → server returns every match (panel renders them incrementally)
   search: (q: string, limit?: number) =>
-    req<{ hits: SearchHit[] }>(
-      `/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ''}`,
+    native<{ hits: SearchHit[] }>(
+      `/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ''}`,
     ),
   // per-note highlighted match contexts for the given paths (lazy, batched);
   // phrase=true matches the whole query as one needle (unlinked mentions)
@@ -464,7 +464,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ query, paths, matchCase, phrase }),
     }),
-  tags: () => req<{ tags: { tag: string; count: number }[] }>('/api/tags'),
+  tags: () => native<{ tags: { tag: string; count: number }[] }>('/tags'),
   properties: () =>
     req<{ properties: { key: string; type: string; count: number }[] }>('/api/properties'),
   propertyTypes: () => req<{ types: Record<string, string> }>('/api/property-types'),
@@ -474,9 +474,9 @@ export const api = {
       body: JSON.stringify({ key, type }),
     }),
   backlinks: (path: string) =>
-    req<{ backlinks: string[] }>(`/api/backlinks?path=${encodeURIComponent(path)}`),
+    native<{ backlinks: string[] }>(`/backlinks?path=${encodeURIComponent(path)}`),
   resolve: (target: string) =>
-    req<{ path: string | null }>(`/api/resolve?target=${encodeURIComponent(target)}`),
+    native<{ path: string | null }>(`/resolve?target=${encodeURIComponent(target)}`),
   graph: () =>
     req<{
       nodes: { id: string; label: string; kind: 'note' | 'attachment' | 'unresolved'; tags: string[] }[];
@@ -523,27 +523,27 @@ export const api = {
   // plugins
   // dataview — DQL blocks and the data behind the `dv` API of ```dataviewjs
   dvQuery: (query: string, path?: string) =>
-    req<DvQueryResult>('/api/dataview/query', { method: 'POST', body: JSON.stringify({ query, path }) }),
+    native<DvQueryResult>('/dataview/query', { method: 'POST', body: JSON.stringify({ query, path }) }),
   dvPages: (source?: string) =>
-    req<{ pages: DvRawPage[]; total: number }>(`/api/dataview/pages?source=${encodeURIComponent(source ?? '')}`),
-  dvPage: (path: string) => req<{ page: DvRawPage | null }>(`/api/dataview/page?path=${encodeURIComponent(path)}`),
+    native<{ pages: DvRawPage[]; total: number }>(`/dataview/pages?source=${encodeURIComponent(source ?? '')}`),
+  dvPage: (path: string) => native<{ page: DvRawPage | null }>(`/dataview/page?path=${encodeURIComponent(path)}`),
   dvMeta: (path: string) =>
-    req<{ path: string | null; headings?: Array<{ heading: string; level: number; line: number }>; tags?: string[] }>(
-      `/api/dataview/meta?path=${encodeURIComponent(path)}`,
+    native<{ path: string | null; headings?: Array<{ heading: string; level: number; line: number }>; tags?: string[] }>(
+      `/dataview/meta?path=${encodeURIComponent(path)}`,
     ),
-  dvSettings: () => req<{ dataview: any; tasks: any }>('/api/dataview/settings'),
+  dvSettings: () => native<{ query: any; tasks: any; statuses: any[] }>('/dataview/settings'),
   dvInline: (expr: string, path?: string) =>
-    req<{ ok: boolean; value?: unknown; error?: string }>('/api/dataview/inline', {
+    native<{ ok: boolean; value?: unknown; error?: string }>('/dataview/inline', {
       method: 'POST',
       body: JSON.stringify({ expr, path }),
     }),
   dvInlineBatch: (items: Array<{ expr: string; path?: string }>) =>
-    req<{ results: Array<{ ok: boolean; value?: unknown; error?: string }> }>('/api/dataview/inline', {
+    native<{ results: Array<{ ok: boolean; value?: unknown; error?: string }> }>('/dataview/inline', {
       method: 'POST',
       body: JSON.stringify({ items }),
     }),
   dvTasks: (query: string) =>
-    req<DvTasksResult>('/api/dataview/tasks', { method: 'POST', body: JSON.stringify({ query }) }),
+    native<DvTasksResult>('/dataview/tasks', { method: 'POST', body: JSON.stringify({ query }) }),
   dvRegisterScript: (code: string) =>
     req<{ id: string }>('/api/dataview/script', { method: 'POST', body: JSON.stringify({ code }) }),
   dvToggleTask: (body: { path: string; line: number; text: string; checked: boolean; mode?: 'tasks' | 'dataview' }) =>
