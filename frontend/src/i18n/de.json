@@ -3554,5 +3554,6 @@
   "notes_task.group_priority_lowest": "Priorität: Niedrigste",
   "notes_task.group_priority_medium": "Priorität: Mittel",
   "notes_task.group_priority_none": "Priorität: Ohne",
-  "notes_versions.characters": "{n} Zeichen"
+  "notes_versions.characters": "{n} Zeichen",
+  "err.notes_bad_date": "Ein Datum schreibt sich JJJJ-MM-TT: {given}"
 }

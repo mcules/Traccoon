@@ -3554,5 +3554,6 @@
   "notes_task.group_priority_lowest": "Priority: lowest",
   "notes_task.group_priority_medium": "Priority: medium",
   "notes_task.group_priority_none": "Priority: none",
-  "notes_versions.characters": "{n} characters"
+  "notes_versions.characters": "{n} characters",
+  "err.notes_bad_date": "A date is written YYYY-MM-DD: {given}"
 }

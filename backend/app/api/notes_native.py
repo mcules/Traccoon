@@ -17,8 +17,10 @@ somebody's notes is not a thing to switch on quietly.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import errno
 import logging
+import re
 from pathlib import Path, PurePosixPath
 
 from fastapi import (APIRouter, Depends, File, Form, Query, Response,
@@ -35,6 +37,7 @@ from ..db import SessionLocal, get_session
 from ..models.notes import NotesCalendar
 from ..models.user import User
 from ..notes import live, paths
+from ..notes.calendar import daily as cal_daily
 from ..notes.calendar import fetch as cal_fetch
 from ..notes.calendar import store as cal_store
 from ..notes.dv import tasks as dv_tasks
@@ -749,3 +752,65 @@ async def calendar_test(body: TestSourceIn,
         return {"ok": False, "message": f"not a calendar: {err}"}
     return {"ok": True, "count": len(found),
             "sample": [e.title for e in found[:3]]}
+
+
+class SyncDayIn(BaseModel):
+    date: str
+    # Nothing is written and the caller learns what would change. A change of
+    # this shape — the server editing somebody's note — should be lookable at
+    # before it happens.
+    dryRun: bool = False
+
+
+def _event_templates(ws, options) -> list[cal_daily.Template]:
+    """The agendas that belong under a recurring appointment, read from the vault.
+
+    A template that is not there is simply left out: a mapping can outlive the
+    note it points at, and an appointment without its agenda is better than a
+    refused sync.
+    """
+    out = []
+    for pair in options.calendar_templates:
+        rel = pair["template"]
+        if not rel.lower().endswith((".md", ".markdown")):
+            rel += ".md"
+        try:
+            lines = cal_daily.template_lines(ws.vault.read_text(rel))
+        except (OSError, paths.OutsideVault):
+            continue
+        if lines:
+            out.append(cal_daily.Template(match=pair["match"], lines=lines))
+    return out
+
+
+@router.post("/calendar/sync-day")
+async def calendar_sync_day(body: SyncDayIn, user: User = Depends(get_current_user),
+                            db: AsyncSession = Depends(get_session)) -> dict:
+    """Write one day's appointments into its daily note.
+
+    Only into a note that is already there. Creating one for every day in the
+    window would fill the vault with empty notes nobody asked for, and a day
+    without a note is a day nobody wrote about.
+    """
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", body.date):
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_bad_date",
+                    "A date is written YYYY-MM-DD: {given}", given=body.date)
+    ws = workspace_of(user)
+    options = ws.options
+    rel = cal_daily.daily_note_path(_dt.date.fromisoformat(body.date),
+                                    options.daily_folder, options.daily_format)
+    if not vault_write.exists(ws.vault, rel):
+        return {"path": rel, "added": 0, "updated": 0, "cancelled": 0, "written": False}
+
+    sources = await _calendar_sources(db, user)
+    snapshot = await cal_store.ensure(user.id, sources)
+    events = cal_fetch.on_day(snapshot, body.date)
+
+    content = _guard(lambda: ws.vault.read_text(rel), rel)
+    result = cal_daily.apply_lines(content, events,
+                                   templates=_event_templates(ws, options))
+    changed = result.text != content
+    if changed and not body.dryRun:
+        _writing(lambda: ws.save(rel, result.text), rel)
+    return {"path": rel, "added": result.added, "updated": result.updated,
+            "cancelled": result.cancelled, "written": changed and not body.dryRun}

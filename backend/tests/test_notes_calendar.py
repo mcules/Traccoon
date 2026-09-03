@@ -183,3 +183,115 @@ async def test_what_was_fetched_is_kept_until_it_is_asked_for_again(monkeypatch)
     await store.ensure(2, sources, force=True)
     assert calls["n"] == 2
     store.forget()
+
+
+# --------------------------------------------------- appointments in a note
+
+from app.notes.calendar import daily as cd            # noqa: E402
+
+
+def ev(title: str, time: str = "", calendar: str = "Privat", *, cancelled: bool = False,
+       date: str = "2026-09-02") -> cal.Event:
+    return cal.Event(id=f"{title}@{date}{time}", uid=title, calendar=calendar,
+                     title=title, date=date, time=time,
+                     endTime=time, allDay=not time,
+                     start=f"{date}T{time or '00:00'}", end=f"{date}T23:59",
+                     cancelled=cancelled)
+
+
+NOTE = """# Tag
+
+etwas eigenes
+
+# Termine
+
+- 09:00 Daily Dev · Vostura
+\t- was ich mir dazu notiert habe
+
+# Danach
+
+steht auch noch etwas
+"""
+
+
+def test_a_note_without_the_heading_is_not_touched() -> None:
+    """Writing the section in would be this deciding what somebody's note looks
+    like. A note that has no such section is a note that does not want one."""
+    out = cd.apply_lines("nur Text\n", [ev("Etwas", "10:00")])
+    assert out.text == "nur Text\n"
+    assert out.added == 0
+
+
+def test_a_new_appointment_lands_in_the_section_and_nowhere_else() -> None:
+    out = cd.apply_lines(NOTE, [ev("Daily Dev", "09:00", "Vostura"),
+                                ev("Hausarzt", "13:45")])
+    assert out.added == 1
+    assert "- 13:45 Hausarzt · Privat" in out.text
+    # everything around it survives
+    assert "etwas eigenes" in out.text
+    assert out.text.count("# Danach") == 1
+    assert "steht auch noch etwas" in out.text
+
+
+def test_what_was_written_under_an_appointment_stays_there() -> None:
+    """That is the whole point of matching a line instead of rewriting the
+    section: the sub-bullets are somebody's notes."""
+    out = cd.apply_lines(NOTE, [ev("Daily Dev", "09:00", "Vostura")])
+    assert "\t- was ich mir dazu notiert habe" in out.text
+    assert out.added == 0 and out.updated == 0
+
+
+def test_an_appointment_that_moved_keeps_its_line() -> None:
+    """Same title, same calendar, another time — the line is rewritten rather
+    than a second one added, so what is written under it stays with it."""
+    out = cd.apply_lines(NOTE, [ev("Daily Dev", "11:00", "Vostura")])
+    assert out.updated == 1 and out.added == 0
+    assert "- 11:00 Daily Dev · Vostura" in out.text
+    assert "- 09:00 Daily Dev · Vostura" not in out.text
+    assert "\t- was ich mir dazu notiert habe" in out.text
+
+
+def test_a_cancelled_appointment_is_struck_through_and_kept() -> None:
+    """Removing it would take the notes written under it with it."""
+    out = cd.apply_lines(NOTE, [ev("Daily Dev", "09:00", "Vostura", cancelled=True)])
+    assert "- 09:00 ~~Daily Dev~~ · Vostura" in out.text
+    assert out.cancelled == 1
+
+
+def test_a_whole_day_appointment_has_no_time_in_front_of_it() -> None:
+    out = cd.apply_lines(NOTE, [ev("Feiertag")])
+    assert "- Feiertag · Privat" in out.text
+
+
+def test_an_agenda_is_written_once_and_not_again() -> None:
+    """A recurring appointment can bring its running order. If anything is
+    written under it already, that is the note and it stays."""
+    templates = [cd.Template(match="Daily Dev", lines=["    - Punkt eins"])]
+    first = cd.apply_lines(NOTE, [ev("Daily Dev", "09:00", "Vostura")],
+                           templates=templates)
+    assert "- Punkt eins" not in first.text        # something is written already
+    fresh = cd.apply_lines("# Termine\n", [ev("Lehrgang", "18:00")],
+                           templates=[cd.Template(match="Lehrgang",
+                                                  lines=["    - Ablauf"])])
+    assert "    - Ablauf" in fresh.text
+
+
+def test_running_it_twice_changes_nothing_the_second_time() -> None:
+    events = [ev("Daily Dev", "09:00", "Vostura"), ev("Hausarzt", "13:45")]
+    once = cd.apply_lines(NOTE, events)
+    twice = cd.apply_lines(once.text, events)
+    assert twice.text == once.text
+    assert twice.added == 0 and twice.updated == 0
+
+
+def test_the_note_of_a_day_is_where_the_vault_puts_it() -> None:
+    day = dt.date(2026, 9, 3)
+    assert cd.daily_note_path(day, "05 Daily Notes", "YYYY/MM/YYYY-MM-DD") == \
+        "05 Daily Notes/2026/09/2026-09-03.md"
+    assert cd.daily_note_path(day, "", "YYYY-MM-DD") == "2026-09-03.md"
+
+
+def test_a_template_loses_its_properties_block_and_gains_an_indent() -> None:
+    lines = cd.template_lines("---\ntags: [x]\n---\n\n## Ablauf\n- eins\n")
+    assert lines == ["## Ablauf", "- eins"] or lines == ["    ## Ablauf", "    - eins"]
+    assert all(not l or l.startswith("    ") for l in lines)

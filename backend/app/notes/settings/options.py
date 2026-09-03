@@ -54,6 +54,14 @@ class Options:
     search_prefix: bool = True
     folder_colours: str = ""
     folder_colour_opacity: float = 0.0
+    # Where the daily notes live and what they are called. Read from the vault
+    # rather than set here: the folder is full of notes with those names already.
+    daily_folder: str = ""
+    daily_format: str = "YYYY-MM-DD"
+    # An appointment whose title contains `match` gets the note at `template`
+    # written underneath it. The club evening brings its running order, the
+    # course its structure.
+    calendar_templates: list = field(default_factory=list)
 
 
 # What a person may set, and what a value has to look like to be taken. Anything
@@ -67,6 +75,7 @@ PREF_FIELDS: dict[str, Any] = {
     "search_prefix": bool,
     "folder_colours": FOLDER_COLOURS,
     "folder_colour_opacity": float,
+    "calendar_templates": list,
 }
 
 
@@ -83,6 +92,15 @@ def _take(out: Options, name: str, raw: Any) -> None:
     if kind is float:
         if isinstance(raw, (int, float)) and not isinstance(raw, bool):
             setattr(out, name, float(raw))
+        return
+    if kind is list:
+        if isinstance(raw, list):
+            # Only the pairs that are complete. A half-written mapping would
+            # otherwise write an empty agenda under an appointment.
+            setattr(out, name, [
+                {"match": str(x["match"]), "template": str(x["template"])}
+                for x in raw
+                if isinstance(x, dict) and x.get("match") and x.get("template")])
         return
     if isinstance(raw, str) and raw.strip():
         setattr(out, name, raw.strip())
@@ -115,4 +133,17 @@ def from_user(prefs: dict | None, vault_root: Path, config_dir: str) -> Options:
             out.attachment_folder = raw_config["attachmentFolderPath"]
         if isinstance(raw_config.get("alwaysUpdateLinks"), bool):
             out.follow_links_on_rename = raw_config["alwaysUpdateLinks"]
+
+        # Where the daily notes live. The vault decides this too — the folder is
+        # already full of notes with those names, and a second opinion here would
+        # write tomorrow's note somewhere nobody looks.
+        try:
+            with (vault_root / config_dir / "daily-notes.json").open(encoding="utf-8") as fh:
+                daily = json.load(fh)
+        except (OSError, ValueError):
+            daily = {}
+        if isinstance(daily.get("folder"), str):
+            out.daily_folder = daily["folder"]
+        if isinstance(daily.get("format"), str) and daily["format"]:
+            out.daily_format = daily["format"]
     return out

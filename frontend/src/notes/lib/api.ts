@@ -317,8 +317,8 @@ export const api = {
       { method: 'POST' },
     ),
   calendarSyncDay: (date: string, dryRun = false) =>
-    req<{ path: string; added: number; updated: number; cancelled: number; written: boolean }>(
-      '/api/calendar/sync-day',
+    native<{ path: string; added: number; updated: number; cancelled: number; written: boolean }>(
+      '/calendar/sync-day',
       { method: 'POST', body: JSON.stringify({ date, dryRun }) },
     ),
   calendarSources: () =>
