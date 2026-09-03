@@ -91,24 +91,67 @@ class WordIndex:
 
     postings: dict[str, dict[str, set[str]]] = field(default_factory=lambda: defaultdict(dict))
     docs: int = 0
+    # Which terms one note put into the index. Without it, taking a note back
+    # out means walking every term there is, and that happens on every save.
+    terms_of_doc: dict[str, set[str]] = field(default_factory=dict)
+
+    def _fields(self, doc: Doc, headings: list[str]) -> dict[str, list[str]]:
+        title = str(doc.frontmatter.get("title") or "") or doc.filename
+        return {
+            "title": [title],
+            "headings": headings,
+            "tags": doc.tags,
+            "path": [doc.path],
+            "body": [doc.content],
+        }
 
     def build(self, docs: dict[str, Doc], headings: dict[str, list[str]] | None = None) -> None:
         self.postings = defaultdict(dict)
+        self.terms_of_doc = {}
         headings = headings or {}
         for rel, doc in docs.items():
-            title = str(doc.frontmatter.get("title") or "") or doc.filename
-            felder = {
-                "title": [title],
-                "headings": headings.get(rel, []),
-                "tags": doc.tags,
-                "path": [doc.path],
-                "body": [doc.content],
-            }
-            for feld, texte in felder.items():
-                for text in texte:
-                    for term in terms_of(text):
-                        self.postings[term].setdefault(feld, set()).add(rel)
+            self._add(rel, doc, headings.get(rel, []))
         self.docs = len(docs)
+
+    def _add(self, rel: str, doc: Doc, headings: list[str]) -> None:
+        mine: set[str] = set()
+        for field_name, texts in self._fields(doc, headings).items():
+            for text in texts:
+                for term in terms_of(text):
+                    self.postings[term].setdefault(field_name, set()).add(rel)
+                    mine.add(term)
+        self.terms_of_doc[rel] = mine
+
+    def update(self, rel: str, doc: Doc, headings: list[str]) -> None:
+        """One note changed. The rest of the index stays as it is.
+
+        Rebuilding the whole index instead would be a second or two per save,
+        which is a second or two on every keystroke that lands.
+        """
+        known = rel in self.terms_of_doc
+        self.remove(rel)
+        self._add(rel, doc, headings)
+        if not known:
+            self.docs += 1
+
+    def remove(self, rel: str) -> None:
+        for term in self.terms_of_doc.pop(rel, set()):
+            bucket = self.postings.get(term)
+            if not bucket:
+                continue
+            for rels in bucket.values():
+                rels.discard(rel)
+            # A term nothing carries any more has to go, or it keeps counting
+            # towards how rare the words around it are, and every ranking that
+            # uses it shifts a little for no reason anybody can see.
+            if not any(bucket.values()):
+                del self.postings[term]
+
+    def forget(self, rel: str) -> None:
+        """Take a note out of the index for good."""
+        if rel in self.terms_of_doc:
+            self.remove(rel)
+            self.docs = max(0, self.docs - 1)
 
     def _matching_terms(self, term: str) -> list[str]:
         """Every indexed word this query word reaches: itself, what it starts,

@@ -47,6 +47,19 @@ class Settings(BaseSettings):
     # configuration and not something this repository carries.
     notes_query_settings_dir: str = ""              # NOTES_QUERY_SETTINGS_DIR
     notes_task_settings_dir: str = ""               # NOTES_TASK_SETTINGS_DIR
+    # The vault's own configuration folder. Two settings are read from it and
+    # both are about writing: where an attachment belongs, and whether links
+    # follow a note that is renamed. Empty is a valid state and means the
+    # defaults, which is what a vault that configures nothing should behave like.
+    notes_config_dir: str = ""                      # NOTES_CONFIG_DIR
+    # Where a deleted note goes and whether deleting means deleting. A folder
+    # inside the vault, starting with a dot so nothing indexes what is in it.
+    notes_trash_dir: str = ".trash"                 # NOTES_TRASH_DIR
+    notes_delete_mode: str = "trash"                # NOTES_DELETE_MODE (trash|permanent)
+    # Where the text a save replaces is kept, outside the vault. Empty means
+    # nothing is kept: writing somebody's notes to a second place is not a thing
+    # to start doing without being asked.
+    notes_recovery_dir: str = ""                    # NOTES_RECOVERY_DIR
 
     mcpjungle_base: str = "http://mcpjungle:8080"   # MCPJUNGLE_BASE
     mcpjungle_admin_token: str = ""                 # MCPJUNGLE_ADMIN_TOKEN

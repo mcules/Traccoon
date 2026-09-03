@@ -80,6 +80,16 @@ services:
       # vault has none at all, which is what the built-in defaults are for.
       NOTES_QUERY_SETTINGS_DIR: ${NOTES_QUERY_SETTINGS_DIR:-}
       NOTES_TASK_SETTINGS_DIR: ${NOTES_TASK_SETTINGS_DIR:-}
+      # The vault's own configuration folder. Two settings are read from it, both about
+      # writing: where an attachment belongs, and whether links follow a renamed note.
+      NOTES_CONFIG_DIR: ${NOTES_CONFIG_DIR:-}
+      # Where a deleted note goes, and whether deleting means deleting.
+      NOTES_TRASH_DIR: ${NOTES_TRASH_DIR:-.trash}
+      NOTES_DELETE_MODE: ${NOTES_DELETE_MODE:-trash}
+      # Where the text a save replaces is kept — outside the vault, so the sync does not
+      # carry the copies to every device and searches do not find them. Empty means
+      # nothing is kept.
+      NOTES_RECOVERY_DIR: ${NOTES_RECOVERY_DIR:-/data/notes-recovery}
       MCPJUNGLE_BASE: ${MCPJUNGLE_BASE:-http://mcpjungle:8080}
       MCPJUNGLE_ADMIN_TOKEN: ${MCPJUNGLE_ADMIN_TOKEN:-}
       VAULT_PATH: /vault
@@ -105,6 +115,9 @@ services:
       # What the note workspace answers today, recorded before it is rewritten.
       # Not in the repository: it is the content of somebody's notes.
       - ./data/notes-reference:/data/notes-reference
+      # What a save replaces, kept for a fortnight. Outside the vault on purpose: copies
+      # inside it would be carried to every device by the sync and turn up in searches.
+      - ./data/notes-recovery:/data/notes-recovery
       # Obsidian vault READ ONLY: the spam detection pulls the known addresses out of it
       # (the acquittal list). The vault is a Syncthing replica — writing into it here would mean
       # writing against Obsidian and the sync.

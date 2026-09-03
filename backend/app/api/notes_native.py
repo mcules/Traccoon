@@ -18,12 +18,14 @@ somebody's notes is not a thing to switch on quietly.
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
 from pathlib import Path, PurePosixPath
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import (APIRouter, Depends, File, Form, Query, Response,
+                     UploadFile, status)
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..core.error import Error
@@ -35,11 +37,12 @@ from ..notes.dv import tasks as dv_tasks
 from ..notes.dv.bases import run as dv_bases
 from ..notes.dv.dql import evaluate_inline, execute as run_query, file_object
 from ..notes.dv.pages import PageIndex
-from ..notes.index.links import LinkGraph
 from ..notes.index.watch import watch
 from ..notes.query.run import run as run_search
-from ..notes.query.words import WordIndex
+from ..notes.settings import options as vault_options
+from ..notes.vault import write as vault_write
 from ..notes.vault.files import Vault, content_hash, is_text, mime_for
+from ..notes.workspace import Conflict, Workspace
 from .deps import get_current_user
 
 log = logging.getLogger("notes")
@@ -53,13 +56,15 @@ router = APIRouter(prefix="/notes-native", tags=["notes"])
 # on first use rather than at startup keeps a vault that nobody opens out of the
 # way; the watcher next to it is what stops the copy from drifting away from the
 # disk, which is a failure that says nothing while it happens.
-_graphs: dict[str, LinkGraph] = {}
-_words: dict[str, WordIndex] = {}
-# The richer index the three little languages read: properties, tasks, list
-# items, the link graph in both directions. Built beside the search index and
-# followed by the same watcher, because two indexes over one folder that are
-# refreshed at different moments answer differently about the same note.
-_pages: dict[str, PageIndex] = {}
+# One workspace per vault: the files plus every index over them, kept in step in
+# one place. Reading six thousand notes on every request is not a cache decision,
+# it is the difference between an answer and a timeout.
+#
+# Built when a vault is first asked about and followed from then on. Building on
+# first use rather than at startup keeps a vault nobody opens out of the way; the
+# watcher next to it is what stops the copy drifting away from the disk, which is
+# the kind of failure that says nothing while it happens.
+_workspaces: dict[str, Workspace] = {}
 _watchers: dict[str, asyncio.Task] = {}
 _settings_loaded = False
 
@@ -71,7 +76,7 @@ def _load_settings(v: Vault) -> None:
     When a second person gets a vault this moves into the database with the rest
     of the configuration — that is the step the plan calls the one-off takeover,
     and until it happens a second vault would silently inherit the first one's
-    checkbox characters.
+    checkbox characters and attachment folder.
     """
     global _settings_loaded
     if _settings_loaded:
@@ -79,43 +84,36 @@ def _load_settings(v: Vault) -> None:
     dirs = {"query": settings.notes_query_settings_dir,
             "tasks": settings.notes_task_settings_dir}
     note_settings.load(Path(v.root), {k: d for k, d in dirs.items() if d})
+    vault_options.load(Path(v.root), settings.notes_config_dir,
+                       trash=settings.notes_trash_dir,
+                       delete_mode=settings.notes_delete_mode)
     _settings_loaded = True
 
 
-def graph_of(v: Vault) -> LinkGraph:
+def _recovery_root() -> Path | None:
+    root = (settings.notes_recovery_dir or "").strip()
+    return Path(root) if root else None
+
+
+def workspace_of(user: User) -> Workspace:
+    v = vault_of(user)
     key = str(v.root)
-    graph = _graphs.get(key)
-    if graph is None:
+    ws = _workspaces.get(key)
+    if ws is None:
         _load_settings(v)
-        graph = LinkGraph()
-        graph.build(v)
-        _graphs[key] = graph
-        index = WordIndex()
-        index.build(graph.docs, graph.headings)
-        _words[key] = index
-        _pages[key] = dv_index.build(v)
+        ws = Workspace.open(v, vault_options.options(), _recovery_root())
+        _workspaces[key] = ws
     task = _watchers.get(key)
     if task is None or task.done():
         try:
-            pages = _pages[key]
-
-            def follow(rel: str, gone: bool, _v: Vault = v,
-                       _p: PageIndex = pages) -> None:
-                dv_index.update(_v, _p, rel, removed=gone)
-
-            _watchers[key] = asyncio.create_task(watch(v, graph, also=follow))
+            _watchers[key] = asyncio.create_task(
+                watch(v, lambda rel, gone, _w=ws: _w.touch(rel, removed=gone)))
         except RuntimeError:
-            # No loop running: a test, or a script importing this. The graph is
-            # still correct, it just will not follow the disk, and saying so in
-            # the log is better than refusing to answer.
+            # No loop running: a test, or a script importing this. The indexes
+            # are still correct, they just will not follow the disk, and saying
+            # so in the log is better than refusing to answer.
             log.warning("notes: no event loop, the index will not follow %s", key)
-    return graph
-
-
-def pages_of(v: Vault) -> PageIndex:
-    """The page index of this vault, built and followed on first use."""
-    graph_of(v)
-    return _pages[str(v.root)]
+    return ws
 
 
 def vault_of(user: User) -> Vault:
@@ -180,12 +178,12 @@ async def stat(path: str = Query(...), user: User = Depends(get_current_user)) -
 
 @router.get("/tags")
 async def tags(user: User = Depends(get_current_user)) -> dict:
-    return {"tags": graph_of(vault_of(user)).all_tags()}
+    return {"tags": workspace_of(user).graph.all_tags()}
 
 
 @router.get("/backlinks")
 async def backlinks(path: str = Query(...), user: User = Depends(get_current_user)) -> dict:
-    return {"path": path, "backlinks": graph_of(vault_of(user)).backlinks(path)}
+    return {"path": path, "backlinks": workspace_of(user).graph.backlinks(path)}
 
 
 @router.get("/resolve")
@@ -198,21 +196,20 @@ async def resolve_link(target: str = Query(...),
     `[[Foo]]` deliberately does not fall through to it: it should stay unresolved
     so the interface can offer to create the note.
     """
-    v = vault_of(user)
-    found = graph_of(v).resolve(target)
+    ws = workspace_of(user)
+    found = ws.graph.resolve(target)
     if found is None and "." in PurePosixPath(target).name:
         suffix = PurePosixPath(target).suffix.lower()
         if suffix and suffix not in (".md", ".markdown"):
-            treffer = v.by_basename().get(PurePosixPath(target).name.lower())
-            found = treffer[0] if treffer else None
+            hits = ws.vault.by_basename().get(PurePosixPath(target).name.lower())
+            found = hits[0] if hits else None
     return {"target": target, "path": found}
 
 
 @router.get("/search")
 async def search(q: str = Query(""), user: User = Depends(get_current_user)) -> dict:
-    v = vault_of(user)
-    graph = graph_of(v)
-    hits = run_search(graph, q, _words.get(str(v.root)))
+    ws = workspace_of(user)
+    hits = run_search(ws.graph, q, ws.words)
     return {"query": q, "hits": [h.as_json() for h in hits]}
 
 
@@ -253,12 +250,12 @@ class InlineIn(BaseModel):
 async def query(body: QueryIn, user: User = Depends(get_current_user)) -> dict:
     """Run one query block. A broken query answers with its own error rather
     than a 500: it is the person who wrote it who can fix it."""
-    return run_query(pages_of(vault_of(user)), body.query, body.path)
+    return run_query(workspace_of(user).pages, body.query, body.path)
 
 
 @router.post("/dataview/tasks")
 async def task_query(body: TasksIn, user: User = Depends(get_current_user)) -> dict:
-    return dv_tasks.execute(pages_of(vault_of(user)), body.query)
+    return dv_tasks.execute(workspace_of(user).pages, body.query)
 
 
 @router.post("/dataview/inline")
@@ -268,7 +265,7 @@ async def inline(body: InlineIn, user: User = Depends(get_current_user)) -> dict
     Takes one or a list of them: a note with twenty should cost one round trip
     and not twenty.
     """
-    index = pages_of(vault_of(user))
+    index = workspace_of(user).pages
     if body.items is not None:
         return {"results": [evaluate_inline(index, it.expr, it.path)
                             for it in body.items[:500]]}
@@ -289,7 +286,7 @@ async def language_settings(user: User = Depends(get_current_user)) -> dict:
 async def pages(source: str = Query(""), user: User = Depends(get_current_user)) -> dict:
     """The notes themselves. `source` narrows to a folder (`"03 Areas"`) or a
     tag, so a block scoped to one folder does not drag the vault over the wire."""
-    index = pages_of(vault_of(user))
+    index = workspace_of(user).pages
     listed = index.all()
     text = source.strip()
     if text.startswith('"') and text.endswith('"') and len(text) > 1:
@@ -309,7 +306,7 @@ async def pages(source: str = Query(""), user: User = Depends(get_current_user))
 
 @router.get("/dataview/page")
 async def one_page(path: str = Query(...), user: User = Depends(get_current_user)) -> dict:
-    index = pages_of(vault_of(user))
+    index = workspace_of(user).pages
     p = index.get(path) or index.by_link(path)
     if p is None:
         return {"page": None}
@@ -320,7 +317,7 @@ async def one_page(path: str = Query(...), user: User = Depends(get_current_user
 async def page_meta(path: str = Query(...), user: User = Depends(get_current_user)) -> dict:
     """Headings with their line numbers, which is what lets a link to a heading
     land on the right line."""
-    index = pages_of(vault_of(user))
+    index = workspace_of(user).pages
     p = index.get(path) or index.by_link(path)
     if p is None:
         return {"path": None}
@@ -332,6 +329,184 @@ async def page_meta(path: str = Query(...), user: User = Depends(get_current_use
 async def base_view(path: str = Query(...), view: str | None = Query(None),
                     user: User = Depends(get_current_user)) -> dict:
     """A table file, run over the same notes the query language reads."""
-    v = vault_of(user)
-    source = _guard(lambda: v.read_text(path), path)
-    return dv_bases.run(pages_of(v), source, view)
+    ws = workspace_of(user)
+    source = _guard(lambda: ws.vault.read_text(path), path)
+    return dv_bases.run(ws.pages, source, view)
+
+
+# ------------------------------------------------------------------- writing
+#
+# The vault is mounted read only in this service and stays that way until the
+# writing side here has been through review. That is not caution for its own
+# sake: these are somebody's notes, the folder has several writers, and a
+# mistake here is not a wrong answer but a lost sentence. Until the mount
+# changes every route below answers with the same refusal from the file system,
+# which is the correct behaviour for a switch nobody has thrown yet.
+
+
+class SaveIn(BaseModel):
+    path: str
+    content: str
+    # The version the caller last read. Without it a save overwrites whatever
+    # arrived in between — from another device, an agent, a job — and nothing
+    # anywhere says that it did.
+    baseHash: str | None = None
+
+
+class PathIn(BaseModel):
+    path: str
+
+
+class RenameIn(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    dryRun: bool = False
+
+    model_config = {"populate_by_name": True}
+
+
+class CopyIn(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+
+    model_config = {"populate_by_name": True}
+
+
+class SnapshotIn(BaseModel):
+    path: str
+    ts: int
+
+
+def _writing(fn, rel: str):
+    """Turn what the file system says into an answer a person can read."""
+    try:
+        return fn()
+    except Conflict as clash:
+        # The text that is there now travels with the refusal, so the editor can
+        # merge instead of asking again and guessing. It rides in `values`,
+        # which the house's error shape already carries to the browser — a
+        # deliberate use of it for something larger than a placeholder, because
+        # a second round trip here means the note has moved on again by the time
+        # the answer arrives.
+        raise Error(status.HTTP_409_CONFLICT, "err.notes_changed_on_disk",
+                    "The note changed on disk: {path}", path=rel,
+                    current=clash.current, hash=clash.hash) from None
+    except paths.OutsideVault:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_not_found",
+                    "No such note: {path}", path=rel) from None
+    except FileNotFoundError:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_not_found",
+                    "No such note: {path}", path=rel) from None
+    except FileExistsError:
+        raise Error(status.HTTP_409_CONFLICT, "err.notes_exists",
+                    "There is already something there: {path}", path=rel) from None
+    except vault_write.NotInTrash:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_not_in_trash",
+                    "That is not in the trash: {path}", path=rel) from None
+    except PermissionError:
+        raise Error(status.HTTP_503_SERVICE_UNAVAILABLE, "err.notes_read_only",
+                    "The vault is mounted read only here") from None
+    except OSError as err:
+        if err.errno == errno.EROFS:
+            raise Error(status.HTTP_503_SERVICE_UNAVAILABLE, "err.notes_read_only",
+                        "The vault is mounted read only here") from None
+        raise
+
+
+@router.put("/files/content")
+async def save(body: SaveIn, user: User = Depends(get_current_user)) -> dict:
+    ws = workspace_of(user)
+    return _writing(lambda: ws.save(body.path, body.content, body.baseHash), body.path)
+
+
+@router.post("/files/folder")
+async def make_folder(body: PathIn, user: User = Depends(get_current_user)) -> dict:
+    ws = workspace_of(user)
+    return _writing(lambda: ws.create_folder(body.path), body.path)
+
+
+@router.post("/files/upload")
+async def upload(file: UploadFile = File(...), dir: str | None = Form(None),
+                 note: str = Form(""),
+                 user: User = Depends(get_current_user)) -> dict:
+    """Put a file into the vault, where the vault keeps its attachments."""
+    ws = workspace_of(user)
+    data = await file.read()
+    name = file.filename or "datei"
+    return _writing(lambda: ws.upload(name, data, folder=dir, note=note), name)
+
+
+@router.patch("/files/rename")
+async def rename(body: RenameIn, user: User = Depends(get_current_user)) -> dict:
+    """Move a note or a folder, and take every link that points at it along.
+
+    With `dryRun` nothing is written and the caller gets the list of what would
+    change — which is how a change of this size should be looked at first.
+    """
+    ws = workspace_of(user)
+    return _writing(lambda: ws.rename(body.from_, body.to, dry_run=body.dryRun),
+                    body.from_)
+
+
+@router.post("/files/copy")
+async def copy(body: CopyIn, user: User = Depends(get_current_user)) -> dict:
+    ws = workspace_of(user)
+    return _writing(lambda: ws.copy(body.from_, body.to), body.to)
+
+
+@router.delete("/files/")
+async def delete(path: str = Query(...), user: User = Depends(get_current_user)) -> dict:
+    """Delete, which by default means moving into the trash."""
+    ws = workspace_of(user)
+    return _writing(lambda: ws.delete(path), path)
+
+
+@router.get("/files/trash")
+async def trash_list(user: User = Depends(get_current_user)) -> dict:
+    return {"items": workspace_of(user).trash_items()}
+
+
+@router.post("/files/trash/restore")
+async def trash_restore(body: PathIn, user: User = Depends(get_current_user)) -> dict:
+    ws = workspace_of(user)
+    return _writing(lambda: ws.restore(body.path), body.path)
+
+
+@router.delete("/files/trash/item")
+async def trash_delete(path: str = Query(...),
+                       user: User = Depends(get_current_user)) -> dict:
+    ws = workspace_of(user)
+    return _writing(lambda: ws.delete_from_trash(path), path)
+
+
+@router.delete("/files/trash")
+async def trash_empty(user: User = Depends(get_current_user)) -> dict:
+    ws = workspace_of(user)
+    return _writing(ws.empty_trash, "")
+
+
+@router.get("/files/recovery")
+async def recovery_list(path: str = Query(...),
+                        user: User = Depends(get_current_user)) -> dict:
+    return {"snapshots": workspace_of(user).snapshots(path)}
+
+
+@router.get("/files/recovery/content")
+async def recovery_content(path: str = Query(...), ts: int = Query(...),
+                           user: User = Depends(get_current_user)) -> dict:
+    text = workspace_of(user).snapshot_text(path, ts)
+    if text is None:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_no_snapshot",
+                    "No kept version of {path} from then", path=path)
+    return {"content": text}
+
+
+@router.post("/files/recovery/restore")
+async def recovery_restore(body: SnapshotIn,
+                           user: User = Depends(get_current_user)) -> dict:
+    ws = workspace_of(user)
+    out = _writing(lambda: ws.restore_snapshot(body.path, body.ts), body.path)
+    if out is None:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_no_snapshot",
+                    "No kept version of {path} from then", path=body.path)
+    return out

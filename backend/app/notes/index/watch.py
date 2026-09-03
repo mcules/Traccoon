@@ -30,7 +30,6 @@ from watchfiles import Change, awatch
 
 from .. import paths
 from ..vault.files import Vault
-from .links import LinkGraph
 
 log = logging.getLogger("notes.watch")
 
@@ -40,8 +39,7 @@ log = logging.getLogger("notes.watch")
 QUIET_MS = 250
 
 
-async def watch(vault: Vault, graph: LinkGraph, *,
-                also: Callable[[str, bool], None] | None = None,
+async def watch(vault: Vault, change: Callable[[str, bool], None], *,
                 stop: asyncio.Event | None = None) -> None:
     """Follow the vault until told to stop. Never raises upwards.
 
@@ -55,7 +53,7 @@ async def watch(vault: Vault, graph: LinkGraph, *,
         async for batch in awatch(root, stop_event=stop, debounce=QUIET_MS,
                                   recursive=True, ignore_permission_denied=True):
             try:
-                apply(vault, graph, batch, also=also)
+                apply(vault, batch, change)
             except Exception:                      # noqa: BLE001 - see docstring
                 log.exception("notes: could not work off a batch of changes")
     except asyncio.CancelledError:
@@ -64,17 +62,18 @@ async def watch(vault: Vault, graph: LinkGraph, *,
         log.exception("notes: the watcher stopped")
 
 
-def apply(vault: Vault, graph: LinkGraph, batch: set[tuple[Change, str]],
-          *, also: Callable[[str, bool], None] | None = None) -> int:
+def apply(vault: Vault, batch: set[tuple[Change, str]],
+          change: Callable[[str, bool], None]) -> int:
     """Work off one batch. Returns how many files were actually touched.
 
-    `also` is told about each file as well. There is a second index over the
-    same vault — the one the query languages read — and it has to follow the
-    same batch: two indexes over one folder that are refreshed at different
-    moments answer differently about the same note, and nothing says so.
+    What "taking a file into the index" means is not decided here. There are
+    several indexes over the same vault, and two of them refreshed at different
+    moments answer differently about the same note without anything saying so —
+    so this hands each file to exactly one place and that place updates all of
+    them together.
     """
     touched = 0
-    for change, full in batch:
+    for _kind, full in batch:
         try:
             rel = paths.relative(Path(vault.root), Path(full))
         except (ValueError, OSError):
@@ -86,9 +85,7 @@ def apply(vault: Vault, graph: LinkGraph, batch: set[tuple[Change, str]],
         # busy disk the two can be in the same batch in either order. What is on
         # the disk when the batch is worked off is the truth.
         gone = not (Path(vault.root) / rel).exists()
-        graph.update(vault, rel, removed=gone)
-        if also is not None:
-            also(rel, gone)
+        change(rel, gone)
         touched += 1
     if touched:
         log.debug("notes: %d file(s) taken into the index", touched)
