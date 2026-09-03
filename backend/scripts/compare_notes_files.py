@@ -92,6 +92,38 @@ def compare_notes(old: httpx.Client, new: httpx.Client, limit: int | None) -> tu
     return len(notes), fehler
 
 
+def compare_tags(old: httpx.Client, new: httpx.Client) -> list[str]:
+    a = {t["tag"]: t["count"] for t in old.get(f"{OLD}/api/tags").json()["tags"]}
+    b = {t["tag"]: t["count"] for t in new.get(f"{NEW}/api/notes-native/tags").json()["tags"]}
+    fehler = []
+    for tag in sorted(set(a) - set(b))[:10]:
+        fehler.append(f"only the old side has #{tag} ({a[tag]}x)")
+    for tag in sorted(set(b) - set(a))[:10]:
+        fehler.append(f"only the new side has #{tag} ({b[tag]}x)")
+    for tag in sorted(set(a) & set(b)):
+        if a[tag] != b[tag]:
+            fehler.append(f"#{tag}: {a[tag]} vs {b[tag]}")
+    return fehler
+
+
+def compare_backlinks(old: httpx.Client, new: httpx.Client, limit: int) -> tuple[int, list[str]]:
+    tree = flatten(old.get(f"{OLD}/api/files/").json(), {})
+    notes = [p for p, n in sorted(tree.items())
+             if n.get("type") == "file" and p.lower().endswith((".md", ".markdown"))]
+    step = max(1, len(notes) // limit)
+    notes = notes[::step][:limit]
+    fehler = []
+    for p in notes:
+        a = old.get(f"{OLD}/api/backlinks", params={"path": p}).json()["backlinks"]
+        b = new.get(f"{NEW}/api/notes-native/backlinks", params={"path": p}).json()["backlinks"]
+        if sorted(a) != sorted(b):
+            nur_a, nur_b = sorted(set(a) - set(b)), sorted(set(b) - set(a))
+            fehler.append(f"{p}: {len(a)} vs {len(b)}"
+                          + (f", only old: {nur_a[:2]}" if nur_a else "")
+                          + (f", only new: {nur_b[:2]}" if nur_b else ""))
+    return len(notes), fehler
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--all", action="store_true", help="every note, not a sample")
@@ -111,7 +143,18 @@ def main() -> int:
               f"{'all the same' if not texte else str(len(texte)) + ' different'}")
         for f in texte[:20]:
             print(f"  {f}")
-    return 1 if (baum or texte) else 0
+
+        tags = compare_tags(old, new)
+        print(f"tags: {'same' if not tags else str(len(tags)) + ' differences'}")
+        for f in tags[:20]:
+            print(f"  {f}")
+
+        anzahl_b, rueck = compare_backlinks(old, new, 400 if not args.all else 4000)
+        print(f"backlinks: {anzahl_b} notes asked, "
+              f"{'all the same' if not rueck else str(len(rueck)) + ' different'}")
+        for f in rueck[:20]:
+            print(f"  {f}")
+    return 1 if (baum or texte or tags or rueck) else 0
 
 
 if __name__ == "__main__":

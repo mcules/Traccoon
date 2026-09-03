@@ -17,7 +17,7 @@ somebody's notes is not a thing to switch on quietly.
 """
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import PlainTextResponse
@@ -26,10 +26,28 @@ from ..config import settings
 from ..core.error import Error
 from ..models.user import User
 from ..notes import paths
+from ..notes.index.links import LinkGraph
 from ..notes.vault.files import Vault, content_hash, is_text, mime_for
 from .deps import get_current_user
 
 router = APIRouter(prefix="/notes-native", tags=["notes"])
+
+# The link graph, per vault, built once. Reading six thousand notes on every
+# request is not a cache decision, it is the difference between an answer and a
+# timeout. It is kept here rather than in a module of its own because there is
+# nothing yet that could invalidate it: the watcher that will is the next piece
+# of work, and until then this is honest about being a first build only.
+_graphs: dict[str, LinkGraph] = {}
+
+
+def graph_of(v: Vault) -> LinkGraph:
+    key = str(v.root)
+    graph = _graphs.get(key)
+    if graph is None:
+        graph = LinkGraph()
+        graph.build(v)
+        _graphs[key] = graph
+    return graph
 
 
 def vault_of(user: User) -> Vault:
@@ -90,6 +108,36 @@ async def content(path: str = Query(...), user: User = Depends(get_current_user)
 async def stat(path: str = Query(...), user: User = Depends(get_current_user)) -> dict:
     v = vault_of(user)
     return {"path": path, **_guard(lambda: v.stat(path), path)}
+
+
+@router.get("/tags")
+async def tags(user: User = Depends(get_current_user)) -> dict:
+    return {"tags": graph_of(vault_of(user)).all_tags()}
+
+
+@router.get("/backlinks")
+async def backlinks(path: str = Query(...), user: User = Depends(get_current_user)) -> dict:
+    return {"path": path, "backlinks": graph_of(vault_of(user)).backlinks(path)}
+
+
+@router.get("/resolve")
+async def resolve_link(target: str = Query(...),
+                       user: User = Depends(get_current_user)) -> dict:
+    """Turn a link into a file, or say that it points at nothing yet.
+
+    A link with an extension that is not a note (`[[Foo.canvas]]`) is not in the
+    graph, which only holds notes, so the file index answers for those. A bare
+    `[[Foo]]` deliberately does not fall through to it: it should stay unresolved
+    so the interface can offer to create the note.
+    """
+    v = vault_of(user)
+    found = graph_of(v).resolve(target)
+    if found is None and "." in PurePosixPath(target).name:
+        suffix = PurePosixPath(target).suffix.lower()
+        if suffix and suffix not in (".md", ".markdown"):
+            treffer = v.by_basename().get(PurePosixPath(target).name.lower())
+            found = treffer[0] if treffer else None
+    return {"target": target, "path": found}
 
 
 @router.get("/health", response_class=PlainTextResponse)
