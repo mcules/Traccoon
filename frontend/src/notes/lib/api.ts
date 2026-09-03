@@ -81,7 +81,10 @@ export interface DvGroupResult {
 export type DvTasksResult =
   | {
       kind: 'tasks';
-      groups: Array<{ key: string; label: string; link?: string; tasks: any[] }>;
+      // `label_key` is what the heading says in the reader's language; `label`
+      // is the same thing already written out, for whoever has no catalogue.
+      groups: Array<{ key: string; label: string; label_key?: string;
+                      link?: string; tasks: any[] }>;
       total: number;
       layout: { hideTaskCount: boolean; hideBacklink: boolean; hideToolbar: boolean; shortMode: boolean };
       warnings: string[];

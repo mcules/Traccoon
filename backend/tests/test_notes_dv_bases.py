@@ -124,3 +124,16 @@ def test_the_limit_cuts_the_top_of_the_sorted_list(index) -> None:
                            "    limit: 2\n")
     assert [r["values"]["file.basename"] for r in out["rows"]] == ["Zelt", "Notiz"]
     assert out["matched"] == 4 and out["total"] == 2
+
+
+def test_a_relative_date_is_written_in_the_readers_language(index) -> None:
+    """A cell cannot carry a key — what stands in it is a value, not a label the
+    interface looks up. So the wording comes from here, with the reader's own
+    language handed down; an unknown one falls back to the source language."""
+    from app.notes.dv.bases.evaluate import relative_words
+    assert relative_words("de")["today"] == "heute"
+    assert relative_words("en")["today"] == "today"
+    assert relative_words("fr")["today"] == "today"
+    out = bases.run(index, "views:\n  - type: table\n    name: T\n"
+                           "    order: [file.mtime]\n", locale="de")
+    assert out["rows"]

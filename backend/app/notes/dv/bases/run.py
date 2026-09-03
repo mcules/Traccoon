@@ -24,8 +24,8 @@ from .parse import Config, Filter, View, parse as parse_base
 NOTHING = "—"
 
 
-def _context(index: PageIndex, page: Page, config: Config) -> Context:
-    return Context(index=index, page=page, formulas=config.formulas)
+def _context(index: PageIndex, page: Page, config: Config, locale: str) -> Context:
+    return Context(index=index, page=page, formulas=config.formulas, locale=locale)
 
 
 def _matches(f: Filter | None, ctx: Context, errors: list[str]) -> bool:
@@ -155,7 +155,8 @@ def summarize(fn: str, rows: list[dict], column: str) -> str:
 
 # --------------------------------------------------------------------- run
 
-def run(index: PageIndex, source: str, view_name: str | None = None) -> dict:
+def run(index: PageIndex, source: str, view_name: str | None = None,
+        locale: str = "en") -> dict:
     config = parse_base(source)
     errors: list[str] = []
     view = next((v for v in config.views if v.name == view_name), None) if view_name else None
@@ -167,7 +168,7 @@ def run(index: PageIndex, source: str, view_name: str | None = None) -> dict:
 
     kept: list[tuple[Page, Context]] = []
     for page in candidates:
-        ctx = _context(index, page, config)
+        ctx = _context(index, page, config, locale)
         if not _matches(config.filters, ctx, errors):
             continue
         if not _matches(view.filters, ctx, errors):

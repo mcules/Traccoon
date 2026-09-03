@@ -13,7 +13,7 @@ import { inlineMarkdown, taskFieldsHtml, wireInternalLinks } from './format';
 import { renderInlineDataview } from './inline';
 import { memo } from './cache';
 import { ensurePluginSettings } from './settings';
-import { tr } from "../../../i18n";
+import { tr, trKnown, language } from "../../../i18n";
 
 interface TaskHit {
   text: string;
@@ -118,6 +118,28 @@ function taskItem(t: TaskHit, hideBacklink: boolean): HTMLElement {
   return li;
 }
 
+/**
+ * What the heading of a group says, in the language of the account.
+ *
+ * The server sends both: a key when the heading is a word it chose, and the
+ * finished sentence beside it for whoever has no catalogue. A group by path or
+ * by status carries no key at all — those words come out of the vault, and
+ * translating them would be inventing.
+ *
+ * A group by day is the one that is formatted rather than looked up: the key is
+ * the date, and the weekday beside it is something the browser already knows in
+ * every language.
+ */
+function groupHeading(g: { key: string; label: string; label_key?: string }): string {
+  if (!g.label_key) return g.label;
+  if (g.label_key === 'notes_task.group_date') {
+    const d = new Date(`${g.key}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return g.label;
+    return `${g.key} ${new Intl.DateTimeFormat(language(), { weekday: 'long' }).format(d)}`;
+  }
+  return trKnown(g.label_key) ?? g.label;
+}
+
 function renderTasks(host: HTMLElement, res: TasksResult): void {
   host.textContent = '';
   if (!res.total) {
@@ -128,7 +150,8 @@ function renderTasks(host: HTMLElement, res: TasksResult): void {
   }
   for (const g of res.groups) {
     if (!g.tasks.length) continue;
-    if (g.label) {
+    const heading = groupHeading(g);
+    if (heading) {
       const h = document.createElement('h4');
       h.className = 'dataview-group-header tasks-group-heading';
       if (g.link) {
@@ -136,10 +159,10 @@ function renderTasks(host: HTMLElement, res: TasksResult): void {
         a.className = 'internal-link';
         a.href = '#';
         a.dataset.wikilink = g.link;
-        a.textContent = g.label;
+        a.textContent = heading;
         h.appendChild(a);
       } else {
-        h.textContent = g.label;
+        h.textContent = heading;
       }
       host.appendChild(h);
     }

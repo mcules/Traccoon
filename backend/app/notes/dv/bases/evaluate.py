@@ -34,6 +34,9 @@ class Context:
     # up asking for itself.
     memo: dict[str, Value] = field(default_factory=dict)
     pending: set = field(default_factory=set)
+    # The language of whoever is reading the table. Only `.relative()` uses it —
+    # everything else in a cell is the note's own text.
+    locale: str = "en"
 
 
 def num(v: Value) -> float | int | None:
@@ -135,12 +138,24 @@ def file_method(ctx: Context, name: str, args: list) -> Value:
 
 _TITLE = re.compile(r"(?<![A-Za-z0-9_])([^\W\d_])")
 
-# Provisional wording, like the group headings of the task filter: these read as
-# text in a cell and belong in the message catalogues with the rest.
-RELATIVE_TODAY, RELATIVE_TOMORROW, RELATIVE_YESTERDAY = "heute", "morgen", "gestern"
+# `.relative()` writes a sentence into a table cell, and a cell cannot carry a
+# key — what stands in it is a value, not a label the interface looks up. So the
+# wording lives here, in the languages the interface has, and the reader's own
+# is handed down with the context. An unknown language falls back to the source
+# one rather than to German, which is what the rest of the house does.
+RELATIVE = {
+    "en": {"today": "today", "tomorrow": "tomorrow", "yesterday": "yesterday",
+           "ahead": "in {n} days", "ago": "{n} days ago"},
+    "de": {"today": "heute", "tomorrow": "morgen", "yesterday": "gestern",
+           "ahead": "in {n} Tagen", "ago": "vor {n} Tagen"},
+}
 
 
-def method_on(value: Value, name: str, args: list) -> Value:
+def relative_words(locale: str) -> dict:
+    return RELATIVE.get((locale or "en").split("-")[0].lower(), RELATIVE["en"])
+
+
+def method_on(value: Value, name: str, args: list, locale: str = "en") -> Value:
     a0 = args[0] if args else None
 
     # A question about emptiness can be asked of anything.
@@ -200,13 +215,15 @@ def method_on(value: Value, name: str, args: list) -> Value:
         if name == "relative":
             from ..js import js_round
             days = js_round((value["ts"] - datetime.now().timestamp() * 1000) / 86_400_000)
+            words = relative_words(locale)
             if days == 0:
-                return RELATIVE_TODAY
+                return words["today"]
             if days == 1:
-                return RELATIVE_TOMORROW
+                return words["tomorrow"]
             if days == -1:
-                return RELATIVE_YESTERDAY
-            return f"in {days} Tagen" if days > 0 else f"vor {-days} Tagen"
+                return words["yesterday"]
+            return (words["ahead"].replace("{n}", str(days)) if days > 0
+                    else words["ago"].replace("{n}", str(-days)))
         return None
 
     if is_link(value):
@@ -364,7 +381,7 @@ def evaluate(node: Node, ctx: Context) -> Value:
         if isinstance(target, dict) and not isinstance(target, list) and node.name in target:
             return target[node.name]
         # `x.length` reads as a property but is a method everywhere else.
-        return method_on(target, node.name, [])
+        return method_on(target, node.name, [], ctx.locale)
 
     if kind == "call":
         args = [evaluate(a, ctx) for a in node.args]
@@ -374,10 +391,10 @@ def evaluate(node: Node, ctx: Context) -> Value:
         if ns == "file":
             return file_method(ctx, node.name, args)
         if ns == "note":
-            return method_on(ctx.page.fields.get(node.name), "toString", args)
+            return method_on(ctx.page.fields.get(node.name), "toString", args, ctx.locale)
         if ns == "formula":
-            return method_on(formula_value(node.name, ctx), "toString", args)
-        return method_on(evaluate(node.target, ctx), node.name, args)
+            return method_on(formula_value(node.name, ctx), "toString", args, ctx.locale)
+        return method_on(evaluate(node.target, ctx), node.name, args, ctx.locale)
 
     if kind == "index":
         target = evaluate(node.target, ctx)

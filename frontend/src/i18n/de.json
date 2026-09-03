@@ -3539,5 +3539,19 @@
   "notes_versions.no_vault_backup": "Keine Vault-Sicherung",
   "notes_versions.really_restore": "Diese Fassung wiederherstellen? Der jetzige Inhalt wird ersetzt.",
   "notes_workspace.no_note": "Keine Notiz",
-  "notes_workspace.none_open_short": "Keine Notiz offen"
+  "notes_workspace.none_open_short": "Keine Notiz offen",
+  "notes_task.group_no_created": "Ohne Anlagedatum",
+  "notes_task.group_no_done": "Ohne Erledigungsdatum",
+  "notes_task.group_no_due": "Ohne Fälligkeit",
+  "notes_task.group_no_happens": "Ganz ohne Datum",
+  "notes_task.group_no_heading": "Ohne Überschrift",
+  "notes_task.group_no_scheduled": "Nicht eingeplant",
+  "notes_task.group_no_start": "Ohne Start",
+  "notes_task.group_no_tag": "Ohne Tag",
+  "notes_task.group_priority_high": "Priorität: Hoch",
+  "notes_task.group_priority_highest": "Priorität: Höchste",
+  "notes_task.group_priority_low": "Priorität: Niedrig",
+  "notes_task.group_priority_lowest": "Priorität: Niedrigste",
+  "notes_task.group_priority_medium": "Priorität: Mittel",
+  "notes_task.group_priority_none": "Priorität: Ohne"
 }

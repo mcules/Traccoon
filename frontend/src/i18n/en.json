@@ -3539,5 +3539,19 @@
   "notes_versions.no_vault_backup": "No vault backup",
   "notes_versions.really_restore": "Put this version back? What is there now will be replaced.",
   "notes_workspace.no_note": "No note",
-  "notes_workspace.none_open_short": "No note is open"
+  "notes_workspace.none_open_short": "No note is open",
+  "notes_task.group_no_created": "Without a creation date",
+  "notes_task.group_no_done": "Without a done date",
+  "notes_task.group_no_due": "Without a due date",
+  "notes_task.group_no_happens": "Without a date at all",
+  "notes_task.group_no_heading": "Without a heading",
+  "notes_task.group_no_scheduled": "Not scheduled",
+  "notes_task.group_no_start": "Without a start",
+  "notes_task.group_no_tag": "Without a tag",
+  "notes_task.group_priority_high": "Priority: high",
+  "notes_task.group_priority_highest": "Priority: highest",
+  "notes_task.group_priority_low": "Priority: low",
+  "notes_task.group_priority_lowest": "Priority: lowest",
+  "notes_task.group_priority_medium": "Priority: medium",
+  "notes_task.group_priority_none": "Priority: none"
 }

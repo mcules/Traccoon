@@ -5,6 +5,12 @@ The reference cases were recorded from the running service over the real vault
 (`record_notes_reference.py`). This runs the same cases through the Python side
 and says, per case, whether the answer is the same.
 
+**The recording ages.** It is a snapshot of a living vault, and the vault keeps
+being written in — a task ticked off, a note added. A grouped task query then
+answers differently for a good reason. Before reading a difference as a fault,
+check the same case against the previous version of the code: if it differs
+there too, the vault moved and not the port.
+
 Order is reported apart from content, on purpose. A query with no `SORT` has no
 defined order on the old side: its rows come out in the order the file system
 handed the notes over, which changes when a neighbouring file is created. Here
@@ -47,6 +53,21 @@ PLUGIN_DIRS = {
 def wire(value):
     """A value as it would look on the wire, so two answers can be compared."""
     return json.loads(json.dumps(jsonable(value), ensure_ascii=False, default=str))
+
+
+def without_additions(got, want):
+    """`got` with everything the old side did not answer taken out.
+
+    The port may carry more than the old service did — a group heading now
+    travels as a key beside the finished sentence, so the interface can say it
+    in its own language. What it must not do is change or drop what was there.
+    Dropping the additions before comparing is what tells those two apart.
+    """
+    if isinstance(want, dict) and isinstance(got, dict):
+        return {k: without_additions(got[k], want[k]) for k in want if k in got}
+    if isinstance(want, list) and isinstance(got, list):
+        return [without_additions(g, w) for g, w in zip(got, want)]
+    return got
 
 
 def sorted_deep(value):
@@ -120,6 +141,11 @@ def main() -> int:
         if got == want:
             tally["identical"] += 1
             continue
+        trimmed = without_additions(got, want)
+        if trimmed == want:
+            tally["identical, with additions"] += 1
+            continue
+        got = trimmed
         if sorted_deep(got) == sorted_deep(want):
             tally["same content, other order"] += 1
             continue

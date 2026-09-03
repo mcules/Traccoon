@@ -254,7 +254,7 @@ async def base_view(path: str = Query(...), view: str | None = Query(None),
     """A table file, run over the same notes the query language reads."""
     ws = workspace_of(user)
     source = _guard(lambda: ws.vault.read_text(path), path)
-    return dv_bases.run(ws.pages, source, view)
+    return dv_bases.run(ws.pages, source, view, user.locale or "en")
 
 
 # ------------------------------------------------------------------- writing

@@ -401,15 +401,28 @@ def sort_value(t: dict, field: str) -> float | str:
     return 0
 
 
-# Provisional: these are headings a person reads, and they belong in the message
-# catalogues with the rest of the interface. Kept here, in the wording they have
-# had, so the move can be measured before it is translated.
+# A group heading is read by a person, so it travels as a key rather than as a
+# finished sentence: the interface looks it up in its own language. The German
+# wording stays beside it in `label`, and not out of nostalgia — the answers
+# these functions give were recorded from the service being replaced and are
+# compared against it. A reader that knows nothing of catalogues (a script, the
+# recorded comparison) still gets a sentence.
+#
+# Which field a group is by decides whether there is a key at all. A path, a
+# folder, a file name and a status are not words this program chose — they come
+# out of the vault, and translating them would be inventing.
 PRIORITY_NAMES = {5: "Höchste", 4: "Hoch", 3: "Mittel", 2: "Ohne", 1: "Niedrig",
                   0: "Niedrigste"}
+PRIORITY_KEYS = {5: "highest", 4: "high", 3: "medium", 2: "none", 1: "low",
+                 0: "lowest"}
 WEEKDAYS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag",
             "Samstag"]
 NO_HEADING = "Ohne Überschrift"
 NO_TAG = "Ohne Tag"
+# What a date field is called when a task has none of it. Only `due` had a German
+# word on the other side; the rest fell through to the field's own name, and that
+# is copied rather than tidied — the wording is what the recorded answers hold.
+# The translated version travels beside it as a key.
 
 
 def group_key(t: dict, field: str) -> dict:
@@ -424,23 +437,34 @@ def group_key(t: dict, field: str) -> dict:
         return {"key": t["noteName"], "label": t["noteName"], "link": t["path"]}
     if field == "heading":
         section = t.get("section")
-        return {"key": section or "", "label": section or NO_HEADING}
+        if section:
+            return {"key": section, "label": section}
+        return {"key": "", "label": NO_HEADING,
+                "label_key": "notes_task.group_no_heading"}
     if field == "status":
         return {"key": t["statusType"], "label": t["statusName"]}
     if field == "priority":
         r = priority_rank(t)
-        return {"key": str(r), "label": f"Priorität: {PRIORITY_NAMES.get(r, 'Ohne')}"}
+        return {"key": str(r), "label": f"Priorität: {PRIORITY_NAMES.get(r, 'Ohne')}",
+                "label_key": f"notes_task.group_priority_{PRIORITY_KEYS.get(r, 'none')}"}
     if field == "tags":
         tag = t["tags"][0] if t["tags"] else ""
-        return {"key": tag, "label": tag or NO_TAG}
+        if tag:
+            return {"key": tag, "label": tag}
+        return {"key": "", "label": NO_TAG, "label_key": "notes_task.group_no_tag"}
     d = date_field_of(t, field)
     if d is None:
         what = "Fälligkeit" if field == "due" else field
-        return {"key": "zzz-none", "label": f"Ohne {what}"}
+        return {"key": "zzz-none", "label": f"Ohne {what}",
+                "label_key": f"notes_task.group_no_{field}"}
     from .values import as_local
     x = as_local(d)
     iso = f"{x.year}-{pad(x.month)}-{pad(x.day)}"
-    return {"key": iso, "label": f"{iso} {WEEKDAYS[(x.weekday() + 1) % 7]}"}
+    # The day itself is the key. The weekday beside it is a word in some
+    # language, so the interface writes it from the date rather than reading it
+    # from here — there is nothing to translate, only to format.
+    return {"key": iso, "label": f"{iso} {WEEKDAYS[(x.weekday() + 1) % 7]}",
+            "label_key": "notes_task.group_date"}
 
 
 # ------------------------------------------------------------------ the run
@@ -553,6 +577,8 @@ def execute(index: PageIndex, src: str) -> dict:
             entry = {"key": g["key"], "label": g["label"], "tasks": []}
             if "link" in g:
                 entry["link"] = g["link"]
+            if "label_key" in g:
+                entry["label_key"] = g["label_key"]
             buckets[g["key"]] = entry
         entry["tasks"].append(t)
     out = sorted(buckets.values(), key=cmp_to_key(lambda a, b: collate(a["key"], b["key"])))
