@@ -158,8 +158,6 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
   const toggleBookmark = useStore((s) => s.toggleBookmark);
   const bookmarks = useStore((s) => s.bookmarks);
   const notify = useStore((s) => s.notify);
-  const setShareDialog = useStore((s) => s.setShareDialog);
-  const shares = useStore((s) => s.shares);
   const isSelected = useStore((s) => s.selected.includes(node.path));
   const setSelected = useStore((s) => s.setSelected);
   const setSelectAnchor = useStore((s) => s.setSelectAnchor);
@@ -285,7 +283,7 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
 
   // Same menu from two gestures: right-click on a desktop, a long press on a
   // phone — where there is no context-menu event at all, which used to leave
-  // rename/move/delete/share unreachable.
+  // rename/move/delete unreachable.
   const openMenuAt = (x: number, y: number) => {
     const sel = useStore.getState().selected;
     // Right-clicking a row that's part of a multi-selection → bulk actions.
@@ -325,9 +323,6 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
           { label: 'Rechts daneben öffnen', onClick: () => openToSide(node.path) },
           { label: '', separator: true },
           { label: bookmarks.includes(node.path) ? 'Remove bookmark' : 'Bookmark', onClick: () => toggleBookmark(node.path) },
-          ...(/\.(md|markdown|canvas)$/i.test(node.path)
-            ? [{ label: 'Teilen…', icon: 'globe', onClick: () => setShareDialog(node.path) }]
-            : []),
           { label: 'Kopie anlegen', onClick: doCopy },
           { label: '', separator: true },
           { label: 'Kopieren', onClick: doClipboard('copy') },
@@ -441,9 +436,6 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
           <RenameInput node={node} onDone={() => setRenamingPath(null)} />
         ) : (
           <span className="name">{node.name.replace(/\.(md|markdown)$/, '')}</span>
-        )}
-        {shares.some((s) => s.path === node.path && s.enabled) && (
-          <Icon name="globe" size={12} className="share-globe" />
         )}
         {bookmarks.includes(node.path) && <Icon name="bookmark" size={12} className="bm-star" />}
       </div>

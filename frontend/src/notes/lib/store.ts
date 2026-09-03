@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { isNarrow } from './useIsMobile';
 import { merge3, toLines, fromLines, type MergeConflict } from './merge';
 import { queueWrite, forgetWrite, pendingWrites, isOffline } from './pending';
-import { api, type TreeNode, type ShareRecord } from './api';
+import { api, type TreeNode } from './api';
 import { findNode } from './tree';
 
 /** Per-tab id so we can ignore the echo of our own server-pushed state change. */
@@ -205,12 +205,6 @@ interface AppState {
   openContextMenu: (m: ContextMenuState) => void;
   closeContextMenu: () => void;
 
-  /** Public share links (FR-10) — cached so the tree can badge shared notes. */
-  shares: ShareRecord[];
-  loadShares: () => Promise<void>;
-  /** Note path whose Share dialog is open (null = closed). */
-  shareDialogPath: string | null;
-  setShareDialog: (path: string | null) => void;
   /** Note path whose Version history modal is open (null = closed). */
   versionHistoryPath: string | null;
   setVersionHistory: (path: string | null) => void;
@@ -535,17 +529,6 @@ export const useStore = create<AppState>()(
       openContextMenu: (m) => set({ contextMenu: m }),
       closeContextMenu: () => set({ contextMenu: null }),
 
-      shares: [],
-      loadShares: async () => {
-        try {
-          const { shares } = await api.listShares();
-          set({ shares });
-        } catch {
-          /* not authed yet */
-        }
-      },
-      shareDialogPath: null,
-      setShareDialog: (path) => set({ shareDialogPath: path }),
       versionHistoryPath: null,
       setVersionHistory: (path) => set({ versionHistoryPath: path }),
       revealInTree: (path) => {

@@ -18,7 +18,6 @@ import TemplatePicker from './components/TemplatePicker';
 import AttachSheet from './components/AttachSheet';
 import AskDialog from './components/AskDialog';
 import Settings from './components/Settings';
-import ShareDialog from './components/ShareDialog';
 import VersionHistory from './components/VersionHistory';
 import TrashView from './components/TrashView';
 import ContextMenu from './components/ContextMenu';
@@ -114,7 +113,6 @@ export default function App() {
       .catch(() => {});
     const stopHover = installHoverPreview();
     void loadVaultSnippets();
-    useStore.getState().loadShares(); // badge shared notes in the file tree
     // websocket live updates
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     let treeTimer: number | undefined;
@@ -401,7 +399,6 @@ export default function App() {
       <AttachSheet />
       <AskDialog />
       <Settings />
-      <ShareDialog />
       <VersionHistory />
       <TrashView />
       <ContextMenu />

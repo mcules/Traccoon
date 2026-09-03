@@ -20,14 +20,6 @@ export interface TrashItem {
   mtime: number;
 }
 
-export interface ShareRecord {
-  id: string;
-  path: string;
-  enabled: boolean;
-  createdAt: string;
-  hasPassword?: boolean;
-}
-
 export interface SearchHit {
   path: string;
   title: string;
@@ -515,19 +507,6 @@ export const api = {
   createKey: (name: string, scopes: string[]) =>
     req<{ key: string; record: any }>('/api/keys/', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
   revokeKey: (id: string) => req<{ ok: boolean }>(`/api/keys/${id}`, { method: 'DELETE' }),
-
-  // public shares (FR-10)
-  listShares: () => req<{ shares: ShareRecord[] }>('/api/shares/'),
-  createShare: (path: string) =>
-    req<{ share: ShareRecord }>('/api/shares/', { method: 'POST', body: JSON.stringify({ path }) }),
-  setShareEnabled: (id: string, enabled: boolean) =>
-    req<{ share: ShareRecord }>(`/api/shares/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
-  deleteShare: (id: string) => req<{ ok: true }>(`/api/shares/${id}`, { method: 'DELETE' }),
-  // password = null clears the share's password
-  setSharePassword: (id: string, password: string | null) =>
-    req<{ share: ShareRecord }>(`/api/shares/${id}`, { method: 'PATCH', body: JSON.stringify({ password }) }),
-  // NOTE: the public-facing /share/<id> page is fully server-rendered (SSR) —
-  // the SPA never fetches /public/shares/* itself.
 
   // plugins
   // dataview — DQL blocks and the data behind the `dv` API of ```dataviewjs

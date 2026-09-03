@@ -29,7 +29,6 @@ const OVERLAYS: Overlay[] = [
   { id: 'folderPicker', open: (s) => !!s.movePath, close: () => useStore.getState().setMovePath(null) },
   { id: 'template', open: (s) => s.templatePickerOpen, close: () => useStore.getState().setTemplatePicker(false) },
   { id: 'attach', open: (s) => s.attachSheetOpen, close: () => useStore.getState().setAttachSheet(false) },
-  { id: 'share', open: (s) => !!s.shareDialogPath, close: () => useStore.getState().setShareDialog(null) },
   { id: 'history', open: (s) => !!s.versionHistoryPath, close: () => useStore.getState().setVersionHistory(null) },
   { id: 'trash', open: (s) => s.trashOpen, close: () => useStore.getState().setTrash(false) },
   { id: 'settings', open: (s) => s.settingsOpen, close: () => useStore.getState().setSettings(false) },

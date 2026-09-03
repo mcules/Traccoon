@@ -92,7 +92,6 @@ export default function Workspace() {
   const openContextMenu = useStore((s) => s.openContextMenu);
   const setMovePath = useStore((s) => s.setMovePath);
   const setRightPanel = useStore((s) => s.setRightPanel);
-  const setShareDialog = useStore((s) => s.setShareDialog);
   const setVersionHistory = useStore((s) => s.setVersionHistory);
   const revealInTree = useStore((s) => s.revealInTree);
   const loadTree = useStore((s) => s.loadTree);
@@ -105,7 +104,6 @@ export default function Workspace() {
   const canGoForward = histIndex < historyLen - 1;
 
   const isMd = activePath ? /\.(md|markdown)$/i.test(activePath) : false;
-  const isShareable = activePath ? /\.(md|markdown|canvas)$/i.test(activePath) : false;
   const canSplit = activePath ? /\.(md|markdown|txt|json|csv|canvas|css|js|ya?ml)$/i.test(activePath) : false;
 
   // the predecessor's "Add file property": focus a new property-key field in the
@@ -247,7 +245,6 @@ export default function Workspace() {
             if (isMobile) setMobileDrawer('left');
           },
         },
-        ...(isShareable ? [{ label: 'Teilen…', icon: 'globe', onClick: () => setShareDialog(path) }] : []),
         sep,
         ...tabItems,
         sep,
