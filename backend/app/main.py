@@ -513,6 +513,34 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes_caldav_password_enc TEXT "
                 "DEFAULT '' NOT NULL",
+                # A calendar belongs to a login, and there is more than one of
+                # those: appointments live on several servers, and one server
+                # holds several accounts when somebody has a private and a work
+                # login on the same machine.
+                "ALTER TABLE notes_calendars ADD COLUMN IF NOT EXISTS server_id INTEGER "
+                "REFERENCES notes_calendar_servers(id) ON DELETE SET NULL",
+                "CREATE INDEX IF NOT EXISTS ix_notes_calendars_server_id "
+                "ON notes_calendars (server_id)",
+                "ALTER TABLE notes_calendars ADD COLUMN IF NOT EXISTS caldav_id VARCHAR(255) "
+                "DEFAULT '' NOT NULL",
+                # Who may write here: nobody, this person in the interface, or
+                # the assistant as well. `none` for what already exists — a
+                # permission nobody has given yet is one nobody has.
+                "ALTER TABLE notes_calendars ADD COLUMN IF NOT EXISTS write_access VARCHAR(16) "
+                "DEFAULT 'none' NOT NULL",
+                "ALTER TABLE notes_calendars ADD COLUMN IF NOT EXISTS server_read_only BOOLEAN "
+                "DEFAULT false NOT NULL",
+                # What stood on the person moves into a login of its own, once.
+                # Without this the one account somebody had set would simply be
+                # gone the moment the second one became possible.
+                "INSERT INTO notes_calendar_servers "
+                "(owner_user_id, label, url, username, password_enc, position, enabled, "
+                " created_at, updated_at) "
+                "SELECT id, 'CalDAV', notes_caldav_url, notes_caldav_user, "
+                "       notes_caldav_password_enc, 0, true, now(), now() "
+                "FROM users WHERE notes_caldav_url <> '' "
+                "  AND NOT EXISTS (SELECT 1 FROM notes_calendar_servers s "
+                "                  WHERE s.owner_user_id = users.id)",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads_granted JSON "

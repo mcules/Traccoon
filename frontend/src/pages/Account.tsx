@@ -11,7 +11,8 @@ import {
   AgentsOperationPanel, AssistantNoticesPanel, MemoryPanel, MySwitchPanel, TimezonePanel,
   NightWindowPanel,
 } from "../components/AccountPanels";
-import { NotesCalendarsPanel, NotesPrefsPanel } from "../components/NotesPanels";
+import { NotesPrefsPanel } from "../components/NotesPanels";
+import { CalendarsPanel } from "../components/CalendarPanels";
 import { BUTTON, BUTTON_SMALL } from "../components/ui";
 
 /**
@@ -24,13 +25,14 @@ import { BUTTON, BUTTON_SMALL } from "../components/ui";
  * it under. One page now, four subjects, and the settings keep what they are: resources
  * (vault, destinations, MCP, skills, jobs, webhooks), not a person.
  */
-type Tab = "person" | "appearance" | "notifications" | "mail" | "notes" | "agents";
+type Tab = "person" | "appearance" | "notifications" | "mail" | "notes" | "calendar" | "agents";
 const TABS: [Tab, string, string][] = [
   ["person", "account.person", "\u{1F464}"],
   ["appearance", "account.appearance", "\u{1F3A8}"],
   ["notifications", "account.notifications", "\u{1F514}"],
   ["mail", "account.mail_accounts", "\u{2709}\uFE0F"],
   ["notes", "account.notes", "\u{1F5D2}\uFE0F"],
+  ["calendar", "account.calendar", "\u{1F4C5}"],
   ["agents", "account.agents", "\u{1F916}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
@@ -58,7 +60,12 @@ export default function Account() {
       {tab === "mail" && <MailAccountsPanel />}
       {/* The note area has no settings page of its own: what a person decides
           about their notes is a personal setting like the others here. */}
-      {tab === "notes" && <><NotesPrefsPanel /><NotesCalendarsPanel /></>}
+      {tab === "notes" && <NotesPrefsPanel />}
+      {/* The calendars sit beside the notes rather than under them. They arrived
+          there because the appointments end up in the daily note, but that is
+          one of three uses: the calendar view reads them and appointments are
+          written back through them. */}
+      {tab === "calendar" && <CalendarsPanel />}
       {tab === "agents" && (
         <><AgentsOperationPanel /><NightWindowPanel /><MemoryPanel /><MySwitchPanel /></>
       )}

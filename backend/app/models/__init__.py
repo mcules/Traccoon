@@ -46,6 +46,7 @@ from .assistant import (  # noqa: F401
 from .chat import Message  # noqa: F401
 from .notification import Notification  # noqa: F401
 from .notes import NotesCalendar  # noqa: F401
+from .notes_servers import NotesCalendarServer  # noqa: F401
 from .plugins import McpServer, Plugin, PluginData, PluginFile, Skill  # noqa: F401
 from .workflow import (  # noqa: F401
     WorkflowDefinition, WorkflowInstance, WorkflowSet, WorkflowStepRun, WorkflowToken,

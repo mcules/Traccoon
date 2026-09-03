@@ -26,17 +26,6 @@ type Prefs = {
   folder_colour_opacity: number;
 };
 
-type Calendar = {
-  id: number;
-  name: string;
-  url: string;
-  link_target: string;
-  auth_user: string;
-  has_password: boolean;
-  enabled: boolean;
-  position: number;
-};
-
 /** Short green confirmation under a panel; disappears on its own. */
 function useNotice(): [string, (t: string) => void] {
   const [msg, setMsg] = useState("");
@@ -124,91 +113,6 @@ export function NotesPrefsPanel() {
             <option value="full">{tr("notes_prefs.colours_whole_row")}</option>
           </select>
         </label>
-      </div>
-      {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
-    </div>
-  );
-}
-
-const EMPTY: Omit<Calendar, "id" | "has_password"> & { auth_password: string } = {
-  name: "", url: "", link_target: "", auth_user: "", auth_password: "",
-  enabled: true, position: 0,
-};
-
-export function NotesCalendarsPanel() {
-  const qc = useQueryClient();
-  const [msg, flash] = useNotice();
-  const [draft, setDraft] = useState(EMPTY);
-  const [error, setError] = useState("");
-  const { data } = useQuery({
-    queryKey: ["notes-calendars"],
-    queryFn: () => api.get<{ calendars: Calendar[] }>("/notes-native/calendars"),
-  });
-  const reload = () => qc.invalidateQueries({ queryKey: ["notes-calendars"] });
-
-  const add = async () => {
-    setError("");
-    try {
-      await api.post("/notes-native/calendars", { ...draft, position: (data?.calendars.length ?? 0) });
-      setDraft(EMPTY);
-      reload();
-      flash(tr("account.saved"));
-    } catch (e: any) {
-      setError(e?.message || tr("common.save_failed"));
-    }
-  };
-
-  return (
-    <div className={CARD}>
-      <div className="mb-1 text-sm font-medium">{tr("notes_calendars.title")}</div>
-      <p className="mb-3 text-xs text-muted">{tr("notes_calendars.hint")}</p>
-
-      <div className="space-y-2">
-        {data?.calendars.map((c) => (
-          <div key={c.id} className="flex flex-wrap items-center gap-2 rounded border border-line px-2 py-1 text-sm">
-            <input type="checkbox" checked={c.enabled} title={tr("notes_calendars.fetch_it")}
-                   onChange={async (e) => {
-                     await api.patch(`/notes-native/calendars/${c.id}`, { enabled: e.target.checked });
-                     reload();
-                   }} />
-            <span className="font-medium">{c.name || tr("notes_calendars.unnamed")}</span>
-            <span className="min-w-0 flex-1 truncate text-xs text-muted" title={c.url}>{c.url}</span>
-            {c.has_password && (
-              <span className="text-xs text-muted" title={tr("notes_calendars.password_kept")}>🔒</span>
-            )}
-            <button className={BUTTON_SMALL.danger} onClick={async () => {
-              await api.del(`/notes-native/calendars/${c.id}`);
-              reload();
-            }}>{tr("common.delete")}</button>
-          </div>
-        ))}
-        {data && data.calendars.length === 0 && (
-          <div className="text-xs text-muted">{tr("notes_calendars.none_yet")}</div>
-        )}
-      </div>
-
-      <div className="mt-4 space-y-2 border-t border-line pt-3 text-sm">
-        <div className="text-xs font-medium text-muted">{tr("notes_calendars.add")}</div>
-        <input className={`${FIELD} w-full`} placeholder={tr("notes_calendars.name_placeholder")}
-               value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-        <input className={`${FIELD} w-full`} placeholder={tr("notes_calendars.url_placeholder")}
-               value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
-        <input className={`${FIELD} w-full`} placeholder={tr("notes_calendars.link_placeholder")}
-               value={draft.link_target}
-               onChange={(e) => setDraft({ ...draft, link_target: e.target.value })} />
-        <div className="flex flex-wrap gap-2">
-          <input className={`${FIELD} flex-1`} placeholder={tr("notes_calendars.user_placeholder")}
-                 value={draft.auth_user}
-                 onChange={(e) => setDraft({ ...draft, auth_user: e.target.value })} />
-          <input className={`${FIELD} flex-1`} type="password"
-                 placeholder={tr("notes_calendars.password_placeholder")}
-                 value={draft.auth_password}
-                 onChange={(e) => setDraft({ ...draft, auth_password: e.target.value })} />
-        </div>
-        <button className={BUTTON_SMALL.primary} onClick={add} disabled={!draft.url.trim()}>
-          {tr("notes_calendars.add_button")}
-        </button>
-        {error && <div className="text-sm text-red-400">{error}</div>}
       </div>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>

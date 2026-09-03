@@ -322,10 +322,14 @@ export const api = {
       body: JSON.stringify({ url, auth_user: authUser, auth_password: authPassword }),
     }),
   calendarWritable: () =>
-    native<{ configured: boolean; calendars: Array<{ id: string; name: string; readOnly?: boolean }>;
+    native<{ configured: boolean;
+             calendars: Array<{ id: number; name: string; caldav_id: string;
+                                server_id: number; server: string }>;
              error?: string }>('/calendar/writable'),
   calendarSaveEvent: (body: {
-    calendar: string;
+    /** The calendar as it is set up here, not a collection name on a server:
+     *  two servers can hold a collection of the same name. */
+    calendar: number;
     uid?: string;
     title: string;
     start: string;
@@ -334,8 +338,8 @@ export const api = {
     location?: string;
     description?: string;
   }) => native<{ uid: string; url: string; created: boolean }>('/calendar/event', { method: 'POST', body: JSON.stringify(body) }),
-  calendarDeleteEvent: (calendar: string, uid: string) =>
-    native<{ ok: true }>(`/calendar/event?calendar=${encodeURIComponent(calendar)}&uid=${encodeURIComponent(uid)}`, {
+  calendarDeleteEvent: (calendar: number, uid: string) =>
+    native<{ ok: true }>(`/calendar/event?calendar=${calendar}&uid=${encodeURIComponent(uid)}`, {
       method: 'DELETE',
     }),
   calendarTidy: (dryRun = true) =>

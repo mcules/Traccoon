@@ -36,7 +36,9 @@ from ..core.error import Error
 from ..core.security import decrypt_secret, encrypt_secret
 from ..db import SessionLocal, get_session
 from ..models.enums import UserStatus
+from ..models import notes as notes_model
 from ..models.notes import NotesCalendar
+from ..models.notes_servers import NotesCalendarServer
 from ..models.user import User
 from ..notes import live, paths, tickets
 from ..core.timezones import zone_of
@@ -571,12 +573,39 @@ class CalendarIn(BaseModel):
     name: str = ""
     url: str = ""
     link_target: str = ""
+    # The login this calendar belongs to. With one it can be written to and is
+    # read with that login's credentials; without one it is a subscription.
+    server_id: int | None = None
+    # Which collection on that server this is — the server's own name for it.
+    caldav_id: str = ""
+    # For a subscription that asks for a login of its own, which is a different
+    # thing and rarer than a calendar on a server.
     auth_user: str = ""
     # Absent leaves the stored one alone; an empty string clears it. Those are
     # two different wishes and a single field cannot carry both.
     auth_password: str | None = None
+    # Who may write here: `none`, `manual` or `agent`. Never widened on its own
+    # — a calendar that turns out to be writable does not thereby become one
+    # the assistant may write to.
+    write_access: str = notes_model.WRITE_NONE
     enabled: bool = True
     position: int = 0
+
+
+def _may_write(row: NotesCalendar, by_agent: bool) -> bool:
+    """Whether an appointment may be written here, by this kind of caller.
+
+    Four things have to hold at once, and they fail for four different reasons:
+    the calendar sits on a login, it names a collection, the server grants
+    writing, and this person allowed it — the assistant additionally needs to
+    have been named, because "I may write here" and "something may write here
+    for me" are not the same permission.
+    """
+    if not (row.server_id and row.caldav_id) or row.server_read_only:
+        return False
+    if by_agent:
+        return row.write_access == notes_model.WRITE_AGENT
+    return row.write_access in (notes_model.WRITE_MANUAL, notes_model.WRITE_AGENT)
 
 
 def _calendar_json(row: NotesCalendar) -> dict:
@@ -584,8 +613,51 @@ def _calendar_json(row: NotesCalendar) -> dict:
     set, which is all an interface needs to show."""
     return {"id": row.id, "name": row.name, "url": row.url,
             "link_target": row.link_target, "auth_user": row.auth_user,
+            "server_id": row.server_id, "caldav_id": row.caldav_id,
+            "write_access": row.write_access,
+            # What the server said, so the interface can say why a permission
+            # is not on offer instead of leaving it greyed out for no reason.
+            "server_read_only": row.server_read_only,
+            "on_a_login": bool(row.server_id and row.caldav_id),
+            "writable": _may_write(row, by_agent=False),
+            "agent_may_write": _may_write(row, by_agent=True),
             "has_password": bool(row.auth_password_enc),
             "enabled": row.enabled, "position": row.position}
+
+
+def _write_access(given: str) -> str:
+    """The permission as it was asked for, or nothing at all.
+
+    An unknown word becomes `none` rather than an error: the safe reading of "I
+    do not understand this permission" is not to grant it.
+    """
+    return given if given in notes_model.WRITE_ACCESS else notes_model.WRITE_NONE
+
+
+async def _ask_the_server(row: NotesCalendar, server: NotesCalendarServer | None) -> None:
+    """Whether the server grants writing to this collection, asked rather than
+    assumed.
+
+    A failure here leaves the flag where it was. Being unable to reach a server
+    while saving a calendar says nothing about that server's permissions, and
+    turning "I could not ask" into "you may not write" would take a permission
+    away every time the network hiccups.
+    """
+    if server is None or not row.caldav_id:
+        row.server_read_only = False
+        return
+    account = _account_of(server)
+    if not account.configured:
+        return
+    try:
+        found = await cal_dav.calendars(account)
+    except cal_dav.CalDavError:
+        log.info("notes: server %s could not be asked about %s", server.id, row.caldav_id)
+        return
+    for c in found:
+        if c.id == row.caldav_id:
+            row.server_read_only = c.read_only
+            return
 
 
 async def _own_calendar(db: AsyncSession, user: User, cid: int) -> NotesCalendar:
@@ -615,11 +687,17 @@ async def add_calendar(body: CalendarIn, user: User = Depends(get_current_user),
     if not body.url.strip():
         raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_calendar_no_url",
                     "A calendar needs an address")
+    server = None
+    if body.server_id is not None:
+        server = await _own_server(db, user, body.server_id)   # refuses somebody else's
     row = NotesCalendar(
         owner_user_id=user.id, name=body.name.strip(), url=body.url.strip(),
         link_target=body.link_target.strip(), auth_user=body.auth_user.strip(),
+        server_id=body.server_id, caldav_id=body.caldav_id.strip(),
+        write_access=_write_access(body.write_access),
         auth_password_enc=encrypt_secret(body.auth_password) if body.auth_password else "",
         enabled=body.enabled, position=body.position)
+    await _ask_the_server(row, server)
     db.add(row)
     await db.commit()
     await db.refresh(row)
@@ -632,12 +710,26 @@ async def change_calendar(cid: int, body: CalendarIn,
                           db: AsyncSession = Depends(get_session)) -> dict:
     row = await _own_calendar(db, user, cid)
     given = body.model_dump(exclude_unset=True)
-    for name in ("name", "url", "link_target", "auth_user"):
+    was = (row.server_id, row.caldav_id)
+    for name in ("name", "url", "link_target", "auth_user", "caldav_id"):
         if name in given:
             setattr(row, name, str(given[name]).strip())
+    server = None
+    if "server_id" in given:
+        if given["server_id"] is not None:
+            server = await _own_server(db, user, given["server_id"])
+        row.server_id = given["server_id"]
+    elif row.server_id is not None:
+        server = await _own_server(db, user, row.server_id)
+    if "write_access" in given:
+        row.write_access = _write_access(given["write_access"])
     for name in ("enabled", "position"):
         if name in given:
             setattr(row, name, given[name])
+    # Only when it moved: asking on every save would make renaming a calendar
+    # depend on a server being up.
+    if (row.server_id, row.caldav_id) != was:
+        await _ask_the_server(row, server)
     if "auth_password" in given:
         row.auth_password_enc = (encrypt_secret(given["auth_password"])
                                  if given["auth_password"] else "")
@@ -717,18 +809,56 @@ async def _calendar_sources(db: AsyncSession, user: User) -> list[cal_fetch.Sour
         select(NotesCalendar).where(NotesCalendar.owner_user_id == user.id,
                                     NotesCalendar.enabled.is_(True))
         .order_by(NotesCalendar.position, NotesCalendar.id))).scalars().all()
+    servers = {s.id: s for s in await _servers_of(db, user)}
     out = []
     for row in rows:
+        # A calendar that belongs to a login is read with that login. Its own
+        # user and password are for a subscription that asks for one itself,
+        # which is a different thing and rarer.
+        server = servers.get(row.server_id) if row.server_id else None
+        if server is not None:
+            user_name, secret = server.username, server.password_enc
+            what = f"server {server.id}"
+        else:
+            user_name, secret = row.auth_user, row.auth_password_enc
+            what = f"calendar {row.id}"
         password = ""
-        if row.auth_password_enc:
+        if secret:
             try:
-                password = decrypt_secret(row.auth_password_enc)
+                password = decrypt_secret(secret)
             except Exception:                     # noqa: BLE001
-                log.warning("notes: the password of calendar %s cannot be read", row.id)
+                log.warning("notes: the password of %s cannot be read", what)
         out.append(cal_fetch.Source(name=row.name or f"Kalender {row.id}", url=row.url,
                                     link_target=row.link_target,
-                                    auth_user=row.auth_user, auth_password=password))
+                                    auth_user=user_name, auth_password=password))
     return out
+
+
+async def _servers_of(db: AsyncSession, user: User) -> list[NotesCalendarServer]:
+    return list((await db.execute(
+        select(NotesCalendarServer)
+        .where(NotesCalendarServer.owner_user_id == user.id)
+        .order_by(NotesCalendarServer.position, NotesCalendarServer.id))).scalars().all())
+
+
+async def _own_server(db: AsyncSession, user: User, sid: int) -> NotesCalendarServer:
+    row = await db.get(NotesCalendarServer, sid)
+    if row is None or row.owner_user_id != user.id:
+        # The same answer for somebody else's login as for one that is not
+        # there: telling them apart says whether it exists.
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_server_not_found",
+                    "No such calendar login")
+    return row
+
+
+def _account_of(server: NotesCalendarServer) -> cal_dav.Account:
+    password = ""
+    if server.password_enc:
+        try:
+            password = decrypt_secret(server.password_enc)
+        except Exception:                         # noqa: BLE001
+            log.warning("notes: the password of server %s cannot be read", server.id)
+    return cal_dav.Account(url=server.url, user=server.username, password=password)
 
 
 @router.get("/calendar")
@@ -1468,74 +1598,151 @@ async def history_show(hash: str = Query(""), path: str = Query(""),
                     why=str(err)) from None
 
 
-# ------------------------------------------------------------------- CalDAV
+# ------------------------------------------------------- the calendar logins
 
 
-def _caldav_account(user: User) -> cal_dav.Account:
-    password = ""
-    if user.notes_caldav_password_enc:
-        try:
-            password = decrypt_secret(user.notes_caldav_password_enc)
-        except Exception:                         # noqa: BLE001
-            log.warning("notes: the calendar account password of %s cannot be read", user.id)
-    return cal_dav.Account(url=user.notes_caldav_url or "",
-                           user=user.notes_caldav_user or "", password=password)
-
-
-class CalDavAccountIn(BaseModel):
-    url: str = ""
-    user: str = ""
+class ServerIn(BaseModel):
+    label: str | None = None
+    url: str | None = None
+    username: str | None = None
     # Absent leaves the stored one alone; empty clears it. Two different wishes,
     # and one field cannot carry both.
     password: str | None = None
+    enabled: bool | None = None
+    position: int | None = None
 
 
-@router.get("/calendar/account")
-async def caldav_account(user: User = Depends(get_current_user)) -> dict:
-    """Whether an appointment can be written, and through which account.
-
-    The password never comes back out — only whether one is set, which is all an
-    interface needs in order to show the difference.
-    """
-    account = _caldav_account(user)
-    return {"url": account.url, "user": account.user,
-            "has_password": bool(user.notes_caldav_password_enc),
-            "writable": account.configured}
+def _server_json(row: NotesCalendarServer) -> dict:
+    """A login as it goes out. The password never does — only whether one is
+    set, which is all an interface needs to show the difference."""
+    return {"id": row.id, "label": row.label, "url": row.url, "username": row.username,
+            "has_password": bool(row.password_enc), "enabled": row.enabled,
+            "position": row.position}
 
 
-@router.put("/calendar/account")
-async def save_caldav_account(body: CalDavAccountIn,
-                              user: User = Depends(get_current_user),
+@router.get("/calendar/servers")
+async def calendar_servers(user: User = Depends(get_current_user),
+                           db: AsyncSession = Depends(get_session)) -> dict:
+    """Every login this person has to a calendar server."""
+    return {"servers": [_server_json(r) for r in await _servers_of(db, user)]}
+
+
+@router.post("/calendar/servers", status_code=status.HTTP_201_CREATED)
+async def add_calendar_server(body: ServerIn, user: User = Depends(get_current_user),
                               db: AsyncSession = Depends(get_session)) -> dict:
-    given = body.model_dump(exclude_unset=True)
-    if "url" in given:
-        user.notes_caldav_url = given["url"].strip().rstrip("/")
-    if "user" in given:
-        user.notes_caldav_user = given["user"].strip()
-    if "password" in given:
-        user.notes_caldav_password_enc = (encrypt_secret(given["password"])
-                                          if given["password"] else "")
+    if not (body.url or "").strip():
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_server_no_url",
+                    "A calendar login needs a server address")
+    row = NotesCalendarServer(
+        owner_user_id=user.id,
+        label=(body.label or "").strip(),
+        url=(body.url or "").strip().rstrip("/"),
+        username=(body.username or "").strip(),
+        password_enc=encrypt_secret(body.password) if body.password else "",
+        enabled=True if body.enabled is None else body.enabled,
+        position=body.position if body.position is not None
+                 else len(await _servers_of(db, user)))
+    db.add(row)
     await db.commit()
-    return await caldav_account(user)
+    await db.refresh(row)
+    return _server_json(row)
 
 
-@router.get("/calendar/writable")
-async def caldav_calendars(user: User = Depends(get_current_user)) -> dict:
-    """The calendars this account can see, and which of them it may write to."""
-    account = _caldav_account(user)
+@router.patch("/calendar/servers/{sid}")
+async def change_calendar_server(sid: int, body: ServerIn,
+                                 user: User = Depends(get_current_user),
+                                 db: AsyncSession = Depends(get_session)) -> dict:
+    row = await _own_server(db, user, sid)
+    given = body.model_dump(exclude_unset=True)
+    for field in ("label", "username"):
+        if field in given:
+            setattr(row, field, (given[field] or "").strip())
+    if "url" in given:
+        row.url = (given["url"] or "").strip().rstrip("/")
+    for field in ("enabled", "position"):
+        if field in given and given[field] is not None:
+            setattr(row, field, given[field])
+    if "password" in given:
+        row.password_enc = encrypt_secret(given["password"]) if given["password"] else ""
+    await db.commit()
+    await db.refresh(row)
+    return _server_json(row)
+
+
+@router.delete("/calendar/servers/{sid}", status_code=status.HTTP_204_NO_CONTENT)
+async def drop_calendar_server(sid: int, user: User = Depends(get_current_user),
+                               db: AsyncSession = Depends(get_session)) -> Response:
+    """Take a login away. The calendars on it stay and become subscriptions —
+    still read, no longer written to. Deleting somebody's calendars because a
+    password changed would be the wrong kind of tidy."""
+    row = await _own_server(db, user, sid)
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/calendar/servers/{sid}/collections")
+async def server_collections(sid: int, user: User = Depends(get_current_user),
+                             db: AsyncSession = Depends(get_session)) -> dict:
+    """What this login can see on its server, asked for over the protocol.
+
+    Where the calendars are is asked for rather than assumed — that is one round
+    trip and works on any server, where a built-in path works on one.
+    """
+    server = await _own_server(db, user, sid)
+    account = _account_of(server)
     if not account.configured:
-        return {"configured": False, "calendars": []}
+        # Said rather than raised: an incomplete login is a state somebody is in
+        # while typing, not a failure of the request.
+        return {"ok": False, "reason": "incomplete", "collections": []}
     try:
         found = await cal_dav.calendars(account)
     except cal_dav.CalDavError as err:
-        return {"configured": True, "calendars": [], "error": str(err)}
-    return {"configured": True,
-            "calendars": [{"id": c.id, "name": c.name, "readOnly": c.read_only}
-                          for c in found]}
+        return {"ok": False, "reason": "refused", "message": str(err), "collections": []}
+    taken = {c.caldav_id for c in (await db.execute(
+        select(NotesCalendar).where(NotesCalendar.owner_user_id == user.id,
+                                    NotesCalendar.server_id == sid))).scalars().all()}
+    return {"ok": True,
+            "collections": [{"id": c.id, "name": c.name, "url": c.url,
+                             "readOnly": c.read_only, "taken": c.id in taken}
+                            for c in found]}
+
+
+@router.get("/calendar/writable")
+async def writable_calendars(request: Request,
+                             user: User = Depends(get_current_user),
+                             db: AsyncSession = Depends(get_session)) -> dict:
+    """The calendars an appointment can be written to, per login.
+
+    Taken from what this person has set up rather than asked of every server on
+    every call: a dialog that has to reach three machines before it can offer a
+    list is one that opens slowly and fails when any of them is down.
+    """
+    servers = {r.id: r for r in await _servers_of(db, user) if r.enabled}
+    rows = (await db.execute(
+        select(NotesCalendar)
+        .where(NotesCalendar.owner_user_id == user.id,
+               NotesCalendar.server_id.is_not(None))
+        .order_by(NotesCalendar.position, NotesCalendar.id))).scalars().all()
+    by_agent = _is_agent(request)
+    out = []
+    for row in rows:
+        server = servers.get(row.server_id)
+        # The permission is checked here, not only on save: a list that offers a
+        # calendar the caller may not write to is a dialog that fails after
+        # somebody has typed everything in.
+        if server is None or not _may_write(row, by_agent):
+            continue
+        out.append({"id": row.id, "name": row.name, "caldav_id": row.caldav_id,
+                    "server_id": server.id, "server": server.label or server.url})
+    return {"configured": bool(out), "calendars": out}
 
 
 class EventIn(BaseModel):
-    calendar: str
+    # The calendar as this person set it up, not a collection name on some
+    # server: two servers can hold a collection of the same name, and a bare
+    # name would be a guess about which was meant.
+    calendar: int
     title: str
     # `YYYY-MM-DD` for a whole day, otherwise `YYYY-MM-DDTHH:MM`.
     start: str
@@ -1547,14 +1754,13 @@ class EventIn(BaseModel):
 
 
 @router.post("/calendar/event")
-async def write_event(body: EventIn, user: User = Depends(get_current_user)) -> dict:
-    account = _caldav_account(user)
-    if not account.configured:
-        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_no_calendar_account",
-                    "No account to write appointments through")
+async def write_event(body: EventIn, request: Request,
+                      user: User = Depends(get_current_user),
+                      db: AsyncSession = Depends(get_session)) -> dict:
+    account, row = await _writing_to(db, user, body.calendar, _is_agent(request))
     try:
         return await cal_dav.save_event(
-            account, body.calendar, timezone=user.timezone or "Europe/Berlin",
+            account, row.caldav_id, timezone=user.timezone or "Europe/Berlin",
             uid=body.uid, title=body.title, start=body.start, end=body.end,
             all_day=body.allDay, location=body.location, description=body.description)
     except LookupError:
@@ -1569,14 +1775,12 @@ async def write_event(body: EventIn, user: User = Depends(get_current_user)) -> 
 
 
 @router.delete("/calendar/event")
-async def drop_event(calendar: str = Query(...), uid: str = Query(...),
-                     user: User = Depends(get_current_user)) -> dict:
-    account = _caldav_account(user)
-    if not account.configured:
-        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_no_calendar_account",
-                    "No account to write appointments through")
+async def drop_event(request: Request, calendar: int = Query(...), uid: str = Query(...),
+                     user: User = Depends(get_current_user),
+                     db: AsyncSession = Depends(get_session)) -> dict:
+    account, row = await _writing_to(db, user, calendar, _is_agent(request))
     try:
-        await cal_dav.delete_event(account, calendar, uid)
+        await cal_dav.delete_event(account, row.caldav_id, uid)
     except LookupError:
         raise Error(status.HTTP_404_NOT_FOUND, "err.notes_calendar_not_found",
                     "No such calendar") from None
@@ -1587,3 +1791,40 @@ async def drop_event(calendar: str = Query(...), uid: str = Query(...),
         raise Error(status.HTTP_502_BAD_GATEWAY, "err.notes_calendar_refused",
                     "The calendar refused it: {why}", why=str(err)) from None
     return {"ok": True}
+
+
+def _is_agent(request: Request | None) -> bool:
+    """Whether this call comes from a token rather than from somebody's window.
+
+    The same distinction the whole API already makes: a session reaches as far
+    as its person does (`scopes is None`), a personal access token is measured
+    against what it was given. Everything that writes on somebody's behalf —
+    the assistant, an agent, a flow — carries a token; a person clicking in the
+    interface does not.
+    """
+    return bool(request is not None and getattr(request.state, "scopes", None) is not None)
+
+
+async def _writing_to(db: AsyncSession, user: User, cid: int,
+                      by_agent: bool = False) -> tuple[cal_dav.Account, NotesCalendar]:
+    """The login an appointment in this calendar is written through."""
+    row = await _own_calendar(db, user, cid)
+    if row.server_id is None or not row.caldav_id:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_calendar_read_only",
+                    "That calendar can only be read")
+    if row.server_read_only:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_calendar_server_read_only",
+                    "The server does not allow writing to {name}", name=row.name or row.url)
+    if row.write_access == notes_model.WRITE_NONE:
+        raise Error(status.HTTP_403_FORBIDDEN, "err.notes_calendar_write_not_allowed",
+                    "Writing to {name} is switched off", name=row.name or row.url)
+    if by_agent and row.write_access != notes_model.WRITE_AGENT:
+        raise Error(status.HTTP_403_FORBIDDEN, "err.notes_calendar_not_for_agents",
+                    "Only you may write to {name}, not the assistant",
+                    name=row.name or row.url)
+    server = await _own_server(db, user, row.server_id)
+    account = _account_of(server)
+    if not account.configured:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_no_calendar_account",
+                    "No account to write appointments through")
+    return account, row

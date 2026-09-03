@@ -7,17 +7,18 @@ import Icon from './Icon';
 /**
  * Creating and changing an appointment.
  *
- * Only the calendars this account owns can be written — the Google feeds are
- * secret ICS addresses and read-only by nature, so they are simply not offered
- * rather than failing on save.
+ * Only calendars that sit on a login can be written — a subscription is a
+ * public address and read-only by nature, so it is simply not offered rather
+ * than failing on save. Several logins are normal: appointments live on more
+ * than one server, and one server holds more than one account.
  */
 export interface EventDraft {
   uid?: string;
-  /** CalDAV id of the calendar; derived from the display name when missing. */
-  calendar?: string;
-  /** What the fetched event calls its calendar. A feed knows its display name
-   *  but not the CalDAV id, so the writable list is matched against this —
-   *  otherwise editing an appointment would act on whichever calendar happened
+  /** The calendar as it is set up here — a row, not a collection name. */
+  calendar?: number;
+  /** What the fetched appointment calls its calendar. A feed knows its display
+   *  name but not which login it came from, so the writable list is matched
+   *  against this — otherwise editing would act on whichever calendar happened
    *  to be first in the list. */
   calendarName?: string;
   title: string;
@@ -39,7 +40,8 @@ export default function EventDialog({
   onSaved: () => void;
 }) {
   const notify = useStore((s) => s.notify);
-  const [calendars, setCalendars] = useState<Array<{ id: string; name: string }>>([]);
+  const [calendars, setCalendars] =
+    useState<Array<{ id: number; name: string; server: string; server_id: number }>>([]);
   const [configured, setConfigured] = useState(true);
   const [form, setForm] = useState<EventDraft | null>(draft);
   const [busy, setBusy] = useState(false);
@@ -62,6 +64,7 @@ export default function EventDialog({
   }, [draft]);
 
   if (!form) return null;
+  const many = new Set(calendars.map((c) => c.server_id)).size > 1;
   const set = (patch: Partial<EventDraft>) => setForm((f) => (f ? { ...f, ...patch } : f));
 
   const save = async () => {
@@ -121,15 +124,18 @@ export default function EventDialog({
         <h3>{form.uid ? tr("notes_calendar.edit_event") : tr("notes_calendar.new_event")}</h3>
         {!configured && <p className="calendar-error">{tr("notes_calendar.no_write_access")}</p>}
         <label>
-          Titel
+          {tr("notes_calendar.event_title")}
           <input autoFocus value={form.title} onChange={(e) => set({ title: e.target.value })} />
         </label>
         <label>
           {tr("notes_ribbon.calendar")}
-          <select value={form.calendar ?? ''} onChange={(e) => set({ calendar: e.target.value })}>
+          <select value={form.calendar ?? ''}
+            onChange={(e) => set({ calendar: Number(e.target.value) })}>
             {calendars.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {/* The login is named only where it distinguishes anything:
+                    with one login it is noise on every line. */}
+                {many ? `${c.server} – ${c.name}` : c.name}
               </option>
             ))}
           </select>
