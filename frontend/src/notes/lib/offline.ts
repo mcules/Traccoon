@@ -90,7 +90,7 @@ export function keepOffline(paths: string[]): void {
   void worker().then((w) =>
     w?.postMessage({
       type: 'keep',
-      urls: paths.map((p) => `/api/notes/files/content?path=${encodeURIComponent(p)}`),
+      urls: paths.map((p) => `/api/notes-native/files/content?path=${encodeURIComponent(p)}`),
     }),
   );
 }

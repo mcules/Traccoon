@@ -3582,5 +3582,6 @@
   "err.notes_no_vault_config": "Dieser Vault hat keinen Konfigurationsordner",
   "err.notes_task_moved": "Diese Aufgabe steht nicht mehr dort — die Notiz neu öffnen",
   "err.notes_not_a_task": "Diese Zeile ist keine Aufgabe",
-  "err.notes_script_too_long": "Dieser Block ist zu lang zum Ausführen"
+  "err.notes_script_too_long": "Dieser Block ist zu lang zum Ausführen",
+  "notes_assistant.name": "Assistent"
 }

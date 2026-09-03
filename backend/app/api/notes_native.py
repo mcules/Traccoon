@@ -913,6 +913,45 @@ async def calendar_tidy(body: TidyIn, user: User = Depends(get_current_user),
     return {"files": files, "total": total, "dryRun": body.dryRun}
 
 
+# ------------------------------------------------------ the reading ticket
+
+
+def _over_https(request: Request) -> bool:
+    """Did this reach us over https? The proxy in front is what knows."""
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    return (forwarded or request.url.scheme) == "https"
+
+
+@router.post("/session")
+async def open_session(request: Request, response: Response,
+                       user: User = Depends(get_current_user)) -> dict:
+    """Hand out the reading ticket. The note area asks for this when it opens.
+
+    It is what carries the requests a browser makes on its own — a picture, a
+    stylesheet, a compiled block — none of which take a header of ours.
+    """
+    vault_of(user)                      # refuses here if this account has none
+    ticket = tickets.issue(user.id)
+    for path in tickets.PATHS:
+        response.set_cookie(
+            tickets.COOKIE, ticket, max_age=tickets.TTL, httponly=True,
+            samesite="lax",
+            # `Secure` only where it can be honoured. A browser silently throws
+            # a secure cookie away on a plain connection, and the whole area
+            # then looks broken for a reason nothing reports.
+            secure=_over_https(request),
+            path=path)
+    return {"ok": True}
+
+
+@router.post("/session/end")
+async def close_session(response: Response,
+                        _user: User = Depends(get_current_user)) -> dict:
+    for path in tickets.PATHS:
+        response.delete_cookie(tickets.COOKIE, path=path)
+    return {"ok": True}
+
+
 # ------------------------------------------- ticking a task off, and the blocks
 
 

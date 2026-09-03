@@ -38,6 +38,7 @@ The other probes start the same way:
 | `language.mjs`, `language-admin.mjs` | switching language, and creating, renaming, disabling and deleting one |
 | `error-text.mjs` | a server error in a German and in an English browser, no login needed |
 | `shot.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
+| `note-bridge.mjs` | whether the note area still asks the bridge anything at all, and that the assistant panel talks to the house itself |
 | `note-tasks.mjs` | a block of the query language runs, a task ticked off in a result lands in its note, a recurring one comes back, and an out-of-date result does not write |
 | `note-config.mjs` | what the vault decides reaches the page: its settings, its own CSS snippets and the folder colours, all over the ported routes |
 | `note-writing.mjs` | the whole writing path on a throwaway folder: create, save, a save on a stale version, rename, copy, kept versions, trash, restore, delete for good — and once through the editor itself. Cleans up after itself |

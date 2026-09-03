@@ -2528,7 +2528,7 @@ const EMPHASIS_CLASS: Record<string, string> = {
 const hidden = Decoration.replace({});
 
 function attachmentUrl(target: string): string {
-  return `/api/notes/files/content?path=${encodeURIComponent(target)}`;
+  return `/api/notes-native/files/content?path=${encodeURIComponent(target)}`;
 }
 
 function buildDecorations(view: EditorView): DecorationSet {

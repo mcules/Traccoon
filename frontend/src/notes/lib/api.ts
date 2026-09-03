@@ -106,9 +106,10 @@ export type DvQueryResult =
  * turns it into a request to the bridge, and the token is the one the rest of
  * the application uses. There is no login of its own here any more.
  */
-const BASE = '/api/notes';
-// The house's own note routes, beside the bridge. A call moves from one to the
-// other by changing which of the two helpers it uses, and nothing else.
+// Where the note routes of the house are. There used to be a second prefix
+// beside this one, `/api/notes`, which reached the service being replaced; the
+// last call moved off it on 2026-09-03 and nothing here asks it anything any
+// more.
 const NATIVE = '/api/notes-native';
 
 export function houseToken(): string | null {
@@ -123,8 +124,9 @@ async function native<T>(url: string, opts: RequestInit = {}): Promise<T> {
   return send<T>(NATIVE + url, opts);
 }
 
-async function req<T>(url: string, opts: RequestInit = {}): Promise<T> {
-  return send<T>(BASE + url.replace(/^\/api/, ''), opts);
+/** A route of the house that is not a note route — the assistant, above all. */
+async function house<T>(url: string, opts: RequestInit = {}): Promise<T> {
+  return send<T>('/api' + url, opts);
 }
 
 async function send<T>(url: string, opts: RequestInit = {}): Promise<T> {
@@ -246,28 +248,28 @@ export const api = {
       body: JSON.stringify({ path, scene, baseHash }),
     }),
 
-  // assistant (relayed by the server, which holds the credential)
-  assistantStatus: () => req<{ enabled: boolean; name: string }>('/api/assistant/status'),
-
+  // The assistant. It is the house's own — until now every one of these went
+  // to the bridge, which held a token for this application and relayed them
+  // back to it over its public address. The panel here talks to it directly.
   assistantSessions: (closed = false) =>
-    req<AssistantSession[]>(`/api/assistant/sessions${closed ? '?closed=1' : ''}`),
+    house<AssistantSession[]>(`/assistant/sessions${closed ? '?closed=1' : ''}`),
 
   /** Put a conversation away, or bring it back — nothing is deleted either way. */
   assistantCloseSession: (id: number, close: boolean) =>
-    req<unknown>(`/api/assistant/sessions/${id}/${close ? 'close' : 'reopen'}`, { method: 'POST' }),
+    house<unknown>(`/assistant/sessions/${id}/${close ? 'close' : 'reopen'}`, { method: 'POST' }),
   assistantNewSession: (title = '') =>
-    req<AssistantSession>('/api/assistant/sessions', { method: 'POST', body: JSON.stringify({ title }) }),
+    house<AssistantSession>('/assistant/sessions', { method: 'POST', body: JSON.stringify({ title }) }),
   assistantChat: (limit = 30, sessionId?: number) =>
-    req<{ messages: AssistantMessage[]; more: boolean }>(
-      `/api/assistant/chat?limit=${limit}${sessionId ? `&session_id=${sessionId}` : ''}`,
+    house<{ messages: AssistantMessage[]; more: boolean }>(
+      `/assistant/chat?limit=${limit}${sessionId ? `&session_id=${sessionId}` : ''}`,
     ),
   assistantSend: (text: string, sessionId?: number) =>
-    req<AssistantMessage>('/api/assistant/chat', {
+    house<AssistantMessage>('/assistant/chat', {
       method: 'POST',
       body: JSON.stringify({ text, sessionId }),
     }),
   assistantDecide: (id: number, decision: 'once' | 'always' | 'never') =>
-    req<unknown>(`/api/assistant/chat/${id}/decide`, {
+    house<unknown>(`/assistant/chat/${id}/decide`, {
       method: 'POST',
       body: JSON.stringify({ decision }),
     }),
@@ -434,7 +436,7 @@ export const api = {
     return res.json() as Promise<{ ok: true; path: string; size: number }>;
   },
   /** Ask the bridge for the reading cookie. Called once when the area opens. */
-  openNotesSession: () => req<{ ok: true }>('/api/session', { method: 'POST', body: '{}' }),
+  openNotesSession: () => native<{ ok: true }>('/session', { method: 'POST', body: '{}' }),
 
   // Straight into the `src` of an image, so it carries no token: the reading
   // cookie the page fetches on arrival is what makes this one work.

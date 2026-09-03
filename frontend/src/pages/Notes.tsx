@@ -28,9 +28,9 @@
 // that weight travels in the bundle of a page that never opens it. Vite gives a lazy chunk
 // its own CSS file, which is what makes the import below cost nothing anywhere else.
 //
-// It talks to `/api/notes/*`, the bridge in `backend/app/api/notes.py`. Behind that bridge
-// the workspace is still a service of its own while it is being rewritten; nothing on this
-// side needs to know that, and nothing here should start to depend on it.
+// It talks to `/api/notes-native/*`, which is this backend. It used to talk to a bridge
+// beside it that passed everything on to a service of its own; the last call moved off that
+// bridge on 2026-09-03, and the bridge is now waiting to be deleted rather than used.
 import { Suspense, lazy } from "react";
 import { RAIL_LEAVEBLANK } from "../nav";
 import { Spinner } from "../components/ui";

@@ -65,14 +65,12 @@ export default function AssistantPanel() {
   const [withNote, setWithNote] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // There is no asking whether there is an assistant any more: it is the
+  // house's own and it is simply there. The bridge had a setting for it because
+  // it held a token of its own for a machine it did not otherwise know.
   useEffect(() => {
-    api
-      .assistantStatus()
-      .then((r) => {
-        setEnabled(r.enabled);
-        setName(r.name);
-      })
-      .catch(() => setEnabled(false));
+    setEnabled(true);
+    setName(tr("notes_assistant.name"));
   }, []);
 
   const load = useCallback(async () => {
