@@ -223,21 +223,11 @@ export interface AssistantMessage {
 
 export const api = {
   // auth
-  authStatus: () => req<{ passwordSet: boolean; mustChangePassword: boolean }>('/auth/status'),
-  setup: (password: string) =>
-    req<{ ok: true }>('/auth/setup', { method: 'POST', body: JSON.stringify({ password }) }),
-  login: (password: string) =>
-    req<{ ok: true; mustChangePassword: boolean }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ password }),
-    }),
-  logout: () => req<{ ok: true }>('/auth/logout', { method: 'POST' }),
-  changePassword: (currentPassword: string, newPassword: string) =>
-    req<{ ok: true }>('/auth/change-password', {
-      method: 'POST',
-      body: JSON.stringify({ currentPassword, newPassword }),
-    }),
-  me: () => req<{ authenticated: boolean; mustChangePassword: boolean }>('/auth/me'),
+
+
+
+
+
 
   // bases (.base tables)
   baseView: (path: string, view?: string) =>
@@ -258,10 +248,10 @@ export const api = {
 
   // assistant (relayed by the server, which holds the credential)
   assistantStatus: () => req<{ enabled: boolean; name: string }>('/api/assistant/status'),
+
   assistantSessions: (closed = false) =>
     req<AssistantSession[]>(`/api/assistant/sessions${closed ? '?closed=1' : ''}`),
-  assistantRenameSession: (id: number, title: string) =>
-    req<AssistantSession>(`/api/assistant/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
+
   /** Put a conversation away, or bring it back — nothing is deleted either way. */
   assistantCloseSession: (id: number, close: boolean) =>
     req<unknown>(`/api/assistant/sessions/${id}/${close ? 'close' : 'reopen'}`, { method: 'POST' }),
@@ -294,7 +284,7 @@ export const api = {
    * hands back the current text, which the caller merges instead of clobbering.
    */
   write: (path: string, content: string, baseHash?: string) =>
-    req<{ ok: true; hash?: string }>('/api/files/content', {
+    native<{ ok: true; hash?: string }>('/files/content', {
       method: 'PUT',
       body: JSON.stringify({ path, content, baseHash }),
     }),
@@ -322,20 +312,8 @@ export const api = {
       '/calendar/sync-day',
       { method: 'POST', body: JSON.stringify({ date, dryRun }) },
     ),
-  calendarSources: () =>
-    req<{
-      calendars: Array<{ name: string; url: string; linkTarget: string; hasAuth: boolean }>;
-      syncIntervalMinutes: number;
-      timezone: string;
-      caldav: { configured: boolean };
-    }>('/api/calendar/sources'),
-  saveCalendarSources: (
-    calendars: Array<{ name: string; url: string; linkTarget?: string; authUser?: string; authPassword?: string }>,
-  ) =>
-    req<{ ok: true; count: number; events: number; errors: Array<{ calendar: string; message: string }> }>(
-      '/api/calendar/sources',
-      { method: 'PUT', body: JSON.stringify({ calendars }) },
-    ),
+
+
   testCalendarSource: (url: string, authUser?: string, authPassword?: string) =>
     native<{ ok: boolean; count?: number; message?: string }>('/calendar/test-source', {
       method: 'POST',
@@ -359,8 +337,8 @@ export const api = {
       method: 'DELETE',
     }),
   calendarTidy: (dryRun = true) =>
-    req<{ files: Array<{ path: string; changed: number }>; total: number; dryRun: boolean }>(
-      '/api/calendar/tidy',
+    native<{ files: Array<{ path: string; changed: number }>; total: number; dryRun: boolean }>(
+      '/calendar/tidy',
       { method: 'POST', body: JSON.stringify({ dryRun }) },
     ),
   saveHotkeys: (hotkeys: Record<string, Array<{ modifiers?: string[]; key?: string }>>) =>
@@ -402,36 +380,36 @@ export const api = {
       body: JSON.stringify({ path, title }),
     }),
   snapshots: (path: string) =>
-    req<{ snapshots: Array<{ ts: number; size: number }> }>(
-      `/api/files/recovery?path=${encodeURIComponent(path)}`,
+    native<{ snapshots: Array<{ ts: number; size: number }> }>(
+      `/files/recovery?path=${encodeURIComponent(path)}`,
     ),
   snapshotContent: (path: string, ts: number) =>
-    req<{ content: string }>(
-      `/api/files/recovery/content?path=${encodeURIComponent(path)}&ts=${ts}`,
+    native<{ content: string }>(
+      `/files/recovery/content?path=${encodeURIComponent(path)}&ts=${ts}`,
     ),
   restoreSnapshot: (path: string, ts: number) =>
-    req<{ ok: true }>('/api/files/recovery/restore', { method: 'POST', body: JSON.stringify({ path, ts }) }),
+    native<{ ok: true }>('/files/recovery/restore', { method: 'POST', body: JSON.stringify({ path, ts }) }),
   createFolder: (path: string) =>
-    req<{ ok: true }>('/api/files/folder', { method: 'POST', body: JSON.stringify({ path }) }),
+    native<{ ok: true }>('/files/folder', { method: 'POST', body: JSON.stringify({ path }) }),
   rename: (from: string, to: string) =>
-    req<{ ok: true }>('/api/files/rename', { method: 'PATCH', body: JSON.stringify({ from, to }) }),
+    native<{ ok: true }>('/files/rename', { method: 'PATCH', body: JSON.stringify({ from, to }) }),
   copy: (from: string, to: string) =>
-    req<{ ok: true }>('/api/files/copy', { method: 'POST', body: JSON.stringify({ from, to }) }),
+    native<{ ok: true }>('/files/copy', { method: 'POST', body: JSON.stringify({ from, to }) }),
   remove: (path: string) =>
-    req<{ ok: true; trashed?: string; deleted?: string }>(
-      `/api/files/?path=${encodeURIComponent(path)}`,
+    native<{ ok: true; trashed?: string; deleted?: string }>(
+      `/files/?path=${encodeURIComponent(path)}`,
       { method: 'DELETE' },
     ),
   // trash (FR-1)
-  listTrash: () => req<{ items: TrashItem[] }>('/api/files/trash'),
+  listTrash: () => native<{ items: TrashItem[] }>('/files/trash'),
   restoreTrash: (path: string) =>
-    req<{ ok: true; restored: string }>('/api/files/trash/restore', {
+    native<{ ok: true; restored: string }>('/files/trash/restore', {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
   deleteTrashItem: (path: string) =>
-    req<{ ok: true }>(`/api/files/trash/item?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
-  emptyTrash: () => req<{ ok: true }>('/api/files/trash', { method: 'DELETE' }),
+    native<{ ok: true }>(`/files/trash/item?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+  emptyTrash: () => native<{ ok: true }>('/files/trash', { method: 'DELETE' }),
   uploadUrl: () => '/api/files/upload',
   /**
    * `note` lets the server apply the vault's attachment rule relative to the
@@ -442,7 +420,16 @@ export const api = {
     if (opts.dir !== undefined) fd.append('dir', opts.dir);
     if (opts.note) fd.append('note', opts.note);
     fd.append('file', file);
-    const res = await fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd });
+    // Its own fetch, because a FormData body must not get a Content-Type of
+    // ours — the browser sets one with the boundary in it. The token has to be
+    // put on by hand for the same reason: this does not go through `send`.
+    const token = houseToken();
+    const res = await fetch(`${NATIVE}/files/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
     if (!res.ok) throw new ApiError((await res.json().catch(() => ({}))).error ?? 'Upload failed', res.status);
     return res.json() as Promise<{ ok: true; path: string; size: number }>;
   },
@@ -497,12 +484,8 @@ export const api = {
     native<{ ok: true }>('/uistate', { method: 'PUT', body: JSON.stringify(state) }),
 
   // settings
-  getSettings: () => req<any>('/api/settings/'),
-  putSettings: (patch: any) => req<any>('/api/settings/', { method: 'PUT', body: JSON.stringify(patch) }),
-  browse: (dir?: string) =>
-    req<{ dir: string; parent: string; roots: string[]; folders: { name: string; path: string }[] }>(
-      `/api/settings/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`,
-    ),
+
+
 
   // The older versions of a note. Reading only: they come out of the hourly
   // backup beside the vault, and nothing here writes to it. The six calls that
@@ -516,10 +499,8 @@ export const api = {
       `/history/show?hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(path)}`),
 
   // api keys
-  listKeys: () => req<{ keys: any[] }>('/api/keys/'),
-  createKey: (name: string, scopes: string[]) =>
-    req<{ key: string; record: any }>('/api/keys/', { method: 'POST', body: JSON.stringify({ name, scopes }) }),
-  revokeKey: (id: string) => req<{ ok: boolean }>(`/api/keys/${id}`, { method: 'DELETE' }),
+
+
 
   // plugins
   // dataview — DQL blocks and the data behind the `dv` API of ```dataviewjs
