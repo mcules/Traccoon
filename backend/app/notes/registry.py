@@ -85,7 +85,8 @@ def workspace_of(user: User) -> Workspace:
     # Read afresh on every call: a preference changed a moment ago in the
     # settings has to apply to the next save, not after the next restart.
     options = vault_options.from_user(getattr(user, "notes_prefs", None),
-                                      Path(v.root), settings.notes_config_dir)
+                                      Path(v.root), settings.notes_config_dir,
+                                      settings.notes_template_settings_dir)
     ws = _workspaces.get(key)
     if ws is None:
         _load_language_settings(v)

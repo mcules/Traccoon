@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # configuration and not something this repository carries.
     notes_query_settings_dir: str = ""              # NOTES_QUERY_SETTINGS_DIR
     notes_task_settings_dir: str = ""               # NOTES_TASK_SETTINGS_DIR
+    # Where the folder-to-template mapping sits: which form a new note gets from
+    # the folder it is created in. Same shape as the two above, and empty for
+    # the same reason — a vault that has no such folder simply has no mapping.
+    notes_template_settings_dir: str = ""           # NOTES_TEMPLATE_SETTINGS_DIR
     # The vault's own configuration folder. Two settings are read from it and
     # both are about writing: where an attachment belongs, and whether links
     # follow a note that is renamed. Empty is a valid state and means the

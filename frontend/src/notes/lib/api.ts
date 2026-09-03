@@ -388,16 +388,16 @@ export const api = {
       hotkeys: Record<string, Array<{ modifiers?: string[]; key?: string }>>;
     }>('/api/settings/vault-config'),
   templaterConfig: () =>
-    req<{ folderTemplates: Array<{ folder: string; template: string }> }>('/api/templater/config'),
+    native<{ folderTemplates: Array<{ folder: string; template: string }> }>('/templates/folders'),
   templaterCompile: (path: string) =>
-    req<{ id: string; interactive: boolean }>('/api/templater/compile', {
+    native<{ id: string; interactive: boolean }>('/templates/compile', {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
   templates: () =>
-    req<{ folder: string; templates: Array<{ path: string; name: string }> }>('/api/files/templates'),
+    native<{ folder: string; templates: Array<{ path: string; name: string }> }>('/templates'),
   template: (path: string, title: string) =>
-    req<{ text: string; unresolved: string[] }>('/api/files/template', {
+    native<{ text: string; unresolved: string[] }>('/templates/fill', {
       method: 'POST',
       body: JSON.stringify({ path, title }),
     }),
@@ -451,7 +451,10 @@ export const api = {
 
   // Straight into the `src` of an image, so it carries no token: the reading
   // cookie the page fetches on arrival is what makes this one work.
-  rawUrl: (path: string) => `${BASE}/files/content?path=${encodeURIComponent(path)}`,
+  // Used as an `<img src>`, so no header of ours goes with it: the browser
+  // sends the reading cookie instead. That cookie is now set for this half of
+  // the note area too, which is what let this move off the bridge.
+  rawUrl: (path: string) => `${NATIVE}/files/content?path=${encodeURIComponent(path)}`,
 
   // search & links
   // limit omitted → server returns every match (panel renders them incrementally)

@@ -62,6 +62,13 @@ class Options:
     # written underneath it. The club evening brings its running order, the
     # course its structure.
     calendar_templates: list = field(default_factory=list)
+    # Where the templates are kept, and which folder gets which form. Both come
+    # from the vault: a new note in the people folder should get the person form
+    # here exactly as it does anywhere else the vault is opened.
+    templates_folder: str = ""
+    template_date_format: str = "YYYY-MM-DD"
+    template_time_format: str = "HH:mm"
+    folder_templates: list = field(default_factory=list)
 
 
 # What a person may set, and what a value has to look like to be taken. Anything
@@ -113,8 +120,9 @@ def defaults() -> dict:
     return {name: getattr(base, name) for name in PREF_FIELDS}
 
 
-def from_user(prefs: dict | None, vault_root: Path, config_dir: str) -> Options:
-    """The options of one person's vault: their preferences, plus the two the
+def from_user(prefs: dict | None, vault_root: Path, config_dir: str,
+              template_settings_dir: str = "") -> Options:
+    """The options of one person's vault: their preferences, plus the ones the
     vault decides for itself."""
     out = Options()
     for name, raw in (prefs or {}).items():
@@ -146,4 +154,33 @@ def from_user(prefs: dict | None, vault_root: Path, config_dir: str) -> Options:
             out.daily_folder = daily["folder"]
         if isinstance(daily.get("format"), str) and daily["format"]:
             out.daily_format = daily["format"]
+
+        # Where the templates are kept.
+        try:
+            with (vault_root / config_dir / "templates.json").open(encoding="utf-8") as fh:
+                templates = json.load(fh)
+        except (OSError, ValueError):
+            templates = {}
+        if isinstance(templates.get("folder"), str):
+            out.templates_folder = templates["folder"]
+        if isinstance(templates.get("dateFormat"), str) and templates["dateFormat"]:
+            out.template_date_format = templates["dateFormat"]
+        if isinstance(templates.get("timeFormat"), str) and templates["timeFormat"]:
+            out.template_time_format = templates["timeFormat"]
+
+    # Which folder gets which form. A mapping that points at a note which is no
+    # longer there stays in the list: it is the vault's statement, and dropping
+    # entries here would quietly disagree with what the vault says about itself.
+    if template_settings_dir:
+        try:
+            with (vault_root / template_settings_dir / "data.json").open(encoding="utf-8") as fh:
+                raw_templater = json.load(fh)
+        except (OSError, ValueError):
+            raw_templater = {}
+        found = raw_templater.get("folder_templates")
+        if isinstance(found, list):
+            out.folder_templates = [
+                {"folder": str(f.get("folder") or ""), "template": str(f.get("template") or "")}
+                for f in found
+                if isinstance(f, dict) and f.get("folder") and f.get("template")]
     return out

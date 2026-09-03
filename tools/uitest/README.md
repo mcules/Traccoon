@@ -38,6 +38,7 @@ The other probes start the same way:
 | `language.mjs`, `language-admin.mjs` | switching language, and creating, renaming, disabling and deleting one |
 | `error-text.mjs` | a server error in a German and in an English browser, no login needed |
 | `shot.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
+| `note-assets.mjs` | the requests a browser makes on its own: a picture as `<img src>` and a template through `import()`, both without any header of ours |
 | `note-versions.mjs` | the kept versions of a note: the freshness in the status bar, the list, and that an older version is really a different text. `NOTIZ=<path>` picks the note |
 | `map-check.mjs` | a plugin in its iframe: console, failed requests, container height, and how many map tiles really loaded. `PLUGIN=<slug>` for another one. Exits non-zero when something is broken |
 

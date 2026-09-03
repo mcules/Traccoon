@@ -22,9 +22,6 @@ from writing into the vault with it.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
-import time
 from typing import Any
 
 import asyncio
@@ -41,12 +38,11 @@ from ..core.error import Error
 from ..db import SessionLocal, get_session
 from ..models.enums import UserStatus
 from ..models.user import User
+from ..notes import tickets
 from .deps import get_current_user
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
-ASSET_COOKIE = "notes_asset"
-ASSET_TTL = 12 * 3600
 
 # Headers that describe the request and have to survive the hop. Everything else
 # is about this connection (host, length, encoding) and would be a lie on the
@@ -61,35 +57,6 @@ FORWARD_RESPONSE = {
 }
 
 
-def _asset_token(user_id: int) -> str:
-    """A short lived ticket for reading files, deliberately not a JWT.
-
-    A JWT here would be a second thing that looks like a session, and the day
-    somebody feeds it to the session check is the day this becomes a hole. This
-    is a signed string with one meaning and no parser worth attacking.
-    """
-    exp = int(time.time()) + ASSET_TTL
-    body = f"{user_id}.{exp}"
-    sig = hmac.new(settings.jwt_secret.encode(), f"notes-asset:{body}".encode(),
-                   hashlib.sha256).hexdigest()
-    return f"{body}.{sig}"
-
-
-def _asset_user_id(token: str) -> int | None:
-    try:
-        uid_s, exp_s, sig = token.split(".", 2)
-        body = f"{uid_s}.{exp_s}"
-        want = hmac.new(settings.jwt_secret.encode(), f"notes-asset:{body}".encode(),
-                        hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, want):
-            return None
-        if int(exp_s) < int(time.time()):
-            return None
-        return int(uid_s)
-    except (ValueError, AttributeError):
-        return None
-
-
 async def notes_user(
     request: Request,
     authorization: str | None = Header(default=None),
@@ -99,7 +66,7 @@ async def notes_user(
     if authorization:
         return await get_current_user(request, authorization, db)
     if request.method == "GET":
-        uid = _asset_user_id(request.cookies.get(ASSET_COOKIE) or "")
+        uid = tickets.holder(request.cookies.get(tickets.COOKIE) or "")
         if uid is not None:
             user = await db.get(User, uid)
             if user is not None and user.status == UserStatus.active:
@@ -127,22 +94,28 @@ async def open_session(request: Request, response: Response,
                        user: User = Depends(get_current_user)) -> dict[str, Any]:
     """Hand out the reading cookie. The notes page asks for this when it opens."""
     _vault_of(user)
-    response.set_cookie(
-        ASSET_COOKIE, _asset_token(user.id),
-        max_age=ASSET_TTL, httponly=True, samesite="lax",
-        # `Secure` only where it can be honoured. A browser silently throws a
-        # secure cookie away on a plain connection, and the whole area then looks
-        # broken for a reason nothing reports: no pictures, no live channel.
-        secure=_is_https(request),
-        # Narrow on purpose: it is worth nothing anywhere else in the house.
-        path="/api/notes",
-    )
+    ticket = tickets.issue(user.id)
+    for path in tickets.PATHS:
+        response.set_cookie(
+            tickets.COOKIE, ticket,
+            max_age=tickets.TTL, httponly=True, samesite="lax",
+            # `Secure` only where it can be honoured. A browser silently throws a
+            # secure cookie away on a plain connection, and the whole area then
+            # looks broken for a reason nothing reports: no pictures, no live
+            # channel.
+            secure=_is_https(request),
+            # Narrow on purpose, and once per half of the note area: a cookie on
+            # `/api/notes` is not sent to `/api/notes-native`, because path
+            # matching is about slashes, not about intent.
+            path=path,
+        )
     return {"ok": True}
 
 
 @router.post("/session/end")
 async def close_session(response: Response, _user: User = Depends(get_current_user)) -> dict[str, Any]:
-    response.delete_cookie(ASSET_COOKIE, path="/api/notes")
+    for path in tickets.PATHS:
+        response.delete_cookie(tickets.COOKIE, path=path)
     return {"ok": True}
 
 
@@ -159,7 +132,7 @@ async def live(websocket: WebSocket) -> None:
     Declared before the catch-all above it so the intent is readable; Starlette
     would separate the two by scope anyway.
     """
-    uid = _asset_user_id(websocket.cookies.get(ASSET_COOKIE) or "")
+    uid = tickets.holder(websocket.cookies.get(tickets.COOKIE) or "")
     if uid is None or not settings.notes_base_url:
         await websocket.close(code=1008)
         return

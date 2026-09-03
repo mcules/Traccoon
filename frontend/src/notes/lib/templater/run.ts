@@ -16,7 +16,7 @@ export async function runTemplate(templatePath: string, ctx: TpContext): Promise
   const { id } = await api.templaterCompile(templatePath);
   // Same as the script import in dvjs: a real module import carries the bridge
   // prefix itself, because it never passes the fetch wrapper.
-  const mod = (await import(/* @vite-ignore */ `/api/notes/templater/module/${id}.mjs`)) as {
+  const mod = (await import(/* @vite-ignore */ `/api/notes-native/templates/module/${id}.mjs`)) as {
     default: (tp: unknown, app: unknown, host: unknown) => Promise<string>;
   };
   // The shim wants a run state; a template has no container to draw into and

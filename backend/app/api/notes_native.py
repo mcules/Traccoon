@@ -23,8 +23,8 @@ import logging
 import re
 from pathlib import Path, PurePosixPath
 
-from fastapi import (APIRouter, Depends, File, Form, Query, Response,
-                     UploadFile, WebSocket, WebSocketDisconnect, status)
+from fastapi import (APIRouter, Depends, File, Form, Header, Query, Request,
+                     Response, UploadFile, WebSocket, WebSocketDisconnect, status)
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -34,12 +34,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.error import Error
 from ..core.security import decrypt_secret, encrypt_secret
 from ..db import SessionLocal, get_session
+from ..models.enums import UserStatus
 from ..models.notes import NotesCalendar
 from ..models.user import User
-from ..notes import live, paths
+from ..notes import live, paths, tickets
 from ..core.timezones import zone_of
 from ..config import settings
 from ..notes import history as note_history
+from ..notes import templates as note_templates
 from ..notes.calendar import caldav as cal_dav
 from ..notes.calendar import daily as cal_daily
 from ..notes.calendar import fetch as cal_fetch
@@ -62,6 +64,33 @@ log = logging.getLogger("notes")
 
 router = APIRouter(prefix="/notes-native", tags=["notes"])
 
+
+async def browser_user(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> User:
+    """Who is asking, for the requests a browser makes on its own.
+
+    A picture is an `<img src>` and a compiled template arrives through
+    `import()`; neither carries an `Authorization` header, because the browser
+    decides what goes on such a request and it sends cookies. So a GET may also
+    identify itself with the reading ticket — which is worth nothing but reading
+    this one person's notes, and nothing at all for a POST.
+    """
+    if authorization:
+        return await get_current_user(request, authorization, db)
+    if request.method == "GET":
+        uid = tickets.holder(request.cookies.get(tickets.COOKIE) or "")
+        if uid is not None:
+            user = await db.get(User, uid)
+            if user is not None and user.status == UserStatus.active:
+                # The ticket carries no scopes: it opens reading and nothing more.
+                request.state.scopes = None
+                return user
+    raise Error(status.HTTP_401_UNAUTHORIZED, "err.not_authenticated",
+                "Not authenticated")
+
 # The link graph, per vault. Reading six thousand notes on every request is not
 # a cache decision, it is the difference between an answer and a timeout.
 #
@@ -78,7 +107,10 @@ def _guard(fn, rel: str):
         # is exactly what somebody probing would want to learn.
         raise Error(status.HTTP_404_NOT_FOUND, "err.notes_not_found",
                     "No such note: {path}", path=rel) from None
-    except FileNotFoundError:
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        # A folder asked for as a note is the same answer as a note that is not
+        # there. It used to be a 500, which says "something here is broken" for
+        # what is only somebody asking for the wrong thing.
         raise Error(status.HTTP_404_NOT_FOUND, "err.notes_not_found",
                     "No such note: {path}", path=rel) from None
 
@@ -89,7 +121,7 @@ async def tree(user: User = Depends(get_current_user)) -> dict:
 
 
 @router.get("/files/content")
-async def content(path: str = Query(...), user: User = Depends(get_current_user)):
+async def content(path: str = Query(...), user: User = Depends(browser_user)):
     """A note as text, or a file as bytes.
 
     The hash travels with the text: the editor keeps it as the identity of the
@@ -871,6 +903,91 @@ async def calendar_tidy(body: TidyIn, user: User = Depends(get_current_user),
         if not body.dryRun:
             _writing(lambda t=folded.text, r=rel: ws.save(r, t), rel)
     return {"files": files, "total": total, "dryRun": body.dryRun}
+
+
+# ------------------------------------------------------------------ templates
+#
+# A template is compiled here and fetched back as a module. The page's content
+# policy forbids building a function from a string in the browser, so generated
+# code has to arrive as a real module from this origin — and it runs there
+# rather than here because half of what these templates do is ask questions.
+
+_modules = note_templates.Modules()
+
+
+@router.get("/templates")
+async def templates_list(user: User = Depends(get_current_user)) -> dict:
+    """The notes in the template folder, as things to insert."""
+    ws = workspace_of(user)
+    return {"folder": ws.options.templates_folder,
+            "templates": note_templates.in_folder(sorted(ws.graph.docs),
+                                                  ws.options.templates_folder)}
+
+
+@router.get("/templates/folders")
+async def template_folders(user: User = Depends(get_current_user)) -> dict:
+    """Which folder gets which form, so a new note arrives with the right one."""
+    return {"folderTemplates": workspace_of(user).options.folder_templates}
+
+
+class CompileIn(BaseModel):
+    path: str
+
+
+@router.post("/templates/compile")
+async def compile_template(body: CompileIn, user: User = Depends(get_current_user)) -> dict:
+    if not body.path.strip():
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_path_required",
+                    "Which note?")
+    ws = workspace_of(user)
+    source = _guard(lambda: ws.vault.read_text(body.path), body.path)
+    compiled = note_templates.compile_template(source)
+    return {"id": _modules.put(compiled), "interactive": compiled.interactive}
+
+
+class FillIn(BaseModel):
+    path: str
+    # What `{{title}}` and `tp.file.title` mean: the name of the note being made.
+    title: str = ""
+
+
+@router.post("/templates/fill")
+async def fill_template(body: FillIn, user: User = Depends(get_current_user)) -> dict:
+    """A template with the plain substitutions done, here on the server.
+
+    The other route compiles a template into something the browser runs, because
+    it may ask questions. This one is for a note being created with nobody
+    watching: what can be answered is answered, and what cannot is reported
+    rather than guessed at.
+    """
+    ws = workspace_of(user)
+    raw = _guard(lambda: ws.vault.read_text(body.path), body.path)
+    filled = note_templates.fill(raw, title=body.title,
+                                 date_format=ws.options.template_date_format,
+                                 time_format=ws.options.template_time_format)
+    return {"text": filled.text, "unresolved": filled.unresolved}
+
+
+@router.get("/templates/module/{module_id}.mjs")
+async def template_module(module_id: str, user: User = Depends(browser_user)):
+    """The compiled template, as a module the page can import.
+
+    Reached by `import()`, which carries no header of ours — hence the reading
+    ticket. What comes back is only ever code this server generated a moment ago
+    from a template in this vault.
+    """
+    code = _modules.get(module_id)
+    if code is None:
+        # A module the browser asks for after it has been forgotten. Answering
+        # with a module that explains itself puts the sentence where somebody
+        # will see it; a 404 here surfaces as an unreadable import error.
+        return PlainTextResponse(
+            'export default async function () {\n'
+            '  throw new Error("This template is no longer held — insert it again.");\n'
+            '}\n',
+            status_code=status.HTTP_404_NOT_FOUND, media_type="text/javascript")
+    return PlainTextResponse(code, media_type="text/javascript",
+                             headers={"Cache-Control": "private, max-age=300"})
 
 
 # ---------------------------------------------------------------- the versions
