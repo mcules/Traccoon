@@ -80,6 +80,15 @@ class User(TimestampMixin, Base):
     # One vault per person: what is personal hangs off the owner here, the same
     # way stores, mail accounts and destinations already do.
     vault_path: Mapped[str] = mapped_column(String(500), default="")
+    # How this person's note area behaves: which view a note opens in, whether
+    # deleting means the trash, how the search weighs a near miss. One field
+    # rather than a column each — these are view settings, and the next one must
+    # not cost a migration. `notes/settings/options.py` says what is in it.
+    notes_prefs: Mapped[dict] = mapped_column(JSON, default=dict)
+    # The workspace: which notes are open, which panel, what is unfolded. On the
+    # person and not in the browser, so whoever logs in at the other machine in
+    # the evening carries on where they left off.
+    notes_ui_state: Mapped[dict] = mapped_column(JSON, default=dict)
 
     max_runners: Mapped[int] = mapped_column(Integer, default=3)
     # When the personal assistant reports over Telegram or the bell:

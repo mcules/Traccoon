@@ -19,14 +19,20 @@ from __future__ import annotations
 
 import errno
 import logging
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from fastapi import (APIRouter, Depends, File, Form, Query, Response,
                      UploadFile, status)
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ..core.error import Error
+from ..core.security import encrypt_secret
+from ..db import get_session
+from ..models.notes import NotesCalendar
 from ..models.user import User
 from ..notes import paths
 from ..notes.dv import tasks as dv_tasks
@@ -34,6 +40,7 @@ from ..notes.dv.bases import run as dv_bases
 from ..notes.dv.dql import evaluate_inline, execute as run_query, file_object
 from ..notes.query.run import run as run_search
 from ..notes.registry import vault_of, workspace_of
+from ..notes.settings import options as vault_options
 from ..notes.vault import write as vault_write
 from ..notes.vault.files import content_hash, is_text, mime_for
 from ..notes.workspace import Conflict
@@ -426,3 +433,155 @@ async def recovery_restore(body: SnapshotIn,
         raise Error(status.HTTP_404_NOT_FOUND, "err.notes_no_snapshot",
                     "No kept version of {path} from then", path=body.path)
     return out
+
+
+# ---------------------------------------------------------------- settings
+#
+# The note area has no settings page of its own. What a person can decide sits
+# in their account with everything else personal, and what the house decides
+# sits in the house settings. A second settings world beside those two is how
+# somebody ends up looking for the same switch in three places.
+
+
+class PrefsIn(BaseModel):
+    trash: str | None = None
+    delete_mode: str | None = None
+    default_view: str | None = None
+    search_fuzzy: float | None = None
+    search_prefix: bool | None = None
+    folder_colours: str | None = None
+    folder_colour_opacity: float | None = None
+
+
+@router.get("/prefs")
+async def prefs(user: User = Depends(get_current_user)) -> dict:
+    """What this person set, with the defaults filled in for what they did not."""
+    out = vault_options.defaults()
+    out.update({k: v for k, v in (user.notes_prefs or {}).items() if k in out})
+    return out
+
+
+@router.put("/prefs")
+async def save_prefs(body: PrefsIn, user: User = Depends(get_current_user),
+                     db: AsyncSession = Depends(get_session)) -> dict:
+    """Change some of them. What the call does not name is left alone.
+
+    A value that is not one of the allowed ones is dropped rather than refused:
+    it comes back as the default on the next read, and a malformed preference
+    must not be able to stop somebody reading their notes.
+    """
+    kept = dict(user.notes_prefs or {})
+    for name, value in body.model_dump(exclude_none=True).items():
+        kept[name] = value
+    clean = vault_options.from_user(kept, Path(user.vault_path or "/"), "")
+    user.notes_prefs = {name: getattr(clean, name) for name in vault_options.PREF_FIELDS}
+    await db.commit()
+    return user.notes_prefs
+
+
+@router.get("/uistate")
+async def ui_state(user: User = Depends(get_current_user)) -> dict:
+    """The workspace: what was open, which panel, what was unfolded.
+
+    On the person and not in the browser, so whoever logs in at the other
+    machine in the evening carries on where they left off.
+    """
+    return user.notes_ui_state or {}
+
+
+@router.put("/uistate")
+async def save_ui_state(body: dict, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)) -> dict:
+    user.notes_ui_state = body if isinstance(body, dict) else {}
+    await db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- calendars
+
+
+class CalendarIn(BaseModel):
+    name: str = ""
+    url: str = ""
+    link_target: str = ""
+    auth_user: str = ""
+    # Absent leaves the stored one alone; an empty string clears it. Those are
+    # two different wishes and a single field cannot carry both.
+    auth_password: str | None = None
+    enabled: bool = True
+    position: int = 0
+
+
+def _calendar_json(row: NotesCalendar) -> dict:
+    """A calendar as it goes out. The password never does — only whether one is
+    set, which is all an interface needs to show."""
+    return {"id": row.id, "name": row.name, "url": row.url,
+            "link_target": row.link_target, "auth_user": row.auth_user,
+            "has_password": bool(row.auth_password_enc),
+            "enabled": row.enabled, "position": row.position}
+
+
+async def _own_calendar(db: AsyncSession, user: User, cid: int) -> NotesCalendar:
+    row = (await db.execute(select(NotesCalendar).where(
+        NotesCalendar.id == cid,
+        NotesCalendar.owner_user_id == user.id))).scalar_one_or_none()
+    if row is None:
+        # The same answer for somebody else's calendar as for one that is not
+        # there: telling the two apart would say that it exists.
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_calendar_not_found",
+                    "No such calendar")
+    return row
+
+
+@router.get("/calendars")
+async def calendars(user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)) -> dict:
+    rows = (await db.execute(
+        select(NotesCalendar).where(NotesCalendar.owner_user_id == user.id)
+        .order_by(NotesCalendar.position, NotesCalendar.id))).scalars().all()
+    return {"calendars": [_calendar_json(r) for r in rows]}
+
+
+@router.post("/calendars", status_code=status.HTTP_201_CREATED)
+async def add_calendar(body: CalendarIn, user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)) -> dict:
+    if not body.url.strip():
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_calendar_no_url",
+                    "A calendar needs an address")
+    row = NotesCalendar(
+        owner_user_id=user.id, name=body.name.strip(), url=body.url.strip(),
+        link_target=body.link_target.strip(), auth_user=body.auth_user.strip(),
+        auth_password_enc=encrypt_secret(body.auth_password) if body.auth_password else "",
+        enabled=body.enabled, position=body.position)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _calendar_json(row)
+
+
+@router.patch("/calendars/{cid}")
+async def change_calendar(cid: int, body: CalendarIn,
+                          user: User = Depends(get_current_user),
+                          db: AsyncSession = Depends(get_session)) -> dict:
+    row = await _own_calendar(db, user, cid)
+    given = body.model_dump(exclude_unset=True)
+    for name in ("name", "url", "link_target", "auth_user"):
+        if name in given:
+            setattr(row, name, str(given[name]).strip())
+    for name in ("enabled", "position"):
+        if name in given:
+            setattr(row, name, given[name])
+    if "auth_password" in given:
+        row.auth_password_enc = (encrypt_secret(given["auth_password"])
+                                 if given["auth_password"] else "")
+    await db.commit()
+    return _calendar_json(row)
+
+
+@router.delete("/calendars/{cid}", status_code=status.HTTP_204_NO_CONTENT)
+async def drop_calendar(cid: int, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)) -> Response:
+    row = await _own_calendar(db, user, cid)
+    await db.delete(row)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

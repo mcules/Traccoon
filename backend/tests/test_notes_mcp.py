@@ -12,7 +12,6 @@ import pytest
 
 from app.core import scopes
 from app.notes import registry
-from app.notes.settings import options as vault_options
 from app.services import notes_mcp
 
 NOTES = {
@@ -32,7 +31,6 @@ def user(tmp_path, monkeypatch):
         p.write_text(text, encoding="utf-8")
     registry.forget_all()
     monkeypatch.setattr(registry, "_settings_loaded", True)
-    vault_options.reset()
 
     class U:
         vault_path = str(root)

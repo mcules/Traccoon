@@ -45,6 +45,7 @@ from .assistant import (  # noqa: F401
 )
 from .chat import Message  # noqa: F401
 from .notification import Notification  # noqa: F401
+from .notes import NotesCalendar  # noqa: F401
 from .plugins import McpServer, Plugin, PluginData, PluginFile, Skill  # noqa: F401
 from .workflow import (  # noqa: F401
     WorkflowDefinition, WorkflowInstance, WorkflowSet, WorkflowStepRun, WorkflowToken,
@@ -61,7 +62,8 @@ __all__ = [
     "AgentDefinition", "Run", "RunStep", "CostEntry",
     "Permission", "PermAction", "PermRequest", "PermGrant", "WebhookSub",
     "WebhookCoalesce", "Job", "JobRun", "Deployment", "ProviderModel",
-    "UserSecret", "Message", "Notification", "Skill", "McpServer", "Plugin", "PluginFile",
+    "UserSecret", "Message", "Notification", "Skill", "McpServer", "NotesCalendar",
+    "Plugin", "PluginFile",
     "AssistantTask", "AssistantPolicy", "AssistantPermission",
     "WorkflowDefinition", "WorkflowVersion", "WorkflowInstance", "WorkflowToken",
     "WorkflowStepRun", "WorkflowSet", "BranchTestenv", "Destination",

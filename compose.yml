@@ -83,9 +83,6 @@ services:
       # The vault's own configuration folder. Two settings are read from it, both about
       # writing: where an attachment belongs, and whether links follow a renamed note.
       NOTES_CONFIG_DIR: ${NOTES_CONFIG_DIR:-}
-      # Where a deleted note goes, and whether deleting means deleting.
-      NOTES_TRASH_DIR: ${NOTES_TRASH_DIR:-.trash}
-      NOTES_DELETE_MODE: ${NOTES_DELETE_MODE:-trash}
       # Where the text a save replaces is kept — outside the vault, so the sync does not
       # carry the copies to every device and searches do not find them. Empty means
       # nothing is kept.
@@ -135,7 +132,14 @@ services:
       default:
         aliases:
           - traccoon-backend   # unique, so the frontend on the proxy network does not collide
-      mcp-backends: {}         # reaches mcpjungle:8080 (self-service MCP provisioning)
+      mcp-backends:
+        aliases:
+          # The same name on both networks. Traffic goes both ways here now: this
+          # reaches mcpjungle:8080 for self-service provisioning, and the registry
+          # reaches the note tool server back the other way. A generic name on a
+          # shared network is how a neighbouring stack's `backend` ends up being
+          # asked, so it is the unique one on both sides.
+          - traccoon-backend
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8800", "--reload"]
 
   worker:

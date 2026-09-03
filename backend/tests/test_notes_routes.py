@@ -12,7 +12,6 @@ import pytest
 
 from app.api import notes_native as nn
 from app.notes import registry
-from app.notes.settings import options as vault_options
 from app.notes.vault.files import content_hash
 
 
@@ -25,7 +24,6 @@ def vault(tmp_path, monkeypatch):
     (root / "Quelle.md").write_text("Siehe [[Ziel]].\n", encoding="utf-8")
     registry.forget_all()
     monkeypatch.setattr(registry, "_settings_loaded", True)  # nothing to read from a fresh vault
-    vault_options.reset()
     return root
 
 

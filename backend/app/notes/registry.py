@@ -48,13 +48,13 @@ def vault_of(user: User) -> Vault:
     return Vault(root, name=settings.notes_vault_name or root.name)
 
 
-def _load_settings(v: Vault) -> None:
-    """Take over how the notes were configured to behave, once.
+def _load_language_settings(v: Vault) -> None:
+    """Take over which checkbox characters exist and what each of them means.
 
     Held per process rather than per vault, which is right while there is one.
-    When a second person gets a vault this moves into the database with the rest
-    of the configuration — until then a second vault would silently inherit the
-    first one's checkbox characters and attachment folder.
+    These belong to the notes rather than to the reader — a task written `[/]`
+    means the same thing to everybody who opens that vault — so they move into
+    the database with the one-off takeover and not into anybody's preferences.
     """
     global _settings_loaded
     if _settings_loaded:
@@ -62,9 +62,6 @@ def _load_settings(v: Vault) -> None:
     dirs = {"query": settings.notes_query_settings_dir,
             "tasks": settings.notes_task_settings_dir}
     note_settings.load(Path(v.root), {k: d for k, d in dirs.items() if d})
-    vault_options.load(Path(v.root), settings.notes_config_dir,
-                       trash=settings.notes_trash_dir,
-                       delete_mode=settings.notes_delete_mode)
     _settings_loaded = True
 
 
@@ -84,11 +81,17 @@ def workspace_of(user: User) -> Workspace:
     """
     v = vault_of(user)
     key = str(v.root)
+    # Read afresh on every call: a preference changed a moment ago in the
+    # settings has to apply to the next save, not after the next restart.
+    options = vault_options.from_user(getattr(user, "notes_prefs", None),
+                                      Path(v.root), settings.notes_config_dir)
     ws = _workspaces.get(key)
     if ws is None:
-        _load_settings(v)
-        ws = Workspace.open(v, vault_options.options(), _recovery_root())
+        _load_language_settings(v)
+        ws = Workspace.open(v, options, _recovery_root())
         _workspaces[key] = ws
+    else:
+        ws.options = options
     task = _watchers.get(key)
     if task is None or task.done():
         try:
@@ -106,7 +109,12 @@ def forget_all() -> None:
     """Drop everything cached. For tests, and for a vault that moved."""
     global _settings_loaded
     for task in _watchers.values():
-        task.cancel()
+        try:
+            task.cancel()
+        except RuntimeError:
+            # The loop the watcher lived in has already gone. Nothing to stop,
+            # and raising here would turn a tidy-up into the failure.
+            pass
     _watchers.clear()
     _workspaces.clear()
     _settings_loaded = False

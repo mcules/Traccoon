@@ -498,6 +498,13 @@ async def lifespan(app: FastAPI):
                 # which is the state every account starts in.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS vault_path VARCHAR(500) "
                 "DEFAULT '' NOT NULL",
+                # How this person's note area behaves, and what they had open in it.
+                # One field each rather than a column per preference: these are view
+                # settings, and the next one must not cost a migration.
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes_prefs JSON "
+                "DEFAULT '{}'::json NOT NULL",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes_ui_state JSON "
+                "DEFAULT '{}'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads_granted JSON "
