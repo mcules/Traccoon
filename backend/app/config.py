@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     # What the vault is called in the tree. Without it the folder name shows,
     # and a folder is named after where it lies rather than what it is.
     notes_vault_name: str = ""                      # NOTES_VAULT_NAME
+    # Where the settings of the two note languages sit inside a vault: which
+    # checkbox characters exist and what each means, how a missing value is
+    # written. Both are paths inside the vault and both are empty by default,
+    # which is the state a new vault is in — it has no such folder at all. The
+    # folder belongs to a program that is being switched off, so its name is
+    # configuration and not something this repository carries.
+    notes_query_settings_dir: str = ""              # NOTES_QUERY_SETTINGS_DIR
+    notes_task_settings_dir: str = ""               # NOTES_TASK_SETTINGS_DIR
 
     mcpjungle_base: str = "http://mcpjungle:8080"   # MCPJUNGLE_BASE
     mcpjungle_admin_token: str = ""                 # MCPJUNGLE_ADMIN_TOKEN

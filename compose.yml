@@ -74,6 +74,12 @@ services:
       # passes requests to it, so the browser only ever talks to us.
       NOTES_BASE_URL: ${NOTES_BASE_URL:-http://obsidian-web:8787}
       NOTES_VAULT_NAME: ${NOTES_VAULT_NAME:-Second Brain}
+      # Where the settings of the two note languages sit inside the vault — which
+      # checkbox characters exist and what each of them means. Deliberately without a
+      # default: the folder belongs to a program that is being switched off, and a new
+      # vault has none at all, which is what the built-in defaults are for.
+      NOTES_QUERY_SETTINGS_DIR: ${NOTES_QUERY_SETTINGS_DIR:-}
+      NOTES_TASK_SETTINGS_DIR: ${NOTES_TASK_SETTINGS_DIR:-}
       MCPJUNGLE_BASE: ${MCPJUNGLE_BASE:-http://mcpjungle:8080}
       MCPJUNGLE_ADMIN_TOKEN: ${MCPJUNGLE_ADMIN_TOKEN:-}
       VAULT_PATH: /vault

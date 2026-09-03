@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import Callable
 
 from watchfiles import Change, awatch
 
@@ -39,7 +40,9 @@ log = logging.getLogger("notes.watch")
 QUIET_MS = 250
 
 
-async def watch(vault: Vault, graph: LinkGraph, *, stop: asyncio.Event | None = None) -> None:
+async def watch(vault: Vault, graph: LinkGraph, *,
+                also: Callable[[str, bool], None] | None = None,
+                stop: asyncio.Event | None = None) -> None:
     """Follow the vault until told to stop. Never raises upwards.
 
     A watcher that dies takes the freshness of the index with it and says
@@ -52,7 +55,7 @@ async def watch(vault: Vault, graph: LinkGraph, *, stop: asyncio.Event | None = 
         async for batch in awatch(root, stop_event=stop, debounce=QUIET_MS,
                                   recursive=True, ignore_permission_denied=True):
             try:
-                apply(vault, graph, batch)
+                apply(vault, graph, batch, also=also)
             except Exception:                      # noqa: BLE001 - see docstring
                 log.exception("notes: could not work off a batch of changes")
     except asyncio.CancelledError:
@@ -61,8 +64,15 @@ async def watch(vault: Vault, graph: LinkGraph, *, stop: asyncio.Event | None = 
         log.exception("notes: the watcher stopped")
 
 
-def apply(vault: Vault, graph: LinkGraph, batch: set[tuple[Change, str]]) -> int:
-    """Work off one batch. Returns how many files were actually touched."""
+def apply(vault: Vault, graph: LinkGraph, batch: set[tuple[Change, str]],
+          *, also: Callable[[str, bool], None] | None = None) -> int:
+    """Work off one batch. Returns how many files were actually touched.
+
+    `also` is told about each file as well. There is a second index over the
+    same vault — the one the query languages read — and it has to follow the
+    same batch: two indexes over one folder that are refreshed at different
+    moments answer differently about the same note, and nothing says so.
+    """
     touched = 0
     for change, full in batch:
         try:
@@ -77,6 +87,8 @@ def apply(vault: Vault, graph: LinkGraph, batch: set[tuple[Change, str]]) -> int
         # the disk when the batch is worked off is the truth.
         gone = not (Path(vault.root) / rel).exists()
         graph.update(vault, rel, removed=gone)
+        if also is not None:
+            also(rel, gone)
         touched += 1
     if touched:
         log.debug("notes: %d file(s) taken into the index", touched)
