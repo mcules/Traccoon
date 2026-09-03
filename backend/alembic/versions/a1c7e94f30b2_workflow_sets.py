@@ -10,6 +10,7 @@ Create Date: 2026-07-26
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = 'a1c7e94f30b2'
@@ -19,7 +20,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    workflowsetscope = sa.Enum('global', 'user', name='workflowsetscope')
+    workflowsetscope = postgresql.ENUM('global', 'user', name='workflowsetscope', create_type=False)
     workflowsetscope.create(op.get_bind(), checkfirst=True)
 
     op.create_table(

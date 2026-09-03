@@ -255,7 +255,7 @@ export default function AssistantPanel() {
             <div key={s.id} className={`assistant-session${s.id === sessionId ? ' active' : ''}`}>
               <button className="assistant-session-open" onClick={() => chooseSession(s.id)}>
                 <span className="assistant-session-title">{s.title || `Unterhaltung ${s.id}`}</span>
-                {s.running && <span className="assistant-busy-dot" title="arbeitet gerade" />}
+                {s.running && <span className="assistant-busy-dot" title={tr("notes_msg.arbeitet_gerade")} />}
                 <span className="assistant-session-meta">
                   {s.message_count} · {wann(s)}
                 </span>

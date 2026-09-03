@@ -24,7 +24,7 @@ page.on("response", (r) => {
 });
 
 try {
-  await page.goto(`${BASIS}/notes/${NOTE.split("/").map(encodeURIComponent).join("/")}`,
+  await page.goto(`${BASIS}/notes/n/${NOTE.split("/").map(encodeURIComponent).join("/")}`,
                   { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
 

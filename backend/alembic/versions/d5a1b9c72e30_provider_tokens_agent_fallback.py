@@ -26,7 +26,11 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint('user_id', 'provider', 'name', name='uq_provider_token'),
     )
-    op.create_index('ix_provider_tokens_user_id', 'provider_tokens', ['user_id'])
+    # No `create_index` for `user_id`: the column above already says `index=True`,
+    # which creates `ix_provider_tokens_user_id`. Creating it a second time made
+    # the whole chain unable to build a database from scratch — the first
+    # `alembic upgrade head` on an empty database stopped here, which is why
+    # nothing since then was ever reached by it.
     for name, type_ in [
         ('token_name', sa.String(length=120)),
         ('fallback_model', sa.String(length=150)),

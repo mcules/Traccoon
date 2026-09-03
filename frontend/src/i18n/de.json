@@ -3583,5 +3583,22 @@
   "err.notes_task_moved": "Diese Aufgabe steht nicht mehr dort — die Notiz neu öffnen",
   "err.notes_not_a_task": "Diese Zeile ist keine Aufgabe",
   "err.notes_script_too_long": "Dieser Block ist zu lang zum Ausführen",
-  "notes_assistant.name": "Assistent"
+  "notes_assistant.name": "Assistent",
+  "notes_view.source": "Quelltext",
+  "notes_view.live": "Live",
+  "notes_view.reading": "Lesen",
+  "notes_msg.made_a_copy": "Kopie angelegt",
+  "notes_msg.moved": "Verschoben",
+  "notes_msg.pasted": "Eingefügt",
+  "notes_msg.cannot_paste_into_itself": "Kann nicht in sich selbst eingefügt werden",
+  "notes_msg.path_copied": "Pfad kopiert",
+  "notes_msg.graph_screenshot_copied": "Bild des Graphen kopiert",
+  "notes_msg.graph_screenshot_downloaded": "Bild des Graphen gespeichert",
+  "notes_msg.screenshot_failed": "Das Bild hat nicht geklappt",
+  "notes_msg.deleted_permanently": "Endgültig gelöscht",
+  "notes_msg.trash_emptied": "Papierkorb geleert",
+  "notes_msg.open_the_note_to_add_a_property": "Zum Ergänzen einer Eigenschaft die Notiz öffnen",
+  "notes_msg.open_the_note_to_search_inside_it": "Zum Suchen in der Notiz diese öffnen",
+  "notes_msg.zeichnung_gespeichert": "Zeichnung gespeichert",
+  "notes_msg.arbeitet_gerade": "arbeitet gerade"
 }

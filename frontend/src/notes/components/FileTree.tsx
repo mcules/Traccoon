@@ -228,7 +228,7 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
     const copyPath = dot > 0 ? `${node.path.slice(0, dot)} copy${node.path.slice(dot)}` : `${node.path} copy`;
     await api.write(copyPath, content);
     await loadTree();
-    notify('Made a copy');
+    notify(tr("notes_msg.made_a_copy"));
   };
   const doMove = () => setMovePath(node.path);
 
@@ -242,7 +242,7 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
     const targetDir = isFolder ? node.path : parentDir(node.path);
     // Never paste a folder into itself or one of its own descendants.
     if (clip.path === targetDir || targetDir === clip.path || targetDir.startsWith(`${clip.path}/`)) {
-      notify('Cannot paste into itself');
+      notify(tr("notes_msg.cannot_paste_into_itself"));
       return;
     }
     const base = clip.path.split('/').pop()!;
@@ -255,7 +255,7 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
         closeTab(clip.path);
         setClipboard(null);
         await loadTree();
-        notify('Moved');
+        notify(tr("notes_msg.moved"));
       } catch (e: any) {
         notify(e?.message ?? 'Paste failed');
       }
@@ -267,7 +267,7 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
     try {
       await api.copy(clip.path, to);
       await loadTree();
-      notify('Pasted');
+      notify(tr("notes_msg.pasted"));
     } catch (e: any) {
       notify(e?.message ?? 'Paste failed');
     }
@@ -275,7 +275,7 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
 
   const copyPath = () => {
     navigator.clipboard?.writeText(node.path).catch(() => {});
-    notify('Path copied');
+    notify(tr("notes_msg.path_copied"));
   };
   const copyUrl = () => {
     navigator.clipboard?.writeText(`${location.origin}${pathToUrl(node.path)}`).catch(() => {});
@@ -577,7 +577,7 @@ export default function FileTree() {
         closeTab(clip.path);
         setClipboard(null);
         await loadTree();
-        notify('Moved');
+        notify(tr("notes_msg.moved"));
       } catch (e: any) {
         notify(e?.message ?? 'Paste failed');
       }
@@ -587,7 +587,7 @@ export default function FileTree() {
     try {
       await api.copy(clip.path, name);
       await loadTree();
-      notify('Pasted');
+      notify(tr("notes_msg.pasted"));
     } catch (e: any) {
       notify(e?.message ?? 'Paste failed');
     }

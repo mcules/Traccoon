@@ -21,6 +21,9 @@ def upgrade() -> None:
     op.create_foreign_key('fk_agent_origin', 'agent_definitions', 'agent_definitions',
                           ['origin_agent_id'], ['id'], ondelete='SET NULL')
     op.add_column('mcp_servers', sa.Column('variables', sa.JSON(), nullable=False, server_default='[]'))
+    # No `create_index` for the two foreign keys: both columns already say
+    # `index=True` above, which creates these very names. Creating them a
+    # second time stopped the chain on an empty database.
     op.create_table(
         'mcp_instances',
         sa.Column('id', sa.Integer(), primary_key=True),
@@ -30,8 +33,6 @@ def upgrade() -> None:
         sa.Column('values_enc', sa.Text(), server_default=''),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index('ix_mcp_instances_agent_id', 'mcp_instances', ['agent_id'])
-    op.create_index('ix_mcp_instances_server_id', 'mcp_instances', ['server_id'])
 
 
 def downgrade() -> None:

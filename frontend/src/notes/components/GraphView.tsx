@@ -660,17 +660,17 @@ export default function GraphView() {
         if (!blob) throw new Error('toBlob failed');
         if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-          useStore.getState().notify('Graph screenshot copied');
+          useStore.getState().notify(tr("notes_msg.graph_screenshot_copied"));
         } else {
           const a = document.createElement('a');
           a.href = URL.createObjectURL(blob);
           a.download = 'graph.png';
           a.click();
           URL.revokeObjectURL(a.href);
-          useStore.getState().notify('Graph screenshot downloaded');
+          useStore.getState().notify(tr("notes_msg.graph_screenshot_downloaded"));
         }
       } catch {
-        useStore.getState().notify('Screenshot failed');
+        useStore.getState().notify(tr("notes_msg.screenshot_failed"));
       }
     };
     window.addEventListener('wo-graph-screenshot', onShot);

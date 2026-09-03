@@ -6,6 +6,7 @@ Create Date: 2026-07-24
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = 'c5f1a2d70b41'
@@ -13,16 +14,18 @@ down_revision = 'b4e6f1a92c83'
 branch_labels = None
 depends_on = None
 
-
-subject_kind = sa.Enum('issue', 'hardware_asset', 'standalone', name='workflowsubjectkind')
-version_status = sa.Enum('draft', 'published', 'archived', name='workflowversionstatus')
-instance_status = sa.Enum('running', 'waiting', 'completed', 'failed', 'cancelled',
-                          name='workflowinstancestatus')
-node_type = sa.Enum('start', 'end', 'human_task', 'decision', 'approval', 'auto_action',
-                    'agent_task', name='workflownodetype')
-token_state = sa.Enum('active', 'waiting', 'consumed', name='workflowtokenstate')
-step_status = sa.Enum('pending', 'running', 'waiting', 'done', 'failed', 'skipped',
-                      name='workflowstepstatus')
+# The types are created once, explicitly, in `upgrade`. Declared with
+# `create_type=False` so the tables below use them without trying to create them
+# a second time — which is what stopped the whole chain on an empty database.
+subject_kind = postgresql.ENUM('issue', 'hardware_asset', 'standalone', name='workflowsubjectkind', create_type=False)
+version_status = postgresql.ENUM('draft', 'published', 'archived', name='workflowversionstatus', create_type=False)
+instance_status = postgresql.ENUM('running', 'waiting', 'completed', 'failed', 'cancelled',
+                          name='workflowinstancestatus', create_type=False)
+node_type = postgresql.ENUM('start', 'end', 'human_task', 'decision', 'approval', 'auto_action',
+                    'agent_task', name='workflownodetype', create_type=False)
+token_state = postgresql.ENUM('active', 'waiting', 'consumed', name='workflowtokenstate', create_type=False)
+step_status = postgresql.ENUM('pending', 'running', 'waiting', 'done', 'failed', 'skipped',
+                      name='workflowstepstatus', create_type=False)
 
 
 def upgrade() -> None:

@@ -52,7 +52,7 @@ export default function TrashView() {
     setBusy(true);
     try {
       await api.deleteTrashItem(it.path);
-      notify('Deleted permanently');
+      notify(tr("notes_msg.deleted_permanently"));
       refresh();
     } catch (e: any) {
       notify(e.message || 'Delete failed');
@@ -67,7 +67,7 @@ export default function TrashView() {
     setBusy(true);
     try {
       await api.emptyTrash();
-      notify('Trash emptied');
+      notify(tr("notes_msg.trash_emptied"));
       refresh();
     } catch (e: any) {
       notify(e.message || 'Empty trash failed');

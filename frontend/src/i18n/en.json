@@ -3583,5 +3583,22 @@
   "err.notes_task_moved": "That task is no longer where it was — open the note again",
   "err.notes_not_a_task": "That line is not a task",
   "err.notes_script_too_long": "That block is too long to run",
-  "notes_assistant.name": "Assistant"
+  "notes_assistant.name": "Assistant",
+  "notes_view.source": "Source",
+  "notes_view.live": "Live",
+  "notes_view.reading": "Reading",
+  "notes_msg.made_a_copy": "Made a copy",
+  "notes_msg.moved": "Moved",
+  "notes_msg.pasted": "Pasted",
+  "notes_msg.cannot_paste_into_itself": "Cannot paste into itself",
+  "notes_msg.path_copied": "Path copied",
+  "notes_msg.graph_screenshot_copied": "Graph screenshot copied",
+  "notes_msg.graph_screenshot_downloaded": "Graph screenshot downloaded",
+  "notes_msg.screenshot_failed": "The screenshot did not work",
+  "notes_msg.deleted_permanently": "Deleted for good",
+  "notes_msg.trash_emptied": "The trash is empty",
+  "notes_msg.open_the_note_to_add_a_property": "Open the note to add a property",
+  "notes_msg.open_the_note_to_search_inside_it": "Open the note to search inside it",
+  "notes_msg.zeichnung_gespeichert": "Drawing saved",
+  "notes_msg.arbeitet_gerade": "is working"
 }

@@ -116,7 +116,7 @@ export default function Workspace() {
     window.setTimeout(() => {
       const v = getActiveEditor();
       if (v) triggerAddProperty(v);
-      else notify('Open the note to add a property');
+      else notify(tr("notes_msg.open_the_note_to_add_a_property"));
     }, 80);
   };
 
@@ -184,7 +184,7 @@ export default function Workspace() {
           const copyPath = dot > 0 ? `${path.slice(0, dot)} copy${path.slice(dot)}` : `${path} copy`;
           await api.write(copyPath, body);
           await loadTree();
-          notify('Made a copy');
+          notify(tr("notes_msg.made_a_copy"));
         },
       };
       items = [
@@ -210,7 +210,7 @@ export default function Workspace() {
                 label: 'Find…',
                 icon: 'search',
                 onClick: () => {
-                  if (!editorFind()) notify('Open the note to search inside it');
+                  if (!editorFind()) notify(tr("notes_msg.open_the_note_to_search_inside_it"));
                 },
               },
             ]
@@ -394,13 +394,16 @@ export default function Workspace() {
               )}
               <div className="seg">
                 <button className={viewMode === 'source' ? 'active' : ''} onClick={() => setViewMode('source')} title={tr("notes_workspace.source")}>
-                  Source
+                  {/* The title says what the view is for; the button needs a word. */}
+                  {tr("notes_view.source")}
                 </button>
                 <button className={viewMode === 'live' ? 'active' : ''} onClick={() => setViewMode('live')} title={tr("notes_workspace.live")}>
-                  Live
+                  {/* The title says what the view is for; the button needs a word. */}
+                  {tr("notes_view.live")}
                 </button>
                 <button className={viewMode === 'reading' ? 'active' : ''} onClick={() => setViewMode('reading')} title={tr("notes_workspace.reading")}>
-                  Reading
+                  {/* The title says what the view is for; the button needs a word. */}
+                  {tr("notes_view.reading")}
                 </button>
               </div>
             </>

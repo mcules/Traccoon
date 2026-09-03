@@ -751,7 +751,16 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .markdown-preview table { border-collapse: collapse; margin: .6em 0; }
 .markdown-preview th, .markdown-preview td { border: 1px solid var(--bg-modifier-border); padding: 4px 10px; text-align: left; vertical-align: top; }
 .markdown-preview th { font-weight: 600; background: var(--bg-secondary); }
+/* The house's reset takes every list marker off — that is right for a menu
+   built out of `<ul>` and wrong for a note, where a bullet is what the writer
+   typed. Nothing here put them back, so every list in a rendered note and in
+   the assistant's answers was a stack of indented lines. Tasks keep their
+   marker off on purpose: their box is the marker. */
 .markdown-preview ul, .markdown-preview ol { padding-left: 1.6em; }
+.markdown-preview ul { list-style-type: disc; }
+.markdown-preview ul ul { list-style-type: circle; }
+.markdown-preview ul ul ul { list-style-type: square; }
+.markdown-preview ol { list-style-type: decimal; }
 .markdown-preview li::marker { color: var(--text-faint); }
 .markdown-preview li + li { margin-top: var(--list-gap, 0.4em); }
 /* Tasks: no bullet, strike only x/X (same rule as Live mode, §7) */

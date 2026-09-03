@@ -6,6 +6,7 @@ Create Date: 2026-07-22
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = 'a3d7c9b12f56'
@@ -30,8 +31,8 @@ def upgrade() -> None:
         'fk_locations_project', 'locations', 'projects', ['project_id'], ['id'], ondelete='SET NULL',
     )
 
-    resourcetype = sa.Enum('location', 'asset', name='resourcetype')
-    grantlevel = sa.Enum('view', 'manage', name='grantlevel')
+    resourcetype = postgresql.ENUM('location', 'asset', name='resourcetype', create_type=False)
+    grantlevel = postgresql.ENUM('view', 'manage', name='grantlevel', create_type=False)
     resourcetype.create(op.get_bind(), checkfirst=True)
     grantlevel.create(op.get_bind(), checkfirst=True)
 
@@ -52,8 +53,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table('resource_grants')
-    grantlevel = sa.Enum('view', 'manage', name='grantlevel')
-    resourcetype = sa.Enum('location', 'asset', name='resourcetype')
+    grantlevel = postgresql.ENUM('view', 'manage', name='grantlevel', create_type=False)
+    resourcetype = postgresql.ENUM('location', 'asset', name='resourcetype', create_type=False)
     grantlevel.drop(op.get_bind(), checkfirst=True)
     resourcetype.drop(op.get_bind(), checkfirst=True)
 

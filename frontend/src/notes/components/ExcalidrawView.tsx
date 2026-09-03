@@ -69,7 +69,7 @@ export default function ExcalidrawView() {
       const r = await api.excalidrawSave(path, latest.current, hashRef.current);
       hashRef.current = r.hash;
       setDirty(false);
-      notify('Zeichnung gespeichert');
+      notify(tr("notes_msg.zeichnung_gespeichert"));
     } catch (e: any) {
       // 409: the file moved on while this was open. Say so rather than
       // deciding on the reader's behalf whose version wins.
