@@ -505,6 +505,14 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '{}'::json NOT NULL",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes_ui_state JSON "
                 "DEFAULT '{}'::json NOT NULL",
+                # The account an appointment is written back through. A share link is
+                # public and read only, so creating one needs a login.
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes_caldav_url VARCHAR(500) "
+                "DEFAULT '' NOT NULL",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes_caldav_user VARCHAR(255) "
+                "DEFAULT '' NOT NULL",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes_caldav_password_enc TEXT "
+                "DEFAULT '' NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads_granted JSON "

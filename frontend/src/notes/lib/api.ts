@@ -336,12 +336,13 @@ export const api = {
       { method: 'PUT', body: JSON.stringify({ calendars }) },
     ),
   testCalendarSource: (url: string, authUser?: string, authPassword?: string) =>
-    req<{ ok: boolean; events?: number; message?: string }>('/api/calendar/test-source', {
+    native<{ ok: boolean; count?: number; message?: string }>('/calendar/test-source', {
       method: 'POST',
-      body: JSON.stringify({ url, authUser, authPassword }),
+      body: JSON.stringify({ url, auth_user: authUser, auth_password: authPassword }),
     }),
   calendarWritable: () =>
-    req<{ configured: boolean; calendars: Array<{ id: string; name: string }> }>('/api/calendar/writable'),
+    native<{ configured: boolean; calendars: Array<{ id: string; name: string; readOnly?: boolean }>;
+             error?: string }>('/calendar/writable'),
   calendarSaveEvent: (body: {
     calendar: string;
     uid?: string;
@@ -351,9 +352,9 @@ export const api = {
     allDay?: boolean;
     location?: string;
     description?: string;
-  }) => req<{ uid: string; url: string; created: boolean }>('/api/calendar/event', { method: 'POST', body: JSON.stringify(body) }),
+  }) => native<{ uid: string; url: string; created: boolean }>('/calendar/event', { method: 'POST', body: JSON.stringify(body) }),
   calendarDeleteEvent: (calendar: string, uid: string) =>
-    req<{ ok: true }>(`/api/calendar/event?calendar=${encodeURIComponent(calendar)}&uid=${encodeURIComponent(uid)}`, {
+    native<{ ok: true }>(`/calendar/event?calendar=${encodeURIComponent(calendar)}&uid=${encodeURIComponent(uid)}`, {
       method: 'DELETE',
     }),
   calendarTidy: (dryRun = true) =>

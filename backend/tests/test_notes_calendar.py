@@ -295,3 +295,175 @@ def test_a_template_loses_its_properties_block_and_gains_an_indent() -> None:
     lines = cd.template_lines("---\ntags: [x]\n---\n\n## Ablauf\n- eins\n")
     assert lines == ["## Ablauf", "- eins"] or lines == ["    ## Ablauf", "    - eins"]
     assert all(not l or l.startswith("    ") for l in lines)
+
+
+# ------------------------------------------------------- writing to a calendar
+
+from app.notes.calendar import caldav                # noqa: E402
+
+PRINCIPAL = """<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:"><d:response>
+  <d:href>/dav/</d:href>
+  <d:propstat><d:prop><d:current-user-principal>
+    <d:href>/dav/principals/me/</d:href>
+  </d:current-user-principal></d:prop></d:propstat>
+</d:response></d:multistatus>"""
+
+HOME = """<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav"><d:response>
+  <d:href>/dav/principals/me/</d:href>
+  <d:propstat><d:prop><cal:calendar-home-set>
+    <d:href>/dav/calendars/me/</d:href>
+  </cal:calendar-home-set></d:prop></d:propstat>
+</d:response></d:multistatus>"""
+
+# One writable calendar, one shared read only, and the home set itself — which
+# is not a calendar and must not be offered as one.
+LISTING = """<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+  <d:response><d:href>/dav/calendars/me/</d:href>
+    <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype>
+      <d:displayname>Zuhause</d:displayname></d:prop></d:propstat></d:response>
+  <d:response><d:href>/dav/calendars/me/privat/</d:href>
+    <d:propstat><d:prop>
+      <d:resourcetype><d:collection/><cal:calendar/></d:resourcetype>
+      <d:displayname>Privat</d:displayname>
+      <d:current-user-privilege-set>
+        <d:privilege><d:read/></d:privilege><d:privilege><d:write/></d:privilege>
+      </d:current-user-privilege-set></d:prop></d:propstat></d:response>
+  <d:response><d:href>/dav/calendars/me/geteilt/</d:href>
+    <d:propstat><d:prop>
+      <d:resourcetype><d:collection/><cal:calendar/></d:resourcetype>
+      <d:displayname>Geteilt</d:displayname>
+      <d:current-user-privilege-set>
+        <d:privilege><d:read/></d:privilege>
+      </d:current-user-privilege-set></d:prop></d:propstat></d:response>
+</d:multistatus>"""
+
+
+class Answer:
+    def __init__(self, status: int, text: str = "") -> None:
+        self.status_code = status
+        self.text = text
+
+
+def _server(monkeypatch, *, root_speaks: bool = True, seen: list | None = None):
+    """A CalDAV server that answers the three questions, and remembers what it
+    was asked."""
+    async def dav(account, method, url, body=None, headers=None):
+        if seen is not None:
+            seen.append((method, url))
+        if method == "PROPFIND" and url.endswith("/.well-known/caldav"):
+            return Answer(207, PRINCIPAL)
+        if method == "PROPFIND" and "principals" in url:
+            return Answer(207, HOME)
+        if method == "PROPFIND" and "calendars" in url:
+            return Answer(207, LISTING)
+        if method == "PROPFIND":
+            return Answer(207, PRINCIPAL) if root_speaks else Answer(405)
+        if method == "HEAD":
+            return Answer(404)
+        return Answer(201)
+    monkeypatch.setattr(caldav, "_dav", dav)
+
+
+ACCOUNT = caldav.Account(url="https://server.example", user="me", password="x")
+
+
+@pytest.mark.asyncio
+async def test_an_account_without_a_password_is_simply_not_configured() -> None:
+    assert await caldav.calendars(caldav.Account(url="https://x", user="me")) == []
+
+
+@pytest.mark.asyncio
+async def test_the_well_known_address_is_used_when_the_root_says_no(monkeypatch) -> None:
+    """Somebody types the address of their server, not of its calendar endpoint,
+    and a web root answers "method not allowed". Building one vendor's folder
+    layout into the code instead is what the side this replaces did."""
+    seen: list = []
+    _server(monkeypatch, root_speaks=False, seen=seen)
+    home = await caldav.calendar_home(ACCOUNT)
+    assert home.endswith("/dav/calendars/me/")
+    assert any(url.endswith("/.well-known/caldav") for _, url in seen)
+
+
+@pytest.mark.asyncio
+async def test_a_root_that_answers_is_left_alone(monkeypatch) -> None:
+    seen: list = []
+    _server(monkeypatch, root_speaks=True, seen=seen)
+    await caldav.calendar_home(ACCOUNT)
+    assert not any(url.endswith("/.well-known/caldav") for _, url in seen)
+
+
+@pytest.mark.asyncio
+async def test_the_home_set_is_not_offered_as_a_calendar(monkeypatch) -> None:
+    _server(monkeypatch)
+    found = await caldav.calendars(ACCOUNT)
+    assert [c.name for c in found] == ["Privat", "Geteilt"]
+
+
+@pytest.mark.asyncio
+async def test_a_calendar_shared_read_only_says_so(monkeypatch) -> None:
+    _server(monkeypatch)
+    found = {c.name: c.read_only for c in await caldav.calendars(ACCOUNT)}
+    assert found == {"Privat": False, "Geteilt": True}
+
+
+@pytest.mark.asyncio
+async def test_writing_into_a_read_only_calendar_is_refused(monkeypatch) -> None:
+    _server(monkeypatch)
+    with pytest.raises(PermissionError):
+        await caldav.save_event(ACCOUNT, "geteilt", timezone="Europe/Berlin",
+                                title="X", start="2026-09-02T10:00", end="2026-09-02T11:00")
+    with pytest.raises(LookupError):
+        await caldav.save_event(ACCOUNT, "gibtsnicht", timezone="Europe/Berlin",
+                                title="X", start="2026-09-02T10:00", end="2026-09-02T11:00")
+
+
+@pytest.mark.asyncio
+async def test_a_new_appointment_gets_an_identity_of_its_own(monkeypatch) -> None:
+    seen: list = []
+    _server(monkeypatch, seen=seen)
+    out = await caldav.save_event(ACCOUNT, "privat", timezone="Europe/Berlin",
+                                  title="Zahnarzt", start="2026-09-02T10:00",
+                                  end="2026-09-02T11:00")
+    assert out["created"] is True and out["uid"].endswith("@notes")
+    assert out["url"].endswith(".ics")
+
+
+@pytest.mark.asyncio
+async def test_deleting_something_that_is_already_gone_is_not_a_failure(monkeypatch) -> None:
+    """It is the state that was asked for."""
+    async def dav(account, method, url, body=None, headers=None):
+        if method == "PROPFIND" and "calendars" in url:
+            return Answer(207, LISTING)
+        if method == "PROPFIND" and "principals" in url:
+            return Answer(207, HOME)
+        if method == "PROPFIND":
+            return Answer(207, PRINCIPAL)
+        return Answer(404)
+    monkeypatch.setattr(caldav, "_dav", dav)
+    await caldav.delete_event(ACCOUNT, "privat", "weg@notes")
+
+
+def test_an_appointment_is_written_on_the_local_clock() -> None:
+    """With the zone named, so the time means what it says wherever it is read."""
+    ics_text = caldav.build_ics(uid="u1", title="Zahnarzt", start="2026-09-02T10:00",
+                                end="2026-09-02T11:00", timezone="Europe/Berlin")
+    assert "DTSTART;TZID=Europe/Berlin:20260902T100000" in ics_text
+    assert "SUMMARY:Zahnarzt" in ics_text
+
+
+def test_a_whole_day_is_written_as_a_day() -> None:
+    ics_text = caldav.build_ics(uid="u2", title="Urlaub", start="2026-09-02",
+                                end="2026-09-03", timezone="Europe/Berlin", all_day=True)
+    assert "DTSTART;VALUE=DATE:20260902" in ics_text
+    assert "TZID" not in ics_text
+
+
+def test_a_comma_in_a_title_does_not_end_the_field() -> None:
+    """Unescaped it would make the rest of the title a second value, and the
+    appointment would arrive with half a name."""
+    ics_text = caldav.build_ics(uid="u3", title="Essen, dann Kino", start="2026-09-02T18:00",
+                                end="2026-09-02T21:00", timezone="Europe/Berlin")
+    assert "SUMMARY:Essen\\, dann Kino" in ics_text

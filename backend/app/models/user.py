@@ -89,6 +89,12 @@ class User(TimestampMixin, Base):
     # person and not in the browser, so whoever logs in at the other machine in
     # the evening carries on where they left off.
     notes_ui_state: Mapped[dict] = mapped_column(JSON, default=dict)
+    # The account an appointment is written back through. Reading a calendar
+    # happens over a share link, which is public and read only; creating one
+    # needs a login, and that is this. Empty = the calendar can only be read.
+    notes_caldav_url: Mapped[str] = mapped_column(String(500), default="")
+    notes_caldav_user: Mapped[str] = mapped_column(String(255), default="")
+    notes_caldav_password_enc: Mapped[str] = mapped_column(String, default="")
 
     max_runners: Mapped[int] = mapped_column(Integer, default=3)
     # When the personal assistant reports over Telegram or the bell:

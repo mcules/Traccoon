@@ -37,6 +37,7 @@ from ..db import SessionLocal, get_session
 from ..models.notes import NotesCalendar
 from ..models.user import User
 from ..notes import live, paths
+from ..notes.calendar import caldav as cal_dav
 from ..notes.calendar import daily as cal_daily
 from ..notes.calendar import fetch as cal_fetch
 from ..notes.calendar import store as cal_store
@@ -814,3 +815,124 @@ async def calendar_sync_day(body: SyncDayIn, user: User = Depends(get_current_us
         _writing(lambda: ws.save(rel, result.text), rel)
     return {"path": rel, "added": result.added, "updated": result.updated,
             "cancelled": result.cancelled, "written": changed and not body.dryRun}
+
+
+# ------------------------------------------------------------------- CalDAV
+
+
+def _caldav_account(user: User) -> cal_dav.Account:
+    password = ""
+    if user.notes_caldav_password_enc:
+        try:
+            password = decrypt_secret(user.notes_caldav_password_enc)
+        except Exception:                         # noqa: BLE001
+            log.warning("notes: the calendar account password of %s cannot be read", user.id)
+    return cal_dav.Account(url=user.notes_caldav_url or "",
+                           user=user.notes_caldav_user or "", password=password)
+
+
+class CalDavAccountIn(BaseModel):
+    url: str = ""
+    user: str = ""
+    # Absent leaves the stored one alone; empty clears it. Two different wishes,
+    # and one field cannot carry both.
+    password: str | None = None
+
+
+@router.get("/calendar/account")
+async def caldav_account(user: User = Depends(get_current_user)) -> dict:
+    """Whether an appointment can be written, and through which account.
+
+    The password never comes back out — only whether one is set, which is all an
+    interface needs in order to show the difference.
+    """
+    account = _caldav_account(user)
+    return {"url": account.url, "user": account.user,
+            "has_password": bool(user.notes_caldav_password_enc),
+            "writable": account.configured}
+
+
+@router.put("/calendar/account")
+async def save_caldav_account(body: CalDavAccountIn,
+                              user: User = Depends(get_current_user),
+                              db: AsyncSession = Depends(get_session)) -> dict:
+    given = body.model_dump(exclude_unset=True)
+    if "url" in given:
+        user.notes_caldav_url = given["url"].strip().rstrip("/")
+    if "user" in given:
+        user.notes_caldav_user = given["user"].strip()
+    if "password" in given:
+        user.notes_caldav_password_enc = (encrypt_secret(given["password"])
+                                          if given["password"] else "")
+    await db.commit()
+    return await caldav_account(user)
+
+
+@router.get("/calendar/writable")
+async def caldav_calendars(user: User = Depends(get_current_user)) -> dict:
+    """The calendars this account can see, and which of them it may write to."""
+    account = _caldav_account(user)
+    if not account.configured:
+        return {"configured": False, "calendars": []}
+    try:
+        found = await cal_dav.calendars(account)
+    except cal_dav.CalDavError as err:
+        return {"configured": True, "calendars": [], "error": str(err)}
+    return {"configured": True,
+            "calendars": [{"id": c.id, "name": c.name, "readOnly": c.read_only}
+                          for c in found]}
+
+
+class EventIn(BaseModel):
+    calendar: str
+    title: str
+    # `YYYY-MM-DD` for a whole day, otherwise `YYYY-MM-DDTHH:MM`.
+    start: str
+    end: str
+    uid: str = ""
+    allDay: bool = False
+    location: str = ""
+    description: str = ""
+
+
+@router.post("/calendar/event")
+async def write_event(body: EventIn, user: User = Depends(get_current_user)) -> dict:
+    account = _caldav_account(user)
+    if not account.configured:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_no_calendar_account",
+                    "No account to write appointments through")
+    try:
+        return await cal_dav.save_event(
+            account, body.calendar, timezone=user.timezone or "Europe/Berlin",
+            uid=body.uid, title=body.title, start=body.start, end=body.end,
+            all_day=body.allDay, location=body.location, description=body.description)
+    except LookupError:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_calendar_not_found",
+                    "No such calendar") from None
+    except PermissionError:
+        raise Error(status.HTTP_403_FORBIDDEN, "err.notes_calendar_read_only",
+                    "That calendar can only be read") from None
+    except cal_dav.CalDavError as err:
+        raise Error(status.HTTP_502_BAD_GATEWAY, "err.notes_calendar_refused",
+                    "The calendar refused it: {why}", why=str(err)) from None
+
+
+@router.delete("/calendar/event")
+async def drop_event(calendar: str = Query(...), uid: str = Query(...),
+                     user: User = Depends(get_current_user)) -> dict:
+    account = _caldav_account(user)
+    if not account.configured:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_no_calendar_account",
+                    "No account to write appointments through")
+    try:
+        await cal_dav.delete_event(account, calendar, uid)
+    except LookupError:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_calendar_not_found",
+                    "No such calendar") from None
+    except PermissionError:
+        raise Error(status.HTTP_403_FORBIDDEN, "err.notes_calendar_read_only",
+                    "That calendar can only be read") from None
+    except cal_dav.CalDavError as err:
+        raise Error(status.HTTP_502_BAD_GATEWAY, "err.notes_calendar_refused",
+                    "The calendar refused it: {why}", why=str(err)) from None
+    return {"ok": True}
