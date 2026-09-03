@@ -340,3 +340,17 @@ def test_replacing_a_note_keeps_the_permissions_it_had(tmp_path) -> None:
     write.write_text(v, "Geheim.md", "zwei\n")
     after = locked.stat()
     assert (after.st_uid, after.st_gid, after.st_mode & 0o777) == (1000, 1000, 0o600)
+
+
+def test_a_rename_reaches_a_note_that_only_links_from_a_property(ws) -> None:
+    """The link following always rewrote the whole text, properties included —
+    but such a note was never looked at, because nothing counted it as pointing
+    anywhere. Forty-seven notes in this vault name one company that way."""
+    write.write_text(ws.vault, "03 Bereiche/Person.md",
+                     '---\nfirma: "[[Ziel]]"\n---\n\nKein Link im Text.\n')
+    ws.touch("03 Bereiche/Person.md")
+    assert "03 Bereiche/Person.md" in ws.graph.backlinks("Ordner/Ziel.md")
+
+    out = ws.rename("Ordner/Ziel.md", "Ordner/Neu.md")
+    assert any(f["path"] == "03 Bereiche/Person.md" for f in out["linkUpdates"]["files"])
+    assert 'firma: "[[Neu]]"' in read(ws, "03 Bereiche/Person.md")

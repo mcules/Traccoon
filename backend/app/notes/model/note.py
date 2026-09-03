@@ -58,11 +58,34 @@ class Note:
     headings: list[str] = field(default_factory=list)
 
 
+def _links_into(value: Any, links: list[str], seen: set[str]) -> None:
+    """Wikilinks inside a property value, at whatever depth it has."""
+    if isinstance(value, str):
+        for m in WIKILINK.finditer(value):
+            target = m.group(1).split("|")[0].split("#")[0].strip()
+            if target and target not in seen:
+                seen.add(target)
+                links.append(target)
+    elif isinstance(value, list):
+        for item in value:
+            _links_into(item, links, seen)
+    elif isinstance(value, dict):
+        for item in value.values():
+            _links_into(item, links, seen)
+
+
 def parse(rel: str, raw: str) -> Note:
     data, body = split(raw)
 
     links: list[str] = []
     seen: set[str] = set()
+    # A link in a property is a link. This vault uses them as relations — the
+    # supplier of an order, the company of a person, the host of a service — and
+    # nearly three thousand of them stand there. Counted from the parsed values
+    # rather than from the raw block, so a link in a comment inside the
+    # properties is not one.
+    for value in data.values():
+        _links_into(value, links, seen)
     for m in WIKILINK.finditer(body):
         target = m.group(1).split("|")[0].split("#")[0].strip()
         if target and target not in seen:

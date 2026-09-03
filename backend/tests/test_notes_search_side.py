@@ -158,3 +158,37 @@ def test_a_note_pointing_at_itself_is_no_line() -> None:
     out = gr.build(make_graph())
     assert all(e["source"] != e["target"] for e in out["edges"])
     assert ("Eins.md", "Zwei.md") in {(e["source"], e["target"]) for e in out["edges"]}
+
+
+# ------------------------------------------------- a link inside a property
+
+def test_a_link_in_a_property_is_a_link() -> None:
+    """This vault uses them as relations — the supplier of an order, the company
+    of a person, the host of a service — and nearly three thousand of them stand
+    there. Neither this side nor the one it replaces counted them, so a supplier
+    saw none of the orders pointing at it."""
+    from app.notes.model import note as nm
+
+    raw = ('---\n'
+           'firma: "[[03 Bereiche/Firmen/SAP]]"\n'
+           'lieferant:\n  - "[[Neuner-Funk]]"\n  - "[[Reichelt]]"\n'
+           'preis: 12\n'
+           '---\n\n'
+           'Im Text steht [[Etwas anderes]].\n')
+    note = nm.parse("x.md", raw)
+    assert note.links == ["03 Bereiche/Firmen/SAP", "Neuner-Funk", "Reichelt",
+                          "Etwas anderes"]
+
+
+def test_a_property_that_is_not_a_link_stays_none() -> None:
+    from app.notes.model import note as nm
+
+    raw = '---\nipv4: 192.168.1.1\nzahl: 3\nliste:\n  - eins\n---\n\nnichts\n'
+    assert nm.parse("x.md", raw).links == []
+
+
+def test_the_same_link_in_property_and_text_is_one_link() -> None:
+    from app.notes.model import note as nm
+
+    raw = '---\nfirma: "[[SAP]]"\n---\n\nUnd nochmal [[SAP]].\n'
+    assert nm.parse("x.md", raw).links == ["SAP"]
