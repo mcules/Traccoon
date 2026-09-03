@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # The note workspace, still a service of its own while it is being rewritten.
     # Empty = the notes area answers 503 instead of guessing an address.
     notes_base_url: str = ""                        # NOTES_BASE_URL
+    # What the vault is called in the tree. Without it the folder name shows,
+    # and a folder is named after where it lies rather than what it is.
+    notes_vault_name: str = ""                      # NOTES_VAULT_NAME
 
     mcpjungle_base: str = "http://mcpjungle:8080"   # MCPJUNGLE_BASE
     mcpjungle_admin_token: str = ""                 # MCPJUNGLE_ADMIN_TOKEN
