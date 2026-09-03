@@ -38,6 +38,7 @@ The other probes start the same way:
 | `language.mjs`, `language-admin.mjs` | switching language, and creating, renaming, disabling and deleting one |
 | `error-text.mjs` | a server error in a German and in an English browser, no login needed |
 | `shot.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
+| `note-config.mjs` | what the vault decides reaches the page: its settings, its own CSS snippets and the folder colours, all over the ported routes |
 | `note-writing.mjs` | the whole writing path on a throwaway folder: create, save, a save on a stale version, rename, copy, kept versions, trash, restore, delete for good — and once through the editor itself. Cleans up after itself |
 | `note-drawing.mjs` | a drawing opens and its scene comes back. `NOTIZ=<path>` picks it |
 | `note-assets.mjs` | the requests a browser makes on its own: a picture as `<img src>` and a template through `import()`, both without any header of ours |

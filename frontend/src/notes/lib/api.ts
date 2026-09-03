@@ -290,7 +290,7 @@ export const api = {
     }),
   /** Open/create the vault's daily note; offset in days from today. */
   dailyNote: (offset = 0) =>
-    req<{ path: string; created: boolean; unresolved: string[] }>('/api/files/daily', {
+    native<{ path: string; created: boolean; unresolved: string[] }>('/files/daily', {
       method: 'POST',
       body: JSON.stringify({ offset }),
     }),
@@ -342,15 +342,15 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ dryRun }) },
     ),
   saveHotkeys: (hotkeys: Record<string, Array<{ modifiers?: string[]; key?: string }>>) =>
-    req<{ ok: true }>('/api/settings/hotkeys', { method: 'PUT', body: JSON.stringify({ hotkeys }) }),
+    native<{ ok: true }>('/vault-config/hotkeys', { method: 'PUT', body: JSON.stringify({ hotkeys }) }),
   appearance: () =>
-    req<{
+    native<{
       snippets: string[];
       enabledSnippets: string[];
       rainbow: { style: 'off' | 'default' | 'simple' | 'full'; opacity: number; files: boolean; inheritSubfolders: boolean };
-    }>('/api/settings/appearance'),
+    }>('/appearance'),
   vaultConfig: () =>
-    req<{
+    native<{
       app: {
         attachmentFolderPath: string;
         alwaysUpdateLinks: boolean;
@@ -364,7 +364,7 @@ export const api = {
       dailyNotes: { folder: string; format: string; template: string };
       templates: { folder: string; dateFormat: string; timeFormat: string };
       hotkeys: Record<string, Array<{ modifiers?: string[]; key?: string }>>;
-    }>('/api/settings/vault-config'),
+    }>('/vault-config'),
   templaterConfig: () =>
     native<{ folderTemplates: Array<{ folder: string; template: string }> }>('/templates/folders'),
   templaterCompile: (path: string) =>

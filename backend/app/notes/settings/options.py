@@ -65,6 +65,16 @@ class Options:
     # Where the templates are kept, and which folder gets which form. Both come
     # from the vault: a new note in the people folder should get the person form
     # here exactly as it does anywhere else the vault is opened.
+    # How the editor behaves, as the vault sets it. Read rather than decided
+    # here: a vault written with tabs four columns wide is not a vault where two
+    # spaces are a nesting level, and Tab would then look broken.
+    use_tab: bool = True
+    tab_size: int = 4
+    readable_line_length: bool = True
+    show_inline_title: bool = False
+    show_unsupported_files: bool = False
+    mobile_toolbar: list = field(default_factory=list)
+    daily_template: str = ""
     templates_folder: str = ""
     template_date_format: str = "YYYY-MM-DD"
     template_time_format: str = "HH:mm"
@@ -141,6 +151,19 @@ def from_user(prefs: dict | None, vault_root: Path, config_dir: str,
             out.attachment_folder = raw_config["attachmentFolderPath"]
         if isinstance(raw_config.get("alwaysUpdateLinks"), bool):
             out.follow_links_on_rename = raw_config["alwaysUpdateLinks"]
+        for field_name, key in (("use_tab", "useTab"),
+                                ("readable_line_length", "readableLineLength"),
+                                ("show_inline_title", "showInlineTitle"),
+                                ("show_unsupported_files", "showUnsupportedFiles")):
+            if isinstance(raw_config.get(key), bool):
+                setattr(out, field_name, raw_config[key])
+        size = raw_config.get("tabSize")
+        # A boolean is an integer in Python's eyes, and `tabSize: true` is not a
+        # width. Everything read here comes from a file somebody else writes.
+        if isinstance(size, int) and not isinstance(size, bool) and size > 0:
+            out.tab_size = size
+        if isinstance(raw_config.get("mobileToolbarCommands"), list):
+            out.mobile_toolbar = [str(c) for c in raw_config["mobileToolbarCommands"]]
 
         # Where the daily notes live. The vault decides this too — the folder is
         # already full of notes with those names, and a second opinion here would
@@ -154,6 +177,8 @@ def from_user(prefs: dict | None, vault_root: Path, config_dir: str,
             out.daily_folder = daily["folder"]
         if isinstance(daily.get("format"), str) and daily["format"]:
             out.daily_format = daily["format"]
+        if isinstance(daily.get("template"), str):
+            out.daily_template = daily["template"]
 
         # Where the templates are kept.
         try:

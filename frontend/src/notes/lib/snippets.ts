@@ -17,7 +17,7 @@ export async function loadVaultSnippets(): Promise<string[]> {
     const link = document.createElement('link');
     link.id = id;
     link.rel = 'stylesheet';
-    link.href = `/api/notes/settings/snippet/${encodeURIComponent(name)}.css`;
+    link.href = `/api/notes-native/appearance/snippet/${encodeURIComponent(name)}.css`;
     document.head.appendChild(link);
   }
   return info.enabledSnippets;

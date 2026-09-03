@@ -18,6 +18,7 @@ somebody's notes is not a thing to switch on quietly.
 from __future__ import annotations
 
 import datetime as _dt
+import json
 import errno
 import logging
 import re
@@ -40,6 +41,7 @@ from ..models.user import User
 from ..notes import live, paths, tickets
 from ..core.timezones import zone_of
 from ..config import settings
+from ..notes import appearance as note_appearance
 from ..notes import drawings as note_drawings
 from ..notes import graph as note_graph
 from ..notes.model import note as note_model
@@ -908,6 +910,134 @@ async def calendar_tidy(body: TidyIn, user: User = Depends(get_current_user),
         if not body.dryRun:
             _writing(lambda t=folded.text, r=rel: ws.save(r, t), rel)
     return {"files": files, "total": total, "dryRun": body.dryRun}
+
+
+# ---------------------------------------------------- what the vault decides
+#
+# Not settings of this program: these are the vault's own, and they are read
+# rather than owned. A vault opened somewhere else has to behave the same way,
+# which is why the tab width, the attachment folder and the key bindings come
+# out of files in the vault and not out of a table here.
+
+HOTKEYS_FILE = "hotkeys.json"
+
+
+@router.get("/vault-config")
+async def vault_config(user: User = Depends(get_current_user)) -> dict:
+    """How the vault says its notes are written and read."""
+    ws = workspace_of(user)
+    o = ws.options
+    hotkeys: dict = {}
+    if settings.notes_config_dir:
+        try:
+            found = json.loads(ws.vault.read_text(
+                f"{settings.notes_config_dir}/{HOTKEYS_FILE}"))
+            hotkeys = found if isinstance(found, dict) else {}
+        except (OSError, ValueError, paths.OutsideVault):
+            hotkeys = {}
+    return {
+        "app": {"attachmentFolderPath": o.attachment_folder,
+                "alwaysUpdateLinks": o.follow_links_on_rename,
+                "readableLineLength": o.readable_line_length,
+                "mobileToolbarCommands": o.mobile_toolbar,
+                "useTab": o.use_tab,
+                "tabSize": o.tab_size,
+                "showUnsupportedFiles": o.show_unsupported_files,
+                "showInlineTitle": o.show_inline_title},
+        "dailyNotes": {"folder": o.daily_folder, "format": o.daily_format,
+                       "template": o.daily_template},
+        "templates": {"folder": o.templates_folder,
+                      "dateFormat": o.template_date_format,
+                      "timeFormat": o.template_time_format},
+        "hotkeys": hotkeys,
+    }
+
+
+class HotkeysIn(BaseModel):
+    hotkeys: dict
+
+
+@router.put("/vault-config/hotkeys")
+async def save_hotkeys(body: HotkeysIn, user: User = Depends(get_current_user)) -> dict:
+    """Put the key bindings back into the vault.
+
+    Into the vault and not into this database, because they belong to the notes
+    rather than to this program: whatever else opens the vault reads the same
+    file, and a binding set here is set there.
+    """
+    if not settings.notes_config_dir:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_no_vault_config",
+                    "This vault has no configuration folder")
+    rel = f"{settings.notes_config_dir}/{HOTKEYS_FILE}"
+    text = json.dumps(body.hotkeys, ensure_ascii=False, indent=2) + "\n"
+    _writing(lambda: vault_write.write_text(vault_of(user), rel, text), rel)
+    return {"ok": True}
+
+
+@router.get("/appearance")
+async def appearance(user: User = Depends(get_current_user)) -> dict:
+    """The CSS the vault carries, and how the tree is coloured."""
+    ws = workspace_of(user)
+    return note_appearance.info(Path(ws.vault.root), settings.notes_config_dir,
+                                settings.notes_style_settings_dir,
+                                chosen_style=ws.options.folder_colours,
+                                chosen_opacity=ws.options.folder_colour_opacity)
+
+
+@router.get("/appearance/snippet/{name}.css")
+async def appearance_snippet(name: str, user: User = Depends(browser_user)):
+    """One snippet, as CSS, so a `<link>` can pull it in.
+
+    A `<link>` carries no header of ours, hence the reading ticket. The name is
+    checked against what a name may be and never used to walk a filesystem.
+    """
+    css = note_appearance.snippet(Path(vault_of(user).root),
+                                  settings.notes_config_dir, name)
+    if css is None:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_not_found",
+                    "No such note: {path}", path=f"{name}.css")
+    return PlainTextResponse(css, media_type="text/css",
+                             headers={"Cache-Control": "private, max-age=60"})
+
+
+class DailyIn(BaseModel):
+    # Days from today, so yesterday is -1 and tomorrow 1.
+    offset: int = 0
+
+
+@router.post("/files/daily")
+async def daily_note(body: DailyIn, user: User = Depends(get_current_user)) -> dict:
+    """The daily note of a day, made from its template if it is not there yet.
+
+    Where it goes and what it is called come from the vault: that folder is
+    already full of notes with those names, and a second opinion here would put
+    tomorrow's note somewhere nobody looks.
+    """
+    ws = workspace_of(user)
+    o = ws.options
+    day = _dt.datetime.now(zone_of(user)) + _dt.timedelta(days=body.offset)
+    rel = cal_daily.daily_note_path(day.date(), o.daily_folder, o.daily_format)
+    if vault_write.exists(ws.vault, rel):
+        return {"path": rel, "created": False, "unresolved": []}
+
+    title = PurePosixPath(rel).name.rsplit(".", 1)[0]
+    text, unresolved = "", []
+    if o.daily_template:
+        template = o.daily_template
+        if not template.lower().endswith((".md", ".markdown")):
+            template += ".md"
+        try:
+            filled = note_templates.fill(ws.vault.read_text(template), title=title,
+                                         now=day.replace(tzinfo=None),
+                                         date_format=o.template_date_format,
+                                         time_format=o.template_time_format)
+            text, unresolved = filled.text, filled.unresolved
+        except (OSError, paths.OutsideVault):
+            # A template that is gone is no reason to refuse the note: an empty
+            # one is still the note somebody asked for.
+            text = ""
+    _writing(lambda: ws.save(rel, text), rel)
+    return {"path": rel, "created": True, "unresolved": unresolved}
 
 
 # ------------------------------------------------- what a search found, where

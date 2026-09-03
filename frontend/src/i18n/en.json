@@ -3578,5 +3578,6 @@
   "notes_versions.close": "Close",
   "notes_versions.restore": "Restore this version",
   "err.notes_not_a_drawing": "That is not a drawing: {path}",
-  "err.notes_property_incomplete": "A property type needs a name and a kind"
+  "err.notes_property_incomplete": "A property type needs a name and a kind",
+  "err.notes_no_vault_config": "This vault has no configuration folder"
 }

@@ -81,6 +81,7 @@ services:
       NOTES_QUERY_SETTINGS_DIR: ${NOTES_QUERY_SETTINGS_DIR:-}
       NOTES_TASK_SETTINGS_DIR: ${NOTES_TASK_SETTINGS_DIR:-}
       NOTES_TEMPLATE_SETTINGS_DIR: ${NOTES_TEMPLATE_SETTINGS_DIR:-}
+      NOTES_STYLE_SETTINGS_DIR: ${NOTES_STYLE_SETTINGS_DIR:-}
       # The vault's own configuration folder. Two settings are read from it, both about
       # writing: where an attachment belongs, and whether links follow a renamed note.
       NOTES_CONFIG_DIR: ${NOTES_CONFIG_DIR:-}
