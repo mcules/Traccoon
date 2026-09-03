@@ -245,13 +245,13 @@ export const api = {
       `/bases/view?path=${encodeURIComponent(path)}${view ? `&view=${encodeURIComponent(view)}` : ''}`,
     ),
 
-  // excalidraw drawings
+  // drawings
   excalidrawScene: (path: string) =>
-    req<{ path: string; hash: string; scene: unknown }>(
-      `/api/excalidraw/scene?path=${encodeURIComponent(path)}`,
+    native<{ path: string; hash: string; scene: unknown }>(
+      `/drawing?path=${encodeURIComponent(path)}`,
     ),
   excalidrawSave: (path: string, scene: unknown, baseHash: string) =>
-    req<{ path: string; hash: string }>('/api/excalidraw/scene', {
+    native<{ path: string; hash: string }>('/drawing', {
       method: 'PUT',
       body: JSON.stringify({ path, scene, baseHash }),
     }),

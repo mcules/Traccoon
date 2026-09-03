@@ -3576,5 +3576,6 @@
   "notes_menu.open_version_history": "Open version history",
   "notes_menu.url_copied": "URL copied",
   "notes_versions.close": "Close",
-  "notes_versions.restore": "Restore this version"
+  "notes_versions.restore": "Restore this version",
+  "err.notes_not_a_drawing": "That is not a drawing: {path}"
 }

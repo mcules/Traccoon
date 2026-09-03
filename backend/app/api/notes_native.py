@@ -40,6 +40,7 @@ from ..models.user import User
 from ..notes import live, paths, tickets
 from ..core.timezones import zone_of
 from ..config import settings
+from ..notes import drawings as note_drawings
 from ..notes import history as note_history
 from ..notes import templates as note_templates
 from ..notes.calendar import caldav as cal_dav
@@ -903,6 +904,48 @@ async def calendar_tidy(body: TidyIn, user: User = Depends(get_current_user),
         if not body.dryRun:
             _writing(lambda t=folded.text, r=rel: ws.save(r, t), rel)
     return {"files": files, "total": total, "dryRun": body.dryRun}
+
+
+# ------------------------------------------------------------------- drawings
+
+
+def _drawing(rel: str) -> None:
+    if not note_drawings.is_drawing(rel):
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_not_a_drawing",
+                    "That is not a drawing: {path}", path=rel)
+
+
+@router.get("/drawing")
+async def drawing(path: str = Query(""), user: User = Depends(get_current_user)) -> dict:
+    """The scene inside a drawing file, whichever of the two shapes it has."""
+    _drawing(path)
+    ws = workspace_of(user)
+    source = _guard(lambda: ws.vault.read_text(path), path)
+    return {"path": path, "hash": content_hash(source),
+            "scene": note_drawings.read(source)}
+
+
+class DrawingIn(BaseModel):
+    path: str
+    scene: dict
+    # What the editor read. Without it a drawing changed elsewhere in the
+    # meantime is overwritten by a canvas that was opened before it changed.
+    baseHash: str = ""
+
+
+@router.put("/drawing")
+async def save_drawing(body: DrawingIn, user: User = Depends(get_current_user)) -> dict:
+    _drawing(body.path)
+    ws = workspace_of(user)
+    original = _guard(lambda: ws.vault.read_text(body.path), body.path)
+    current = content_hash(original)
+    if body.baseHash and body.baseHash != current:
+        raise Error(status.HTTP_409_CONFLICT, "err.notes_changed_on_disk",
+                    "The note changed on disk: {path}", path=body.path,
+                    current=note_drawings.read(original), hash=current)
+    text = note_drawings.write(original, body.scene)
+    _writing(lambda: ws.save(body.path, text), body.path)
+    return {"path": body.path, "hash": content_hash(text)}
 
 
 # ------------------------------------------------------------------ templates

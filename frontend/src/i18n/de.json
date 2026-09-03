@@ -3576,5 +3576,6 @@
   "notes_menu.open_version_history": "Versionsverlauf öffnen",
   "notes_menu.url_copied": "Adresse kopiert",
   "notes_versions.close": "Schließen",
-  "notes_versions.restore": "Diese Fassung wiederherstellen"
+  "notes_versions.restore": "Diese Fassung wiederherstellen",
+  "err.notes_not_a_drawing": "Das ist keine Zeichnung: {path}"
 }
