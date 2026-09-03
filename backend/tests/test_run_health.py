@@ -10,7 +10,8 @@ import datetime as dt
 from app.models.agents import Run, RunStep
 from app.models.enums import StatusCategory
 from app.services.run_health import (
-    MIN_TOOL_CALLS, classify, health, signature,
+    AUTH_INCIDENT_GAP_S, AUTH_MIN_INCIDENTS, MIN_TOOL_CALLS, classify, health, incidents,
+    signature,
 )
 from test_lifecycle_process import _project_with_ticket
 
@@ -41,6 +42,16 @@ def test_the_provider_is_not_the_agents_fault():
         "claude: answer truncated at max_tokens, incomplete",
     ):
         assert classify("failed", text) == "provider", text
+
+
+def test_refused_credentials_are_their_own_class():
+    """Neither the provider being busy nor a defect here: somebody has to look at the timing."""
+    for text in (
+        'claude: HTTP 403: {"type":"error","error":{"type":"permission_error",'
+        '"message":"OAuth authentication is currently not allowed for this organization."}}',
+        'claude: HTTP 401: {"type":"error","error":{"type":"authentication_error"}}',
+    ):
+        assert classify("failed", text) == "auth", text
 
 
 def test_our_own_interruptions_are_not_the_agents_fault_either():
@@ -84,6 +95,15 @@ def test_a_signature_does_not_change_from_day_to_day():
     assert "]" not in signature("bug", "a]b", "c/d")
 
 
+def test_a_burst_of_failures_is_one_incident():
+    """Whatever was wrong for that minute hit every run in flight — that is not a pattern."""
+    now = dt.datetime.now(dt.UTC)
+    burst = [now, now + dt.timedelta(seconds=1), now + dt.timedelta(seconds=40)]
+    assert incidents(burst, AUTH_INCIDENT_GAP_S) == 1
+    assert incidents(burst + [now + dt.timedelta(hours=2)], AUTH_INCIDENT_GAP_S) == 2
+    assert incidents([], AUTH_INCIDENT_GAP_S) == 0
+
+
 # ── The window ──────────────────────────────────────────────────────────────
 
 async def test_the_window_counts_and_separates(db):
@@ -101,6 +121,35 @@ async def test_the_window_counts_and_separates(db):
     worth = [p for p in data["problems"] if p["ticket_worthy"]]
     assert [p["signature"] for p in worth] == ["agent/developer"]
     assert {p["kind"] for p in data["problems"] if not p["ticket_worthy"]} == {"blocked", "provider"}
+
+
+async def test_one_bad_minute_at_the_provider_is_no_ticket(db):
+    """Four runs, one incident: they all hit the same refusal, and it was gone afterwards.
+
+    This is the 2026-09-02 case. Before the class existed the text fell through into `bug`,
+    which counts from the first occurrence, and the supervision reported an account problem
+    that was not one.
+    """
+    err = 'claude: HTTP 403: {"error":{"type":"permission_error","message":"…"}}'
+    for i in range(4):
+        await _run(db, status="failed", error=err, age_min=60, task=f"burst{i}")
+
+    auth = [p for p in (await health(db, since_hours=24))["problems"] if p["kind"] == "auth"]
+    assert len(auth) == 1
+    assert (auth[0]["n"], auth[0]["incidents"]) == (4, 1)
+    assert not auth[0]["ticket_worthy"]
+
+
+async def test_a_credential_that_keeps_being_refused_does_earn_a_ticket(db):
+    """A token that is really dead refuses again hours later — that has to reach a person."""
+    err = 'claude: HTTP 401: {"error":{"type":"authentication_error"}}'
+    for i, age in enumerate((10, 120, 600)):
+        await _run(db, status="failed", error=err, age_min=age, task=f"sep{i}")
+
+    auth = [p for p in (await health(db, since_hours=24))["problems"] if p["kind"] == "auth"]
+    assert auth[0]["incidents"] == AUTH_MIN_INCIDENTS
+    assert auth[0]["ticket_worthy"]
+    assert auth[0]["signature"] == "auth/developer"
 
 
 async def test_runs_outside_the_window_stay_outside(db):

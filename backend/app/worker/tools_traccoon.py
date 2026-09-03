@@ -736,6 +736,12 @@ def _statuses(problem: dict) -> str:
                      in sorted(problem.get("statuses", {}).items(), key=lambda kv: -kv[1]))
 
 
+def _incident_note(problem: dict) -> str:
+    """` in 1 incident` — without it a burst of runs reads as a problem that keeps coming back."""
+    n = problem.get("incidents")
+    return f" in {n} incident{'' if n == 1 else 's'}" if n else ""
+
+
 def _health_text(data: dict) -> str:
     """The report as lines, the way `traccoon_list_issues` answers — not as a wall of JSON.
 
@@ -769,7 +775,7 @@ def _health_text(data: dict) -> str:
                 + (f"{p['tool']} fails in {int(p['share'] * 100)} % of its calls "
                    f"({p['failed']} of {p['n']})"
                    if p["kind"] == "tool" else
-                   f"{p['n']}x {p['kind']} "
+                   f"{p['n']}x {p['kind']}{_incident_note(p)} "
                    f"({_statuses(p)}, runs {', '.join(str(r) for r in p['runs'])})"))
         if p["open_ticket"]:
             head += f" (already open as {p['open_ticket']})"
@@ -779,9 +785,10 @@ def _health_text(data: dict) -> str:
 
     if rest:
         out.append("")
-        out.append("For context only (provider, infrastructure, waiting for a person):")
+        out.append("For context only (provider, refused credentials, infrastructure, "
+                   "waiting for a person):")
         for p in rest:
-            out.append(f"- {p['agent']}: {p['n']}x {p['kind']}"
+            out.append(f"- {p['agent']}: {p['n']}x {p['kind']}{_incident_note(p)}"
                        + (f": {p['examples'][0]}" if p.get("examples") else ""))
     return "\n".join(out)
 
