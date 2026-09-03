@@ -80,7 +80,8 @@ export function registerCoreCommands(): void {
         );
       },
     },
-    { id: 'app:open-settings', name: 'Einstellungen öffnen', run: () => store().setSettings(true) },
+    { id: 'app:open-settings', name: 'Einstellungen öffnen', run: () => { window.location.href = '/account/notes'; } },
+    { id: 'app:open-hotkeys', name: 'Tastenkürzel', run: () => store().setHotkeys(true) },
     {
       id: 'note-composer:extract-heading',
       name: 'Abschnitt in neue Notiz auslagern',

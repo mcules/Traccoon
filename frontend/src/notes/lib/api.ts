@@ -103,6 +103,9 @@ export type DvQueryResult =
  * the application uses. There is no login of its own here any more.
  */
 const BASE = '/api/notes';
+// The house's own note routes, beside the bridge. A call moves from one to the
+// other by changing which of the two helpers it uses, and nothing else.
+const NATIVE = '/api/notes-native';
 
 function houseToken(): string | null {
   try {
@@ -112,10 +115,18 @@ function houseToken(): string | null {
   }
 }
 
+async function native<T>(url: string, opts: RequestInit = {}): Promise<T> {
+  return send<T>(NATIVE + url, opts);
+}
+
 async function req<T>(url: string, opts: RequestInit = {}): Promise<T> {
+  return send<T>(BASE + url.replace(/^\/api/, ''), opts);
+}
+
+async function send<T>(url: string, opts: RequestInit = {}): Promise<T> {
   const { headers: optHeaders, ...rest } = opts;
   const token = houseToken();
-  const res = await fetch(BASE + url.replace(/^\/api/, ''), {
+  const res = await fetch(url, {
     credentials: 'include',
     ...rest,
     // headers MUST be merged last — spreading ...opts after a `headers` literal
@@ -470,14 +481,12 @@ export const api = {
     }>('/api/graph'),
   reindex: () => req<{ ok: true }>('/api/reindex', { method: 'POST' }),
 
-  // ui state (workspace persistence, shared across browsers)
-  getUiState: () => req<any>('/api/uistate/'),
-  putUiState: (state: any, clientId: string) =>
-    req<{ ok: true }>('/api/uistate/', {
-      method: 'PUT',
-      headers: { 'X-Client-Id': clientId },
-      body: JSON.stringify(state),
-    }),
+  // The workspace, kept on the person rather than in the browser. The first
+  // route that comes from the house itself instead of over the bridge — the
+  // others follow one at a time as they are ported.
+  getUiState: () => native<any>('/uistate'),
+  putUiState: (state: any, _clientId: string) =>
+    native<{ ok: true }>('/uistate', { method: 'PUT', body: JSON.stringify(state) }),
 
   // settings
   getSettings: () => req<any>('/api/settings/'),

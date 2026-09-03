@@ -14,7 +14,6 @@ export default function Ribbon() {
   const leftPanel = useStore((s) => s.leftPanel);
   const setGraph = useStore((s) => s.setGraph);
   const openCalendar = useStore((s) => s.openCalendar);
-  const setSettings = useStore((s) => s.setSettings);
   const setPalette = useStore((s) => s.setPalette);
   const openDailyNote = useStore((s) => s.openDailyNote);
   const notify = useStore((s) => s.notify);
@@ -77,7 +76,7 @@ export default function Ribbon() {
           <Icon name="refresh-cw" size={18} style={syncing ? { animation: 'spin 1s linear infinite' } : undefined} />
         </button>
       )}
-      <button title="Einstellungen" onClick={() => setSettings(true)}>
+      <button title="Einstellungen" onClick={() => { window.location.href = '/account/notes'; }}>
         <Icon name="settings" size={18} />
       </button>
     </div>

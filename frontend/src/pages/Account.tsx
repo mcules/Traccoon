@@ -11,6 +11,7 @@ import {
   AgentsOperationPanel, AssistantNoticesPanel, MemoryPanel, MySwitchPanel, TimezonePanel,
   NightWindowPanel,
 } from "../components/AccountPanels";
+import { NotesCalendarsPanel, NotesPrefsPanel } from "../components/NotesPanels";
 import { BUTTON, BUTTON_SMALL } from "../components/ui";
 
 /**
@@ -23,12 +24,13 @@ import { BUTTON, BUTTON_SMALL } from "../components/ui";
  * it under. One page now, four subjects, and the settings keep what they are: resources
  * (vault, destinations, MCP, skills, jobs, webhooks), not a person.
  */
-type Tab = "person" | "appearance" | "notifications" | "mail" | "agents";
+type Tab = "person" | "appearance" | "notifications" | "mail" | "notes" | "agents";
 const TABS: [Tab, string, string][] = [
   ["person", "account.person", "\u{1F464}"],
   ["appearance", "account.appearance", "\u{1F3A8}"],
   ["notifications", "account.notifications", "\u{1F514}"],
   ["mail", "account.mail_accounts", "\u{2709}\uFE0F"],
+  ["notes", "account.notes", "\u{1F5D2}\uFE0F"],
   ["agents", "account.agents", "\u{1F916}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
@@ -54,6 +56,9 @@ export default function Account() {
       {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
       {tab === "notifications" && <><NotificationsPanel /><AssistantNoticesPanel /></>}
       {tab === "mail" && <MailAccountsPanel />}
+      {/* The note area has no settings page of its own: what a person decides
+          about their notes is a personal setting like the others here. */}
+      {tab === "notes" && <><NotesPrefsPanel /><NotesCalendarsPanel /></>}
       {tab === "agents" && (
         <><AgentsOperationPanel /><NightWindowPanel /><MemoryPanel /><MySwitchPanel /></>
       )}

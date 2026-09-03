@@ -31,7 +31,7 @@ const OVERLAYS: Overlay[] = [
   { id: 'attach', open: (s) => s.attachSheetOpen, close: () => useStore.getState().setAttachSheet(false) },
   { id: 'history', open: (s) => !!s.versionHistoryPath, close: () => useStore.getState().setVersionHistory(null) },
   { id: 'trash', open: (s) => s.trashOpen, close: () => useStore.getState().setTrash(false) },
-  { id: 'settings', open: (s) => s.settingsOpen, close: () => useStore.getState().setSettings(false) },
+  { id: 'hotkeys', open: (s) => s.hotkeysOpen, close: () => useStore.getState().setHotkeys(false) },
   { id: 'present', open: (s) => !!s.presenting, close: () => useStore.getState().setPresenting(null) },
   { id: 'tabs', open: (s) => s.tabSwitcherOpen, close: () => useStore.getState().setTabSwitcher(false) },
   { id: 'search', open: (s) => s.mobileSearchOpen, close: () => useStore.getState().setMobileSearch(false) },

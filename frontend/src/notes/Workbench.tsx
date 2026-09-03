@@ -17,7 +17,8 @@ import CommandPalette from './components/CommandPalette';
 import TemplatePicker from './components/TemplatePicker';
 import AttachSheet from './components/AttachSheet';
 import AskDialog from './components/AskDialog';
-import Settings from './components/Settings';
+import HotkeySettings from './components/HotkeySettings';
+import Icon from './components/Icon';
 import VersionHistory from './components/VersionHistory';
 import TrashView from './components/TrashView';
 import ContextMenu from './components/ContextMenu';
@@ -31,6 +32,34 @@ import { installOverlayHistory } from './lib/overlayHistory';
 import { installOffline, keepOffline } from './lib/offline';
 import { useIsMobile } from './lib/useIsMobile';
 import { invalidateDataviewCache } from './lib/dataview';
+
+/**
+ * The key bindings, in a window of their own.
+ *
+ * They used to be one section of a settings dialog that also carried a login, a
+ * set of API keys and a theme. Those three the house has one floor up and the
+ * dialog is gone, but the keys are not a personal setting in the same sense:
+ * they are written into the vault's own file, so a key learned here works
+ * wherever that vault is opened. That is why they stayed here.
+ */
+function HotkeysModal() {
+  const open = useStore((s) => s.hotkeysOpen);
+  const setOpen = useStore((s) => s.setHotkeys);
+  if (!open) return null;
+  return (
+    <div className="modal-bg" onClick={() => setOpen(false)}>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="settings-head">
+          <div className="title">Tastenkürzel</div>
+          <button className="tool-btn" title="Schließen" onClick={() => setOpen(false)}>
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <div className="settings-body"><HotkeySettings /></div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const authed = useStore((s) => s.authed);
@@ -398,7 +427,7 @@ export default function App() {
       <TemplatePicker />
       <AttachSheet />
       <AskDialog />
-      <Settings />
+      <HotkeysModal />
       <VersionHistory />
       <TrashView />
       <ContextMenu />

@@ -184,8 +184,8 @@ interface AppState {
   paletteOpen: boolean;
   paletteMode: 'all' | 'commands' | 'files';
   setPalette: (v: boolean, mode?: 'all' | 'commands' | 'files') => void;
-  settingsOpen: boolean;
-  setSettings: (v: boolean) => void;
+  hotkeysOpen: boolean;
+  setHotkeys: (v: boolean) => void;
   templatePickerOpen: boolean;
   setTemplatePicker: (v: boolean) => void;
   attachSheetOpen: boolean;
@@ -477,8 +477,8 @@ export const useStore = create<AppState>()(
       paletteOpen: false,
       paletteMode: 'all',
       setPalette: (v, mode = 'all') => set({ paletteOpen: v, paletteMode: mode }),
-      settingsOpen: false,
-      setSettings: (v) => set({ settingsOpen: v }),
+      hotkeysOpen: false,
+      setHotkeys: (v) => set({ hotkeysOpen: v }),
       templatePickerOpen: false,
       setTemplatePicker: (v) => set({ templatePickerOpen: v }),
       attachSheetOpen: false,

@@ -31,7 +31,6 @@ export default function CommandPalette() {
   const activePath = useStore((s) => s.activePath);
   const openFile = useStore((s) => s.openFile);
   const openToSide = useStore((s) => s.openToSide);
-  const setSettings = useStore((s) => s.setSettings);
   const setTrash = useStore((s) => s.setTrash);
   const setGraph = useStore((s) => s.setGraph);
   const setLeftPanel = useStore((s) => s.setLeftPanel);
