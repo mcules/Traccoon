@@ -11,6 +11,7 @@ import { renderDataviewBlocks } from '../lib/dataview';
 import { renderDrawingEmbeds } from '../lib/excalidrawEmbed';
 import { extractEmbedSection } from '../lib/embedSection';
 import { memo } from '../lib/dataview/cache';
+import { tr } from "../../i18n";
 
 /** Syntax-highlight a `<code class="language-x">` block with the SAME CodeMirror
  *  grammars Live Preview uses (token classes styled by the predecessor's palette). */
@@ -224,7 +225,7 @@ export default function Preview({ source }: { source?: string }) {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: 'Kopieren', icon: 'file-text', onClick: () => sel && navigator.clipboard.writeText(sel).catch(() => {}) },
+        { label: tr("notes_menu.copy"), icon: 'file-text', onClick: () => sel && navigator.clipboard.writeText(sel).catch(() => {}) },
         ...(sel
           ? [{ label: `Search for “${sel.slice(0, 24)}”`, icon: 'search', onClick: () => setLeftPanel('search') }]
           : []),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore, type TreeSort } from '../lib/store';
 import { useLongPress } from '../lib/useLongPress';
 import { api, type TreeNode } from '../lib/api';
@@ -303,37 +304,37 @@ function Node({ node, depth, colorIndex }: { node: TreeNode; depth: number; colo
     if (!sel.includes(node.path)) { setSelected([node.path]); setSelectAnchor(node.path); }
     const items = isFolder
       ? [
-          { label: 'Neue Notiz', onClick: () => newNote(node.path) },
+          { label: tr("notes_sidebar.new_note"), onClick: () => newNote(node.path) },
           { label: 'Neues Canvas', onClick: () => newCanvas(node.path) },
-          { label: 'Neuer Ordner', onClick: () => newFolder(node.path) },
+          { label: tr("notes_sidebar.new_folder"), onClick: () => newFolder(node.path) },
           { label: '', separator: true },
-          { label: 'Kopieren', onClick: doClipboard('copy') },
+          { label: tr("notes_menu.copy"), onClick: doClipboard('copy') },
           { label: 'Ausschneiden', onClick: doClipboard('cut') },
-          ...(clipboard ? [{ label: 'Einfügen', onClick: doPaste }] : []),
+          ...(clipboard ? [{ label: tr("notes_menu.paste"), onClick: doPaste }] : []),
           { label: '', separator: true },
           { label: 'Umbenennen…', onClick: doRename },
-          { label: 'Ordner verschieben nach…', onClick: doMove },
-          { label: 'Pfad kopieren', onClick: copyPath },
-          { label: 'Link-Pfad kopieren', onClick: copyUrl },
+          { label: tr("notes_menu.move_folder_to"), onClick: doMove },
+          { label: tr("notes_menu.copy_path"), onClick: copyPath },
+          { label: tr("notes_menu.copy_link_path"), onClick: copyUrl },
           { label: '', separator: true },
-          { label: 'Löschen', danger: true, onClick: doDelete },
+          { label: tr("common.delete"), danger: true, onClick: doDelete },
         ]
       : [
-          { label: 'Öffnen', onClick: () => openFile(node.path) },
-          { label: 'Rechts daneben öffnen', onClick: () => openToSide(node.path) },
+          { label: tr("notes_menu.open"), onClick: () => openFile(node.path) },
+          { label: tr("notes_workspace.open_beside"), onClick: () => openToSide(node.path) },
           { label: '', separator: true },
           { label: bookmarks.includes(node.path) ? 'Remove bookmark' : 'Bookmark', onClick: () => toggleBookmark(node.path) },
-          { label: 'Kopie anlegen', onClick: doCopy },
+          { label: tr("notes_menu.duplicate"), onClick: doCopy },
           { label: '', separator: true },
-          { label: 'Kopieren', onClick: doClipboard('copy') },
+          { label: tr("notes_menu.copy"), onClick: doClipboard('copy') },
           { label: 'Ausschneiden', onClick: doClipboard('cut') },
-          ...(clipboard ? [{ label: 'Einfügen', onClick: doPaste }] : []),
+          ...(clipboard ? [{ label: tr("notes_menu.paste"), onClick: doPaste }] : []),
           { label: '', separator: true },
           { label: 'Umbenennen…', onClick: doRename },
           { label: 'Move file to…', onClick: doMove },
-          { label: 'Link-Pfad kopieren', onClick: copyUrl },
+          { label: tr("notes_menu.copy_link_path"), onClick: copyUrl },
           { label: '', separator: true },
-          { label: 'Löschen', danger: true, onClick: doDelete },
+          { label: tr("common.delete"), danger: true, onClick: doDelete },
         ];
     openContextMenu({ x, y, items });
   };
@@ -598,11 +599,11 @@ export default function FileTree() {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: 'Neue Notiz', onClick: () => newNote('') },
+        { label: tr("notes_sidebar.new_note"), onClick: () => newNote('') },
         { label: 'Neues Canvas', onClick: () => newCanvas('') },
-        { label: 'Neuer Ordner', onClick: () => newFolder('') },
+        { label: tr("notes_sidebar.new_folder"), onClick: () => newFolder('') },
         ...(clipboard
-          ? [{ label: '', separator: true }, { label: 'Einfügen', onClick: pasteToRoot }]
+          ? [{ label: '', separator: true }, { label: tr("notes_menu.paste"), onClick: pasteToRoot }]
           : []),
       ],
     });
@@ -625,7 +626,7 @@ export default function FileTree() {
   let n = 0;
   for (const c of visibleChildren) if (c.type === 'folder') folderIndex.set(c.path, n++);
 
-  if (!tree) return <div style={{ padding: 12, color: 'var(--text-faint)' }}>Wird geladen…</div>;
+  if (!tree) return <div style={{ padding: 12, color: 'var(--text-faint)' }}>{tr("common.loading")}</div>;
   if (!tree.children?.length)
     return (
       <div

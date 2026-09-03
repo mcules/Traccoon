@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import SearchPanel from './SearchPanel';
 import Icon from './Icon';
@@ -26,10 +27,10 @@ export default function MobileSearch() {
   return (
     <div className="mobile-search">
       <div className="ms-head">
-        <button className="tool-btn" title="Zurück" onClick={() => setOpen(false)}>
+        <button className="tool-btn" title={tr("common.back")} onClick={() => setOpen(false)}>
           <Icon name="arrow-left" size={18} />
         </button>
-        <div className="ms-title">Suchen</div>
+        <div className="ms-title">{tr("notes_ribbon.search")}</div>
       </div>
       <SearchPanel />
     </div>

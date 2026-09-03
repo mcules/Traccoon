@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import { getActiveEditor } from '../lib/activeEditor';
@@ -85,7 +86,7 @@ export default function StatusBar() {
   const gitLabel = !git?.enabled
     ? git?.hasHistory
       ? `Sicherung ${ago(git.historyLast) || 'vorhanden'}`
-      : 'Keine Vault-Sicherung'
+      : tr("notes_versions.no_vault_backup")
     : git.clean
       ? `git ${git.branch}${git.ahead ? ` ↑${git.ahead}` : ''}${git.behind ? ` ↓${git.behind}` : ''}`
       : `${git.modified + git.notAdded} offene Änderungen`;
@@ -93,14 +94,14 @@ export default function StatusBar() {
   return (
     <div className="status-bar">
       {!online && (
-        <span className="status-offline" title="Ohne Netz: Lesen geht, Geschriebenes wartet">
+        <span className="status-offline" title={tr("notes_status.offline")}>
           <Icon name="wifi-off" size={13} />
           Offline{waiting ? ` · ${waiting} wartet` : ''}
         </span>
       )}
-      {dirty && <span>Wird gespeichert…</span>}
+      {dirty && <span>{tr("notes_status.saving")}</span>}
       {isText && sel && (
-        <span title="Auswahl">
+        <span title={tr("notes_status.selection")}>
           {sel.words} von {words} Wörtern
         </span>
       )}
@@ -109,7 +110,7 @@ export default function StatusBar() {
       {isText && (
         <span
           className="clickable"
-          title="Zwischen Bearbeiten und Lesen wechseln"
+          title={tr("notes_status.toggle_edit_read")}
           onClick={() => setViewMode(viewMode === 'reading' ? 'live' : 'reading')}
         >
           {viewMode === 'reading' ? 'Leseansicht' : viewMode === 'source' ? 'Quelltext' : 'Bearbeiten'}
@@ -117,7 +118,7 @@ export default function StatusBar() {
       )}
       <span
         className="clickable"
-        title={git?.enabled ? 'Jetzt abgleichen' : 'Versionen kommen aus der stündlichen Sicherung'}
+        title={git?.enabled ? 'Jetzt abgleichen' : tr("notes_versions.from_backup")}
         onClick={git?.enabled ? sync : undefined}
       >
         <Icon name="refresh-cw" size={13} style={syncing ? { animation: 'spin 1s linear infinite' } : undefined} />

@@ -51,6 +51,7 @@ import {
   setLivePreviewTagProvider,
   setNoteTitle,
 } from '../lib/livePreview';
+import { tr } from "../../i18n";
 import { renderMarkdown } from '../lib/markdown';
 import { extractEmbedSection } from '../lib/embedSection';
 import { setActiveEditor } from '../lib/activeEditor';
@@ -268,13 +269,13 @@ export default function Editor() {
             { label: 'Callout', onClick: () => insert('> [!note] Title\n> ', 18) },
             { label: 'Table', onClick: () => insert('\n| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n') },
             { label: 'Horizontal rule', onClick: () => insert('\n---\n') },
-            { label: 'Tag', onClick: () => insert('#') },
+            { label: tr("notes_calendar.day"), onClick: () => insert('#') },
           ],
         },
         { label: '', separator: true },
         { label: 'Ausschneiden', onClick: cut },
-        { label: 'Kopieren', onClick: copy },
-        { label: 'Einfügen', onClick: paste },
+        { label: tr("notes_menu.copy"), onClick: copy },
+        { label: tr("notes_menu.paste"), onClick: paste },
         { label: 'Select all', onClick: selectAll },
         ...(sel
           ? [

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import { insertTemplate } from '../lib/templater/run';
@@ -61,7 +62,7 @@ export default function TemplatePicker() {
         <input
           className="palette-input"
           autoFocus
-          placeholder="Vorlage einfügen…"
+          placeholder={tr("notes_templates.insert")}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -95,7 +96,7 @@ export default function TemplatePicker() {
               <span>{t.name}</span>
             </div>
           ))}
-          {!shown.length && <div className="palette-item">Keine Vorlage gefunden</div>}
+          {!shown.length && <div className="palette-item">{tr("notes_templates.none_found")}</div>}
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api, type AssistantMessage, type AssistantSession } from '../lib/api';
 import { getActiveEditor } from '../lib/activeEditor';
@@ -85,7 +86,7 @@ export default function AssistantPanel() {
         setSessionId(r.messages[0].session_id);
       }
     } catch (e: any) {
-      setError(e.message || 'Assistent nicht erreichbar');
+      setError(e.message || tr("notes_assistant.unreachable"));
     }
   }, [sessionId]);
 
@@ -163,7 +164,7 @@ export default function AssistantPanel() {
       await load();
       void loadSessions();
     } catch (e: any) {
-      notify(e.message || 'Nachricht kam nicht an');
+      notify(e.message || tr("notes_assistant.message_lost"));
     } finally {
       setSending(false);
     }
@@ -186,7 +187,7 @@ export default function AssistantPanel() {
       await api.assistantDecide(id, decision);
       await load();
     } catch (e: any) {
-      notify(e.message || 'Entscheidung kam nicht an');
+      notify(e.message || tr("notes_assistant.answer_lost"));
     }
   };
 
@@ -212,24 +213,24 @@ export default function AssistantPanel() {
       <div className="assistant-head">
         <button
           className="assistant-picker"
-          title="Unterhaltung wechseln"
+          title={tr("notes_assistant.switch_conversation")}
           onClick={() => { setPicking((v) => !v); void loadSessions(); }}
         >
           <Icon name="message-square" size={14} />
           <span className="assistant-picker-title">{aktuell?.title || 'Unterhaltung'}</span>
-          {sessions.some((x) => x.running && x.id !== sessionId) && <span className="assistant-busy-dot" title="In einer anderen Unterhaltung wird gearbeitet" />}
+          {sessions.some((x) => x.running && x.id !== sessionId) && <span className="assistant-busy-dot" title={tr("notes_assistant.busy_elsewhere")} />}
           <Icon name="chevrons-up-down" size={13} />
         </button>
         <button
           className="tool-btn"
-          title="Neue Unterhaltung"
+          title={tr("notes_assistant.new_conversation")}
           onClick={async () => {
             try {
               const s = await api.assistantNewSession('');
               chooseSession(s.id);
               await loadSessions();
             } catch (e: any) {
-              notify(e.message || 'Unterhaltung konnte nicht angelegt werden');
+              notify(e.message || tr("notes_assistant.no_conversation"));
             }
           }}
         >
@@ -250,7 +251,7 @@ export default function AssistantPanel() {
             Geschlossene zeigen
           </label>
           {sessions.length === 0 && (
-            <div className="panel-empty">{showClosed ? 'Nichts geschlossen.' : 'Noch keine Unterhaltung.'}</div>
+            <div className="panel-empty">{showClosed ? 'Nichts geschlossen.' : tr("notes_assistant.no_conversation_yet")}</div>
           )}
           {sessions.map((s) => (
             <div key={s.id} className={`assistant-session${s.id === sessionId ? ' active' : ''}`}>
@@ -263,7 +264,7 @@ export default function AssistantPanel() {
               </button>
               <button
                 className="tool-btn assistant-session-close"
-                title={s.closed_at ? 'Wieder öffnen' : 'Schließen'}
+                title={s.closed_at ? tr("notes_menu.open_again") : tr("common.close")}
                 onClick={async (e) => {
                   e.stopPropagation();
                   try {
@@ -273,7 +274,7 @@ export default function AssistantPanel() {
                     if (!s.closed_at && s.id === sessionId) chooseSession(undefined);
                     await loadSessions();
                   } catch (err: any) {
-                    notify(err.message || 'Ging nicht');
+                    notify(err.message || tr("notes_assistant.did_not_work"));
                   }
                 }}
               >
@@ -287,7 +288,7 @@ export default function AssistantPanel() {
       <div className="assistant-log" ref={listRef}>
         {error && <div className="assistant-error">{error}</div>}
         {messages.length === 0 && !error && (
-          <div className="panel-empty">Noch nichts besprochen.</div>
+          <div className="panel-empty">{tr("notes_assistant.nothing_yet")}</div>
         )}
         {messages.map((m) => (
           <div key={m.id} className="assistant-turn">
@@ -344,9 +345,9 @@ export default function AssistantPanel() {
       )}
 
       <div className="assistant-compose">
-        <label className="assistant-context" title="Die offene Notiz und die Markierung mitschicken">
+        <label className="assistant-context" title={tr("notes_assistant.send_note_and_selection")}>
           <input type="checkbox" checked={withNote} onChange={(e) => setWithNote(e.target.checked)} />
-          Notiz mitschicken
+          {tr("notes_assistant.send_note")}
         </label>
         <textarea
           className="assistant-input"

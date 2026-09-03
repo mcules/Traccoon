@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { listCommands, onCommandsChanged, displayHotkey } from '../lib/commands';
 import { api, type TreeNode } from '../lib/api';
@@ -122,7 +123,7 @@ export default function CommandPalette() {
               {it.hint && <span className="kbd">{it.hint}</span>}
             </div>
           ))}
-          {items.length === 0 && <div className="palette-item">Keine Treffer</div>}
+          {items.length === 0 && <div className="palette-item">{tr("notes_palette.no_matches")}</div>}
         </div>
       </div>
     </div>

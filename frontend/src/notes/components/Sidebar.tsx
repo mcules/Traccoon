@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { tr } from "../../i18n";
 import { panelResizeHandler, restorePanelWidth } from '../lib/panelResize';
 import { useStore } from '../lib/store';
 import FileTree, { collectFolderPaths } from './FileTree';
@@ -69,21 +70,21 @@ export default function Sidebar() {
         <span className="nav-title">{TITLES[leftPanel]}</span>
         {leftPanel === 'files' && (
           <>
-            <button className="nav-action" title="Neue Notiz" onClick={() => newNote()}>
+            <button className="nav-action" title={tr("notes_sidebar.new_note")} onClick={() => newNote()}>
               <Icon name="square-pen" size={16} />
             </button>
-            <button className="nav-action" title="Neues Canvas" onClick={() => newCanvas()}>
+            <button className="nav-action" title={tr("notes_sidebar.new_canvas")} onClick={() => newCanvas()}>
               <Icon name="layout-dashboard" size={16} />
             </button>
-            <button className="nav-action" title="Neuer Ordner" onClick={() => newFolder()}>
+            <button className="nav-action" title={tr("notes_sidebar.new_folder")} onClick={() => newFolder()}>
               <Icon name="folder-plus" size={16} />
             </button>
-            <button className="nav-action" title="Change sort order" onClick={openSortMenu}>
+            <button className="nav-action" title={tr("notes_sidebar.sort_order")} onClick={openSortMenu}>
               <Icon name="arrow-up-narrow-wide" size={16} />
             </button>
             <button
               className={`nav-action ${autoReveal ? 'active' : ''}`}
-              title="Auto reveal current file"
+              title={tr("notes_sidebar.follow_open_note")}
               onClick={() => toggleAutoReveal()}
             >
               <Icon name="crosshair" size={16} />
@@ -95,7 +96,7 @@ export default function Sidebar() {
             >
               <Icon name={allCollapsed ? 'chevrons-up-down' : 'chevrons-down-up'} size={16} />
             </button>
-            <button className="nav-action" title="Papierkorb" onClick={() => setTrash(true)}>
+            <button className="nav-action" title={tr("notes_trash.title")} onClick={() => setTrash(true)}>
               <Icon name="trash" size={16} />
             </button>
           </>
@@ -112,7 +113,7 @@ export default function Sidebar() {
           <Icon name="gem" size={15} /> {vaultName}
         </span>
       </div>
-      <div className="sidebar-resizer" title="Drag to resize" onPointerDown={onResizeDown} />
+      <div className="sidebar-resizer" title={tr("notes_sidebar.drag_to_resize")} onPointerDown={onResizeDown} />
     </div>
   );
 }

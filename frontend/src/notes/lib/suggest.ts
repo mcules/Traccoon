@@ -2,6 +2,7 @@ import { EditorView, ViewPlugin, ViewUpdate, keymap } from '@codemirror/view';
 import { Prec } from '@codemirror/state';
 import { prepareQuery, fuzzySearch, fuzzySearchPath, type FuzzyMatch } from './fuzzy';
 import { listCommands, runCommand } from './commands';
+import { tr } from "../../i18n";
 
 /**
  * Editor suggesters (docs §9):
@@ -194,9 +195,9 @@ function detect(view: EditorView): Ctx | null {
 /** Plain text insertions the slash menu offers beyond the registered commands. */
 const SLASH_INSERTS: Array<{ label: string; insert: string }> = [
   { label: 'Todo', insert: '- [ ] ' },
-  { label: 'Überschrift 1', insert: '# ' },
-  { label: 'Überschrift 2', insert: '## ' },
-  { label: 'Überschrift 3', insert: '### ' },
+  { label: tr("notes_suggest.heading_1"), insert: '# ' },
+  { label: tr("notes_suggest.heading_2"), insert: '## ' },
+  { label: tr("notes_suggest.heading_3"), insert: '### ' },
 ];
 
 /** Items of the `/` menu: the task fields when the line is a task, then the

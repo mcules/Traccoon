@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { tr } from "../../i18n";
 import { api, type SearchHit, type MatchContext, type NoteMatches } from '../lib/api';
 import { useStore } from '../lib/store';
 import Icon from './Icon';
@@ -168,26 +169,26 @@ export default function SearchPanel() {
           <Icon name="search" size={15} className="search-lead" />
           <input
             className="search-input has-lead"
-            placeholder="Search   (try tag:idea, path:notes)"
+            placeholder={tr("notes_search.placeholder")}
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
           <button
             className={`search-icon-btn ${matchCase ? 'active' : ''}`}
-            title="Match case"
+            title={tr("notes_search.match_case")}
             onClick={() => setMatchCase((v) => !v)}
           >
             Aa
           </button>
           {q && (
-            <button className="search-icon-btn" title="Clear" onClick={() => setQ('')}>
+            <button className="search-icon-btn" title={tr("notes_search.clear")} onClick={() => setQ('')}>
               <Icon name="x" size={15} />
             </button>
           )}
           <button
             className={`search-icon-btn ${showOptions ? 'active' : ''}`}
-            title="Search options"
+            title={tr("notes_search.options")}
             onClick={() => setShowOptions((v) => !v)}
           >
             <Icon name="sliders" size={15} />
@@ -197,11 +198,11 @@ export default function SearchPanel() {
         {showOptions && (
           <div className="search-options">
             <label className="search-opt">
-              <span>Ergebnisse einklappen</span>
+              <span>{tr("notes_search.collapse")}</span>
               <input type="checkbox" checked={collapsed} onChange={(e) => setCollapsed(e.target.checked)} />
             </label>
             <label className="search-opt">
-              <span>Show more context</span>
+              <span>{tr("notes_search.more_context")}</span>
               <input type="checkbox" checked={moreContext} onChange={(e) => setMoreContext(e.target.checked)} />
             </label>
           </div>

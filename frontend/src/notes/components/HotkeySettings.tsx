@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { tr } from "../../i18n";
 import { api } from '../lib/api';
 import { useStore } from '../lib/store';
 import { displayHotkey, listCommands, normalizeHotkey } from '../lib/commands';
@@ -98,7 +99,7 @@ export default function HotkeySettings() {
     <div className="setting-section">
       <input
         className="setting-filter"
-        placeholder="Befehl suchen…"
+        placeholder={tr("notes_hotkeys.find_command")}
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />
@@ -107,27 +108,27 @@ export default function HotkeySettings() {
           <div key={c.id} className="hotkey-row">
             <span className="hotkey-name">
               {c.name}
-              {clashes.has(c.id) && <span className="hotkey-clash" title="Diese Taste ist doppelt belegt"> ⚠</span>}
+              {clashes.has(c.id) && <span className="hotkey-clash" title={tr("notes_hotkeys.taken_twice")}> ⚠</span>}
             </span>
             <span className="hotkey-id">{c.id}</span>
-            <span className="hotkey-combo">{recording === c.id ? 'Taste drücken…' : shown(c.id, c.hotkey)}</span>
+            <span className="hotkey-combo">{recording === c.id ? tr("notes_hotkeys.press_a_key") : shown(c.id, c.hotkey)}</span>
             <button className="tool-btn" onClick={() => setRecording(c.id)}>
-              Ändern
+              {tr("notes_menu.change")}
             </button>
             {custom[c.id] && (
               <button
                 className="tool-btn"
-                title="Auf Standard zurücksetzen"
+                title={tr("notes_hotkeys.reset")}
                 onClick={() => {
                   const next = { ...custom };
                   delete next[c.id];
                   void save(next);
                 }}
               >
-                Zurück
+                {tr("common.back")}
               </button>
             )}
-            <button className="tool-btn" title="Keine Taste" onClick={() => void save({ ...custom, [c.id]: [] })}>
+            <button className="tool-btn" title={tr("notes_hotkeys.no_key")} onClick={() => void save({ ...custom, [c.id]: [] })}>
               Leeren
             </button>
           </div>

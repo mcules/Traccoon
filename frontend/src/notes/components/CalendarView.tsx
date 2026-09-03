@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { tr, language } from "../../i18n";
 import { api, type CalEvent } from '../lib/api';
 import { useStore } from '../lib/store';
 import Icon from './Icon';
@@ -20,11 +21,21 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const startOfWeek = (d: Date) => addDays(d, -((d.getDay() + 6) % 7)); // Monday
-const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-const MONTHS = [
-  'Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember',
-];
+/**
+ * The names of the days and months, from the language the interface is in.
+ *
+ * Written out here as two German lists before, which was one language too few
+ * and twelve entries somebody would have had to translate by hand. The browser
+ * already knows them in every language, so it is asked instead — with a Monday
+ * as the reference date, because the week starts there in this view.
+ */
+const named = (fmt: Intl.DateTimeFormatOptions, from: Date, step: (i: number) => Date, n: number) =>
+  Array.from({ length: n }, (_, i) =>
+    new Intl.DateTimeFormat(language(), fmt).format(step(i)));
+const WEEKDAYS = named({ weekday: 'short' }, new Date(2024, 0, 1),
+  (i) => new Date(2024, 0, 1 + i), 7);          // 1 Jan 2024 was a Monday
+const MONTHS = named({ month: 'long' }, new Date(2024, 0, 1),
+  (i) => new Date(2024, i, 1), 12);
 
 /** A stable colour per calendar, so the same source keeps its hue. */
 function hueFor(name: string): number {
@@ -134,7 +145,7 @@ export default function CalendarView() {
   };
 
   const refresh = async () => {
-    notify('Kalender wird abgerufen…');
+    notify(tr("notes_calendar.fetching"));
     try {
       const r = await api.calendarRefresh();
       notify(r.errors.length ? `Abgerufen, ${r.errors.length} Quelle(n) mit Fehler` : `${r.count} Termine abgerufen`);
@@ -150,13 +161,13 @@ export default function CalendarView() {
     <div className="calendar-view">
       <div className="calendar-header">
         <div className="calendar-nav">
-          <button className="tool-btn" title="Zurück" onClick={() => step(-1)}>
+          <button className="tool-btn" title={tr("notes_calendar.back")} onClick={() => step(-1)}>
             <Icon name="arrow-left" size={16} />
           </button>
-          <button className="tool-btn cal-today" title="Heute" onClick={() => setAnchor(new Date())}>
-            Heute
+          <button className="tool-btn cal-today" title={tr("notes_calendar.today")} onClick={() => setAnchor(new Date())}>
+            {tr("notes_calendar.today")}
           </button>
-          <button className="tool-btn" title="Weiter" onClick={() => step(1)}>
+          <button className="tool-btn" title={tr("notes_calendar.forward")} onClick={() => step(1)}>
             <Icon name="arrow-right" size={16} />
           </button>
         </div>
@@ -164,21 +175,21 @@ export default function CalendarView() {
         <div className="seg">
           {(['month', 'week', 'day'] as Mode[]).map((m) => (
             <button key={m} className={mode === m ? 'active' : ''} onClick={() => setMode(m)}>
-              {m === 'month' ? 'Monat' : m === 'week' ? 'Woche' : 'Tag'}
+              {m === 'month' ? tr("notes_calendar.month") : m === 'week' ? tr("notes_calendar.week") : tr("notes_calendar.day")}
             </button>
           ))}
         </div>
-        <button className="tool-btn" title="Neu abrufen" onClick={() => void refresh()}>
+        <button className="tool-btn" title={tr("notes_calendar.fetch_again")} onClick={() => void refresh()}>
           <Icon name="refresh-cw" size={15} />
         </button>
         <button
           className="primary"
-          title="Neuer Termin"
+          title={tr("notes_calendar.new_event")}
           onClick={() =>
             setDraft({ title: '', date: iso(anchor), time: '09:00', endTime: '10:00', allDay: false })
           }
         >
-          <Icon name="plus" size={15} /> Neuer Termin
+          <Icon name="plus" size={15} /> {tr("notes_calendar.new_event")}
         </button>
       </div>
 
@@ -282,7 +293,7 @@ function DayEvents({
           key={e.id}
           className={`calendar-event${e.cancelled ? ' cancelled' : ''}`}
           style={{ borderLeftColor: `hsl(${hueFor(e.calendar)}, 60%, 50%)` }}
-          title={`${e.time || 'ganztägig'} ${e.title} · ${e.calendar}${e.location ? `\n${e.location}` : ''}`}
+          title={`${e.time || tr("notes_calendar.all_day")} ${e.title} · ${e.calendar}${e.location ? `\n${e.location}` : ''}`}
           onClick={() =>
             onOpen?.({
               uid: e.uid,

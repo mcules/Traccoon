@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { tr } from "../../i18n";
 import { onAsk, answer, type AskRequest } from '../lib/templater/ask';
 import { prepareQuery, fuzzySearch } from '../lib/fuzzy';
 import Icon from './Icon';
@@ -68,7 +69,7 @@ export default function AskDialog() {
           <>
             <input
               autoFocus
-              placeholder="Filtern…"
+              placeholder={tr("notes_dialog.filter")}
               value={q}
               onChange={(e) => {
                 setQ(e.target.value);
@@ -95,15 +96,15 @@ export default function AskDialog() {
                   {o.label}
                 </div>
               ))}
-              {!options.length && <div className="palette-item">Keine Auswahl</div>}
+              {!options.length && <div className="palette-item">{tr("notes_dialog.nothing_chosen")}</div>}
             </div>
           </>
         )}
         {req.kind === 'text' && (
           <div className="event-actions">
             <span className="grow" />
-            <button className="tool-btn" onClick={cancel}><Icon name="x" size={15} /> Abbrechen</button>
-            <button className="primary" onClick={() => answer(value)}><Icon name="check" size={15} /> Übernehmen</button>
+            <button className="tool-btn" onClick={cancel}><Icon name="x" size={15} /> {tr("notes_dialog.cancel")}</button>
+            <button className="primary" onClick={() => answer(value)}><Icon name="check" size={15} /> {tr("notes_dialog.take_it")}</button>
           </div>
         )}
       </div>

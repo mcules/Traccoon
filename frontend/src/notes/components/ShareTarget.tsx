@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import Icon from './Icon';
@@ -59,10 +60,10 @@ export default function ShareTarget({ onDone }: { onDone: () => void }) {
       await api.write(daily.path, `${text}\n- ${line()}\n`, current.hash);
       await loadTree();
       await openDailyNote(0);
-      notify('In die Tagesnotiz eingetragen');
+      notify(tr("notes_calendar.written_into_daily"));
       onDone();
     } catch (e: any) {
-      notify(e.message || 'Konnte nicht eingetragen werden');
+      notify(e.message || tr("notes_calendar.could_not_write"));
     } finally {
       setBusy(false);
     }
@@ -80,10 +81,10 @@ export default function ShareTarget({ onDone }: { onDone: () => void }) {
       await api.write(path, parts.join('\n'));
       await loadTree();
       await openFile(path);
-      notify('Notiz angelegt');
+      notify(tr("notes_shared.note_created"));
       onDone();
     } catch (e: any) {
-      notify(e.message || 'Notiz konnte nicht angelegt werden');
+      notify(e.message || tr("notes_shared.note_not_created"));
     } finally {
       setBusy(false);
     }
@@ -94,8 +95,8 @@ export default function ShareTarget({ onDone }: { onDone: () => void }) {
       <div className="modal share-target">
         <div className="ts-head">
           <Icon name="arrow-up-right" size={16} />
-          <div className="ts-title">Geteilt</div>
-          <button className="tool-btn" title="Verwerfen" onClick={onDone}>
+          <div className="ts-title">{tr("notes_shared.shared")}</div>
+          <button className="tool-btn" title={tr("notes_shared.discard")} onClick={onDone}>
             <Icon name="x" size={16} />
           </button>
         </div>
@@ -104,17 +105,17 @@ export default function ShareTarget({ onDone }: { onDone: () => void }) {
           <textarea
             className="assistant-input"
             rows={3}
-            placeholder="Notiz dazu (optional)"
+            placeholder={tr("notes_shared.a_note_about_it")}
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
         </div>
         <div className="share-foot">
           <button className="btn secondary" disabled={busy} onClick={toNewNote}>
-            Neue Notiz
+            {tr("notes_sidebar.new_note")}
           </button>
           <button className="btn" disabled={busy} onClick={toDaily}>
-            An die Tagesnotiz
+            {tr("notes_shared.to_the_daily_note")}
           </button>
         </div>
       </div>

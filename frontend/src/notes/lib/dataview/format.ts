@@ -1,3 +1,4 @@
+import { tr } from "../../../i18n";
 /**
  * Rendering pieces shared by the query results and the inline renderer:
  * escaping, a small inline-markdown pass and the value formatter that follows
@@ -118,7 +119,7 @@ export function wireInternalLinks(el: HTMLElement): void {
  * The Tasks plugin does not print a task's dates as plain text: it lifts them
  * out of the description and wraps each in its own span, carrying how far away
  * the date is in `data-task-due`. That attribute is what CSS snippets hook
- * into — this vault has one that appends "⚠️ überfällig" / "📍 fällig" — so a
+ * into — this vault has one that appends tr("notes_task.overdue") / tr("notes_task.due") — so a
  * renderer that just dumps the raw line silently disables them.
  *
  * Dates are shown as DD.MM.YYYY. The vault used to achieve that with a startup

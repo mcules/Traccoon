@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api, type BaseResult, type BaseRow } from '../lib/api';
 import Icon from './Icon';
@@ -104,7 +105,7 @@ export default function BaseView() {
     api
       .baseView(path, viewName)
       .then((r) => alive && setData(r))
-      .catch((e) => alive && setError(e.message || 'Base konnte nicht gelesen werden'));
+      .catch((e) => alive && setError(e.message || tr("notes_base.unreadable")));
     return () => {
       alive = false;
     };
@@ -118,7 +119,7 @@ export default function BaseView() {
   }, [data, sort]);
 
   if (error) return <div className="base-view"><div className="base-error">{error}</div></div>;
-  if (!data) return <div className="base-view"><div className="base-empty-state">Wird gelesen…</div></div>;
+  if (!data) return <div className="base-view"><div className="base-empty-state">{tr("notes_base.reading")}</div></div>;
 
   const open = (p: string) => void openFile(p);
   const nameColumn = data.columns.find((c) => c.id === 'file.name' || c.id === 'file.basename');
@@ -237,7 +238,7 @@ export default function BaseView() {
       )}
 
       <div className="base-body">
-        {data.rows.length === 0 && <div className="base-empty-state">Keine Notiz passt auf diese Base.</div>}
+        {data.rows.length === 0 && <div className="base-empty-state">{tr("notes_base.no_note_matches")}</div>}
         {data.groups
           ? data.groups.map((g) => (
               <div key={g.key} className="base-group">

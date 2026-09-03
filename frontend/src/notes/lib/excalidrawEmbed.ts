@@ -1,4 +1,5 @@
 import { api } from './api';
+import { tr } from "../../i18n";
 
 /**
  * Painting a drawing where a note embeds one.
@@ -36,7 +37,7 @@ export function renderDrawingEmbeds(root: HTMLElement): void {
     const target = host.dataset.drawing;
     if (!target) continue;
     host.dataset.done = '1';
-    host.textContent = 'Zeichnung wird geladen…';
+    host.textContent = tr("notes_drawing.loading");
     let job = cache.get(target);
     if (!job) {
       job = exportSvg(target).catch(() => null);

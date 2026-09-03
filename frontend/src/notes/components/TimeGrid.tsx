@@ -1,4 +1,5 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
+import { tr } from "../../i18n";
 import type { CalEvent } from '../lib/api';
 import type { EventDraft } from './EventDialog';
 
@@ -127,7 +128,7 @@ export default function TimeGrid({
           const key = iso(d);
           return (
             <div key={key} className={`tg-day${key === today ? ' today' : ''}`}>
-              <button className="tg-daylabel" onClick={() => onNote(key)} title="Tagesnotiz öffnen">
+              <button className="tg-daylabel" onClick={() => onNote(key)} title={tr("notes_calendar.open_daily_note")}>
                 <span className="tg-weekday">{WEEKDAYS[(d.getDay() + 6) % 7]}</span>
                 <span className="tg-daynum">{d.getDate()}.{d.getMonth() + 1}.</span>
               </button>
@@ -138,7 +139,7 @@ export default function TimeGrid({
 
       {hasAllDay && (
         <div className="tg-allday" style={style}>
-          <div className="tg-gutter">ganztägig</div>
+          <div className="tg-gutter">{tr("notes_calendar.all_day")}</div>
           {days.map((d) => (
             <div key={iso(d)} className="tg-day">
               {(byDay.get(iso(d)) ?? [])
@@ -180,7 +181,7 @@ export default function TimeGrid({
                   className="tg-slot"
                   style={{ height: HOUR_HEIGHT }}
                   onDoubleClick={() => onNew(key, h)}
-                  title="Doppelklick: neuer Termin"
+                  title={tr("notes_calendar.double_click_new")}
                 />
               ))}
               {isToday && (

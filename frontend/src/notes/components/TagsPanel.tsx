@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { tr } from "../../i18n";
 import { api } from '../lib/api';
 import { useStore } from '../lib/store';
 
@@ -12,7 +13,7 @@ export default function TagsPanel() {
 
   return (
     <div style={{ padding: 8 }}>
-      {tags.length === 0 && <div style={{ color: 'var(--text-faint)', padding: 8 }}>No tags found</div>}
+      {tags.length === 0 && <div style={{ color: 'var(--text-faint)', padding: 8 }}>{tr("notes_tags.none")}</div>}
       {tags.map((t) => (
         <span
           key={t.tag}

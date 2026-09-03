@@ -1,4 +1,5 @@
 import { useStore, GRAPH_PATH, CALENDAR_PATH } from '../lib/store';
+import { tr } from "../../i18n";
 import Icon from './Icon';
 
 /**
@@ -30,7 +31,7 @@ export default function TabSwitcher() {
           <div className="ts-title">Geöffnet ({tabs.length})</div>
           <button
             className="tool-btn"
-            title="Neue Notiz"
+            title={tr("notes_sidebar.new_note")}
             onClick={() => {
               setOpen(false);
               void newNote();
@@ -38,12 +39,12 @@ export default function TabSwitcher() {
           >
             <Icon name="plus" size={16} />
           </button>
-          <button className="tool-btn" title="Schließen" onClick={() => setOpen(false)}>
+          <button className="tool-btn" title={tr("common.close")} onClick={() => setOpen(false)}>
             <Icon name="x" size={16} />
           </button>
         </div>
         <div className="ts-list">
-          {tabs.length === 0 && <div className="ts-empty">Keine Notiz geöffnet.</div>}
+          {tabs.length === 0 && <div className="ts-empty">{tr("notes_tabs.none_open")}</div>}
           {tabs.map((t) => {
             const name = t.title.replace(/\.(md|markdown)$/, '');
             const folder = t.path.includes('/') ? t.path.slice(0, t.path.lastIndexOf('/')) : '';
@@ -63,7 +64,7 @@ export default function TabSwitcher() {
                 </div>
                 <button
                   className="tool-btn ts-close"
-                  title="Tab schließen"
+                  title={tr("notes_tabs.close_tab")}
                   onClick={(e) => {
                     e.stopPropagation();
                     closeTab(t.path);

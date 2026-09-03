@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { tr } from "../../i18n";
 import { panelResizeHandler, restorePanelWidth } from '../lib/panelResize';
 import { useStore } from '../lib/store';
 import { api, type NoteMatches } from '../lib/api';
@@ -143,8 +144,8 @@ function BacklinksPanel() {
         </span>
       </div>
       <div className="sidebar-body">
-        <Section title="Verlinkte Erwähnungen" count={linked.length} open={openLinked} onToggle={() => setOpenLinked(!openLinked)}>
-          {linked.length === 0 && <div className="panel-item">Keine Backlinks.</div>}
+        <Section title={tr("notes_panel.linked_mentions")} count={linked.length} open={openLinked} onToggle={() => setOpenLinked(!openLinked)}>
+          {linked.length === 0 && <div className="panel-item">{tr("notes_panel.no_backlinks")}</div>}
           {linked.map((b) => (
             <div key={b} className="mention-box">
               <div className="mention-src" onClick={() => openFile(b)}>
@@ -161,12 +162,12 @@ function BacklinksPanel() {
           ))}
         </Section>
         <Section
-          title="Unverlinkte Erwähnungen"
+          title={tr("notes_panel.unlinked_mentions")}
           count={unlinked.length}
           open={openUnlinked}
           onToggle={() => setOpenUnlinked(!openUnlinked)}
         >
-          {unlinked.length === 0 && <div className="panel-item">Keine unverlinkten Erwähnungen.</div>}
+          {unlinked.length === 0 && <div className="panel-item">{tr("notes_panel.no_unlinked")}</div>}
           {unlinked.map((m) => (
             <div key={m.path} className="mention-box">
               <div className="mention-src" onClick={() => openFile(m.path)}>
@@ -240,10 +241,10 @@ function OutgoingPanel() {
       </div>
       <div className="sidebar-body">
         <div className="section-head" style={{ cursor: 'default' }}>
-          <span>Links</span>
+          <span>{tr("notes_panel.links")}</span>
           <span className="count">{links.length}</span>
         </div>
-        {links.length === 0 && <div className="panel-item">No outgoing links.</div>}
+        {links.length === 0 && <div className="panel-item">{tr("notes_panel.no_outgoing")}</div>}
         {links.map((t) => (
           <div key={t} className="outgoing-item" onClick={() => openWikilink(t)} title={resolved[t] ?? t}>
             <Icon name="file-text" size={14} />
@@ -252,12 +253,12 @@ function OutgoingPanel() {
         ))}
         {unresolved.length > 0 && (
           <div className="section-head" style={{ cursor: 'default' }}>
-            <span>Unresolved</span>
+            <span>{tr("notes_panel.unresolved")}</span>
             <span className="count">{unresolved.length}</span>
           </div>
         )}
         {unresolved.map((t) => (
-          <div key={t} className="outgoing-item unresolved" onClick={() => openWikilink(t)} title="Not created yet — click to create">
+          <div key={t} className="outgoing-item unresolved" onClick={() => openWikilink(t)} title={tr("notes_panel.not_created_yet")}>
             <Icon name="file-plus" size={14} />
             <span>{t}</span>
           </div>
@@ -273,10 +274,10 @@ function OutlinePanel() {
   return (
     <>
       <div className="nav-header">
-        <span className="nav-title">Gliederung</span>
+        <span className="nav-title">{tr("notes_panel.outline")}</span>
       </div>
       <div className="sidebar-body">
-        {heads.length === 0 && <div className="panel-item">No headings</div>}
+        {heads.length === 0 && <div className="panel-item">{tr("notes_panel.no_headings")}</div>}
         {heads.map((h, i) => (
           <div key={i} className="outline-item" style={{ paddingLeft: 10 + (h.level - 1) * 12 }}>
             {h.text}
@@ -304,7 +305,7 @@ export default function RightSidebar() {
 
   return (
     <div className="right-sidebar">
-      <div className="sidebar-resizer right" title="Ziehen zum Verbreitern" onPointerDown={onResizeDown} />
+      <div className="sidebar-resizer right" title={tr("notes_sidebar.drag_to_resize")} onPointerDown={onResizeDown} />
       <div className="right-tabs">
         {TABS.map((t) => (
           <button
@@ -322,7 +323,7 @@ export default function RightSidebar() {
       {rightPanel === 'tags' && (
         <>
           <div className="nav-header">
-            <span className="nav-title">Tags</span>
+            <span className="nav-title">{tr("notes_panel.tags")}</span>
           </div>
           <div className="sidebar-body">
             <TagsPanel />
@@ -374,19 +375,19 @@ function PropertiesPanel() {
   return (
     <>
       <div className="nav-header">
-        <span className="nav-title">Eigenschaften</span>
+        <span className="nav-title">{tr("notes_panel.properties")}</span>
       </div>
       <div className="sidebar-body">
-        <Section title="Diese Notiz" count={own.length} open={openOwn} onToggle={() => setOpenOwn((v) => !v)}>
+        <Section title={tr("notes_panel.this_note")} count={own.length} open={openOwn} onToggle={() => setOpenOwn((v) => !v)}>
           {own.map(([k, v]) => (
             <div key={k} className="prop-row">
               <span className="prop-key">{k}</span>
               <span className="prop-val">{v || <em>leer</em>}</span>
             </div>
           ))}
-          {!own.length && <div className="nav-empty">Keine Eigenschaften</div>}
+          {!own.length && <div className="nav-empty">{tr("notes_panel.no_properties")}</div>}
         </Section>
-        <Section title="Alle Eigenschaften" count={all.length} open={openAll} onToggle={() => setOpenAll((v) => !v)}>
+        <Section title={tr("notes_panel.all_properties")} count={all.length} open={openAll} onToggle={() => setOpenAll((v) => !v)}>
           {all.map((p) => (
             <div key={p.key} className="tag-row clickable" onClick={() => searchFor(`["${p.key}"]`)}>
               <span>{p.key}</span>

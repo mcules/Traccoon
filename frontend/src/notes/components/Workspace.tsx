@@ -1,4 +1,5 @@
 import { useStore, GRAPH_PATH, CALENDAR_PATH, type ContextMenuItem } from '../lib/store';
+import { tr } from "../../i18n";
 import { api } from '../lib/api';
 import Editor from './Editor';
 import Preview from './Preview';
@@ -140,7 +141,7 @@ export default function Workspace() {
     const baseName = path.split('/').pop() ?? path;
     const closeOthers = () => tabs.filter((t) => t.path !== path).forEach((t) => closeTab(t.path));
     const tabItems: ContextMenuItem[] = [
-      { label: 'Tab schließen', icon: 'x', onClick: () => closeTab(path) },
+      { label: tr("notes_tabs.close_tab"), icon: 'x', onClick: () => closeTab(path) },
       { label: 'Close other tabs', onClick: closeOthers },
     ];
     let items: ContextMenuItem[];
@@ -173,7 +174,7 @@ export default function Workspace() {
         onClick: () => setMovePath(path),
       };
       const copyItem: ContextMenuItem = {
-        label: 'Kopie anlegen',
+        label: tr("notes_menu.duplicate"),
         icon: 'file-plus',
         onClick: async () => {
           const r = await api.read(path).catch(() => null);
@@ -216,7 +217,7 @@ export default function Workspace() {
           : []),
         sep,
         {
-          label: 'Link-Pfad kopieren',
+          label: tr("notes_menu.copy_link_path"),
           onClick: () => {
             navigator.clipboard?.writeText(`${location.origin}${pathToUrl(path)}`).catch(() => {});
             notify('URL copied');
@@ -249,7 +250,7 @@ export default function Workspace() {
         ...tabItems,
         sep,
         {
-          label: 'Löschen',
+          label: tr("common.delete"),
           danger: true,
           icon: 'trash',
           onClick: async () => {
@@ -298,7 +299,7 @@ export default function Workspace() {
           // current note gets the width, the rest are one tap away.
           <div className="tab-current" onClick={() => setTabSwitcher(true)}>
             <span className="title">
-              {(tabs.find((t) => t.path === activePath)?.title ?? 'Keine Notiz').replace(
+              {(tabs.find((t) => t.path === activePath)?.title ?? tr("notes_workspace.no_note")).replace(
                 /\.(md|markdown)$/,
                 '',
               )}
@@ -340,7 +341,7 @@ export default function Workspace() {
         )}
         <span
           className="tab-new tab-ctl"
-          title="New note (⌘N)"
+          title={tr("notes_workspace.new_note")}
           onClick={() => newNote()}
         >
           <Icon name="plus" size={16} />
@@ -348,7 +349,7 @@ export default function Workspace() {
         <span className="grow" style={{ flex: 1 }} />
         <span
           className="tab-new tab-ctl"
-          title="Toggle right sidebar"
+          title={tr("notes_workspace.toggle_panel")}
           onClick={() => (isMobile ? setMobileDrawer('right') : toggleRight())}
         >
           <Icon name="panel-right" size={isMobile ? 20 : 16} />
@@ -360,10 +361,10 @@ export default function Workspace() {
           wiederholt und ein zweites Paar Pfeile zeigt, sagt nichts dazu. */}
       {activePath && activePath !== CALENDAR_PATH && (
         <div className="view-header">
-          <button className="tool-btn" title="Back" disabled={!canGoBack} onClick={goBack}>
+          <button className="tool-btn" title={tr("notes_workspace.back")} disabled={!canGoBack} onClick={goBack}>
             <Icon name="arrow-left" size={18} />
           </button>
-          <button className="tool-btn" title="Forward" disabled={!canGoForward} onClick={goForward}>
+          <button className="tool-btn" title={tr("notes_workspace.forward")} disabled={!canGoForward} onClick={goForward}>
             <Icon name="arrow-right" size={18} />
           </button>
           <span className="grow" />
@@ -371,7 +372,7 @@ export default function Workspace() {
             {activePath === GRAPH_PATH
               ? 'Graph'
               : activePath === CALENDAR_PATH
-              ? 'Kalender'
+              ? tr("notes_ribbon.calendar")
               : activePath.split('/').map((seg, i) => (
                   <span key={i}>
                     {i > 0 && <span className="sep">/</span>}
@@ -382,29 +383,29 @@ export default function Workspace() {
           <span className="grow" />
           {isMd && (
             <>
-              <button className={`tool-btn ${bookmarks.includes(activePath) ? 'active' : ''}`} title="Lesezeichen setzen" onClick={() => toggleBookmark(activePath)}>
+              <button className={`tool-btn ${bookmarks.includes(activePath) ? 'active' : ''}`} title={tr("notes_bookmarks.add")} onClick={() => toggleBookmark(activePath)}>
                 <Icon name="bookmark" size={19} />
               </button>
               {!isMobile && (
-                <button className="tool-btn" title="Rechts daneben öffnen" onClick={() => openToSide(activePath)}>
+                <button className="tool-btn" title={tr("notes_workspace.open_beside")} onClick={() => openToSide(activePath)}>
                   <Icon name="columns" size={19} />
                 </button>
               )}
               <div className="seg">
-                <button className={viewMode === 'source' ? 'active' : ''} onClick={() => setViewMode('source')} title="Quelltext">
+                <button className={viewMode === 'source' ? 'active' : ''} onClick={() => setViewMode('source')} title={tr("notes_workspace.source")}>
                   Source
                 </button>
-                <button className={viewMode === 'live' ? 'active' : ''} onClick={() => setViewMode('live')} title="Live preview">
+                <button className={viewMode === 'live' ? 'active' : ''} onClick={() => setViewMode('live')} title={tr("notes_workspace.live")}>
                   Live
                 </button>
-                <button className={viewMode === 'reading' ? 'active' : ''} onClick={() => setViewMode('reading')} title="Lesen">
+                <button className={viewMode === 'reading' ? 'active' : ''} onClick={() => setViewMode('reading')} title={tr("notes_workspace.reading")}>
                   Reading
                 </button>
               </div>
             </>
           )}
           {!activeIsFolder && (
-            <button className="tool-btn" title="More options" onClick={openMoreMenu}>
+            <button className="tool-btn" title={tr("notes_workspace.more")} onClick={openMoreMenu}>
               <Icon name="more-horizontal" size={18} />
             </button>
           )}
@@ -422,7 +423,7 @@ export default function Workspace() {
               <div className="big">
                 <Icon name="file-text" size={48} />
               </div>
-              <p>No file is open — pick a note, or press ⌘O</p>
+              <p>{tr("notes_workspace.nothing_open")}</p>
             </div>
           </div>
         )}
@@ -446,7 +447,7 @@ export default function Workspace() {
             <div className="split-head">
               <span className="crumbs">{splitPath}</span>
               <span className="grow" />
-              <button className="tool-btn" onClick={closeSplit} title="Close split">
+              <button className="tool-btn" onClick={closeSplit} title={tr("notes_workspace.close_split")}>
                 <Icon name="x" size={16} />
               </button>
             </div>

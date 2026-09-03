@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { renderMarkdown } from '../lib/markdown';
 import { api } from '../lib/api';
@@ -36,7 +37,7 @@ export default function Presentation() {
     api
       .read(path)
       .then((r) => setSource(r.content))
-      .catch(() => setSource('*(Notiz konnte nicht geladen werden)*'));
+      .catch(() => setSource(tr("notes_embed.unreadable")));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
@@ -89,7 +90,7 @@ export default function Presentation() {
         <div className="pres-count">
           {i + 1} / {count}
         </div>
-        <button className="tool-btn" title="Beenden (Esc)" onClick={() => close(null)}>
+        <button className="tool-btn" title={tr("notes_presentation.leave")} onClick={() => close(null)}>
           <Icon name="x" size={18} />
         </button>
       </div>

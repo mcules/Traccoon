@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import Icon from './Icon';
@@ -55,7 +56,7 @@ export default function ExcalidrawView() {
         latest.current = r.scene as Scene;
         setScene(r.scene as Scene);
       })
-      .catch((e) => alive && setError(e.message || 'Zeichnung konnte nicht gelesen werden'));
+      .catch((e) => alive && setError(e.message || tr("notes_drawing.unreadable")));
     return () => {
       alive = false;
     };
@@ -72,7 +73,7 @@ export default function ExcalidrawView() {
     } catch (e: any) {
       // 409: the file moved on while this was open. Say so rather than
       // deciding on the reader's behalf whose version wins.
-      notify(e?.status === 409 ? 'Die Zeichnung wurde inzwischen woanders geändert' : e.message || 'Speichern fehlgeschlagen');
+      notify(e?.status === 409 ? tr("notes_drawing.changed_elsewhere") : e.message || tr("common.save_failed"));
     } finally {
       setSaving(false);
     }
@@ -91,7 +92,7 @@ export default function ExcalidrawView() {
   }, [save]);
 
   if (error) return <div className="excalidraw-view"><div className="base-error">{error}</div></div>;
-  if (!scene) return <div className="excalidraw-view"><div className="base-empty-state">Zeichnung wird geladen…</div></div>;
+  if (!scene) return <div className="excalidraw-view"><div className="base-empty-state">{tr("notes_drawing.loading")}</div></div>;
 
   return (
     <div className="excalidraw-view">
@@ -99,14 +100,14 @@ export default function ExcalidrawView() {
         <Icon name="pen" size={15} />
         <div className="exc-title">{path?.split('/').pop()?.replace(/\.excalidraw(\.md)?$/, '')}</div>
         <span className="grow" />
-        {dirty && <span className="exc-dirty">Ungespeichert</span>}
+        {dirty && <span className="exc-dirty">{tr("notes_drawing.unsaved")}</span>}
         <button className="tool-btn exc-save" disabled={!dirty || saving} onClick={() => void save()}>
           <Icon name="check" size={15} />
-          Speichern
+          {tr("common.save")}
         </button>
       </div>
       <div className="exc-stage">
-        <Suspense fallback={<div className="base-empty-state">Zeichenwerkzeug wird geladen…</div>}>
+        <Suspense fallback={<div className="base-empty-state">{tr("notes_drawing.tool_loading")}</div>}>
           <Excalidraw
             initialData={{ elements: scene.elements as never, appState: scene.appState as never, files: scene.files as never, scrollToContent: true }}
             langCode="de-DE"

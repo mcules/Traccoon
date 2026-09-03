@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api, type TrashItem } from '../lib/api';
 import Icon from './Icon';
@@ -91,19 +92,19 @@ export default function TrashView() {
       <div className="modal trash-view" onClick={(e) => e.stopPropagation()}>
         <div className="vh-head">
           <Icon name="trash" size={16} />
-          <div className="vh-title">Papierkorb</div>
+          <div className="vh-title">{tr("notes_trash.title")}</div>
           <div className="vh-path">{items.length} item(s)</div>
-          <button className="tool-btn" title="Refresh" onClick={refresh}>
+          <button className="tool-btn" title={tr("notes_trash.refresh")} onClick={refresh}>
             <Icon name="refresh-cw" size={16} />
           </button>
-          <button className="tool-btn" title="Schließen" onClick={() => close(false)}>
+          <button className="tool-btn" title={tr("common.close")} onClick={() => close(false)}>
             <Icon name="x" size={16} />
           </button>
         </div>
         <div className="trash-body">
-          {loading && <div className="vh-empty">Wird geladen…</div>}
+          {loading && <div className="vh-empty">{tr("common.loading")}</div>}
           {!loading && items.length === 0 && (
-            <div className="vh-empty">Trash is empty.</div>
+            <div className="vh-empty">{tr("notes_trash.empty")}</div>
           )}
           {!loading &&
             items.map((it) => (
@@ -119,7 +120,7 @@ export default function TrashView() {
                 </div>
                 <button
                   className="btn secondary trash-act"
-                  title="Restore to original location"
+                  title={tr("notes_trash.restore")}
                   disabled={busy}
                   onClick={() => restore(it)}
                 >
@@ -127,7 +128,7 @@ export default function TrashView() {
                 </button>
                 <button
                   className="tool-btn trash-del"
-                  title="Endgültig löschen"
+                  title={tr("notes_trash.delete_for_good")}
                   disabled={busy}
                   onClick={() => remove(it)}
                 >

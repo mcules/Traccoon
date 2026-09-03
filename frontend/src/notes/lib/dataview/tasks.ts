@@ -13,6 +13,7 @@ import { inlineMarkdown, taskFieldsHtml, wireInternalLinks } from './format';
 import { renderInlineDataview } from './inline';
 import { memo } from './cache';
 import { ensurePluginSettings } from './settings';
+import { tr } from "../../../i18n";
 
 interface TaskHit {
   text: string;
@@ -122,7 +123,7 @@ function renderTasks(host: HTMLElement, res: TasksResult): void {
   if (!res.total) {
     const empty = document.createElement('div');
     empty.className = 'dataview-empty';
-    empty.textContent = 'Keine Aufgaben gefunden.';
+    empty.textContent = tr("notes_task.none_found");
     host.appendChild(empty);
   }
   for (const g of res.groups) {
@@ -158,7 +159,7 @@ function renderTasks(host: HTMLElement, res: TasksResult): void {
   if (res.warnings.length) {
     const w = document.createElement('div');
     w.className = 'dataview-error tasks-warning';
-    w.textContent = 'Nicht verstandene Anweisung: ' + res.warnings.join(' · ');
+    w.textContent = tr("notes_task.not_understood") + " " + res.warnings.join(" · ");
     host.appendChild(w);
   }
 }

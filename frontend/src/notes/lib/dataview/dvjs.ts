@@ -1,3 +1,4 @@
+import { tr } from "../../../i18n";
 /**
  * ```dataviewjs support — the `dv` API and the slice of the predecessor's `app` object
  * that vault scripts actually touch.
@@ -234,7 +235,7 @@ function makeDv(state: RunState) {
       return ul;
     },
     view: () => {
-      throw new Error('dv.view() wird hier nicht unterstützt');
+      throw new Error(tr("notes_query.no_dv_view"));
     },
   };
 }

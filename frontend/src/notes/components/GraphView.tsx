@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore, type GraphSettings } from '../lib/store';
 import { api } from '../lib/api';
 import Icon from './Icon';
@@ -996,7 +997,7 @@ export default function GraphView() {
           <Icon name="search" size={14} />
           <input
             value={jumpQ}
-            placeholder="Find node…"
+            placeholder={tr("notes_graph.find_node")}
             spellCheck={false}
             onChange={(e) => setJumpQ(e.target.value)}
             onKeyDown={(e) => {
@@ -1010,7 +1011,7 @@ export default function GraphView() {
           />
           {jumpQ.trim() !== '' && (
             <div className="graph-node-results">
-              {jumpResults.length === 0 && <div className="graph-node-empty">No matching nodes</div>}
+              {jumpResults.length === 0 && <div className="graph-node-empty">{tr("notes_graph.no_matches")}</div>}
               {jumpResults.map((n) => (
                 <button
                   key={n.id}
@@ -1042,7 +1043,7 @@ export default function GraphView() {
         )}
 
         {!panelOpen && (
-          <button className="graph-panel-open" title="Show filters" onClick={() => setPanelOpen(true)}>
+          <button className="graph-panel-open" title={tr("notes_graph.show_filters")} onClick={() => setPanelOpen(true)}>
             <Icon name="settings" size={16} />
           </button>
         )}
@@ -1091,13 +1092,13 @@ function FilterPanel({
   return (
     <div className="graph-panel">
       <Section
-        title="Filters"
+        title={tr("notes_graph.filters")}
         actions={
           <>
-            <button className="nav-action" title="Reset to defaults" onClick={reset}>
+            <button className="nav-action" title={tr("notes_graph.reset")} onClick={reset}>
               <Icon name="refresh-cw" size={14} />
             </button>
-            <button className="nav-action" title="Schließen" onClick={onClose}>
+            <button className="nav-action" title={tr("common.close")} onClick={onClose}>
               <Icon name="x" size={14} />
             </button>
           </>
@@ -1105,17 +1106,17 @@ function FilterPanel({
       >
         <input
           className="text-input"
-          placeholder="Search files..."
+          placeholder={tr("notes_graph.search_files")}
           value={s.search}
           onChange={(e) => patch({ search: e.target.value })}
         />
-        <Toggle label="Tags" checked={s.tags} onChange={(v) => patch({ tags: v })} />
-        <Toggle label="Attachments" checked={s.attachments} onChange={(v) => patch({ attachments: v })} />
-        <Toggle label="Existing files only" checked={s.existingOnly} onChange={(v) => patch({ existingOnly: v })} />
-        <Toggle label="Orphans" checked={s.orphans} onChange={(v) => patch({ orphans: v })} />
+        <Toggle label={tr("notes_graph.tags")} checked={s.tags} onChange={(v) => patch({ tags: v })} />
+        <Toggle label={tr("notes_graph.attachments")} checked={s.attachments} onChange={(v) => patch({ attachments: v })} />
+        <Toggle label={tr("notes_graph.existing_only")} checked={s.existingOnly} onChange={(v) => patch({ existingOnly: v })} />
+        <Toggle label={tr("notes_graph.orphans")} checked={s.orphans} onChange={(v) => patch({ orphans: v })} />
       </Section>
 
-      <Section title="Groups">
+      <Section title={tr("notes_graph.groups")}>
         <button className="btn" style={{ width: '100%' }} onClick={addGroup}>
           New group
         </button>
@@ -1129,32 +1130,32 @@ function FilterPanel({
             />
             <input
               className="text-input"
-              placeholder="Search query"
+              placeholder={tr("notes_graph.search_query")}
               value={g.query}
               onChange={(e) => setGroup(i, { query: e.target.value })}
             />
-            <button className="nav-action" title="Remove group" onClick={() => delGroup(i)}>
+            <button className="nav-action" title={tr("notes_graph.remove_group")} onClick={() => delGroup(i)}>
               <Icon name="x" size={14} />
             </button>
           </div>
         ))}
       </Section>
 
-      <Section title="Display">
-        <Toggle label="Arrows" checked={s.arrows} onChange={(v) => patch({ arrows: v })} />
-        <Slider label="Text fade threshold" min={-3} max={3} step={0.1} value={s.textFade} onChange={(v) => patch({ textFade: v })} />
-        <Slider label="Node size" min={0.1} max={5} step={0.1} value={s.nodeSize} onChange={(v) => patch({ nodeSize: v })} />
-        <Slider label="Link thickness" min={0.1} max={5} step={0.1} value={s.linkThickness} onChange={(v) => patch({ linkThickness: v })} />
+      <Section title={tr("notes_graph.display")}>
+        <Toggle label={tr("notes_graph.arrows")} checked={s.arrows} onChange={(v) => patch({ arrows: v })} />
+        <Slider label={tr("notes_graph.text_fade")} min={-3} max={3} step={0.1} value={s.textFade} onChange={(v) => patch({ textFade: v })} />
+        <Slider label={tr("notes_graph.node_size")} min={0.1} max={5} step={0.1} value={s.nodeSize} onChange={(v) => patch({ nodeSize: v })} />
+        <Slider label={tr("notes_graph.link_thickness")} min={0.1} max={5} step={0.1} value={s.linkThickness} onChange={(v) => patch({ linkThickness: v })} />
         <button className="btn" style={{ width: '100%', marginTop: 6 }} onClick={onAnimate}>
           Animate
         </button>
       </Section>
 
-      <Section title="Forces">
-        <Slider label="Center force" min={0} max={1} step={0.01} value={s.centerForce} onChange={(v) => patch({ centerForce: v })} />
-        <Slider label="Repel force" min={0} max={20} step={0.1} value={s.repelForce} onChange={(v) => patch({ repelForce: v })} />
-        <Slider label="Link force" min={0} max={1} step={0.01} value={s.linkForce} onChange={(v) => patch({ linkForce: v })} />
-        <Slider label="Link distance" min={30} max={500} step={1} value={s.linkDistance} onChange={(v) => patch({ linkDistance: v })} />
+      <Section title={tr("notes_graph.forces")}>
+        <Slider label={tr("notes_graph.center_force")} min={0} max={1} step={0.01} value={s.centerForce} onChange={(v) => patch({ centerForce: v })} />
+        <Slider label={tr("notes_graph.repel_force")} min={0} max={20} step={0.1} value={s.repelForce} onChange={(v) => patch({ repelForce: v })} />
+        <Slider label={tr("notes_graph.link_force")} min={0} max={1} step={0.01} value={s.linkForce} onChange={(v) => patch({ linkForce: v })} />
+        <Slider label={tr("notes_graph.link_distance")} min={30} max={500} step={1} value={s.linkDistance} onChange={(v) => patch({ linkDistance: v })} />
       </Section>
     </div>
   );

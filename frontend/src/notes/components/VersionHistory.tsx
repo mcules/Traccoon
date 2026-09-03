@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api, type GitCommit } from '../lib/api';
 import Icon from './Icon';
@@ -66,14 +67,14 @@ export default function VersionHistory() {
 
   const restore = async () => {
     if (!selected || !path) return;
-    if (!confirm('Diese Fassung wiederherstellen? Der aktuelle Inhalt wird ersetzt.')) return;
+    if (!confirm(tr("notes_versions.really_restore"))) return;
     try {
       // Restoring a snapshot goes through its own route, which keeps what is
       // being replaced — undoing a restore is then just another restore.
       if (source === 'snapshots') await api.restoreSnapshot(path, Number(selected));
       else await api.write(path, preview);
       if (path === activePath) await openFile(path);
-      notify('Frühere Fassung wiederhergestellt');
+      notify(tr("notes_versions.restored"));
       close(null);
     } catch (e: any) {
       notify(e.message || 'Wiederherstellen fehlgeschlagen');
@@ -90,7 +91,7 @@ export default function VersionHistory() {
       <div className="modal version-history" onClick={(e) => e.stopPropagation()}>
         <div className="vh-head">
           <Icon name="clock" size={16} />
-          <div className="vh-title">Versionen</div>
+          <div className="vh-title">{tr("notes_versions.title")}</div>
           <div className="seg vh-source">
             <button className={source === 'git' ? 'active' : ''} onClick={() => { setSource('git'); setSelected(commits[0]?.hash ?? null); }}>
               Sicherung ({commits.length})
@@ -103,19 +104,19 @@ export default function VersionHistory() {
             </button>
           </div>
           <div className="vh-path">{path}</div>
-          <button className="tool-btn" title="Schließen" onClick={() => close(null)}>
+          <button className="tool-btn" title={tr("common.close")} onClick={() => close(null)}>
             <Icon name="x" size={16} />
           </button>
         </div>
         <div className="vh-body">
           <div className="vh-list">
-            {loading && <div className="vh-empty">Wird geladen…</div>}
+            {loading && <div className="vh-empty">{tr("common.loading")}</div>}
             {error && <div className="vh-empty">{error}</div>}
             {!loading && !error && source === 'git' && commits.length === 0 && (
-              <div className="vh-empty">Keine Sicherungsversionen — Git-Sicherung ist aus.</div>
+              <div className="vh-empty">{tr("notes_versions.no_backup")}</div>
             )}
             {source === 'snapshots' && snaps.length === 0 && (
-              <div className="vh-empty">Noch keine Zwischenstände dieser Notiz.</div>
+              <div className="vh-empty">{tr("notes_versions.none_yet")}</div>
             )}
             {source === 'snapshots' &&
               snaps.map((sn, i) => (

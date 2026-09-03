@@ -1,6 +1,7 @@
 import { api } from './api';
 import { useStore } from './store';
 import { getActiveEditor } from './activeEditor';
+import { tr } from "../../i18n";
 
 /**
  * Splitting notes apart and putting them together.
@@ -18,7 +19,7 @@ const slug = (text: string) =>
     .replace(/^#+\s*/, '')
     .replace(/[\\/:*?"<>|]/g, '-')
     .trim()
-    .slice(0, 80) || 'Neue Notiz';
+    .slice(0, 80) || tr("notes_sidebar.new_note");
 
 /** The section under the heading the caret sits in, as a line range. */
 export function headingRangeAt(lines: string[], line: number): { from: number; to: number; title: string } | null {
@@ -49,7 +50,7 @@ export async function extractToNote(mode: 'selection' | 'heading'): Promise<void
   const view = getActiveEditor();
   const { activePath, notify } = useStore.getState();
   if (!view || !activePath) {
-    notify('Keine Notiz offen');
+    notify(tr("notes_workspace.none_open_short"));
     return;
   }
   const doc = view.state.doc;
@@ -60,7 +61,7 @@ export async function extractToNote(mode: 'selection' | 'heading'): Promise<void
   let title: string;
   if (mode === 'selection') {
     if (sel.empty) {
-      notify('Nichts ausgewählt');
+      notify(tr("notes_compose.nothing_selected"));
       return;
     }
     from = sel.from;
@@ -70,7 +71,7 @@ export async function extractToNote(mode: 'selection' | 'heading'): Promise<void
     const lines = doc.toString().split('\n');
     const range = headingRangeAt(lines, doc.lineAt(sel.head).number - 1);
     if (!range) {
-      notify('Der Cursor steht unter keiner Überschrift');
+      notify(tr("notes_compose.no_heading"));
       return;
     }
     from = doc.line(range.from + 1).from;

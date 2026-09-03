@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import Icon from './Icon';
@@ -46,37 +47,37 @@ export default function Ribbon() {
 
   return (
     <div className="ribbon">
-      <button className={leftPanel === 'files' ? 'active' : ''} title="Dateien" onClick={() => setLeftPanel('files')}>
+      <button className={leftPanel === 'files' ? 'active' : ''} title={tr("notes_ribbon.files")} onClick={() => setLeftPanel('files')}>
         <Icon name="file-text" size={18} />
       </button>
-      <button className={leftPanel === 'search' ? 'active' : ''} title="Suche (⌘⇧F)" onClick={() => setLeftPanel('search')}>
+      <button className={leftPanel === 'search' ? 'active' : ''} title={tr("notes_ribbon.search_hotkey")} onClick={() => setLeftPanel('search')}>
         <Icon name="search" size={18} />
       </button>
-      <button title="Graph" onClick={() => setGraph(true)}>
+      <button title={tr("notes_ribbon.graph")} onClick={() => setGraph(true)}>
         <Icon name="graph" size={18} />
       </button>
-      <button className={leftPanel === 'bookmarks' ? 'active' : ''} title="Lesezeichen & zuletzt" onClick={() => setLeftPanel('bookmarks')}>
+      <button className={leftPanel === 'bookmarks' ? 'active' : ''} title={tr("notes_ribbon.bookmarks_and_recent")} onClick={() => setLeftPanel('bookmarks')}>
         <Icon name="bookmark" size={18} />
       </button>
-      <button title="Kalender" onClick={() => void openCalendar()}>
+      <button title={tr("notes_ribbon.calendar")} onClick={() => void openCalendar()}>
         <Icon name="calendar-days" size={18} />
       </button>
-      <button title="Tagesnotiz" onClick={() => openDailyNote()}>
+      <button title={tr("notes_ribbon.daily_note")} onClick={() => openDailyNote()}>
         <Icon name="calendar" size={18} />
       </button>
-      <button className={leftPanel === 'tags' ? 'active' : ''} title="Tags" onClick={() => setLeftPanel('tags')}>
+      <button className={leftPanel === 'tags' ? 'active' : ''} title={tr("notes_ribbon.tags")} onClick={() => setLeftPanel('tags')}>
         <Icon name="hash" size={18} />
       </button>
-      <button title="Befehlspalette (⌘P)" onClick={() => setPalette(true, 'commands')}>
+      <button title={tr("notes_ribbon.palette")} onClick={() => setPalette(true, 'commands')}>
         <Icon name="command" size={18} />
       </button>
       <div className="spacer" />
       {gitEnabled && (
-        <button title={syncing ? 'Wird abgeglichen…' : 'Jetzt abgleichen'} onClick={sync} disabled={syncing}>
+        <button title={syncing ? tr("notes_status.syncing") : 'Jetzt abgleichen'} onClick={sync} disabled={syncing}>
           <Icon name="refresh-cw" size={18} style={syncing ? { animation: 'spin 1s linear infinite' } : undefined} />
         </button>
       )}
-      <button title="Einstellungen" onClick={() => { window.location.href = '/account/notes'; }}>
+      <button title={tr("notes_ribbon.settings")} onClick={() => { window.location.href = '/account/notes'; }}>
         <Icon name="settings" size={18} />
       </button>
     </div>

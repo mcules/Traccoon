@@ -1,4 +1,5 @@
 import { useStore } from '../lib/store';
+import { tr } from "../../i18n";
 import { attachFiles } from '../lib/attachments';
 import { pickAnyFile, pickCameraPhoto, pickFromGallery } from '../lib/filePick';
 import Icon from './Icon';
@@ -23,13 +24,13 @@ export default function AttachSheet() {
     <div className="modal-bg" onClick={() => setOpen(false)}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-item" onClick={() => void run(pickCameraPhoto)}>
-          <Icon name="camera" size={18} /> Foto aufnehmen
+          <Icon name="camera" size={18} /> {tr("notes_attach.take_a_photo")}
         </div>
         <div className="sheet-item" onClick={() => void run(pickFromGallery)}>
-          <Icon name="image" size={18} /> Aus der Galerie
+          <Icon name="image" size={18} /> {tr("notes_attach.from_the_gallery")}
         </div>
         <div className="sheet-item" onClick={() => void run(pickAnyFile)}>
-          <Icon name="paperclip" size={18} /> Datei wählen
+          <Icon name="paperclip" size={18} /> {tr("notes_attach.choose_a_file")}
         </div>
       </div>
     </div>

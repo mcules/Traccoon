@@ -2,6 +2,7 @@ import { api } from '../api';
 import { useStore } from '../store';
 import { makeTp, type TpContext } from './tp';
 import { makeApp } from '../dataview/dvjs';
+import { tr } from "../../../i18n";
 
 /**
  * Run a template and return the text it produces.
@@ -40,7 +41,7 @@ export async function insertTemplate(templatePath: string): Promise<void> {
   try {
     const text = await runTemplate(templatePath, { title, path: activePath ?? undefined, content });
     const { fmtInsert } = await import('../activeEditor');
-    if (!fmtInsert(text)) notify('Keine Notiz offen, in die die Vorlage passt');
+    if (!fmtInsert(text)) notify(tr("notes_templates.no_note_open"));
   } catch (e) {
     notify(`Vorlage: ${(e as Error).message}`);
   }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { tr } from "../../i18n";
 import { useStore } from '../lib/store';
 import { api, type TreeNode } from '../lib/api';
 import { pruneDescendants } from '../lib/tree';
@@ -154,7 +155,7 @@ export default function FolderPicker() {
               <span className="kbd">⇧↵</span>
             </div>
           )}
-          {matches.length === 0 && !canCreate && <div className="palette-item">No folders</div>}
+          {matches.length === 0 && !canCreate && <div className="palette-item">{tr("notes_folders.none")}</div>}
         </div>
         <div className="palette-footer">
           <span><span className="kbd">↑↓</span> to navigate</span>

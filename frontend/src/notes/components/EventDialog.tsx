@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { tr } from "../../i18n";
 import { api } from '../lib/api';
 import { useStore } from '../lib/store';
 import Icon from './Icon';
@@ -77,7 +78,7 @@ export default function EventDialog({
         location: form.location,
         description: form.description,
       });
-      notify(form.uid ? 'Termin geändert' : 'Termin angelegt');
+      notify(form.uid ? tr("notes_calendar.event_changed") : tr("notes_calendar.event_created"));
       onSaved();
       onClose();
     } catch (e: any) {
@@ -104,7 +105,7 @@ export default function EventDialog({
     setBusy(true);
     try {
       await api.calendarDeleteEvent(form.calendar, form.uid);
-      notify('Termin gelöscht');
+      notify(tr("notes_calendar.event_deleted"));
       onSaved();
       onClose();
     } catch (e: any) {
@@ -117,14 +118,14 @@ export default function EventDialog({
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal event-dialog" onClick={(e) => e.stopPropagation()}>
-        <h3>{form.uid ? 'Termin bearbeiten' : 'Neuer Termin'}</h3>
-        {!configured && <p className="calendar-error">Kein Schreibzugang eingerichtet.</p>}
+        <h3>{form.uid ? tr("notes_calendar.edit_event") : tr("notes_calendar.new_event")}</h3>
+        {!configured && <p className="calendar-error">{tr("notes_calendar.no_write_access")}</p>}
         <label>
           Titel
           <input autoFocus value={form.title} onChange={(e) => set({ title: e.target.value })} />
         </label>
         <label>
-          Kalender
+          {tr("notes_ribbon.calendar")}
           <select value={form.calendar ?? ''} onChange={(e) => set({ calendar: e.target.value })}>
             {calendars.map((c) => (
               <option key={c.id} value={c.id}>
@@ -141,7 +142,7 @@ export default function EventDialog({
           {!form.allDay && (
             <>
               <label>
-                Von
+                {tr("notes_calendar.from")}
                 <input type="time" value={form.time} onChange={(e) => set({ time: e.target.value })} />
               </label>
               <label>
@@ -153,35 +154,35 @@ export default function EventDialog({
         </div>
         <label className="event-check">
           <input type="checkbox" checked={form.allDay} onChange={(e) => set({ allDay: e.target.checked })} />
-          Ganztägig
+          {tr("notes_calendar.all_day_upper")}
         </label>
         <label>
           Ort
           <input value={form.location ?? ''} onChange={(e) => set({ location: e.target.value })} />
         </label>
         <label>
-          Notiz
+          {tr("notes_shared.note")}
           <textarea rows={3} value={form.description ?? ''} onChange={(e) => set({ description: e.target.value })} />
         </label>
         <div className="event-actions">
           {form.uid && (
             <button className="danger" disabled={busy} onClick={() => void remove()}>
-              <Icon name="trash" size={15} /> Löschen
+              <Icon name="trash" size={15} /> {tr("common.delete")}
             </button>
           )}
           {/* Only for an appointment that exists: while creating one there is
               nothing yet to write notes about. */}
           {form.uid && (
-            <button className="tool-btn" title="Notizen zu diesem Termin schreiben" onClick={() => void toNote()}>
-              <Icon name="file-text" size={15} /> Tagesnotiz
+            <button className="tool-btn" title={tr("notes_calendar.notes_on_this")} onClick={() => void toNote()}>
+              <Icon name="file-text" size={15} /> {tr("notes_calendar.daily_note")}
             </button>
           )}
           <span className="grow" />
           <button className="tool-btn" onClick={onClose}>
-            <Icon name="x" size={15} /> Abbrechen
+            <Icon name="x" size={15} /> {tr("notes_dialog.cancel")}
           </button>
           <button className="primary" disabled={busy || !form.title.trim() || !form.calendar} onClick={() => void save()}>
-            <Icon name="check" size={15} /> Speichern
+            <Icon name="check" size={15} /> {tr("common.save")}
           </button>
         </div>
       </div>

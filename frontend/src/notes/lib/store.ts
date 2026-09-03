@@ -4,6 +4,7 @@ import { merge3, toLines, fromLines, type MergeConflict } from './merge';
 import { queueWrite, forgetWrite, pendingWrites, isOffline } from './pending';
 import { api, type TreeNode } from './api';
 import { findNode } from './tree';
+import { tr } from "../../i18n";
 
 /** Per-tab id so we can ignore the echo of our own server-pushed state change. */
 export const CLIENT_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -510,7 +511,7 @@ export const useStore = create<AppState>()(
         set((s) => ({
           tabs: s.tabs.some((t) => t.path === CALENDAR_PATH)
             ? s.tabs
-            : [...s.tabs, { path: CALENDAR_PATH, title: 'Kalender' }],
+            : [...s.tabs, { path: CALENDAR_PATH, title: tr("notes_ribbon.calendar") }],
           activePath: CALENDAR_PATH,
           content: '',
           baseText: '',
@@ -747,7 +748,7 @@ export const useStore = create<AppState>()(
           const n = r.conflicts.length;
           get().notify(
             n === 1
-              ? 'Diese Notiz wurde auch woanders geändert — eine Stelle betrifft beide Seiten.'
+              ? tr("notes_status.changed_both_sides")
               : `Diese Notiz wurde auch woanders geändert — ${n} Stellen betreffen beide Seiten.`,
             6000,
           );

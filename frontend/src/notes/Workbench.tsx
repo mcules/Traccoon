@@ -19,6 +19,7 @@ import AttachSheet from './components/AttachSheet';
 import AskDialog from './components/AskDialog';
 import HotkeySettings from './components/HotkeySettings';
 import Icon from './components/Icon';
+import { tr } from "../i18n";
 import VersionHistory from './components/VersionHistory';
 import TrashView from './components/TrashView';
 import ContextMenu from './components/ContextMenu';
@@ -50,8 +51,8 @@ function HotkeysModal() {
     <div className="modal-bg" onClick={() => setOpen(false)}>
       <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-head">
-          <div className="title">Tastenkürzel</div>
-          <button className="tool-btn" title="Schließen" onClick={() => setOpen(false)}>
+          <div className="title">{tr("notes_hotkeys.title")}</div>
+          <button className="tool-btn" title={tr("common.close")} onClick={() => setOpen(false)}>
             <Icon name="x" size={18} />
           </button>
         </div>
