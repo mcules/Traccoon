@@ -452,16 +452,16 @@ export const api = {
   // per-note highlighted match contexts for the given paths (lazy, batched);
   // phrase=true matches the whole query as one needle (unlinked mentions)
   searchMatches: (query: string, paths: string[], matchCase = false, phrase = false) =>
-    req<{ matches: NoteMatches[] }>('/api/search/matches', {
+    native<{ matches: NoteMatches[] }>('/search/matches', {
       method: 'POST',
       body: JSON.stringify({ query, paths, matchCase, phrase }),
     }),
   tags: () => native<{ tags: { tag: string; count: number }[] }>('/tags'),
   properties: () =>
-    req<{ properties: { key: string; type: string; count: number }[] }>('/api/properties'),
-  propertyTypes: () => req<{ types: Record<string, string> }>('/api/property-types'),
+    native<{ properties: { key: string; type: string; count: number }[] }>('/properties'),
+  propertyTypes: () => native<{ types: Record<string, string> }>('/property-types'),
   setPropertyType: (key: string, type: string) =>
-    req<{ types: Record<string, string> }>('/api/property-types', {
+    native<{ types: Record<string, string> }>('/property-types', {
       method: 'POST',
       body: JSON.stringify({ key, type }),
     }),
@@ -470,11 +470,11 @@ export const api = {
   resolve: (target: string) =>
     native<{ path: string | null }>(`/resolve?target=${encodeURIComponent(target)}`),
   graph: () =>
-    req<{
+    native<{
       nodes: { id: string; label: string; kind: 'note' | 'attachment' | 'unresolved'; tags: string[] }[];
       edges: { source: string; target: string }[];
-    }>('/api/graph'),
-  reindex: () => req<{ ok: true }>('/api/reindex', { method: 'POST' }),
+    }>('/graph'),
+  reindex: () => native<{ ok: true }>('/reindex', { method: 'POST' }),
 
   // The workspace, kept on the person rather than in the browser. The first
   // route that comes from the house itself instead of over the bridge — the

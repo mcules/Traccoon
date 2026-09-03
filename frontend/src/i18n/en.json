@@ -3577,5 +3577,6 @@
   "notes_menu.url_copied": "URL copied",
   "notes_versions.close": "Close",
   "notes_versions.restore": "Restore this version",
-  "err.notes_not_a_drawing": "That is not a drawing: {path}"
+  "err.notes_not_a_drawing": "That is not a drawing: {path}",
+  "err.notes_property_incomplete": "A property type needs a name and a kind"
 }

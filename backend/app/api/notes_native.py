@@ -41,6 +41,9 @@ from ..notes import live, paths, tickets
 from ..core.timezones import zone_of
 from ..config import settings
 from ..notes import drawings as note_drawings
+from ..notes import graph as note_graph
+from ..notes.model import note as note_model
+from ..notes import properties as note_properties
 from ..notes import history as note_history
 from ..notes import templates as note_templates
 from ..notes.calendar import caldav as cal_dav
@@ -51,6 +54,7 @@ from ..notes.dv import settings as note_settings
 from ..notes.dv import tasks as dv_tasks
 from ..notes.dv.bases import run as dv_bases
 from ..notes.dv.dql import evaluate_inline, execute as run_query, file_object
+from ..notes.query import matches as note_matches
 from ..notes.query.run import run as run_search
 from ..notes.registry import vault_of, workspace_of
 from ..core import scopes as scopes_mod
@@ -904,6 +908,104 @@ async def calendar_tidy(body: TidyIn, user: User = Depends(get_current_user),
         if not body.dryRun:
             _writing(lambda t=folded.text, r=rel: ws.save(r, t), rel)
     return {"files": files, "total": total, "dryRun": body.dryRun}
+
+
+# ------------------------------------------------- what a search found, where
+
+
+class MatchesIn(BaseModel):
+    query: str = ""
+    paths: list[str] = []
+    matchCase: bool = False
+    # One needle rather than one per word: an unlinked mention looks for the
+    # note's whole title, not for each word of it separately.
+    phrase: bool = False
+
+
+# How many notes one call will read. The interface asks in batches as it draws
+# them, so this is a ceiling against a caller asking for the whole vault.
+MOST_PATHS = 80
+
+
+@router.post("/search/matches")
+async def search_matches(body: MatchesIn, user: User = Depends(get_current_user)) -> dict:
+    """Where in each of these notes the search words stand.
+
+    Asked for separately from the result list because it means reading the notes
+    again — a search that did that for every hit before showing anything would
+    show nothing for a while.
+    """
+    terms = ([body.query.strip()] if body.phrase and len(body.query.strip()) >= 2
+             else note_matches.terms_of_query(body.query))
+    ws = workspace_of(user)
+    out = []
+    for rel in body.paths[:MOST_PATHS]:
+        # Read afresh rather than out of the index: what is marked is the body,
+        # and the index keeps the raw text because a search looks into the
+        # properties block as well. Reading here is also why this is a call of
+        # its own — it happens for the notes actually drawn, not for every hit.
+        try:
+            note = note_model.parse(rel, ws.vault.read_text(rel))
+        except (OSError, paths.OutsideVault):
+            out.append({"path": rel, "count": 0, "contexts": []})
+            continue
+        count, contexts = note_matches.in_body(note.body, terms,
+                                               case_sensitive=body.matchCase)
+        out.append({"path": rel, "count": count,
+                    "contexts": [c.as_json() for c in contexts]})
+    return {"matches": out}
+
+
+@router.get("/properties")
+async def properties(user: User = Depends(get_current_user)) -> dict:
+    """Every property the notes carry, with the type most of them use."""
+    ws = workspace_of(user)
+    return {"properties": note_properties.in_use(
+        [doc.frontmatter for doc in ws.graph.docs.values()])}
+
+
+@router.get("/property-types")
+async def property_types(user: User = Depends(get_current_user)) -> dict:
+    """The types set in the vault, as the vault itself stores them."""
+    return {"types": note_properties.assigned(Path(vault_of(user).root),
+                                              settings.notes_config_dir)}
+
+
+class PropertyTypeIn(BaseModel):
+    key: str
+    type: str
+
+
+@router.post("/property-types")
+async def set_property_type(body: PropertyTypeIn,
+                            user: User = Depends(get_current_user)) -> dict:
+    if not body.key.strip() or not body.type.strip():
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_property_incomplete",
+                    "A property type needs a name and a kind")
+    return {"types": _writing(
+        lambda: note_properties.assign(Path(vault_of(user).root),
+                                       settings.notes_config_dir,
+                                       body.key.strip(), body.type.strip()),
+        body.key)}
+
+
+@router.get("/graph")
+async def graph(user: User = Depends(get_current_user)) -> dict:
+    """The vault as a picture: notes, attachments, and links pointing nowhere."""
+    return note_graph.build(workspace_of(user).graph)
+
+
+@router.post("/reindex")
+async def reindex(user: User = Depends(get_current_user)) -> dict:
+    """Read the whole vault again.
+
+    Not something the normal way of working needs — the watcher keeps the
+    indexes in step. It is for the case where somebody has reason to believe
+    they are not, and wants to stop wondering.
+    """
+    ws = workspace_of(user)
+    ws.rebuild()
+    return {"ok": True, "notes": len(ws.graph.docs)}
 
 
 # ------------------------------------------------------------------- drawings

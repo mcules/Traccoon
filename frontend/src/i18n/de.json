@@ -3577,5 +3577,6 @@
   "notes_menu.url_copied": "Adresse kopiert",
   "notes_versions.close": "Schließen",
   "notes_versions.restore": "Diese Fassung wiederherstellen",
-  "err.notes_not_a_drawing": "Das ist keine Zeichnung: {path}"
+  "err.notes_not_a_drawing": "Das ist keine Zeichnung: {path}",
+  "err.notes_property_incomplete": "Ein Eigenschaftstyp braucht einen Namen und eine Art"
 }
