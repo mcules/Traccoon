@@ -13,6 +13,13 @@ httpx==0.28.1
 alembic==1.14.0
 python-multipart==0.0.20
 croniter==5.0.1
+# Calendars. An ICS feed is not a list of appointments but a set of rules: a
+# weekly meeting is one entry plus a repetition rule, minus the days it was
+# cancelled, plus the ones that were moved. Expanding that correctly — and in
+# the event's own time zone, so a standing meeting does not drift by the
+# daylight-saving offset — is what the second package is for.
+icalendar==6.1.0
+recurring-ical-events==3.3.3
 aiogram>=3.13,<4
 # Mail-Client: IMAP (lesen, Ordner, Entwuerfe) und HTML-Umwandlung fuer die Vorschau.
 # Synchron und im Threadpool aufgerufen — dieselbe Bibliothek, die sich im imap-mcp bewaehrt hat.

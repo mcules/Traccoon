@@ -30,11 +30,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.error import Error
-from ..core.security import encrypt_secret
+from ..core.security import decrypt_secret, encrypt_secret
 from ..db import SessionLocal, get_session
 from ..models.notes import NotesCalendar
 from ..models.user import User
 from ..notes import live, paths
+from ..notes.calendar import fetch as cal_fetch
+from ..notes.calendar import store as cal_store
 from ..notes.dv import tasks as dv_tasks
 from ..notes.dv.bases import run as dv_bases
 from ..notes.dv.dql import evaluate_inline, execute as run_query, file_object
@@ -648,3 +650,102 @@ async def live_channel(websocket: WebSocket, token: str = "") -> None:
         pass
     finally:
         live.leave(key, websocket)
+
+
+# ----------------------------------------------------------------- calendar
+#
+# The reading half. Writing an appointment back and carrying a day into its
+# daily note follow; both need a way in to the calendar itself rather than to
+# its feed, which is a different protocol and a different piece of work.
+
+
+async def _calendar_sources(db: AsyncSession, user: User) -> list[cal_fetch.Source]:
+    """This person's calendars, as the fetcher wants them.
+
+    The password is decrypted here and nowhere else — it exists as plain text
+    for the length of one fetch and never leaves this process.
+    """
+    rows = (await db.execute(
+        select(NotesCalendar).where(NotesCalendar.owner_user_id == user.id,
+                                    NotesCalendar.enabled.is_(True))
+        .order_by(NotesCalendar.position, NotesCalendar.id))).scalars().all()
+    out = []
+    for row in rows:
+        password = ""
+        if row.auth_password_enc:
+            try:
+                password = decrypt_secret(row.auth_password_enc)
+            except Exception:                     # noqa: BLE001
+                log.warning("notes: the password of calendar %s cannot be read", row.id)
+        out.append(cal_fetch.Source(name=row.name or f"Kalender {row.id}", url=row.url,
+                                    link_target=row.link_target,
+                                    auth_user=row.auth_user, auth_password=password))
+    return out
+
+
+@router.get("/calendar")
+async def calendar(from_: str = Query("", alias="from"), to: str = Query(""),
+                   user: User = Depends(get_current_user),
+                   db: AsyncSession = Depends(get_session)) -> dict:
+    """Everything in the fetched window, for the calendar view."""
+    sources = await _calendar_sources(db, user)
+    snapshot = await cal_store.ensure(user.id, sources)
+    events = [e for e in snapshot.events
+              if (not from_ or e.date >= from_) and (not to or e.date <= to)]
+    return {"events": [e.as_json() for e in events],
+            "errors": snapshot.errors,
+            "fetchedAt": snapshot.fetched_at,
+            "calendars": [{"name": s.name, "linkTarget": s.link_target}
+                          for s in sources]}
+
+
+@router.get("/calendar/day")
+async def calendar_day(date: str = Query(""), user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)) -> dict:
+    sources = await _calendar_sources(db, user)
+    snapshot = await cal_store.ensure(user.id, sources)
+    return {"events": [e.as_json() for e in cal_fetch.on_day(snapshot, date)]}
+
+
+@router.post("/calendar/refresh")
+async def calendar_refresh(user: User = Depends(get_current_user),
+                           db: AsyncSession = Depends(get_session)) -> dict:
+    """Fetch again now. What is held is otherwise a quarter of an hour old at
+    most, which is right for a subscription and wrong for the moment somebody
+    knows they have just changed something."""
+    sources = await _calendar_sources(db, user)
+    snapshot = await cal_store.ensure(user.id, sources, force=True)
+    return {"count": len(snapshot.events), "errors": snapshot.errors,
+            "fetchedAt": snapshot.fetched_at}
+
+
+class TestSourceIn(BaseModel):
+    url: str
+    auth_user: str = ""
+    auth_password: str = ""
+    name: str = "Test"
+
+
+@router.post("/calendar/test-source")
+async def calendar_test(body: TestSourceIn,
+                        user: User = Depends(get_current_user)) -> dict:
+    """Read one feed once and say what came back, without saving anything.
+
+    What somebody wants to know before adding a calendar is whether the address
+    works, and a count of appointments answers that better than a status code.
+    """
+    source = cal_fetch.Source(name=body.name, url=body.url,
+                              auth_user=body.auth_user, auth_password=body.auth_password)
+    try:
+        text = await cal_fetch.read_feed(source)
+    except Exception as err:                      # noqa: BLE001
+        return {"ok": False, "message": str(err)}
+    try:
+        import datetime as _dt
+        today = _dt.date.today()
+        found = cal_fetch.expand(text, body.name, today - _dt.timedelta(days=30),
+                                 today + _dt.timedelta(days=90))
+    except Exception as err:                      # noqa: BLE001
+        return {"ok": False, "message": f"not a calendar: {err}"}
+    return {"ok": True, "count": len(found),
+            "sample": [e.title for e in found[:3]]}

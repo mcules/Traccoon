@@ -305,15 +305,15 @@ export const api = {
     }),
   // calendar
   calendar: (from: string, to: string) =>
-    req<{
+    native<{
       events: CalEvent[];
       errors: Array<{ calendar: string; message: string }>;
       fetchedAt: string;
       calendars: Array<{ name: string; linkTarget?: string }>;
-    }>(`/api/calendar?from=${from}&to=${to}`),
+    }>(`/calendar?from=${from}&to=${to}`),
   calendarRefresh: () =>
-    req<{ count: number; errors: Array<{ calendar: string; message: string }>; fetchedAt: string }>(
-      '/api/calendar/refresh',
+    native<{ count: number; errors: Array<{ calendar: string; message: string }>; fetchedAt: string }>(
+      '/calendar/refresh',
       { method: 'POST' },
     ),
   calendarSyncDay: (date: string, dryRun = false) =>
