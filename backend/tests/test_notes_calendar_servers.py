@@ -12,6 +12,7 @@ import pytest
 from conftest import make_user
 
 from app.api import notes_native as nn
+from app.notes.calendar import access as cal_access
 from app.core.error import Error
 from app.models.notes import NotesCalendar
 from app.models.notes_servers import NotesCalendarServer
@@ -169,7 +170,7 @@ async def test_writing_to_somebody_elses_calendar_is_not_found(db) -> None:
         nn.CalendarIn(name="Privat", url="https://example.invalid/dav/privat/",
                       server_id=server.id, caldav_id="privat", write_access="manual"), theirs, db)
     with pytest.raises(Error) as err:
-        await nn._writing_to(db, mine, made["id"])
+        await cal_access.writing_to(db, mine, made["id"])
     assert err.value.status_code == 404
 
 
@@ -181,7 +182,7 @@ async def test_a_calendar_without_a_collection_cannot_be_written(db) -> None:
         nn.CalendarIn(name="Halb", url="https://example.invalid/dav/halb/",
                       server_id=server.id), user, db)
     with pytest.raises(Error):
-        await nn._writing_to(db, user, made["id"])
+        await cal_access.writing_to(db, user, made["id"])
 
 
 @pytest.mark.asyncio
@@ -242,7 +243,7 @@ async def test_writing_is_off_until_somebody_says_otherwise(db) -> None:
     assert made["write_access"] == "none"
     assert made["on_a_login"] is True and made["writable"] is False
     with pytest.raises(Error) as err:
-        await nn._writing_to(db, user, made["id"])
+        await cal_access.writing_to(db, user, made["id"])
     assert err.value.key == "err.notes_calendar_write_not_allowed"
 
 
@@ -251,10 +252,10 @@ async def test_the_assistant_is_a_permission_of_its_own(db) -> None:
     user = await make_user(db, "cal19")
     _, made = await on_a_login(db, user, write_access="manual")
     assert made["writable"] is True and made["agent_may_write"] is False
-    account, _ = await nn._writing_to(db, user, made["id"])   # the person: allowed
+    account, _ = await cal_access.writing_to(db, user, made["id"])   # the person: allowed
     assert account.configured
     with pytest.raises(Error) as err:
-        await nn._writing_to(db, user, made["id"], by_agent=True)
+        await cal_access.writing_to(db, user, made["id"], by_agent=True)
     assert err.value.key == "err.notes_calendar_not_for_agents"
     assert err.value.status_code == 403
 
@@ -264,7 +265,7 @@ async def test_naming_the_assistant_lets_it_write(db) -> None:
     user = await make_user(db, "cal20")
     _, made = await on_a_login(db, user, write_access="agent")
     assert made["writable"] is True and made["agent_may_write"] is True
-    await nn._writing_to(db, user, made["id"], by_agent=True)
+    await cal_access.writing_to(db, user, made["id"], by_agent=True)
 
 
 @pytest.mark.asyncio
@@ -287,7 +288,7 @@ async def test_what_the_server_forbids_no_setting_allows(db) -> None:
     assert said["writable"] is False and said["agent_may_write"] is False
     assert said["write_access"] == "agent"    # the wish is kept, not the ability
     with pytest.raises(Error) as err:
-        await nn._writing_to(db, user, made["id"])
+        await cal_access.writing_to(db, user, made["id"])
     assert err.value.key == "err.notes_calendar_server_read_only"
 
 

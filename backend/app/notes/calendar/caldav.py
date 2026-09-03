@@ -224,10 +224,20 @@ async def save_event(account: Account, calendar_id: str, *, timezone: str,
     return {"uid": identity, "url": url, "created": not existed}
 
 
-async def delete_event(account: Account, calendar_id: str, uid: str) -> None:
+async def delete_event(account: Account, calendar_id: str, uid: str) -> bool:
+    """Take an appointment out. Answers whether there was one.
+
+    Already gone is the state that was asked for, so it is not a failure — the
+    person who clicks delete twice means the same thing both times. But it is
+    not the same event either, and whoever asked has to be able to tell: an
+    agent handed a wrong identity would otherwise be told it removed an
+    appointment it never touched, and report that on.
+    """
     calendar = await _writable(account, calendar_id)
     url = f"{calendar.url.rstrip('/')}/{quote(uid)}.ics"
     answer = await _dav(account, "DELETE", url)
-    # Already gone is the state that was asked for, so it is not a failure.
-    if answer.status_code >= 400 and answer.status_code != 404:
+    if answer.status_code == 404:
+        return False
+    if answer.status_code >= 400:
         raise CalDavError(f"CalDAV: HTTP {answer.status_code}")
+    return True

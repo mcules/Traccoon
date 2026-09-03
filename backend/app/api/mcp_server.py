@@ -18,10 +18,11 @@ from fastapi import APIRouter, Header, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.error import Error
 from ..core.security import decrypt_secret, encrypt_secret
 from ..db import get_session
 from ..models.user import User
-from ..services import mail_mcp, notes_mcp
+from ..services import calendar_mcp, mail_mcp, notes_mcp
 
 from fastapi import Depends
 
@@ -198,6 +199,69 @@ async def mcp_notes(request: Request, user: User = Depends(get_current_user)):
             log.exception("notes tool %s failed", name)
             return _answer(id_, {"content": [{"type": "text", "text": f"Failed: {exc}"}],
                                  "isError": True})
+        return _answer(id_, {"content": [{"type": "text",
+                                          "text": json.dumps(result, ensure_ascii=False,
+                                                             default=str)}]})
+
+    return _answer(id_, error={"code": -32601, "message": f"unknown method {method}"})
+
+
+# ── The calendars as tools ──────────────────────────────────────────────────
+#
+# Kept apart from the notes on purpose: appointments and notes are different
+# things to be trusted with, and this one needs the database that the notes do
+# not — the permissions live there, per calendar.
+
+
+@router.post("/mcp/calendar")
+async def mcp_calendar(request: Request, user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    """One call of the MCP protocol against this person's calendars."""
+    try:
+        message = await request.json()
+    except Exception:  # noqa: BLE001
+        return _answer(None, error={"code": -32700, "message": "not valid JSON"})
+
+    method = str(message.get("method") or "")
+    id_ = message.get("id")
+    params = message.get("params") or {}
+
+    if method.startswith("notifications/"):
+        return {}
+
+    if method == "initialize":
+        return _answer(id_, {
+            "protocolVersion": LOG,
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": "traccoon-calendar", "version": "1"},
+            "instructions": calendar_mcp.INSTRUCTIONS,
+        })
+
+    if method == "tools/list":
+        return _answer(id_, {"tools": calendar_mcp.toollist()})
+
+    if method == "tools/call":
+        name = str(params.get("name") or "")
+        args = params.get("arguments") or {}
+        try:
+            result = await calendar_mcp.execute(db, user, name, args)
+        except Error as exc:
+            # The permission refusals come through as these. They carry the
+            # sentence somebody would need to fix it, so it is passed on rather
+            # than flattened into "not allowed".
+            return _answer(id_, {"content": [{"type": "text", "text": exc.detail}],
+                                 "isError": True})
+        except PermissionError as exc:
+            return _answer(id_, {"content": [{"type": "text", "text": f"Not allowed: {exc}"}],
+                                 "isError": True})
+        except (LookupError, ValueError) as exc:
+            return _answer(id_, {"content": [{"type": "text", "text": str(exc)}],
+                                 "isError": True})
+        except Exception as exc:  # noqa: BLE001
+            log.exception("calendar tool %s failed", name)
+            return _answer(id_, {"content": [{"type": "text", "text": f"Failed: {exc}"}],
+                                 "isError": True})
+        import json
         return _answer(id_, {"content": [{"type": "text",
                                           "text": json.dumps(result, ensure_ascii=False,
                                                              default=str)}]})

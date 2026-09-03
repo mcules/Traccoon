@@ -20,10 +20,11 @@ ASSISTANT = "assistant"
 TICKETS = "tickets"
 PLUGIN_DATA = "plugin_data"
 NOTES = "notes"
+CALENDAR = "calendar"
 FULL = "full"
 
 # What may be handed out on a create call, in the order the interface offers them.
-ALL_SCOPES: tuple[str, ...] = (ASSISTANT, TICKETS, PLUGIN_DATA, NOTES, FULL)
+ALL_SCOPES: tuple[str, ...] = (ASSISTANT, TICKETS, PLUGIN_DATA, NOTES, CALENDAR, FULL)
 
 # (method or None for any, route template). A pattern ending in `*` matches by prefix,
 # everything else has to be equal.
@@ -57,6 +58,15 @@ GRANTS: dict[str, tuple[tuple[str | None, str], ...]] = {
     # named. The routes the browser uses are not in it.
     NOTES: (
         (None, "/mcp/notes"),
+        ("GET", "/auth/me"),
+    ),
+    # The calendars as tools, the same way. Kept apart from the notes on
+    # purpose: appointments and notes are different things to be trusted with,
+    # and whoever is meant to read a calendar should not thereby be able to
+    # rewrite the vault. What may be written is decided per calendar and not
+    # here — this only opens the door.
+    CALENDAR: (
+        (None, "/mcp/calendar"),
         ("GET", "/auth/me"),
     ),
     TICKETS: (
