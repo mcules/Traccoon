@@ -19,10 +19,11 @@ from __future__ import annotations
 ASSISTANT = "assistant"
 TICKETS = "tickets"
 PLUGIN_DATA = "plugin_data"
+NOTES = "notes"
 FULL = "full"
 
 # What may be handed out on a create call, in the order the interface offers them.
-ALL_SCOPES: tuple[str, ...] = (ASSISTANT, TICKETS, PLUGIN_DATA, FULL)
+ALL_SCOPES: tuple[str, ...] = (ASSISTANT, TICKETS, PLUGIN_DATA, NOTES, FULL)
 
 # (method or None for any, route template). A pattern ending in `*` matches by prefix,
 # everything else has to be equal.
@@ -48,6 +49,14 @@ GRANTS: dict[str, tuple[tuple[str | None, str], ...]] = {
         # Reporting an event is part of collecting: whoever brings the finding in should be
         # able to say so, otherwise every flow would have to poll the table.
         ("POST", "/events"),
+        ("GET", "/auth/me"),
+    ),
+    # The note vault as tools, for whoever works with it but is not a person.
+    # Only the tool server, deliberately: this token belongs in the configuration
+    # of a foreign program, and what it reaches has to be one thing that can be
+    # named. The routes the browser uses are not in it.
+    NOTES: (
+        (None, "/mcp/notes"),
         ("GET", "/auth/me"),
     ),
     TICKETS: (

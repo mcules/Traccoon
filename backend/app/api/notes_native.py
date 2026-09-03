@@ -17,32 +17,26 @@ somebody's notes is not a thing to switch on quietly.
 """
 from __future__ import annotations
 
-import asyncio
 import errno
 import logging
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from fastapi import (APIRouter, Depends, File, Form, Query, Response,
                      UploadFile, status)
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from ..config import settings
 from ..core.error import Error
 from ..models.user import User
 from ..notes import paths
-from ..notes.dv import index as dv_index
-from ..notes.dv import settings as note_settings
 from ..notes.dv import tasks as dv_tasks
 from ..notes.dv.bases import run as dv_bases
 from ..notes.dv.dql import evaluate_inline, execute as run_query, file_object
-from ..notes.dv.pages import PageIndex
-from ..notes.index.watch import watch
 from ..notes.query.run import run as run_search
-from ..notes.settings import options as vault_options
+from ..notes.registry import vault_of, workspace_of
 from ..notes.vault import write as vault_write
-from ..notes.vault.files import Vault, content_hash, is_text, mime_for
-from ..notes.workspace import Conflict, Workspace
+from ..notes.vault.files import content_hash, is_text, mime_for
+from ..notes.workspace import Conflict
 from .deps import get_current_user
 
 log = logging.getLogger("notes")
@@ -56,84 +50,6 @@ router = APIRouter(prefix="/notes-native", tags=["notes"])
 # on first use rather than at startup keeps a vault that nobody opens out of the
 # way; the watcher next to it is what stops the copy from drifting away from the
 # disk, which is a failure that says nothing while it happens.
-# One workspace per vault: the files plus every index over them, kept in step in
-# one place. Reading six thousand notes on every request is not a cache decision,
-# it is the difference between an answer and a timeout.
-#
-# Built when a vault is first asked about and followed from then on. Building on
-# first use rather than at startup keeps a vault nobody opens out of the way; the
-# watcher next to it is what stops the copy drifting away from the disk, which is
-# the kind of failure that says nothing while it happens.
-_workspaces: dict[str, Workspace] = {}
-_watchers: dict[str, asyncio.Task] = {}
-_settings_loaded = False
-
-
-def _load_settings(v: Vault) -> None:
-    """Take over how the notes were configured to behave, once.
-
-    Held per process rather than per vault, which is right while there is one.
-    When a second person gets a vault this moves into the database with the rest
-    of the configuration — that is the step the plan calls the one-off takeover,
-    and until it happens a second vault would silently inherit the first one's
-    checkbox characters and attachment folder.
-    """
-    global _settings_loaded
-    if _settings_loaded:
-        return
-    dirs = {"query": settings.notes_query_settings_dir,
-            "tasks": settings.notes_task_settings_dir}
-    note_settings.load(Path(v.root), {k: d for k, d in dirs.items() if d})
-    vault_options.load(Path(v.root), settings.notes_config_dir,
-                       trash=settings.notes_trash_dir,
-                       delete_mode=settings.notes_delete_mode)
-    _settings_loaded = True
-
-
-def _recovery_root() -> Path | None:
-    root = (settings.notes_recovery_dir or "").strip()
-    return Path(root) if root else None
-
-
-def workspace_of(user: User) -> Workspace:
-    v = vault_of(user)
-    key = str(v.root)
-    ws = _workspaces.get(key)
-    if ws is None:
-        _load_settings(v)
-        ws = Workspace.open(v, vault_options.options(), _recovery_root())
-        _workspaces[key] = ws
-    task = _watchers.get(key)
-    if task is None or task.done():
-        try:
-            _watchers[key] = asyncio.create_task(
-                watch(v, lambda rel, gone, _w=ws: _w.touch(rel, removed=gone)))
-        except RuntimeError:
-            # No loop running: a test, or a script importing this. The indexes
-            # are still correct, they just will not follow the disk, and saying
-            # so in the log is better than refusing to answer.
-            log.warning("notes: no event loop, the index will not follow %s", key)
-    return ws
-
-
-def vault_of(user: User) -> Vault:
-    """The vault of the person asking, or a clear no.
-
-    One vault per person: what is personal hangs off its owner here, the same way
-    stores and mail accounts already do. An account without one has no note area,
-    which is the state every account starts in.
-    """
-    rel = (user.vault_path or "").strip()
-    if not rel:
-        raise Error(status.HTTP_404_NOT_FOUND, "err.notes_no_vault",
-                    "This account has no note vault")
-    root = Path(rel)
-    if not root.is_dir():
-        raise Error(status.HTTP_503_SERVICE_UNAVAILABLE, "err.notes_vault_missing",
-                    "The note vault is not there: {path}", path=rel)
-    return Vault(root, name=settings.notes_vault_name or root.name)
-
-
 def _guard(fn, rel: str):
     try:
         return fn()

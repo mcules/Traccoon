@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from app.api import notes_native as nn
+from app.notes import registry
 from app.notes.settings import options as vault_options
 from app.notes.vault.files import content_hash
 
@@ -22,9 +23,8 @@ def vault(tmp_path, monkeypatch):
     (root / "Ordner").mkdir(parents=True)
     (root / "Ordner/Ziel.md").write_text("# Ziel\n", encoding="utf-8")
     (root / "Quelle.md").write_text("Siehe [[Ziel]].\n", encoding="utf-8")
-    monkeypatch.setattr(nn, "_workspaces", {})
-    monkeypatch.setattr(nn, "_watchers", {})
-    monkeypatch.setattr(nn, "_settings_loaded", True)   # nothing to read from a fresh vault
+    registry.forget_all()
+    monkeypatch.setattr(registry, "_settings_loaded", True)  # nothing to read from a fresh vault
     vault_options.reset()
     return root
 

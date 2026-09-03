@@ -13,7 +13,7 @@ const BACKEND = existsSync("/backend") ? "/backend" : "../backend";
 // Not only `app/api`: a rule that several endpoints share lives in `app/services`, and its
 // refusal carries a key just the same. Reading the door alone declared exactly those keys
 // orphaned the moment they moved one floor down.
-const ROOTS = ["app/api", "app/services", "app/worker", "app/core"];
+const ROOTS = ["app/api", "app/services", "app/worker", "app/core", "app/notes"];
 
 const keys = new Set();
 const walk = (dir) => {
