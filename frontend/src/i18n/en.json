@@ -3254,8 +3254,6 @@
   "err.notes_read_only": "The vault is mounted read only here",
   "err.notes_vault_missing": "The note vault is not there: {path}",
   "err.notes_no_vault": "This account has no note vault",
-  "err.notes_unconfigured": "The note workspace is not configured",
-  "err.notes_unreachable": "The note workspace does not answer: {reason}",
   "nav.notes": "Notes",
   "account.notes": "Notes",
   "notes_calendars.add": "Add a calendar",

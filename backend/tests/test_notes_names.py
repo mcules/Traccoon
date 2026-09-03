@@ -23,8 +23,10 @@ import pytest
 
 import app.notes
 
-# The modules of the note area, plus the two that carry its routes.
-API = ["app.api.notes_native", "app.api.notes"]
+# The modules of the note area, plus the one that carries its routes. Named
+# rather than found: a module that stops being imported would silently stop
+# being checked, which is the opposite of what this is for.
+API = ["app.api.notes_native"]
 
 
 def modules() -> list[str]:

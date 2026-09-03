@@ -3254,8 +3254,6 @@
   "err.notes_read_only": "Der Vault ist hier schreibgeschützt eingehängt",
   "err.notes_vault_missing": "Der Notiz-Vault ist nicht da: {path}",
   "err.notes_no_vault": "Dieses Konto hat keinen Notiz-Vault",
-  "err.notes_unconfigured": "Der Notizbereich ist nicht eingerichtet",
-  "err.notes_unreachable": "Der Notizbereich antwortet nicht: {reason}",
   "nav.notes": "Notizen",
   "account.notes": "Notizen",
   "notes_calendars.add": "Kalender hinzufügen",

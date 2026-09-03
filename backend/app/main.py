@@ -17,7 +17,7 @@ from .api import (
     documents as documents_api,
     series as series_api, i18n as i18n_api, issues, lifecycle, mail, mailbox, mcp_server, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
     projects, repo, office,
-    runs, secrets, skills, testenv, tokens as tokens_api, users, workflows, ws, notes, notes_native,
+    runs, secrets, skills, testenv, tokens as tokens_api, users, workflows, ws, notes_native,
 )
 from .config import settings
 from .core.error import Error, error_handler
@@ -675,7 +675,6 @@ api.include_router(artifacts_api.router)
 api.include_router(bugs_api.router)
 api.include_router(mail.router)
 api.include_router(mailbox.router)
-api.include_router(notes.router)
 api.include_router(notes_native.router)
 api.include_router(mcp_server.router)
 api.include_router(secrets.router)

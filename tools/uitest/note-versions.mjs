@@ -34,9 +34,11 @@ try {
       .count()), "");
 
   // The version panel opens from the note's own "more" menu.
-  await page.locator("button[title]").filter({ has: page.locator("svg") })
-    .locator("visible=true").last().waitFor({ timeout: 5000 }).catch(() => {});
-  await page.locator(".tool-btn").last().click();
+  // The panel opens from the note's own "more" menu. Which button that is
+  // depends on the view the note was last left in, so it is found by its title.
+  const more = page.locator('button[title="Mehr"], button[title="More"]').first();
+  await more.waitFor({ timeout: 15000 });
+  await more.click({ force: true });
   await page.waitForTimeout(500);
   await page.screenshot({ path: "/w/30-versions-menu.png" });
   await page.getByText(/Versionsverlauf|version history/i).first().click();
