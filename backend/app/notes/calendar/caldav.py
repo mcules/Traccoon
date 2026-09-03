@@ -66,9 +66,20 @@ def _auth(account: Account) -> dict[str, str]:
 
 async def _dav(account: Account, method: str, url: str, body: str | None = None,
                headers: dict | None = None) -> httpx.Response:
-    async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
-        return await client.request(method, url, content=body,
-                                    headers={**_auth(account), **(headers or {})})
+    """One request, and one kind of failure out of it.
+
+    A server that is down, whose name does not resolve or that takes too long is
+    the same thing to everybody who asks: the calendar could not be reached.
+    Letting the transport's own exception through would make that a 500 in the
+    interface, where every other refusal is a sentence — and it would make
+    saving a calendar depend on the server being up at that moment.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
+            return await client.request(method, url, content=body,
+                                        headers={**_auth(account), **(headers or {})})
+    except httpx.HTTPError as err:
+        raise CalDavError(f"CalDAV: {type(err).__name__}") from None
 
 
 def _text(node, path: str) -> str:
