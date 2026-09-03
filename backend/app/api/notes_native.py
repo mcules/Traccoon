@@ -37,6 +37,7 @@ from ..db import SessionLocal, get_session
 from ..models.notes import NotesCalendar
 from ..models.user import User
 from ..notes import live, paths
+from ..core.timezones import zone_of
 from ..notes.calendar import caldav as cal_dav
 from ..notes.calendar import daily as cal_daily
 from ..notes.calendar import fetch as cal_fetch
@@ -693,7 +694,7 @@ async def calendar(from_: str = Query("", alias="from"), to: str = Query(""),
                    db: AsyncSession = Depends(get_session)) -> dict:
     """Everything in the fetched window, for the calendar view."""
     sources = await _calendar_sources(db, user)
-    snapshot = await cal_store.ensure(user.id, sources)
+    snapshot = await cal_store.ensure(user.id, sources, zone=zone_of(user))
     events = [e for e in snapshot.events
               if (not from_ or e.date >= from_) and (not to or e.date <= to)]
     return {"events": [e.as_json() for e in events],
@@ -707,7 +708,7 @@ async def calendar(from_: str = Query("", alias="from"), to: str = Query(""),
 async def calendar_day(date: str = Query(""), user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)) -> dict:
     sources = await _calendar_sources(db, user)
-    snapshot = await cal_store.ensure(user.id, sources)
+    snapshot = await cal_store.ensure(user.id, sources, zone=zone_of(user))
     return {"events": [e.as_json() for e in cal_fetch.on_day(snapshot, date)]}
 
 
@@ -718,7 +719,7 @@ async def calendar_refresh(user: User = Depends(get_current_user),
     most, which is right for a subscription and wrong for the moment somebody
     knows they have just changed something."""
     sources = await _calendar_sources(db, user)
-    snapshot = await cal_store.ensure(user.id, sources, force=True)
+    snapshot = await cal_store.ensure(user.id, sources, force=True, zone=zone_of(user))
     return {"count": len(snapshot.events), "errors": snapshot.errors,
             "fetchedAt": snapshot.fetched_at}
 
@@ -746,9 +747,10 @@ async def calendar_test(body: TestSourceIn,
         return {"ok": False, "message": str(err)}
     try:
         import datetime as _dt
-        today = _dt.date.today()
+        zone = zone_of(user)
+        today = _dt.datetime.now(zone).date()
         found = cal_fetch.expand(text, body.name, today - _dt.timedelta(days=30),
-                                 today + _dt.timedelta(days=90))
+                                 today + _dt.timedelta(days=90), zone)
     except Exception as err:                      # noqa: BLE001
         return {"ok": False, "message": f"not a calendar: {err}"}
     return {"ok": True, "count": len(found),
@@ -804,17 +806,68 @@ async def calendar_sync_day(body: SyncDayIn, user: User = Depends(get_current_us
         return {"path": rel, "added": 0, "updated": 0, "cancelled": 0, "written": False}
 
     sources = await _calendar_sources(db, user)
-    snapshot = await cal_store.ensure(user.id, sources)
+    snapshot = await cal_store.ensure(user.id, sources, zone=zone_of(user))
     events = cal_fetch.on_day(snapshot, body.date)
 
     content = _guard(lambda: ws.vault.read_text(rel), rel)
-    result = cal_daily.apply_lines(content, events,
-                                   templates=_event_templates(ws, options))
+    # The old long form is folded down first, and this is not tidiness for its
+    # own sake: a legacy line is not recognised as the appointment it describes,
+    # so writing without folding puts the same appointment in the note a second
+    # time. The side this replaces does exactly that, which is why some days
+    # carry every appointment twice.
+    folded = cal_daily.tidy_legacy_lines(content, {s.name for s in sources})
+    result = cal_daily.apply_lines(
+        folded.text, events, templates=_event_templates(ws, options),
+        keep_strikes=body.date < _dt.datetime.now(zone_of(user)).date().isoformat())
     changed = result.text != content
     if changed and not body.dryRun:
         _writing(lambda: ws.save(rel, result.text), rel)
     return {"path": rel, "added": result.added, "updated": result.updated,
-            "cancelled": result.cancelled, "written": changed and not body.dryRun}
+            "cancelled": result.cancelled, "folded": folded.changed,
+            "written": changed and not body.dryRun}
+
+
+class TidyIn(BaseModel):
+    # Looking before writing is the default here, the other way round from
+    # everything else: this one goes over every daily note at once.
+    dryRun: bool = True
+
+
+@router.post("/calendar/tidy")
+async def calendar_tidy(body: TidyIn, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)) -> dict:
+    """Fold the old long appointment form down, in every daily note.
+
+    One pass, meant to be run once. Only notes below the daily-note folder are
+    looked at, and only those that have an appointment section.
+    """
+    ws = workspace_of(user)
+    names = {s.name for s in await _calendar_sources(db, user)}
+    folder = ws.options.daily_folder
+    prefix = f"{folder}/" if folder else ""
+    files: list[dict] = []
+    total = 0
+    for rel in sorted(ws.graph.docs):
+        if prefix and not rel.startswith(prefix):
+            continue
+        try:
+            content = ws.vault.read_text(rel)
+        except (OSError, paths.OutsideVault):
+            continue
+        # The cheap way past a note that cannot hold an appointment line. Not
+        # "does it carry a control comment", which is what the side this
+        # replaces asks: the previous folding left lines behind that have no
+        # comment any more, and those are exactly the ones still to fold.
+        if cal_daily.HEADING not in content:
+            continue
+        folded = cal_daily.tidy_legacy_lines(content, names)
+        if folded.text == content:
+            continue
+        files.append({"path": rel, "changed": folded.changed})
+        total += folded.changed
+        if not body.dryRun:
+            _writing(lambda t=folded.text, r=rel: ws.save(r, t), rel)
+    return {"files": files, "total": total, "dryRun": body.dryRun}
 
 
 # ------------------------------------------------------------------- CalDAV

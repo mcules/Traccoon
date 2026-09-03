@@ -38,7 +38,8 @@ def stale(user_id: int) -> bool:
     return when is None or dt.datetime.now() - when > GOOD_FOR
 
 
-async def ensure(user_id: int, sources: list[Source], *, force: bool = False) -> Snapshot:
+async def ensure(user_id: int, sources: list[Source], *, force: bool = False,
+                 zone: dt.tzinfo | None = None) -> Snapshot:
     """The current set, fetched if it is old or if asked for."""
     lock = _busy.setdefault(user_id, asyncio.Lock())
     async with lock:
@@ -47,9 +48,9 @@ async def ensure(user_id: int, sources: list[Source], *, force: bool = False) ->
         if not sources:
             # No calendars is a valid state, and an empty answer is the right
             # one for it — not an error and not a stale set from before.
-            snapshot = Snapshot(fetched_at=dt.datetime.now().astimezone().isoformat())
+            snapshot = Snapshot(fetched_at=dt.datetime.now(zone).astimezone(zone).isoformat())
         else:
-            snapshot = await refresh(sources)
+            snapshot = await refresh(sources, zone=zone)
         _snapshots[user_id] = snapshot
         _fetched[user_id] = dt.datetime.now()
         return snapshot

@@ -8,6 +8,7 @@ rather than as an error.
 from __future__ import annotations
 
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -26,8 +27,10 @@ def event(**fields: str) -> str:
     return f"BEGIN:VEVENT\n{lines}\nEND:VEVENT"
 
 
-def days(text: str, first: str, last: str) -> list[tuple[str, str, str]]:
-    found = cal.expand(text, "Test", dt.date.fromisoformat(first), dt.date.fromisoformat(last))
+def days(text: str, first: str, last: str,
+         zone: dt.tzinfo | None = None) -> list[tuple[str, str, str]]:
+    found = cal.expand(text, "Test", dt.date.fromisoformat(first),
+                       dt.date.fromisoformat(last), zone)
     return [(e.date, e.time, e.title) for e in found]
 
 
@@ -108,14 +111,20 @@ def test_the_last_occurrence_of_a_series_is_not_lost(monkeypatch) -> None:
 
 def test_a_series_in_a_zone_without_daylight_saving_keeps_its_hour() -> None:
     """The occurrence is read on the clock the series was written on, not on the
-    reader's. A zone without a summer shift therefore moves against the local
-    one twice a year — and that is correct, not a fault to be corrected."""
+    reader's. A zone without a summer shift therefore moves against the reader's
+    twice a year — and that is correct, not a fault to be corrected.
+
+    The reader's zone is named here rather than taken from the process. It used
+    to be taken from the process, and then this test said something about the
+    machine it ran on: green in a container started on Berlin time, red in one
+    on UTC, with nothing in the calendar having changed."""
+    berlin = ZoneInfo("Europe/Berlin")
     text = ics(event(UID="8", SUMMARY="Fest",
                      **{"DTSTART;TZID=Etc/GMT-1": "20260601T180000"},
                      **{"DTEND;TZID=Etc/GMT-1": "20260601T190000"},
                      RRULE="FREQ=MONTHLY;COUNT=8"))
-    found = {d: t for d, t, _ in days(text, "2026-06-01", "2027-02-01")}
-    assert found["2026-06-01"] == "19:00"        # summer here, so an hour later
+    found = {d: t for d, t, _ in days(text, "2026-06-01", "2027-02-01", zone=berlin)}
+    assert found["2026-06-01"] == "19:00"        # summer in Berlin, so an hour later
     assert found["2026-12-01"] == "18:00"        # winter, and the clocks agree
 
 
@@ -467,3 +476,157 @@ def test_a_comma_in_a_title_does_not_end_the_field() -> None:
     ics_text = caldav.build_ics(uid="u3", title="Essen, dann Kino", start="2026-09-02T18:00",
                                 end="2026-09-02T21:00", timezone="Europe/Berlin")
     assert "SUMMARY:Essen\\, dann Kino" in ics_text
+
+
+# ------------------------------------------------- folding the old long form
+
+CALENDARS = {"Vostura", "B37", "Privat"}
+
+LEGACY = """# Termine
+
+- 📅 *09:00* [[Firma/Termine|Vostura]] Daily Dev <!-- uid:abc@google.com@20260902 -->
+    - Ort <!-- loc -->
+      Microsoft Teams-Besprechung
+    - Beschreibung <!-- desc -->
+      Tägliche Abstimmung:
+      Was wurde gemacht?
+    - was ich mir dazu notiert habe
+- *ganztägig* [[Verein/Termine|B37]] Fieldday (Tag 1/3)
+
+# Notizen
+"""
+
+
+def test_the_old_long_form_becomes_the_short_one() -> None:
+    out = cd.tidy_legacy_lines(LEGACY, CALENDARS)
+    lines = [l for l in out.text.split("\n") if l.startswith("- ")]
+    assert lines == ["- 09:00 Daily Dev · Vostura", "- Fieldday (Tag 1/3) · B37"]
+
+
+def test_what_the_reader_wrote_under_an_appointment_survives() -> None:
+    """The location and description blocks go, the reader's own bullet stays —
+    and it stays because the drop ends at the depth of the bullet it started on.
+    A rule of "four spaces or more", which is what the side this replaces asks
+    for, is exactly the depth a reader writes at."""
+    out = cd.tidy_legacy_lines(LEGACY, CALENDARS)
+    assert "    - was ich mir dazu notiert habe" in out.text.split("\n")
+    assert "Microsoft Teams-Besprechung" not in out.text
+    assert "<!--" not in out.text
+
+
+def test_an_all_day_appointment_is_shortened_too() -> None:
+    """The side this replaces reads only a clock as the time label, so an
+    all-day line kept its whole old shape — and then stood beside the short line
+    for the same appointment, which is why this vault has them twice."""
+    out = cd.tidy_legacy_lines(
+        "# Termine\n\n- *ganztägig* [[Verein/Termine|B37]] Fieldday\n", CALENDARS)
+    assert "- Fieldday · B37" in out.text.split("\n")
+
+
+def test_a_link_that_is_not_a_calendar_is_left_alone() -> None:
+    """One appointment in this vault was pointed at the note about the event
+    instead of at a calendar. Read as a calendar, the note's name becomes the
+    calendar and the link is thrown away."""
+    line = "- 📅 *13:00* [[06 Archiv/Grillfest 2026|Grillfest]] — mit den Nachbarn"
+    out = cd.tidy_legacy_lines(f"# Termine\n\n{line}\n", CALENDARS)
+    assert line in out.text.split("\n")
+    assert out.changed == 0
+
+
+def test_the_same_appointment_twice_becomes_once() -> None:
+    """Where both writers met: the long block and the short line say the same
+    thing, and the copy with something written under it is the one to keep."""
+    text = ("# Termine\n\n"
+            "- 📅 *09:00* [[Firma/Termine|Vostura]] Daily Dev <!-- uid:x -->\n"
+            "- 09:00 Daily Dev · Vostura\n"
+            "\t- meine Notiz\n")
+    out = cd.tidy_legacy_lines(text, CALENDARS)
+    lines = out.text.split("\n")
+    assert lines.count("- 09:00 Daily Dev · Vostura") == 1
+    assert "\t- meine Notiz" in lines
+
+
+def test_folding_twice_changes_nothing_more() -> None:
+    once = cd.tidy_legacy_lines(LEGACY, CALENDARS)
+    assert cd.tidy_legacy_lines(once.text, CALENDARS).text == once.text
+
+
+def test_a_line_inside_a_code_block_is_not_an_appointment() -> None:
+    """The daily note of this vault carries `dataviewjs` blocks, and the
+    JavaScript in them has lines that read like markdown."""
+    text = ("# Termine\n\n"
+            "```dataviewjs\n"
+            "- 📅 *09:00* [[Firma/Termine|Vostura]] Beispiel <!-- uid:x -->\n"
+            "```\n")
+    assert cd.tidy_legacy_lines(text, CALENDARS).text == text
+
+
+def test_a_byte_order_mark_does_not_turn_the_note_into_code() -> None:
+    """Six notes in this vault open with one, and Python's `\\s` does not count
+    it as space. Missing that first fence puts the count of open and closed
+    fences off by one, and from there the whole note reads as code."""
+    text = ("﻿```dataviewjs\nconst x = 1;\n```\n\n"
+            "# Termine\n\n"
+            "- 📅 *09:00* [[Firma/Termine|Vostura]] Daily Dev <!-- uid:x -->\n")
+    out = cd.tidy_legacy_lines(text, CALENDARS)
+    assert "- 09:00 Daily Dev · Vostura" in out.text.split("\n")
+
+
+def test_a_struck_through_line_outside_the_section_stays() -> None:
+    """A finished to-do is written struck through, and so was a cancelled
+    appointment. Twenty-eight of the reader's own to-dos in this vault have that
+    shape, which is why the fold does not leave the appointment section."""
+    text = "# Aufgaben\n\n\t- ~~Logo tauschen~~\n\n# Termine\n\n- 09:00 X · Vostura\n"
+    assert cd.tidy_legacy_lines(text, CALENDARS).text == text
+
+
+def test_the_indent_of_a_kept_bullet_may_be_a_tab() -> None:
+    assert cd.indent_width("\t- x") == 4
+    assert cd.indent_width("    - x") == 4
+    assert cd.indent_width("  \t- x") == 4
+    assert cd.indent_width("      x") == 6
+
+
+def test_a_past_day_keeps_what_was_struck_through() -> None:
+    """A feed carries the state of an appointment now, not the state it was in
+    back then. A meeting cancelled in July is simply gone from the series today,
+    and syncing that day again would quietly take the strike off and say it had
+    taken place."""
+    note = "# Termine\n\n- 09:00 ~~AI Exchange~~ · Vostura\n"
+    live = [ev("AI Exchange", "09:00", "Vostura")]          # no longer cancelled
+    assert cd.apply_lines(note, live, keep_strikes=True).text == note
+    assert "~~" not in cd.apply_lines(note, live).text
+
+
+def test_a_coming_day_may_take_the_strike_off_again() -> None:
+    """A withdrawn cancellation is news worth carrying — for a day still ahead."""
+    note = "# Termine\n\n- 09:00 ~~AI Exchange~~ · Vostura\n"
+    out = cd.apply_lines(note, [ev("AI Exchange", "09:00", "Vostura")])
+    assert "- 09:00 AI Exchange · Vostura" in out.text.split("\n")
+    assert out.updated == 1
+
+
+def test_a_multi_day_appointment_is_not_written_a_second_time() -> None:
+    """The previous writer put "(Tag 1/3)" behind the title of an appointment
+    running over several days; the feed's own title has no such thing. Read
+    literally, the line describes a different appointment — which is how nearly
+    every multi-day event in this vault came to stand there twice."""
+    note = "# Termine\n\n- Fieldday (Tag 1/3) · B37\n"
+    out = cd.apply_lines(note, [ev("Fieldday", "", "B37")])
+    assert out.text == note                      # recognised, and left as it is
+    assert out.added == 0
+
+
+def test_the_counter_survives_a_sync() -> None:
+    """Which day of the appointment this is says more than the feed does."""
+    note = "# Termine\n\n- 09:00 Kurs (Tag 2/4) · B37\n"
+    assert cd.apply_lines(note, [ev("Kurs", "09:00", "B37")]).text == note
+
+
+def test_of_two_lines_for_one_appointment_the_fuller_one_stays() -> None:
+    text = ("# Termine\n\n"
+            "- Fieldday (Tag 1/3) · B37\n"
+            "- Fieldday · B37\n")
+    out = cd.tidy_legacy_lines(text, CALENDARS).text.split("\n")
+    assert "- Fieldday (Tag 1/3) · B37" in out
+    assert "- Fieldday · B37" not in out
