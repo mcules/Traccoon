@@ -1,10 +1,11 @@
 """Appending to a note out of a flow.
 
-The vault was reachable from a flow before, over the raw `tool_call`. Only: the obsidian
-server addresses a note as a `oneOf` (`{"type": "path", "path": …}`), and whoever writes
-that out by hand in the arguments of every flow gets it wrong once and then wonders why the
-note stays empty. What is checked here is exactly that shape, plus that a flow with nothing
-to say does not fail because of it.
+The vault was reachable from a flow before, over the raw `tool_call`. Only: which tool
+writes a note and what it calls its arguments is knowledge that would then sit written out
+in every flow that files something, wrong in one of them, and the note stays empty. Here it
+sits in one place — which is what made it a single change when the server underneath was
+replaced, instead of a hunt through stored graphs. What is checked is that shape, plus that
+a flow with nothing to say does not fail because of it.
 """
 import pytest
 from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
@@ -66,10 +67,10 @@ async def test_path_and_text_come_from_the_context(db, mcp_stub):
     name, arguments = mcp_stub[0]
     # With a server prefix: without it the session finds no tool and answers with a HINT AS
     # TEXT, which `call` returns as a success. The note would stay empty.
-    assert name == "obsidian__obsidian_append_to_note"
-    assert arguments["target"] == {"type": "path", "path": "04 Wissen/Erkennung/phishing.md"}
-    assert arguments["content"] == "- gibt sich als Bank aus"
-    assert "section" not in arguments, "ohne Abschnitt wird auch keiner mitgeschickt"
+    assert name == "vault__notes_append"
+    assert arguments["path"] == "04 Wissen/Erkennung/phishing.md"
+    assert arguments["text"] == "- gibt sich als Bank aus"
+    assert "heading" not in arguments, "ohne Abschnitt wird auch keiner mitgeschickt"
     assert inst.context["note"]["ok"] is True
 
 
@@ -86,9 +87,7 @@ async def test_the_section_is_passed_through(db, mcp_stub):
     inst = await _instance(db, anna, {})
     await run_action(db, inst, _node(path="a.md", text="x", heading="Fälle"))
     arguments = mcp_stub[0][1]
-    assert arguments["section"] == {"type": "heading", "target": "Fälle"}
-    # Without this the call fails on a note that does not have the section yet.
-    assert arguments["createTargetIfMissing"] is True
+    assert arguments["heading"] == "Fälle"
 
 
 async def test_nothing_is_written_without_text(db, mcp_stub):
@@ -113,7 +112,7 @@ async def test_a_missing_tool_is_an_error_not_text():
 
     session = MultiMcpSession()          # no gateway, no servers
     with pytest.raises(McpNotAvailable):
-        await session.call("obsidian_append_to_note", {"content": "x"})
+        await session.call("notes_append", {"text": "x"})
 
 
 async def test_the_call_reports_it_as_not_ok(db):
@@ -122,5 +121,5 @@ async def test_the_call_reports_it_as_not_ok(db):
     from app.services.workflow_tools import call
 
     anna = await make_user(db, "anna")
-    r = await call(db, anna.id, "obsidian_append_to_note", {"content": "x"})
+    r = await call(db, anna.id, "notes_append", {"text": "x"})
     assert r["ok"] is False and r["error"]

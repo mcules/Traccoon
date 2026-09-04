@@ -1,10 +1,13 @@
-"""Memory of the agents in the Obsidian vault.
+"""Memory of the agents in the note vault.
 
-The most important test here is `test_remember_builds_the_target_as_an_object`: the obsidian MCP
-describes `target` as a `oneOf` without a `type`, and older models send a string for it
-instead of an object, and then every call ends in `MCP error -32602`. Because Traccoon builds
-the argument itself, that cannot happen here; the test records it.
+The double below answers to the tools of the house's own note server and to
+nothing else. That is the point of it: the previous one accepted every name it
+was given, so when the foreign server it was imitating went away, these tests
+went on passing while every real write failed. `test_only_tools_that_exist_are_called`
+in `test_worker_tool_names.py` guards the same seam from the other side.
 """
+import json
+
 import pytest
 from conftest import auth, make_user
 
@@ -15,7 +18,16 @@ from app.worker.tools_memory import (
 
 
 class FakeMcp:
-    """MCP session replacement: records calls and answers get_note out of `notes`."""
+    """MCP session replacement: records calls and answers out of `notes`.
+
+    It knows exactly the tools of the note server and refuses everything else,
+    the way the real one does. A double that answers to any name cannot notice
+    that a tool has vanished — which is how a broken memory went unseen for a
+    day while every test here stayed green.
+    """
+
+    KNOWN = {"vault__notes_read", "vault__notes_write", "vault__notes_append",
+             "vault__notes_search"}
 
     def __init__(self, notes: dict[str, str] | None = None, fail: set[str] | None = None):
         self.notes = dict(notes or {})
@@ -23,29 +35,33 @@ class FakeMcp:
         self.calls: list[tuple[str, dict]] = []
 
     async def call(self, name: str, args: dict) -> str:
+        text, _ = await self.call_ex(name, args)
+        return text
+
+    async def call_ex(self, name: str, args: dict) -> tuple[str, bool]:
         self.calls.append((name, args))
+        if name not in self.KNOWN:
+            return f"Error: no tool called {name!r}", True
         if name in self.fail:
-            return "MCP error -32000: absichtlich fehlgeschlagen"
-        if name == "obsidian__obsidian_get_note":
-            path = args["target"]["path"]
+            return "MCP error -32000: absichtlich fehlgeschlagen", True
+        path = args.get("path", "")
+        if name == "vault__notes_read":
             if path not in self.notes:
-                return "Error: file not found"
-            return self.notes[path]
-        if name == "obsidian__obsidian_write_note":
-            path = args["target"]["path"]
-            if path in self.notes and not args.get("overwrite"):
-                return "Error: file_exists"
+                return "Error: file not found", True
+            # The real one answers with the note AND what is known about it.
+            return json.dumps({"path": path, "content": self.notes[path],
+                               "truncated": False, "hash": "x",
+                               "properties": {}, "tags": []}), False
+        if name == "vault__notes_write":
             self.notes[path] = args["content"]
-            return "geschrieben"
-        if name == "obsidian__obsidian_append_to_note":
-            path = args["target"]["path"]
-            if path not in self.notes:
-                return "Error: not found"
-            self.notes[path] += args["content"]
-            return "angehängt"
-        if name == "obsidian__obsidian_search_notes":
-            return f"Treffer für {args.get('query')} unter {args.get('pathPrefix')}"
-        return "(kein Output)"
+            return json.dumps({"ok": True, "path": path, "hash": "x"}), False
+        if name == "vault__notes_append":
+            # Creates the note when it is not there, exactly like the real one.
+            raw = self.notes.get(path, "")
+            joined = raw + ("" if raw.endswith("\n") or not raw else "\n")
+            self.notes[path] = joined + args["text"].rstrip("\n") + "\n"
+            return json.dumps({"ok": True, "path": path, "hash": "x"}), False
+        return f"Treffer für {args.get('query')}", False
 
     def names(self) -> list[str]:
         return [n for n, _ in self.calls]
@@ -189,22 +205,22 @@ async def test_a_note_quoting_an_error_message_still_reads():
     assert "Section target not found" in block
 
 
-class FlaggingMcp(FakeMcp):
-    """A server that reports failure the way MCP really does: through `isError`."""
-
-    async def call_ex(self, name: str, args: dict) -> tuple[str, bool]:
-        text = await self.call(name, args)
-        return text, name in self.fail
-
-
 async def test_the_iserror_flag_beats_the_text():
-    """With a flag available the text is not searched at all — in either direction."""
+    """With a flag available the text is not searched at all — in either direction.
+
+    `FakeMcp` reports failure the way MCP really does, through the flag, so this
+    needs no server of its own any more. The one it used to have built its
+    answer by calling back into the base, which now asks the flag — the two
+    called each other until the recursion was swallowed by the `except` that
+    treats an unreadable note as a missing one, and the test read an empty
+    memory as if that were the point.
+    """
     note = "- Eine Regel, die das Wort not found enthaelt."
-    mcp = FlaggingMcp({f"{ROOT}/Agent-assistent.md": note})
+    mcp = FakeMcp({f"{ROOT}/Agent-assistent.md": note})
     assert "not found" in await read_memory(mcp, ROOT, "assistent", "")
 
-    mcp = FlaggingMcp({f"{ROOT}/Agent-assistent.md": "- harmlos"},
-                      fail={"obsidian__obsidian_get_note"})
+    mcp = FakeMcp({f"{ROOT}/Agent-assistent.md": "- harmlos"},
+                  fail={"vault__notes_read"})
     assert await read_memory(mcp, ROOT, "assistent", "") == ""
 
 
@@ -218,11 +234,13 @@ async def test_without_a_vault_it_tells_the_agent(db):
     assert mcp.calls == []
 
 
-async def test_remember_builds_the_target_as_an_object(db):
-    """REGRESSION: `target` has to be an object; a string is `MCP error -32602`.
+async def test_remember_addresses_a_note_by_its_plain_path(db):
+    """The note tools take a path and nothing around it.
 
-    Exactly on that older models fail when they call the obsidian MCP themselves. Because
-    Traccoon builds the argument, that must never happen here.
+    Traccoon builds the argument itself instead of letting the model do it, and
+    this records the shape — the memory ran on a server whose address was an
+    object with a discriminator, and the day that server went, every write here
+    named a tool that did not exist.
     """
     u = await make_user(db, "merker")
     u.vault_memory_path = ROOT
@@ -231,15 +249,15 @@ async def test_remember_builds_the_target_as_an_object(db):
     out = await call_memory_tool(db, mcp, u.id, "remember",
                                  {"area": "person", "text": "Commit-Betreffe auf Deutsch."})
     assert "Noted" in out
-    for _name, args in mcp.calls:
-        assert isinstance(args["target"], dict), "target as a string, MCP error -32602"
-        assert args["target"]["type"] == "path"
+    for name, args in mcp.calls:
+        assert name in FakeMcp.KNOWN, f"{name} is not a tool of the note server"
+        assert args["path"] == f"{ROOT}/Mensch.md"
     assert "- [" in mcp.notes[f"{ROOT}/Mensch.md"]
     assert "Commit-Betreffe auf Deutsch." in mcp.notes[f"{ROOT}/Mensch.md"]
 
 
 async def test_remember_creates_a_missing_note(db):
-    """The first insight creates the note; appending alone fails on that."""
+    """The first insight creates the note, with a heading."""
     u = await make_user(db, "erster")
     u.vault_memory_path = ROOT
     await db.commit()
@@ -248,7 +266,10 @@ async def test_remember_creates_a_missing_note(db):
                                  {"area": "agent", "text": "Tests mitliefern."},
                                  agent_role="developer")
     assert "Noted" in out
-    assert mcp.names() == ["obsidian__obsidian_append_to_note", "obsidian__obsidian_write_note"]
+    # Asked first, then written with a heading: appending alone would create the
+    # note without one, and a memory note is read by a person in the vault.
+    assert mcp.names() == ["vault__notes_read", "vault__notes_write"]
+    assert mcp.notes[f"{ROOT}/Agent-developer.md"].startswith("# Agent-developer")
     assert "Tests mitliefern." in mcp.notes[f"{ROOT}/Agent-developer.md"]
 
 
@@ -257,7 +278,7 @@ async def test_remember_reports_failure(db):
     u = await make_user(db, "pech")
     u.vault_memory_path = ROOT
     await db.commit()
-    mcp = FakeMcp(fail={"obsidian__obsidian_append_to_note", "obsidian__obsidian_write_note"})
+    mcp = FakeMcp(fail={"vault__notes_read", "vault__notes_append", "vault__notes_write"})
     out = await call_memory_tool(db, mcp, u.id, "remember",
                                  {"area": "person", "text": "etwas"})
     assert out.startswith("ERROR")
@@ -299,7 +320,7 @@ async def test_forget_without_hits_changes_nothing(db):
     out = await call_memory_tool(db, mcp, u.id, "forget",
                                  {"area": "person", "fragment": "gibtsnicht"})
     assert "nothing changed" in out
-    assert "obsidian__obsidian_write_note" not in mcp.names()
+    assert "vault__notes_write" not in mcp.names()
 
 
 async def test_search_stays_within_the_memory_folder(db):
@@ -311,8 +332,10 @@ async def test_search_stays_within_the_memory_folder(db):
     out = await call_memory_tool(db, mcp, u.id, "memory_search", {"query": "Commit"})
     assert "Commit" in out
     name, args = mcp.calls[0]
-    assert name == "obsidian__obsidian_search_notes"
-    assert args["pathPrefix"] == ROOT and args["mode"] == "text"
+    assert name == "vault__notes_search"
+    # The folder is part of the query language now, and quoted: a vault folder
+    # has spaces in its name and would otherwise fall apart into two terms.
+    assert args["query"] == f'path:"{ROOT}" Commit'
 
 
 async def test_the_memory_root_is_empty_without_an_owner(db):
@@ -336,7 +359,7 @@ def test_memory_tools_are_always_allowed():
     assert a.learns is True
     for name in MEMORY_TOOL_NAMES:
         assert a.tool_allowed(name)
-    assert not a.tool_allowed("obsidian__obsidian_write_note")
+    assert not a.tool_allowed("vault__notes_write")
 
 
 def test_the_learning_switch_comes_from_the_row():

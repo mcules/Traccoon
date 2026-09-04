@@ -1123,15 +1123,17 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         "assignment contradicts a memory, the assignment wins: correct the "
                         "memory with `forget` and then `remember`."})
 
-            # Vault-Projektkontext (MOC + Dateibaum) laden, falls konfiguriert (via obsidian-MCP)
+            # Vault-Projektkontext (MOC + Dateibaum) laden, falls konfiguriert.
+            # Ueber die hauseigenen Notiz-Werkzeuge; die Antwort von `notes_read`
+            # ist JSON, deshalb geht sie durch denselben Leser wie das Gedaechtnis.
             moc_path = project.get("vault_moc_path")
             if moc_path:
                 try:
+                    from .tools_memory import _content_of
                     name = moc_path.rstrip("/").split("/")[-1]
-                    moc = await mcp.call("obsidian__obsidian_get_note",
-                                         {"format": "content", "target": {"type": "path",
-                                          "path": f"{moc_path}/{name}.md"}})
-                    tree = await mcp.call("obsidian__obsidian_list_notes", {"path": moc_path, "depth": 2})
+                    moc = _content_of(await mcp.call(
+                        "vault__notes_read", {"path": f"{moc_path}/{name}.md"}))
+                    tree = await mcp.call("vault__notes_list", {"folder": moc_path, "limit": 200})
                     messages.append({"role": "user", "content":
                         f"# Projektkontext (Vault: {moc_path})\n{(moc or '')[:6000]}\n\n## Dateien\n{(tree or '')[:2000]}"})
                 except Exception:  # noqa: BLE001

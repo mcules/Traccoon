@@ -22,7 +22,7 @@ import datetime as dt
 import logging
 
 from ..services.appsettings import get_setting, set_setting
-from .tools_memory import _note_target, _read_note, memory_root, note_path
+from .tools_memory import APPEND, WRITE, _read_note, memory_root, note_path
 
 log = logging.getLogger("traccoon.curator")
 
@@ -160,18 +160,16 @@ async def curate_note(db, mcp, *, owner_id: int, path: str, agent, tokens: dict,
         arch_path = path.rsplit("/", 1)[0] + "/Archiv-" + path.rsplit("/", 1)[-1]
         stamp = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y-%m-%d")
         try:
-            await mcp.call("obsidian__obsidian_append_to_note",
-                           {"target": _note_target(arch_path),
-                            "content": f"\n## Aussortiert am {stamp}\n{archive}\n"})
+            await mcp.call(APPEND,
+                           {"path": arch_path,
+                            "text": f"\n## Aussortiert am {stamp}\n{archive}\n"})
         except Exception as exc:  # noqa: BLE001
             log.warning("Curator: archive %s not writable (%s), %s stays unchanged",
                         arch_path, exc, path)
             return None
 
     try:
-        await mcp.call("obsidian__obsidian_write_note",
-                       {"target": _note_target(path), "content": header + keep + "\n",
-                        "overwrite": True})
+        await mcp.call(WRITE, {"path": path, "content": header + keep + "\n"})
     except Exception as exc:  # noqa: BLE001
         log.warning("Curator: %s not writable (%s)", path, exc)
         return None

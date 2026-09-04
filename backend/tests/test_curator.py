@@ -3,6 +3,7 @@
 It touches other people's memories. That is why the tests guard above all the emergency
 brakes: what happens when the model is overeager, misses the format or the archive jams.
 """
+import json
 import datetime as dt
 
 import pytest
@@ -19,7 +20,14 @@ PATH = "KI/Gedaechtnis/Mensch.md"
 
 
 class FakeMcp:
-    """Vault replacement: remembers what was written and what was appended."""
+    """Vault replacement: remembers what was written and what was appended.
+
+    Knows the tools of the note server and refuses every other name, the way the
+    real one does — a double that answers to anything cannot notice that a tool
+    has gone.
+    """
+
+    KNOWN = {"vault__notes_read", "vault__notes_write", "vault__notes_append"}
 
     def __init__(self, content: str = NOTE, typo: str | None = None):
         self.notes = {PATH: content}
@@ -27,18 +35,21 @@ class FakeMcp:
         self.typo = typo
 
     async def call(self, tool: str, args: dict):
-        path = (args.get("target") or {}).get("path", "")
-        if tool == "obsidian__obsidian_get_note":
-            return self.notes.get(path, "")
-        if tool == "obsidian__obsidian_append_to_note":
+        assert tool in self.KNOWN, f"{tool} is not a tool of the note server"
+        path = args.get("path", "")
+        if tool == "vault__notes_read":
+            if path not in self.notes:
+                return "Error: file not found"
+            return json.dumps({"path": path, "content": self.notes[path],
+                               "truncated": False, "hash": "x",
+                               "properties": {}, "tags": []})
+        if tool == "vault__notes_append":
             if self.typo == "archiv":
                 raise RuntimeError("Archive not writable")
-            self.appended[path] = self.appended.get(path, "") + args["content"]
-            return "ok"
-        if tool == "obsidian__obsidian_write_note":
-            self.notes[path] = args["content"]
-            return "ok"
-        return "ok"
+            self.appended[path] = self.appended.get(path, "") + args["text"]
+            return json.dumps({"ok": True, "path": path, "hash": "x"})
+        self.notes[path] = args["content"]
+        return json.dumps({"ok": True, "path": path, "hash": "x"})
 
 
 def _aux(monkeypatch, answer):

@@ -21,12 +21,11 @@ The content is deliberately plain markdown, one bullet line per insight. There i
 parsing, there are no ids and no hit counters: the text is hung into the prompt as a block,
 and merging duplicates is done by the agent itself over `forget` plus `remember`.
 
-WHY THESE TOOLS EXIST AT ALL: the obsidian MCP describes `target` as a `oneOf` without a
-`type` field. Models like `claude-sonnet-4-5` do not serve that: they send `target` as a
-JSON string instead of an object, and every call ends in `MCP error -32602`. That is why the
-model never calls obsidian itself here. It gets tools with pure string parameters, and
-`_note_target` below is the only place in the house that knows the `oneOf` form. That way the
-memory runs on every model.
+WHY THESE TOOLS EXIST AT ALL: remembering is not the same act as writing a note. The agent
+says what it learned and in which area; where that lands, how it is merged and how much of it
+is carried into the next run is decided here and not by the model. It also survived a change
+of server underneath: the notes now come from the house's own tools (`vault__notes_*`), and
+the memory did not have to learn anything new for it.
 """
 from __future__ import annotations
 
@@ -124,13 +123,14 @@ TEACH_TOOL = _def(
     ["agent", "area", "text"])
 
 
-def _note_target(path: str) -> dict:
-    """The `oneOf` address of the obsidian MCP. The ONLY place that knows its form.
-
-    It has to be an object; a string here is exactly the error `MCP error -32602` older
-    models fail on when they call the MCP themselves.
-    """
-    return {"type": "path", "path": path}
+# The tools of the note vault, in one place. They used to be a foreign server's
+# and were named after it; when that server went, every call here pointed at a
+# tool that no longer existed and the memory failed on writing — silently, from
+# the outside, because a failed remember only shows up as a rule that is gone.
+READ = "vault__notes_read"
+WRITE = "vault__notes_write"
+APPEND = "vault__notes_append"
+SEARCH = "vault__notes_search"
 
 
 def _safe(part: str) -> str:
@@ -194,38 +194,50 @@ def _failed(text: str) -> bool:
     return not low or any(low.startswith(m) for m in _ERROR_MARKER)
 
 
-async def _read_note(mcp, path: str) -> str:
-    """Note content or empty (a missing note is the normal case, not the error case)."""
+async def _raw_note(mcp, path: str) -> tuple[str, bool]:
+    """The note, and whether there is one at all.
+
+    The two are told apart on purpose: an empty note and a missing note look the
+    same to whoever reads the text, and only one of them may be written over.
+    """
     try:
         if hasattr(mcp, "call_ex"):
-            out, is_error = await mcp.call_ex(
-                "obsidian__obsidian_get_note",
-                {"format": "content", "target": _note_target(path)})
+            out, is_error = await mcp.call_ex(READ, {"path": path})
             if is_error:
-                return ""
+                return "", True
         else:
-            out = await mcp.call("obsidian__obsidian_get_note",
-                                 {"format": "content", "target": _note_target(path)})
+            out = await mcp.call(READ, {"path": path})
             if _failed(out):
-                return ""
+                return "", True
     except Exception as exc:  # noqa: BLE001
         log.debug("Memory: %s not readable (%s)", path, exc)
-        return ""
-    return _strip_note_header(out, path)
+        return "", True
+    return _content_of(out), False
 
 
-def _strip_note_header(text: str, path: str) -> str:
-    """Drop the `**<path>** (format: content)` line the obsidian MCP puts in front.
+async def _read_note(mcp, path: str) -> str:
+    """Note content or empty (a missing note is the normal case, not the error case)."""
+    body, _ = await _raw_note(mcp, path)
+    return body
 
-    It is presentation for a model reading a tool result, not part of the note. `forget`
-    writes what it reads back into the note, so leaving it in would file the header away as
-    the first line of the memory.
+
+def _content_of(text: str) -> str:
+    """The note out of what the tool answered.
+
+    `notes_read` answers with the note AND what is known about it (hash,
+    properties, tags) as JSON. `forget` writes back what it reads, so taking the
+    whole answer would file the bookkeeping away as the first line of the
+    memory. Anything that is not that shape is taken as it is: a server that
+    answers plainly is not a reason to lose a memory.
     """
-    head = f"**{path}** (format: content)"
-    body = text.lstrip()
-    if body.startswith(head):
-        body = body[len(head):]
-    return body.lstrip("\n")
+    import json
+    try:
+        data = json.loads(text or "")
+    except ValueError:
+        return text
+    if isinstance(data, dict) and isinstance(data.get("content"), str):
+        return data["content"]
+    return text
 
 
 async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "") -> str:
@@ -274,25 +286,26 @@ def _fit(chunks: list[str], budget: int = MAX_MEMORY_CHARS) -> str:
 
 
 async def _append_line(mcp, path: str, line: str) -> str:
-    """Append a line; if the note does not exist yet, create it once."""
+    """Append a line; if the note does not exist yet, create it with a heading.
+
+    Appending would create the note by itself, but without the heading — and a
+    memory note is read by a person in the vault, where a file that starts with
+    a bare bullet is a file nobody can place. So the existence is asked first,
+    which costs one call on a path that runs rarely.
+    """
+    _, missing = await _raw_note(mcp, path)
+    if missing:
+        header = f"# {path.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
+        try:
+            out = await mcp.call(WRITE, {"path": path, "content": header + line + "\n"})
+        except Exception as exc:  # noqa: BLE001
+            return str(exc)
+        return "" if not _failed(out) else out
     try:
-        out = await mcp.call("obsidian__obsidian_append_to_note",
-                             {"target": _note_target(path), "content": line + "\n"})
-        if not _failed(out):
-            return ""
+        out = await mcp.call(APPEND, {"path": path, "text": line})
     except Exception as exc:  # noqa: BLE001
-        out = str(exc)
-    # Second attempt: create the note. `overwrite` stays off; if it does exist after all, the
-    # call had better fail than overwrite existing memory.
-    header = f"# {path.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
-    try:
-        new = await mcp.call("obsidian__obsidian_write_note",
-                             {"target": _note_target(path), "content": header + line + "\n"})
-        if not _failed(new):
-            return ""
-        return new
-    except Exception as exc:  # noqa: BLE001
-        return f"{out} / {exc}"
+        return str(exc)
+    return "" if not _failed(out) else out
 
 
 async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: str, args: dict,
@@ -308,8 +321,9 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
         if not search:
             return "ERROR: `query` is missing."
         try:
-            out = await mcp.call("obsidian__obsidian_search_notes",
-                                 {"mode": "text", "query": search, "pathPrefix": root})
+            # The folder is part of the query here, not a parameter beside it.
+            # Quoted, because a vault folder has spaces in its name.
+            out = await mcp.call(SEARCH, {"query": f'path:"{root}" {search}', "limit": 20})
         except Exception as exc:  # noqa: BLE001
             return f"ERROR while searching: {exc}"
         return (out or "Nothing found.")[:4000]
@@ -352,9 +366,8 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
         if not removed:
             return f"No line in {path} contains '{ask}' — nothing changed."
         try:
-            out = await mcp.call("obsidian__obsidian_write_note",
-                                 {"target": _note_target(path), "overwrite": True,
-                                  "content": "\n".join(keep).rstrip() + "\n"})
+            out = await mcp.call(WRITE, {"path": path,
+                                         "content": "\n".join(keep).rstrip() + "\n"})
         except Exception as exc:  # noqa: BLE001
             return f"ERROR while forgetting: {exc}"
         if _failed(out):

@@ -625,7 +625,7 @@ async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     """Call an MCP tool, the direct way to everything Traccoon has connected.
 
     Parameters:
-      tool           tool name as in the picker (for example `obsidian_append_to_note`)
+      tool           tool name as in the picker (for example `vault__notes_append`)
       arguments      {key: value}, values may contain `{{path}}` from the context
       context_key    where the result is written (default `tool`)
       fail_on_error  true means a failed call fails the step
@@ -655,13 +655,14 @@ async def _note_append(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
       pfad         path of the note, for example `04 Wissen/Erkennung/{{ spam.art }}.md`
       text         what is appended (one line, or several separated by newlines)
       ueberschrift optional section the text is put under (created when absent)
-      werkzeug     MCP tool, default `obsidian__obsidian_append_to_note`
+      werkzeug     MCP tool, default `vault__notes_append`
       context_key  where the result is written (default `notiz`)
 
-    A shortcut over `tool_call`, and not a redundant one: the address form of the obsidian
-    server is an `oneOf` (`{"type": "path", "path": …}`), and whoever writes it out by hand
-    in the arguments of every flow gets it wrong once and then wonders why the note stays
-    empty. The knowledge sits in exactly one place now, the same as in `tools_memory`.
+    A shortcut over `tool_call`, and not a redundant one: which tool writes a note, what it
+    calls its arguments and how a heading is addressed is knowledge that would otherwise sit
+    written out in every flow that files something. It sits in one place, the same as in
+    `tools_memory` — which is what made it a single change when the server underneath was
+    replaced, instead of a hunt through stored graphs.
     """
     from .workflow_tools import call
 
@@ -675,17 +676,15 @@ async def _note_append(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
         inst.context = {**ctx, key: {"ok": False, "error": "no path or no text"}}
         return {"action": "note_append", "ok": False, "reason": "leer"}
 
-    arguments: dict = {"target": {"type": "path", "path": path}, "content": text}
+    arguments: dict = {"path": path, "text": text}
     if heading:
-        # A section is addressed as an object, and it has to be created when it is missing:
-        # otherwise the call fails on a note that does not carry that heading yet. Without
-        # this the line lands at the end of the file, which is where nobody looks for a task.
-        arguments["section"] = {"type": "heading", "target": heading}
-        arguments["createTargetIfMissing"] = True
+        # Under a heading, and the note is created when it is not there — a line that lands
+        # at the end of the file instead is a line where nobody looks for it.
+        arguments["heading"] = heading
     # With the server prefix: without it the session finds no tool and answers with a HINT
-    # AS TEXT, and `aufrufen` reports ok because it got an answer. The note stays empty and
+    # AS TEXT, and the call reports ok because it got an answer. The note stays empty and
     # nobody notices. The name may be overridden, for a vault hanging off another server.
-    tool = str(params.get("tool") or "obsidian__obsidian_append_to_note").strip()
+    tool = str(params.get("tool") or "vault__notes_append").strip()
     result = await call(db, await _owner(db, inst), tool, arguments)
     inst.context = {**ctx, key: result}
     # The return value names the action the way it is called. It lands in the step log and
