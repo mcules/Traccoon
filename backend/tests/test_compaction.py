@@ -60,10 +60,10 @@ def test_the_cut_never_separates_a_tool_call_from_its_answer():
 
 
 async def test_the_summary_replaces_the_middle_part(db, monkeypatch):
-    async def fake_aux(*a, **kw):
+    async def fake_aux(plan=None, messages=None, *a, **kw):
         return "- Schritt A erledigt\n- Entscheidung B getroffen"
 
-    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    monkeypatch.setattr("app.worker.aux.aux_send", fake_aux)
     m = _run(20)
     new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
@@ -81,10 +81,10 @@ async def test_without_aux_it_shortens_raw_instead_of_dropping(db, monkeypatch):
     person's own. It has to get SMALLER, that is what the compaction is for, but the content
     stays reachable.
     """
-    async def fake_aux(*a, **kw):
+    async def fake_aux(plan=None, messages=None, *a, **kw):
         return None
 
-    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    monkeypatch.setattr("app.worker.aux.aux_send", fake_aux)
     m = _run(20)
     new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
@@ -122,12 +122,12 @@ async def test_a_large_history_is_summarised_in_chunks(db, monkeypatch):
     pieces and catch them piece by piece, each of them small enough on its own."""
     seen = {"laengen": []}
 
-    async def fake_aux(*a, **kw):
-        seen["laengen"].append(len(kw["messages"][0]["content"]))
+    async def fake_aux(plan=None, messages=None, *a, **kw):
+        seen["laengen"].append(len(messages[0]["content"]))
         seen["laenge"] = seen["laengen"][-1]
         return "- gefasst"
 
-    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    monkeypatch.setattr("app.worker.aux.aux_send", fake_aux)
     m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
     for i in range(200):
         m.append({"role": "assistant", "content": f"Schritt {i} " + "x" * 1500})
@@ -149,10 +149,10 @@ async def test_a_pure_tool_history_keeps_the_header_and_the_newest(db, monkeypat
     """The runaway case: 60 rounds of nothing but tool calls, without a single user or system
     message in between. Formerly the truncation only knew "everything" here: the history down
     to three messages, the agent without memory, starting from the front and writing not a line of code in two runs."""
-    async def fake_aux(*a, **kw):
+    async def fake_aux(plan=None, messages=None, *a, **kw):
         return "- Dateien X und Y gelesen"
 
-    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    monkeypatch.setattr("app.worker.aux.aux_send", fake_aux)
     m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
     for i in range(40):
         m.append({"role": "assistant", "content": "", "tool_calls": [
@@ -181,12 +181,12 @@ async def test_the_handover_carries_the_thread_on(db, monkeypatch):
     handover consisted of "time limit reached … (no text)"."""
     seen = []
 
-    async def fake_aux(*a, **kw):
-        seen.append(kw["messages"][0]["content"])
+    async def fake_aux(plan=None, messages=None, *a, **kw):
+        seen.append(messages[0]["content"])
         return ("**Findings** fleets.ts trägt dispatchExpedition\n"
                 "**Erledigt** nichts geändert\n**Next step** computeSammeln anlegen")
 
-    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    monkeypatch.setattr("app.worker.aux.aux_send", fake_aux)
     m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
     for i in range(30):
         m.append({"role": "assistant", "content": f"Ich lese Datei {i}"})
@@ -203,10 +203,10 @@ async def test_the_handover_carries_the_thread_on(db, monkeypatch):
 
 async def test_the_handover_falls_back_honestly(db, monkeypatch):
     """Without an aux model, better the old, meagre stopgap than nothing at all."""
-    async def fake_aux(*a, **kw):
+    async def fake_aux(plan=None, messages=None, *a, **kw):
         return None
 
-    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    monkeypatch.setattr("app.worker.aux.aux_send", fake_aux)
     m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
     for i in range(10):
         m.append({"role": "assistant", "content": f"Schritt {i}"})
@@ -221,13 +221,51 @@ async def test_the_handover_falls_back_honestly(db, monkeypatch):
 
 async def test_a_handover_on_a_short_run_stays_plain(db, monkeypatch):
     """A run with two turns needs no aux round: the stopgap already says everything."""
-    async def fake_aux(*a, **kw):
+    async def fake_aux(plan=None, messages=None, *a, **kw):
         raise AssertionError("aux must not even be asked here")
 
-    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    monkeypatch.setattr("app.worker.aux.aux_send", fake_aux)
     m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"},
          {"role": "assistant", "content": "einmal geschaut"}]
     text = await compaction.handover(
         db, messages=m, reason="Zeitlimit erreicht.", last_text="einmal geschaut",
         owner_id=1, agent=None, tokens={}, base_urls={})
     assert text == "Zeitlimit erreicht.\n\nLetzter Stand:\neinmal geschaut"
+
+
+async def test_the_pieces_ask_the_database_once_between_them(db, monkeypatch):
+    """The pieces run side by side and share one database session.
+
+    An `AsyncSession` carries one connection; two coroutines reaching into it at
+    once make it raise. That happened on every real compaction with more than
+    one piece, was caught one level up, and turned each piece into a clipped raw
+    excerpt instead of a summary — a conversation quietly losing its memory,
+    which is the one outcome the fallback exists to prevent. So the asking
+    happens once, before the fan-out.
+    """
+    asked = []
+    pieces = []
+
+    async def fake_plan(db_, **kw):
+        asked.append(kw.get("task"))
+        return {"task": "compression", "provider": "x", "model": "m", "tokens": {},
+                "base_urls": {}, "timeout": 5.0, "extra": None}
+
+    async def fake_send(plan=None, messages=None, *a, **kw):
+        pieces.append(plan)
+        return "- gefasst"
+
+    monkeypatch.setattr("app.worker.aux.aux_plan", fake_plan)
+    monkeypatch.setattr("app.worker.aux.aux_send", fake_send)
+    m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
+    for i in range(200):
+        m.append({"role": "assistant", "content": f"Schritt {i} " + "x" * 1500})
+        m.append({"role": "user", "content": f"Weiter {i}"})
+    new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
+                        owner_id=1, agent=None, tokens={}, base_urls={})
+
+    assert new is not None
+    assert len(pieces) > 1, "the test only says something with more than one piece"
+    assert asked == ["compression"], f"asked {len(asked)} times instead of once"
+    # Every piece got a summary; none fell back to the clipped excerpt.
+    assert "no summary possible" not in new[2]["content"]

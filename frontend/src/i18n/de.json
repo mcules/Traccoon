@@ -3653,5 +3653,6 @@
   "calendars.write_manual": "Nur ich, in der Oberfläche",
   "calendars.write_agent": "Ich und der Assistent",
   "calendars.server_read_only": "der Server erlaubt hier nur lesen",
-  "calendars.agent_writes": "auch Assistent"
+  "calendars.agent_writes": "auch Assistent",
+  "notes_assistant.thinking": "{name} arbeitet"
 }

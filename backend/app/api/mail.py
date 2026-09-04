@@ -5,6 +5,7 @@ api/ops.py to services/mail_intake.py). Here stand only the UI and administratio
 """
 import datetime as dt
 import logging
+import re
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -450,6 +451,85 @@ async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
     await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
                         "assistant_task_id": t.id, "is_chat": True})
     return _chat_out(t)
+
+
+# ── What the assistant is doing while it does it ────────────────────────────
+#
+# Until now a running message was a spinner: the panel knew that something was
+# happening and nothing about what. The run writes every step down anyway (the
+# same steps the console shows), so this hands them to whoever is waiting.
+
+# A short label for a tool call, out of its arguments. Which key carries the
+# interesting part differs per tool and there is no rule to derive it from, so
+# it is a list — and an unknown tool simply shows no label rather than the raw
+# JSON, which is unreadable in a chat bubble.
+_LABEL_KEYS = ("path", "query", "uid", "url", "title", "name", "folder", "to", "calendar")
+
+
+def _short(args: str) -> str:
+    """A short label out of a tool call's arguments.
+
+    Read with a pattern rather than with a JSON parser, because what is stored
+    is not JSON: the run keeps only the first 400 characters of a call, and a
+    document path or a mail subject reaches that on its own. Every one of these
+    fragments ends mid-string, `json.loads` refuses all of them, and the label
+    was empty for exactly the calls worth labelling.
+    """
+    text = args or ""
+    for key in _LABEL_KEYS:
+        found = re.search(rf'"{key}"\s*:\s*"((?:[^"\\]|\\.)*)', text)
+        if not found:
+            continue
+        # Undo only what a label needs; the rest of the escapes are rarer than
+        # the risk of getting a half-decoded string wrong.
+        value = (found.group(1).replace('\\n', ' ').replace('\\t', ' ')
+                 .replace('\\"', '"').replace('\\\\', '\\'))
+        value = " ".join(value.split())
+        if value:
+            return value[:120]
+    return ""
+
+
+@router.get("/assistant/chat/{tid}/progress")
+async def chat_progress(tid: int, after: int = 0, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    """The steps of a running message, so a person can watch it work.
+
+    `after` carries the last sequence number already seen: a message that runs
+    for ten minutes collects hundreds of steps, and re-sending all of them every
+    two seconds would be the same list over and over.
+
+    The run is found by the task's own `run_id` once it is finished, and by the
+    name the run carries while it is still going — the task only learns its
+    `run_id` at the end, which is exactly the time nobody needs this.
+    """
+    from ..models.agents import Run, RunStep
+
+    t = await _get_owned(tid, user, db)
+    run_id = t.run_id
+    if run_id is None:
+        run_id = (await db.execute(
+            select(Run.id).where(Run.task_id == f"assistant-{t.id}")
+            .order_by(Run.id.desc()).limit(1))).scalar_one_or_none()
+    if run_id is None:
+        return {"run_id": None, "running": t.status in _RUNNING, "steps": []}
+
+    rows = (await db.execute(
+        select(RunStep).where(RunStep.run_id == run_id, RunStep.seq > after)
+        .order_by(RunStep.seq))).scalars().all()
+    steps = []
+    for row in rows:
+        if row.kind in ("usage", "system"):
+            continue                      # bookkeeping, not something to watch
+        steps.append({
+            "seq": row.seq, "kind": row.kind, "tool": row.tool_name or "",
+            "label": _short(row.content) if row.kind == "tool_start" else "",
+            # Only the narration is text worth showing; a tool result is its
+            # own answer and belongs in the note, not in the bubble.
+            "text": (row.content or "").strip()[:600] if row.kind == "agent_text" else "",
+            "ok": row.ok, "ms": row.duration_ms,
+        })
+    return {"run_id": run_id, "running": t.status in _RUNNING, "steps": steps}
 
 
 @router.post("/assistant/chat/{tid}/decide")

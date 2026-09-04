@@ -39,6 +39,7 @@ The other probes start the same way:
 | `error-text.mjs` | a server error in a German and in an English browser, no login needed |
 | `shot.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
 | `account-calendar.mjs` | the calendars as a place of their own: a login per server with the calendars under it, editing that hands no password back out, adding as a button whose dialog asks the server what it has, and who may write set per calendar |
+| `assistant-steps.mjs` | what the assistant is doing while it does it: six lines open and the rest scrolling, the newest in view, a failed step marked, and the bubble giving way to the answer |
 | `note-css.mjs` | whether the note stylesheet reaches the rest of the house (it is not even loaded there) and whether the house's reset takes the bullets off rendered markdown |
 | `note-bridge.mjs` | whether the note area still asks the bridge anything at all, and that the assistant panel talks to the house itself |
 | `note-tasks.mjs` | a block of the query language runs, a task ticked off in a result lands in its note, a recurring one comes back, and an out-of-date result does not write |

@@ -123,12 +123,20 @@ async def current(db: AsyncSession, owner_user_id: int | None, channel: str,
     caller creates a fresh one instead of running into a dangling number. The agent is
     checked too: `/agent <role> …` must not land in the assistant's conversation just because
     that is the one the person had loaded.
+
+    A **closed** conversation answers None for the same reason. Putting one away is somebody
+    saying "not this one any more", and the pointer is not cleared when they do it — so
+    without this check the next message went on landing in a conversation the panel no longer
+    shows, ran there, and looked from the outside like a message that vanished. Naming a
+    closed session explicitly still carries on in it; that path never reaches here.
     """
     row = await pointer(db, owner_user_id, channel)
     if row is None or row.session_id is None:
         return None
     s = await db.get(AssistantSession, row.session_id)
     if s is None or s.owner_user_id != owner_user_id:
+        return None
+    if s.closed_at is not None:
         return None
     if agent and s.agent != agent:
         return None

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { tr, language } from "../../i18n";
 import { useStore } from '../lib/store';
-import { api, type AssistantMessage, type AssistantSession } from '../lib/api';
+import { api, type AssistantMessage, type AssistantSession, type AssistantStep } from '../lib/api';
 import { getActiveEditor } from '../lib/activeEditor';
 import Icon from './Icon';
+import AssistantSteps from './AssistantSteps';
 import AssistantAnswer from './AssistantAnswer';
 
 /**
@@ -61,6 +62,9 @@ export default function AssistantPanel() {
   };
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // Per message the steps seen so far. Kept here and not in the bubble so that
+  // a re-render of the list does not throw away what was already fetched.
+  const [steps, setSteps] = useState<Record<number, AssistantStep[]>>({});
   const [error, setError] = useState('');
   const [withNote, setWithNote] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
@@ -73,14 +77,18 @@ export default function AssistantPanel() {
     setName(tr("notes_assistant.name"));
   }, []);
 
-  const load = useCallback(async () => {
+  // `only` overrides the chosen conversation for this one read. Right after
+  // sending into a conversation that did not exist a moment ago, the state
+  // still holds the old one — reading with it would fetch the wrong messages
+  // and the answer would look lost.
+  const load = useCallback(async (only?: number) => {
     try {
-      const r = await api.assistantChat(30, sessionId);
+      const r = await api.assistantChat(30, only ?? sessionId);
       setMessages(r.messages);
       setError('');
       // Without an explicit one, the assistant answers in its newest
       // conversation — adopt that so the switcher shows where one actually is.
-      if (!sessionId && r.messages.length && r.messages[0].session_id) {
+      if (!only && !sessionId && r.messages.length && r.messages[0].session_id) {
         setSessionId(r.messages[0].session_id);
       }
     } catch (e: any) {
@@ -118,13 +126,52 @@ export default function AssistantPanel() {
     chooseSession(offen[0].id);
   }, [sessions, sessionId]);
 
+  // What a running message is doing. Asked for incrementally: `after` is the
+  // highest sequence number already held, so a long run does not re-send its
+  // whole history every two seconds.
+  const loadSteps = useCallback(async (ids: number[]) => {
+    for (const id of ids) {
+      try {
+        const have = steps[id] ?? [];
+        const after = have.length ? have[have.length - 1].seq : 0;
+        const r = await api.assistantProgress(id, after);
+        if (!r.steps.length) continue;
+        setSteps((old) => {
+          // Merged by sequence number, not appended. `after` should make that
+          // unnecessary, but two polls in flight at once would otherwise show
+          // every step twice — and a list that repeats itself is worse than a
+          // list that lags.
+          const seen = new Set((old[id] ?? []).map((x) => x.seq));
+          const fresh = r.steps.filter((x) => !seen.has(x.seq));
+          if (!fresh.length) return old;
+          return { ...old, [id]: [...(old[id] ?? []), ...fresh] };
+        });
+      } catch {
+        // A step that cannot be fetched is not worth interrupting the answer
+        // for: the message itself keeps arriving through `load`.
+      }
+    }
+  }, [steps]);
+
   // Poll only while something is still running — an idle panel costs nothing.
   const waiting = messages.some((m) => ['new', 'approved', 'running', 'awaiting'].includes(m.status));
+  // The messages themselves, and next to them what the running ones are doing.
+  // Same beat for both: two requests every two and a half seconds while
+  // something runs, none at all while nothing does.
+  const running = messages
+    .filter((m) => ['new', 'approved', 'running'].includes(m.status))
+    .map((m) => m.id);
+  const runningKey = running.join(',');
   useEffect(() => {
     if (!enabled || !waiting) return;
-    const id = window.setInterval(() => void load(), 2500);
+    const tick = () => {
+      void load();
+      if (runningKey) void loadSteps(runningKey.split(',').map(Number));
+    };
+    tick();
+    const id = window.setInterval(tick, 2500);
     return () => window.clearInterval(id);
-  }, [enabled, waiting, load]);
+  }, [enabled, waiting, load, runningKey, loadSteps]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -157,9 +204,10 @@ export default function AssistantPanel() {
     setSending(true);
     try {
       const gesendet = await api.assistantSend(body, sessionId);
-      if (!sessionId && gesendet?.session_id) chooseSession(gesendet.session_id);
+      const landete = gesendet?.session_id ?? undefined;
+      if (!sessionId && landete) chooseSession(landete);
       setDraft('');
-      await load();
+      await load(sessionId ? undefined : landete);
       void loadSessions();
     } catch (e: any) {
       notify(e.message || tr("notes_assistant.message_lost"));
@@ -311,11 +359,10 @@ export default function AssistantPanel() {
             )}
             {m.error && <div className="assistant-msg failed">{m.error}</div>}
             {m.result && <AssistantAnswer className="assistant-msg theirs" text={m.result} />}
+            {/* Still working: the steps stand here, and the moment the answer
+                arrives this whole block is replaced by it. */}
             {!m.result && !m.error && !m.pending_tool && (
-              <div className="assistant-msg thinking">
-                <Icon name="refresh-cw" size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                {name} überlegt{seit(m.created_at)}
-              </div>
+              <AssistantSteps steps={steps[m.id] ?? []} name={name} since={seit(m.created_at)} />
             )}
           </div>
         ))}

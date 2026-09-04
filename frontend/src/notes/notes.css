@@ -2692,6 +2692,43 @@ div.dataview-error-box {
   border: 1px solid var(--bg-modifier-border);
   border-left: 3px solid var(--interactive-accent);
 }
+/* Was der Assistent gerade tut, waehrend er es tut. Sechs Zeilen stehen offen,
+   der Rest scrollt: die Leiste ist schmal, und ein Lauf mit zweihundert
+   Schritten wuerde die Unterhaltung sonst vom Bildschirm schieben. */
+.assistant-msg.working {
+  background: var(--bg-secondary); color: var(--text-muted);
+  border: 1px solid var(--bg-modifier-border);
+  border-left: 3px solid var(--text-faint);
+  white-space: normal;
+}
+.assistant-working-head { display: flex; align-items: center; gap: 6px; }
+.assistant-steps {
+  /* Sechs Zeilen mal Zeilenhoehe. Bewusst in em, damit die Zahl der sichtbaren
+     Zeilen bleibt, wenn jemand die Schrift groesser stellt. */
+  max-height: 9.6em;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--bg-modifier-border);
+  font-size: 0.92em;
+  line-height: 1.6;
+}
+/* Ein Werkzeugaufruf ist eine Zeile: sein Ziel wird gekuerzt statt umgebrochen,
+   sonst frisst ein langer Notizpfad zwei der sechs sichtbaren Zeilen. Die
+   Erzaehlung des Assistenten darf dagegen umbrechen, sie ist ein Satz. */
+.assistant-step {
+  display: flex; align-items: baseline; gap: 6px;
+  min-width: 0;
+}
+.assistant-step-mark { flex: none; width: 0.9em; color: var(--text-accent); }
+.assistant-step-mark.failed { color: var(--color-red); }
+.assistant-step-tool { flex: none; font-family: var(--font-mono); font-size: 0.95em; }
+.assistant-step-label {
+  color: var(--text-faint); min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.assistant-step-text { color: var(--text-normal); overflow-wrap: anywhere; }
+
 /* Die Antwort ist gerendertes Markdown, aber in einer schmalen Spalte: die
    Abstände der Leseansicht würden hier mehr Luft als Text ergeben. */
 .assistant-msg.markdown-preview { white-space: normal; padding: 10px 12px; }

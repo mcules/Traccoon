@@ -209,6 +209,19 @@ export interface AssistantSession {
   running: boolean;
 }
 
+/** One step of a running message: what the console shows, as data. */
+export interface AssistantStep {
+  seq: number;
+  kind: string;
+  tool: string;
+  /** The interesting part of the arguments, if there is one — a path, a query. */
+  label: string;
+  /** Only the assistant's own narration; a tool's answer is not shown here. */
+  text: string;
+  ok: boolean | null;
+  ms: number | null;
+}
+
 /** One message in the assistant's conversation, as it keeps it. */
 export interface AssistantMessage {
   id: number;
@@ -263,6 +276,13 @@ export const api = {
     house<{ messages: AssistantMessage[]; more: boolean }>(
       `/assistant/chat?limit=${limit}${sessionId ? `&session_id=${sessionId}` : ''}`,
     ),
+  /** What the assistant is doing right now, as steps. `after` is the last
+   *  sequence number already seen: a message that runs for ten minutes collects
+   *  hundreds of steps and re-sending all of them every two seconds would be
+   *  the same list over and over. */
+  assistantProgress: (tid: number, after = 0) =>
+    house<{ run_id: number | null; running: boolean; steps: AssistantStep[] }>(
+      `/assistant/chat/${tid}/progress?after=${after}`),
   assistantSend: (text: string, sessionId?: number) =>
     house<AssistantMessage>('/assistant/chat', {
       method: 'POST',

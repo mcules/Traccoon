@@ -261,18 +261,24 @@ async def _summarise(db, messages: list[dict], chunks: list[tuple[int, int]], *,
     that it does not know anything any more. Piece by piece the summary comes about even for
     a history of 500k characters.
     """
-    from .aux import aux_chat
+    from .aux import aux_plan, aux_send
     counter = asyncio.Semaphore(AUX_PARALLEL)
+    # Asked once, before the pieces run side by side. They share one database
+    # session, and asking from several of them at the same time makes it raise —
+    # which was caught below and turned every piece into a clipped excerpt
+    # instead of a summary.
+    plan = await aux_plan(db, owner_id=owner_id, task="compression",
+                          agent=agent, tokens=tokens, base_urls=base_urls)
 
     async def _piece(nr: int, a: int, b: int) -> str:
         from_where = f"(Teil {nr} von {len(chunks)})\n\n" if len(chunks) > 1 else ""
         async with counter:
             try:
-                text = await aux_chat(
-                    db, owner_id=owner_id, task="compression",
-                    messages=[{"role": "user",
-                               "content": TASK + from_where + _as_text(messages[a:b])}],
-                    agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1024)
+                text = await aux_send(
+                    plan,
+                    [{"role": "user",
+                      "content": TASK + from_where + _as_text(messages[a:b])}],
+                    max_tokens=1024)
             except Exception:  # noqa: BLE001 - one outage must not cost the run
                 log.exception("Compaction: piece %d/%d failed", nr, len(chunks))
                 text = None

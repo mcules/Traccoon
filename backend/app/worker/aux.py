@@ -60,10 +60,19 @@ async def aux_config(db: AsyncSession, task: str) -> dict:
     return cfg if isinstance(cfg, dict) and cfg.get("provider") else {}
 
 
-async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, messages: list[dict],
-                   agent=None, tokens: dict | None = None, base_urls: dict | None = None,
-                   max_tokens: int = 2048, temperature: float = 0.2) -> str | None:
-    """Give a side task to the model configured for it. `None` = it did not work.
+async def aux_plan(db: AsyncSession, *, owner_id: int | None, task: str,
+                   agent=None, tokens: dict | None = None,
+                   base_urls: dict | None = None) -> dict | None:
+    """Everything a side task has to ask the database before it can be sent.
+
+    Separate from the sending because a caller may want to send several times —
+    the compaction summarises the pieces of a long history side by side. All of
+    them would need the same three lookups, and doing them concurrently on one
+    session is not allowed: an `AsyncSession` carries one connection, and two
+    coroutines reaching into it at once make it raise. That failure was caught
+    one level up and turned every piece into a clipped raw excerpt instead of a
+    summary — a conversation quietly losing its memory, which is exactly what
+    the fallback exists to prevent.
 
     `agent`/`tokens`/`base_urls` are the context of the running agent; they carry the `auto`
     case (no model of its own configured) without an additional vault access.
@@ -92,6 +101,18 @@ async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, message
         extra = None            # main provider: add nothing, the run knows its fields
     else:
         return None
+    return {"task": task, "provider": provider, "model": model, "tokens": use_tokens,
+            "base_urls": use_base_urls, "timeout": timeout, "extra": extra}
+
+
+async def aux_send(plan: dict | None, messages: list[dict], *,
+                   max_tokens: int = 2048, temperature: float = 0.2) -> str | None:
+    """Send one side task with an already resolved plan. Touches no database."""
+    if not plan:
+        return None
+    task, provider, model = plan["task"], plan["provider"], plan["model"]
+    use_tokens, use_base_urls = plan["tokens"], plan["base_urls"]
+    timeout, extra = plan["timeout"], plan["extra"]
 
     try:
         # Time cap: a side task must not hold the main run up. The predecessor regularly ran into 120 s
@@ -115,3 +136,16 @@ async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, message
                     "without the result", task, provider, model or "?", max_tokens)
         return None
     return text
+
+
+async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, messages: list[dict],
+                   agent=None, tokens: dict | None = None, base_urls: dict | None = None,
+                   max_tokens: int = 2048, temperature: float = 0.2) -> str | None:
+    """Give a side task to the model configured for it. `None` = it did not work.
+
+    The one-shot form: ask, then send. A caller that sends more than once should
+    ask once with `aux_plan` and then use `aux_send`, not call this in parallel.
+    """
+    plan = await aux_plan(db, owner_id=owner_id, task=task, agent=agent,
+                          tokens=tokens, base_urls=base_urls)
+    return await aux_send(plan, messages, max_tokens=max_tokens, temperature=temperature)

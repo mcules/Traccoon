@@ -641,3 +641,54 @@ async def test_the_list_does_not_query_per_session(client, db, anna):
     assert all(r["context"] for r in nine)
     # Dreimal so viele Unterhaltungen, gleich viele Abfragen.
     assert counted["n"] == for_three
+
+
+# ── Eine weggelegte Unterhaltung ist keine, in die noch geschrieben wird ──────
+
+@pytest.mark.asyncio
+async def test_a_closed_conversation_does_not_stay_the_channel_is_in(db) -> None:
+    """Putting a conversation away is somebody saying "not this one any more".
+
+    The pointer is not cleared when they do it, so without this the next message
+    went on landing in a conversation the panel no longer shows. It ran there,
+    correctly, and from the outside it looked like a message that vanished: the
+    input cleared, nothing appeared, nothing seemed to happen.
+    """
+    user = await make_user(db, "zu1")
+    first = await sessions.for_message(db, user.id, "web", "Guten Morgen")
+    await db.commit()
+    assert await sessions.current(db, user.id, "web") is not None
+
+    await sessions.close(db, first)
+    assert await sessions.current(db, user.id, "web") is None
+
+    second = await sessions.for_message(db, user.id, "web", "und jetzt?")
+    await db.commit()
+    assert second.id != first.id
+    assert second.closed_at is None
+
+
+@pytest.mark.asyncio
+async def test_naming_a_closed_conversation_still_carries_on_in_it(db) -> None:
+    """The other half of the rule: loading an old conversation and writing into
+    it is exactly what somebody means by opening it."""
+    user = await make_user(db, "zu2")
+    s = await sessions.for_message(db, user.id, "web", "Anfang")
+    await db.commit()
+    await sessions.close(db, s)
+
+    again = await sessions.for_message(db, user.id, "web", "weiter", session_id=s.id)
+    await db.commit()
+    assert again.id == s.id
+
+
+@pytest.mark.asyncio
+async def test_reopening_makes_it_the_current_one_again(db) -> None:
+    user = await make_user(db, "zu3")
+    s = await sessions.for_message(db, user.id, "web", "Anfang")
+    await db.commit()
+    await sessions.close(db, s)
+    assert await sessions.current(db, user.id, "web") is None
+    await sessions.reopen(db, s)
+    back = await sessions.current(db, user.id, "web")
+    assert back is not None and back.id == s.id
