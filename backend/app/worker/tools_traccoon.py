@@ -571,19 +571,25 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         # An explicit message to the human. It is the ONLY regular way to trigger a Telegram
         # or bell message out of an assistant run; the closing report stays silent otherwise
         # (exceptions: errors and chat).
+        from ..models.assistant import AssistantTask
         from ..models.notification import Notification
         title = str(args.get("title") or "").strip() or "Hinweis deines Assistenten"
         urgent = str(args.get("urgency") or "").lower() == "high"
+        t = await db.get(AssistantTask, assistant_task_id) if assistant_task_id else None
+        # The same rule as the closing report: a conversation is answered where
+        # it is being held. Somebody who asked in the browser is sitting in front
+        # of the answer; sending it to their phone as well puts it into a thread
+        # that never asked and makes them read it twice. Working through a mail
+        # in the background has no such place — there the messenger IS the way.
+        in_the_room = t is not None and t.kind == "chat" and t.source != "telegram"
         db.add(Notification(
             user_id=user.id, kind="assistant",
             title=(("❗ " if urgent else "") + title)[:200],
             body=str(args.get("text") or "")[:4000],
-            chat_id=user.telegram_chat_id))
-        if assistant_task_id:
-            from ..models.assistant import AssistantTask
-            t = await db.get(AssistantTask, assistant_task_id)
-            if t is not None:
-                t.notified = True
+            assistant_task_id=assistant_task_id,
+            chat_id=None if in_the_room else user.telegram_chat_id))
+        if t is not None:
+            t.notified = True
         await db.commit()
         return "Gemeldet."
 
@@ -736,6 +742,12 @@ def _statuses(problem: dict) -> str:
                      in sorted(problem.get("statuses", {}).items(), key=lambda kv: -kv[1]))
 
 
+def _incident_note(problem: dict) -> str:
+    """` in 1 incident` — without it a burst of runs reads as a problem that keeps coming back."""
+    n = problem.get("incidents")
+    return f" in {n} incident{'' if n == 1 else 's'}" if n else ""
+
+
 def _health_text(data: dict) -> str:
     """The report as lines, the way `traccoon_list_issues` answers — not as a wall of JSON.
 
@@ -769,7 +781,7 @@ def _health_text(data: dict) -> str:
                 + (f"{p['tool']} fails in {int(p['share'] * 100)} % of its calls "
                    f"({p['failed']} of {p['n']})"
                    if p["kind"] == "tool" else
-                   f"{p['n']}x {p['kind']} "
+                   f"{p['n']}x {p['kind']}{_incident_note(p)} "
                    f"({_statuses(p)}, runs {', '.join(str(r) for r in p['runs'])})"))
         if p["open_ticket"]:
             head += f" (already open as {p['open_ticket']})"
@@ -779,9 +791,10 @@ def _health_text(data: dict) -> str:
 
     if rest:
         out.append("")
-        out.append("For context only (provider, infrastructure, waiting for a person):")
+        out.append("For context only (provider, refused credentials, infrastructure, "
+                   "waiting for a person):")
         for p in rest:
-            out.append(f"- {p['agent']}: {p['n']}x {p['kind']}"
+            out.append(f"- {p['agent']}: {p['n']}x {p['kind']}{_incident_note(p)}"
                        + (f": {p['examples'][0]}" if p.get("examples") else ""))
     return "\n".join(out)
 

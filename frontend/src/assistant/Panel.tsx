@@ -272,7 +272,7 @@ export default function AssistantPanel({ compact = false }: { compact?: boolean 
         </div>
       )}
 
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-2.5">
+      <div ref={listRef} data-assistant="log" className="min-h-0 flex-1 overflow-y-auto p-2.5">
         {error && <div className="px-2 py-2 text-sm text-red-400">{error}</div>}
         {messages.length === 0 && !error && (
           <div className="px-2 py-6 text-center text-sm text-muted">
@@ -284,10 +284,11 @@ export default function AssistantPanel({ compact = false }: { compact?: boolean 
           // was ich geschrieben habe rechts, was der Assistent sagt links. Farbe
           // allein traegt das nicht — zwei gedaempfte Flaechen nebeneinander
           // sehen sehr aehnlich aus.
-          <div key={m.id} className="mb-3.5 flex flex-col items-start gap-1.5">
-            <div className="max-w-[85%] self-end whitespace-pre-wrap break-words rounded-lg
-                            rounded-br-sm border border-green-500/35 bg-green-500/15
-                            px-2.5 py-2 text-sm leading-relaxed text-ink">
+          <div key={m.id} data-assistant="turn" className="mb-3.5 flex flex-col items-start gap-1.5">
+            <div data-assistant="mine"
+              className="max-w-[85%] self-end whitespace-pre-wrap break-words rounded-lg
+                         rounded-br-sm border border-green-500/35 bg-green-500/15
+                         px-2.5 py-2 text-sm leading-relaxed text-ink">
               {m.text}
             </div>
 
@@ -320,8 +321,9 @@ export default function AssistantPanel({ compact = false }: { compact?: boolean 
             )}
 
             {m.result && (
-              <div className="max-w-[85%] self-start rounded-lg rounded-bl-sm border border-line
-                              border-l-[3px] border-l-brand bg-surface px-3 py-2.5 text-ink">
+              <div data-assistant="theirs"
+                className="max-w-[85%] self-start rounded-lg rounded-bl-sm border border-line
+                           border-l-[3px] border-l-brand bg-surface px-3 py-2.5 text-ink">
                 <Markdown text={m.result} />
               </div>
             )}

@@ -41,6 +41,8 @@ The other probes start the same way:
 | `account-calendar.mjs` | the calendars as a place of their own: a login per server with the calendars under it, editing that hands no password back out, adding as a button whose dialog asks the server what it has, and who may write set per calendar |
 | `assistant-steps.mjs` | what the assistant is doing while it does it: six lines open and the rest scrolling, the newest in view, a failed step marked, and the bubble giving way to the answer |
 | `assistant-everywhere.mjs` | the assistant from any page: the drawer opens, and what can be sent along comes from the page — the note in the notes, month/week/day in the calendar, the address everywhere else |
+| `assistant-column.mjs` | that the assistant takes a column of its own instead of covering the page |
+| `notes-header.mjs` | that the house's header stands above the note view at 1400 and 390 px, and that the assistant has one way in, not two |
 | `note-css.mjs` | whether the note stylesheet reaches the rest of the house (it is not even loaded there) and whether the house's reset takes the bullets off rendered markdown |
 | `note-bridge.mjs` | whether the note area still asks the bridge anything at all, and that the assistant panel talks to the house itself |
 | `note-tasks.mjs` | a block of the query language runs, a task ticked off in a result lands in its note, a recurring one comes back, and an out-of-date result does not write |

@@ -7,13 +7,13 @@ import AssistantPanel from "./Panel";
  * The assistant, from anywhere.
  *
  * It used to be a panel on one page, so asking it about a ticket meant leaving
- * the ticket. Here it is a drawer over whatever you are standing on: the page
- * stays where it is, and what that page can send along it says itself
- * (`context.tsx`).
+ * the ticket. Here it stands beside whatever you are standing on and slides in
+ * from the right; what that page can send along it says itself (`context.tsx`).
  *
- * Over everything, including the note view, which covers the header with its
- * own full-screen layer — hence a z-index above that rather than above the
- * ordinary page.
+ * Beside, not over: a panel that covers the page hides the very thing one is
+ * asking about, and the answer usually has to be compared with it. So it is a
+ * column of the layout and the content narrows by its width. Only on a phone
+ * does it lie on top — 380 of 390 pixels leave nothing to narrow.
  */
 
 const OPEN = "traccoon.assistant.open";
@@ -48,10 +48,24 @@ export function AssistantDrawer({ open, onClose }: { open: boolean; onClose: () 
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Slides in rather than appearing: the width goes from nothing to its own in
+  // one step after mounting, and the content beside it narrows along with it.
+  // Without the second render it would simply stand there, and a panel that
+  // pops into existence beside the text one is reading is a jump, not a move.
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    if (!open) { setWide(false); return; }
+    const id = requestAnimationFrame(() => setWide(true));
+    return () => cancelAnimationFrame(id);
+  }, [open]);
+
   if (!open) return null;
   return (
-    <aside className="fixed right-0 top-0 z-40 flex h-screen w-full max-w-[400px] flex-col
-                      border-l border-line bg-card shadow-xl sm:w-[380px]">
+    <aside className={`z-40 flex shrink-0 flex-col overflow-hidden border-l border-line
+                       bg-card transition-[width] duration-200 ease-out
+                       max-sm:fixed max-sm:right-0 max-sm:top-0 max-sm:h-screen max-sm:shadow-xl
+                       sm:sticky sm:top-0 sm:h-screen
+                       ${wide ? "w-full sm:w-[380px]" : "w-0"}`}>
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <span className="font-semibold text-ink">{tr("notes_assistant.name")}</span>
         <button type="button" onClick={onClose} title={tr("common.close")}

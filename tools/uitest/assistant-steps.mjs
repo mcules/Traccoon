@@ -49,26 +49,36 @@ try {
   await page.goto(`${BASIS}/notes`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1500);
   // Die rechte Leiste auf den Assistenten stellen.
-  const knopf = page.locator('[title*="ssistent"], button:has-text("Assistent")').first();
-  if (await knopf.count()) await knopf.click();
+  const knopf = page.locator('header button[title="Assistent"]').first();
+  await knopf.click();
   await page.waitForTimeout(3500);
 
-  const kasten = page.locator(".assistant-steps").first();
+  const kasten = page.locator('[data-assistant="steps"]').first();
   ok("die Schritte stehen in der Sprechblase", await kasten.count() > 0);
   if (await kasten.count()) {
-    const zeilen = await kasten.locator(".assistant-step").count();
+    const zeilen = await kasten.locator('[data-assistant="step"]').count();
     ok("alle Schritte sind da, nicht nur die sichtbaren", zeilen === 20, `${zeilen} Zeilen`);
+    // Nachgefuehrt wird nach dem Zeichnen; ein fester Wartewert misst mal davor
+    // und mal danach.
+    await kasten.evaluate((el) => new Promise((fertig) => {
+      const bis = Date.now() + 4000;
+      const schauen = () => {
+        if (el.scrollHeight - el.scrollTop - el.clientHeight < 40 || Date.now() > bis) fertig();
+        else requestAnimationFrame(schauen);
+      };
+      schauen();
+    }));
     const mass = await kasten.evaluate((el) => ({
       sichtbar: el.clientHeight, gesamt: el.scrollHeight,
       unten: el.scrollHeight - el.scrollTop - el.clientHeight,
-      zeile: el.querySelector(".assistant-step")?.getBoundingClientRect().height ?? 0,
+      zeile: el.querySelector('[data-assistant="step"]')?.getBoundingClientRect().height ?? 0,
     }));
     const passen = mass.zeile ? mass.sichtbar / mass.zeile : 0;
     ok("etwa sechs Zeilen stehen offen", passen > 5.2 && passen < 6.8, passen.toFixed(2));
     ok("der Rest laesst sich scrollen", mass.gesamt > mass.sichtbar + 20,
        `${mass.gesamt} > ${mass.sichtbar}`);
     ok("die neueste Zeile steht im Blick", mass.unten < 40, `${mass.unten}px vom Ende`);
-    const fehl = await kasten.locator(".assistant-step-mark.failed").count();
+    const fehl = await kasten.locator('[data-failed]').count();
     ok("ein misslungener Schritt ist zu erkennen", fehl === 1, `${fehl} markiert`);
   }
   await page.screenshot({ path: "/w/80-assistant-steps.png" });
@@ -81,19 +91,19 @@ try {
       created_at: new Date(Date.now() - 90_000).toISOString(),
       finished_at: new Date().toISOString() }], more: false } }));
   await page.waitForTimeout(4000);
-  ok("nach dem Ende ist die Sprechblase weg", await page.locator(".assistant-steps").count() === 0);
-  const antwort = await page.locator(".assistant-msg.theirs").first().innerText().catch(() => "");
+  ok("nach dem Ende ist die Sprechblase weg", await page.locator('[data-assistant="steps"]').count() === 0);
+  const antwort = await page.locator('[data-assistant="theirs"]').first().innerText().catch(() => "");
   ok("und die Antwort steht an ihrer Stelle", /nichts an/.test(antwort), antwort.slice(0, 60));
   await page.screenshot({ path: "/w/81-assistant-answer.png" });
 
   // Seiten wie in einem Messenger: meine Blase rechts, seine links, und keine
   // von beiden ueber die ganze Breite — sonst hat sie keine Seite mehr.
   const mass = await page.evaluate(() => {
-    const log = document.querySelector(".assistant-log");
+    const log = document.querySelector('[data-assistant="log"]');
     const box = (el) => el.getBoundingClientRect();
     const l = box(log);
-    const mein = document.querySelector(".assistant-msg.mine");
-    const seins = document.querySelector(".assistant-msg.theirs");
+    const mein = document.querySelector('[data-assistant="mine"]');
+    const seins = document.querySelector('[data-assistant="theirs"]');
     const farbe = (el) => getComputedStyle(el).backgroundColor;
     return {
       meinRechts: Math.round(l.right - box(mein).right),

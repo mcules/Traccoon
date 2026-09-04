@@ -1,25 +1,25 @@
 // The note workspace, `/notes`.
 //
-// ── Why it covers the screen, and how ───────────────────────────────────────────────────────
+// ── Why it is a frame and no longer a full screen ───────────────────────────────────────────
 //
-// Same model as `Office.tsx` and `WorkflowEditor.tsx`: an ordinary route inside
-// `<PageChromeProvider><Layout>` that renders `fixed inset-0 z-30`. Both halves matter and
-// neither is an oversight:
+// It used to render `fixed inset-0 z-30` after the model of `Office.tsx` and
+// `WorkflowEditor.tsx`, deliberately covering the house's header: a writing surface has its
+// own header, and a second row above it costs the room it needs.
 //
-//   · **`z-30` covers the header.** That one is `sticky top-0 z-10`, so anything below would
-//     lie under it instead of above it.
-//   · **No `usePageChrome`.** The hook cleans up when a page is left, so not calling it is
-//     what wipes the sub-menu of the previous page away. A writing surface has its own
-//     header anyway; a second row above it would only cost the room it needs.
+// Two things took that reason away. The assistant moved out of the note sidebar into the
+// house's header, so the row above is where one of the buttons now lives; and covering the
+// header meant the bell, the user menu and the project switcher were missing on exactly the
+// page one stands in longest. It also needed a measured pixel value for the phone, where the
+// header is not covered, and a magic number that must match a `sticky` element elsewhere is a
+// number that drifts.
 //
-// `RAIL_LEAVEBLANK` keeps the area rail free. A full screen with no way out is a trap, and
-// this is the area one stands in longest.
+// So it uses what the house already has for pages that fill the window: `frame` in
+// `usePageChrome`. The main area then becomes a column that ends at the lower edge, the page
+// fills it with `h-full`, and the header stays where it belongs. `wide` because a vault tree
+// beside an editor beside a sidebar is not a reading column.
 //
-// Below `md` there is no rail: the way to every other area is the burger in the header, and
-// the header is what a full screen covers. So on a phone this page starts under it instead
-// of over it. Measured rather than guessed: that header is 57px there. Without this the area
-// was exactly the trap the paragraph above is about, and worse, because the browser's back
-// button was the only way out.
+// The sub-menu row stays empty on purpose: the workspace carries its own tabs, and two rows
+// of tabs above each other is the picture the design guide is about.
 //
 // ── What is loaded here, and what is not ────────────────────────────────────────────────────
 //
@@ -28,18 +28,17 @@
 // that weight travels in the bundle of a page that never opens it. Vite gives a lazy chunk
 // its own CSS file, which is what makes the import below cost nothing anywhere else.
 //
-// It talks to `/api/notes-native/*`, which is this backend. It used to talk to a bridge
-// beside it that passed everything on to a service of its own; the last call moved off that
-// bridge on 2026-09-03, and the bridge is now waiting to be deleted rather than used.
+// It talks to `/api/notes-native/*`, which is this backend.
 import { Suspense, lazy } from "react";
-import { RAIL_LEAVEBLANK } from "../nav";
+import { usePageChrome } from "../pageChrome";
 import { Spinner } from "../components/ui";
 
 const Workbench = lazy(() => import("../notes/Workbench"));
 
 export default function Notes(): JSX.Element {
+  usePageChrome("", [], undefined, "top", { wide: true, frame: true });
   return (
-    <div className={`fixed inset-x-0 bottom-0 top-[57px] z-30 flex flex-col bg-surface md:top-0 ${RAIL_LEAVEBLANK}`}>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface">
       <Suspense fallback={<div className="p-6"><Spinner /></div>}>
         <Workbench />
       </Suspense>

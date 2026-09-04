@@ -5,7 +5,6 @@ import { useStore } from '../lib/store';
 import { api, type NoteMatches } from '../lib/api';
 import { outline } from '../lib/markdown';
 import TagsPanel from './TagsPanel';
-import AssistantPanel from '../../assistant/Panel';
 import Icon from './Icon';
 
 const MD_RE = /\.(md|markdown)$/i;
@@ -17,8 +16,11 @@ const TABS = [
   { id: 'tags', icon: 'hash', title: 'Tags' },
   { id: 'outline', icon: 'list', title: 'Gliederung' },
   { id: 'properties', icon: 'file-text', title: 'Eigenschaften' },
-  { id: 'assistant', icon: 'message-square', title: 'Assistent' },
 ] as const;
+
+// Der Assistent stand hier einmal als sechster Reiter. Er haengt jetzt im Kopf
+// des Hauses und geht ueber jeder Seite auf, auch ueber dieser — ein zweiter
+// Weg zu derselben Unterhaltung waere nur ein zweiter Ort, an dem man nachsieht.
 
 function Section({
   title,
@@ -332,7 +334,6 @@ export default function RightSidebar() {
       )}
       {rightPanel === 'outline' && <OutlinePanel />}
       {rightPanel === 'properties' && <PropertiesPanel />}
-      {rightPanel === 'assistant' && <AssistantPanel />}
     </div>
   );
 }

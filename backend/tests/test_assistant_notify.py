@@ -203,3 +203,56 @@ async def test_an_answer_belongs_to_the_person_who_asked(db, owner, monkeypatch)
     n = await _messages(db)
     assert n[0].user_id == owner.id
     assert n[0].assistant_task_id is not None
+
+
+# ── Der zweite Weg nach draussen: das Melde-Werkzeug des Assistenten ─────────
+
+async def _notify(db, owner, *, kind="chat", source="web", title="Frist am Freitag"):
+    """`traccoon_notify_human`, wie der Assistent es aufruft."""
+    from app.worker.tools_traccoon import call_traccoon_tool
+
+    t = AssistantTask(owner_user_id=owner.id, kind=kind, source=source, status="running",
+                      title="x", meta={})
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    out = await call_traccoon_tool(db, owner.id, "traccoon_notify_human",
+                                   {"title": title, "text": "Rechnung 240 € fällig"},
+                                   assistant_task_id=t.id)
+    assert out == "Gemeldet."
+    return t
+
+
+async def test_the_assistant_reporting_inside_a_chat_stays_in_the_house(db, owner):
+    """The second way out, and the one that survived the first fix.
+
+    `traccoon_notify_human` is the assistant's own "you have to know this". In a
+    conversation the person is sitting in front of the answer, so the messenger
+    would hand them the same thing a second time in a thread that never asked.
+    """
+    await _notify(db, owner, kind="chat", source="web")
+    n = await _messages(db)
+    assert len(n) == 1 and n[0].chat_id is None
+    assert n[0].user_id == owner.id and n[0].assistant_task_id is not None
+
+
+async def test_it_keeps_the_messenger_for_a_chat_from_telegram(db, owner):
+    await _notify(db, owner, kind="chat", source="telegram")
+    n = await _messages(db)
+    assert len(n) == 1 and n[0].chat_id == "123"
+
+
+async def test_it_keeps_the_messenger_for_background_work(db, owner):
+    """Working through a mail has no place it came from — there the messenger IS
+    the way, and that is the whole point of the tool."""
+    await _notify(db, owner, kind="email", source="ablauf:15")
+    n = await _messages(db)
+    assert len(n) == 1 and n[0].chat_id == "123"
+
+
+async def test_reporting_marks_the_item_so_the_closing_report_stays_silent(db, owner):
+    """Otherwise the person gets the same thing twice: once because the
+    assistant said it, once because the run ended."""
+    t = await _notify(db, owner, kind="email", source="ablauf:15")
+    await db.refresh(t)
+    assert t.notified is True

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { tr } from "../i18n";
 import type { Step } from "./api";
 
@@ -57,25 +57,60 @@ export default function Steps({ steps, name, since }: {
   since: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  // Whether the box has ever been put where it belongs. The first fill arrives
-  // as a full list, so the box is already scrollable and standing at the top —
-  // "is the reader at the bottom" would answer no and the newest line would
-  // never come into view at all.
-  const placed = useRef(false);
+  /**
+   * Where we last put it ourselves, or −1 for "not yet".
+   *
+   * The rule is not "is the reader at the bottom" but "has the reader moved".
+   * Those differ exactly when it matters: a batch of ten lines arrives at once,
+   * the box is suddenly two hundred pixels taller than the last position, and
+   * "at the bottom" answers no although nobody touched anything — from then on
+   * it stops following and the newest line is off screen for the rest of the
+   * run. Comparing against our own last position cannot be fooled by growth.
+   */
+  const put = useRef(-1);
   const lines = linesOf(steps);
 
   // Follow the newest line, but only while the reader is at the bottom:
   // scrolling up to read something and being yanked back down two seconds later
   // is worse than not following at all.
-  useEffect(() => {
+  //
+  // Before paint, and the "placed" mark only latches once the box can actually
+  // scroll. The panel opens as a drawer, so the first fill can arrive while the
+  // box has no height yet: scrolling it then does nothing, and a mark set on
+  // that measurement would keep it at the top for the rest of the run.
+  /** To the bottom, and remember that we were the ones who put it there. */
+  const follow = (el: HTMLDivElement) => {
+    el.scrollTop = el.scrollHeight;
+    put.current = el.scrollTop;
+  };
+
+  useLayoutEffect(() => {
     const el = box.current;
-    if (!el || !lines.length) return;
-    const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-    if (!placed.current || atEnd) {
-      el.scrollTop = el.scrollHeight;
-      placed.current = true;
-    }
-  }, [steps.length, lines.length]);
+    if (!el) return;
+    // Whether the reader has taken over. Not asked before the observer is set
+    // up: the first version returned here, so once the answer was "yes" nothing
+    // ever watched the box again and it stayed at the top for the rest of the
+    // run.
+    const mine = () => put.current < 0 || Math.abs(el.scrollTop - put.current) <= 1;
+    if (lines.length && mine()) follow(el);
+
+    // A width of its own is not something a reader can do. The panel slides in
+    // from nothing, and a scroll container that was zero pixels wide has its
+    // position reset to the top when it gets its width — which reads exactly
+    // like somebody scrolling up, and stopped the following for good. So a
+    // change of width hands the following back.
+    let width = el.clientWidth;
+    const watch = new ResizeObserver(() => {
+      if (el.clientWidth !== width) {
+        width = el.clientWidth;
+        put.current = -1;
+      }
+      if (lines.length && mine()) follow(el);
+    });
+    watch.observe(el);
+    const id = requestAnimationFrame(() => { if (lines.length && mine()) follow(el); });
+    return () => { cancelAnimationFrame(id); watch.disconnect(); };
+  });
 
   return (
     <div className="w-[95%] self-start rounded-lg rounded-bl-sm border border-line bg-surface
@@ -88,14 +123,15 @@ export default function Steps({ steps, name, since }: {
       {lines.length > 0 && (
         // Sechs Zeilen mal Zeilenhoehe, in em: die Zahl der sichtbaren Zeilen
         // bleibt, wenn jemand die Schrift groesser stellt.
-        <div ref={box}
+        <div ref={box} data-assistant="steps"
           className="mt-1.5 max-h-[9.6em] overflow-y-auto border-t border-line pt-1.5
                      text-[0.92em] leading-relaxed">
           {lines.map((l) => (
-            <div key={l.key} className="flex min-w-0 items-baseline gap-1.5">
+            <div key={l.key} data-assistant="step" className="flex min-w-0 items-baseline gap-1.5">
               {l.tool ? (
                 <>
-                  <span className={`w-3.5 shrink-0 ${l.ok === false ? "text-red-400" : "text-brand"}`}>
+                  <span data-failed={l.ok === false ? "1" : undefined}
+                    className={`w-3.5 shrink-0 ${l.ok === false ? "text-red-400" : "text-brand"}`}>
                     {l.ok === null ? "·" : l.ok ? "✓" : "✗"}
                   </span>
                   <span className="shrink-0 font-mono text-[0.95em]">{l.tool}</span>

@@ -387,11 +387,12 @@ export default function Layout({ children }: { children: ReactNode }) {
         </main>
         <UpdateFooter />
       </div>
+      {/* Eine Spalte, keine Ebene darueber: der Inhalt wird schmaler, statt
+          verdeckt zu werden. Es ist eine Unterhaltung, nicht eine je Seite, und
+          was mitgeschickt werden kann, sagt die Seite selbst. */}
+      <AssistantDrawer open={assistantOpen} onClose={() => setAssistantOpen(false)} />
       {/* Once for the whole app: a short message belongs over everything and to no page. */}
       <Toasts />
-      {/* The assistant likewise. It is one conversation, not one per page, and
-          the page it opens over says itself what it can send along. */}
-      <AssistantDrawer open={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   );
 }
