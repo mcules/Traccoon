@@ -39,6 +39,25 @@ try {
       return ab.left < mb.right - 2;   // Ueberlappung?
     });
     ok(`${seite}: es ueberlappt nichts`, !ueber);
+    // Die Breite laesst sich ziehen und bleibt gemerkt.
+    const griff = page.locator("aside [title='Breite ziehen']").first();
+    ok(`${seite}: es gibt einen Griff fuer die Breite`, await griff.count() === 1);
+    const kasten = await griff.boundingBox();
+    if (kasten) {
+      await page.mouse.move(kasten.x + 3, kasten.y + 300);
+      await page.mouse.down();
+      await page.mouse.move(kasten.x - 160, kasten.y + 300, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(500);
+      const gezogen = await breite(page, "aside[class*='border-l']");
+      ok(`${seite}: ziehen macht es breiter`, gezogen > panel + 120, `${panel} -> ${gezogen}px`);
+      const gemerkt = await page.evaluate(() =>
+        Number(localStorage.getItem("traccoon.assistant.width")));
+      ok(`${seite}: die Breite ist gemerkt`, Math.abs(gemerkt - gezogen) <= 2, `${gemerkt}px`);
+      const daneben = await breite(page, inhalt);
+      ok(`${seite}: der Inhalt gibt den Platz her`, daneben < nachher - 120,
+         `${nachher} -> ${daneben}px`);
+    }
     await page.screenshot({ path: `/w/96-assistent-spalte-${seite.slice(1)}.png` });
     await ctx.close();
   }

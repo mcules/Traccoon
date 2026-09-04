@@ -37,6 +37,19 @@ try {
     ok(`${breit}px: der Assistent sitzt in der Kopfzeile`, m.assistentKnopf);
     ok(`${breit}px: die Arbeitsflaeche beginnt darunter`, m.unten >= m.kopf - 2, `bei ${m.unten}px`);
     ok(`${breit}px: nichts laeuft seitlich ueber`, !m.querScroll);
+    // Buendig: die Notizansicht zeichnet ihre eigenen Raender. Ein Streifen
+    // Hintergrund zwischen Rahmen und Inhalt sieht wie ein Fehler aus.
+    const rand = await page.evaluate(() => {
+      const m = document.querySelector("main");
+      const erste = m?.firstElementChild;
+      if (!m || !erste) return null;
+      const mb = m.getBoundingClientRect(), eb = erste.getBoundingClientRect();
+      const s = getComputedStyle(m);
+      return { oben: Math.round(eb.top - mb.top), links: Math.round(eb.left - mb.left),
+               polster: `${s.paddingTop}/${s.paddingLeft}` };
+    });
+    ok(`${breit}px: kein Abstand oben`, rand && rand.oben === 0, `${rand?.oben}px (${rand?.polster})`);
+    ok(`${breit}px: kein Abstand links`, rand && rand.links === 0, `${rand?.links}px`);
     const reiter = await page.locator('[title="Assistent"]').count();
     ok(`${breit}px: kein zweiter Assistenten-Weg in der Notiz-Leiste`, reiter === 1, `${reiter} Knoepfe`);
     await page.screenshot({ path: `/w/95-notes-header-${breit}.png` });

@@ -3673,5 +3673,6 @@
   "notes_assistant.this_time": "This time",
   "notes_assistant.always": "Always",
   "notes_assistant.never": "Never",
-  "common.send": "Send"
+  "common.send": "Send",
+  "assistant.drag_width": "Drag to resize"
 }

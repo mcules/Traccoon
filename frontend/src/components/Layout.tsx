@@ -370,7 +370,8 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </header>
         {/* [&>*]:mx-auto centres bounded page columns; full width stays untouched. */}
-        <main className={`mx-auto w-full flex-1 p-3 [&>*]:mx-auto sm:p-5 ${
+        <main className={`mx-auto w-full flex-1 [&>*]:mx-auto ${
+          chrome.flush ? "" : "p-3 sm:p-5"} ${
           wide ? "" : "max-w-[1400px]"} ${
           frame ? "flex min-h-0 flex-col overflow-hidden" : ""}`}>
           {sideways ? (

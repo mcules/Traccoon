@@ -3673,5 +3673,6 @@
   "notes_assistant.this_time": "Diesmal",
   "notes_assistant.always": "Immer",
   "notes_assistant.never": "Nie",
-  "common.send": "Senden"
+  "common.send": "Senden",
+  "assistant.drag_width": "Breite ziehen"
 }

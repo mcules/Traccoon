@@ -19,7 +19,10 @@
 // beside an editor beside a sidebar is not a reading column.
 //
 // The sub-menu row stays empty on purpose: the workspace carries its own tabs, and two rows
-// of tabs above each other is the picture the design guide is about.
+// of tabs above each other is the picture the design guide is about. `flush` takes the main
+// area's padding away for the same reason: the tree stands against the left border and the
+// tab bar against the top one, so a strip of background between frame and content would look
+// like a mistake, and be one.
 //
 // ── What is loaded here, and what is not ────────────────────────────────────────────────────
 //
@@ -36,7 +39,7 @@ import { Spinner } from "../components/ui";
 const Workbench = lazy(() => import("../notes/Workbench"));
 
 export default function Notes(): JSX.Element {
-  usePageChrome("", [], undefined, "top", { wide: true, frame: true });
+  usePageChrome("", [], undefined, "top", { wide: true, frame: true, flush: true });
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface">
       <Suspense fallback={<div className="p-6"><Spinner /></div>}>

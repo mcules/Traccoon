@@ -17,6 +17,18 @@ import AssistantPanel from "./Panel";
  */
 
 const OPEN = "traccoon.assistant.open";
+const WIDTH = "traccoon.assistant.width";
+
+/** Wie schmal und wie breit es sinnvoll ist. Darunter passt keine Sprechblase
+ *  mehr neben ihren Rand, darueber bleibt vom Inhalt daneben nichts uebrig. */
+const MIN = 300;
+const MAX = 820;
+const STANDARD = 380;
+
+function gemerkteBreite(): number {
+  const raw = Number(localStorage.getItem(WIDTH));
+  return raw >= MIN && raw <= MAX ? raw : STANDARD;
+}
 
 export function useAssistantDrawer() {
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN) === "1");
@@ -59,13 +71,62 @@ export function AssistantDrawer({ open, onClose }: { open: boolean; onClose: () 
     return () => cancelAnimationFrame(id);
   }, [open]);
 
+  /**
+   * How wide, and remembered per device.
+   *
+   * How much room a conversation deserves next to the work depends on what one
+   * is doing at that machine, not on the conversation — the same reason the
+   * note panels are draggable. While the edge is being dragged the transition
+   * is off: an animation that chases the pointer lags a frame behind it and
+   * feels like the handle is loose.
+   */
+  const [breite, setBreite] = useState(gemerkteBreite);
+  const [zieht, setZieht] = useState(false);
+  // Die gemerkte Breite gilt nur, wo daneben noch Platz ist. Auf dem Handy
+  // liegt das Panel ueber allem und nimmt die ganze Breite — eine Zahl in
+  // Pixeln waere dort eine Einschraenkung ohne Zweck. Ein Inline-Wert schlaegt
+  // jede Klasse, also wird er dort gar nicht erst gesetzt.
+  const [breit_genug, setBreitGenug] = useState(
+    () => window.matchMedia("(min-width: 640px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)");
+    const merken = () => setBreitGenug(mq.matches);
+    mq.addEventListener("change", merken);
+    return () => mq.removeEventListener("change", merken);
+  }, []);
+  const ziehen = (start: React.PointerEvent) => {
+    start.preventDefault();
+    setZieht(true);
+    const von = start.clientX;
+    const ab = breite;
+    const bewegen = (e: PointerEvent) => {
+      // Nach links ziehen macht breiter: der Rand liegt auf der linken Seite.
+      const neu = Math.min(MAX, Math.max(MIN, ab + (von - e.clientX)));
+      setBreite(neu);
+    };
+    const los = () => {
+      setZieht(false);
+      window.removeEventListener("pointermove", bewegen);
+      window.removeEventListener("pointerup", los);
+      setBreite((b) => { localStorage.setItem(WIDTH, String(b)); return b; });
+    };
+    window.addEventListener("pointermove", bewegen);
+    window.addEventListener("pointerup", los);
+  };
+
   if (!open) return null;
   return (
-    <aside className={`z-40 flex shrink-0 flex-col overflow-hidden border-l border-line
-                       bg-card transition-[width] duration-200 ease-out
-                       max-sm:fixed max-sm:right-0 max-sm:top-0 max-sm:h-screen max-sm:shadow-xl
-                       sm:sticky sm:top-0 sm:h-screen
-                       ${wide ? "w-full sm:w-[380px]" : "w-0"}`}>
+    <aside
+      style={{ width: !wide ? 0 : breit_genug ? breite : undefined }}
+      className={`relative z-40 flex shrink-0 flex-col overflow-hidden border-l border-line
+                  bg-card ${zieht ? "" : "transition-[width] duration-200 ease-out"}
+                  max-sm:fixed max-sm:right-0 max-sm:top-0 max-sm:h-screen max-sm:shadow-xl
+                  sm:sticky sm:top-0 sm:h-screen ${wide ? "w-full" : "w-0"}`}>
+      {/* Der Griff liegt auf der Kante und ist breiter als die Linie, die man
+          sieht: eine Kante von einem Pixel trifft niemand. */}
+      <div onPointerDown={ziehen} title={tr("assistant.drag_width")}
+        className="absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize
+                   hover:bg-brand/40 sm:block" />
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
         <span className="font-semibold text-ink">{tr("notes_assistant.name")}</span>
         <button type="button" onClick={onClose} title={tr("common.close")}

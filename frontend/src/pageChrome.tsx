@@ -20,8 +20,13 @@ export type ChromeLayout = "top" | "side";
  * other two along. A board wants only the first: it is wide, and it grows downwards like
  * every list one reads through. They used to be one flag, and a page that wanted the width
  * got a frame with it, which cuts off everything that does not scroll inside on its own.
+ *
+ * `flush` takes the padding of the main area away. For a page that draws its own edges — the
+ * note workspace has a tree against the left border and a tab bar against the top one — that
+ * padding is a strip of background between the frame and its content, and it looks exactly
+ * like a mistake because it is one.
  */
-export type ChromeShape = { wide?: boolean; frame?: boolean };
+export type ChromeShape = { wide?: boolean; frame?: boolean; flush?: boolean };
 type Chrome = { title: string; tabs: ChromeTab[]; active?: string; layout?: ChromeLayout }
               & ChromeShape;
 
@@ -49,9 +54,9 @@ export function usePageChrome(title: string, tabs: ChromeTab[], active?: string,
                               layout: ChromeLayout = "top", shape: ChromeShape = {}): void {
   const { setChrome } = useChrome();
   const tabsKey = JSON.stringify(tabs);
-  const { wide = false, frame = false } = shape;
+  const { wide = false, frame = false, flush = false } = shape;
   useEffect(() => {
-    setChrome({ title, tabs, active, layout, wide, frame });
+    setChrome({ title, tabs, active, layout, wide, frame, flush });
     // Reset on leaving. Formerly the assumption stood here that the next page overwrites the
     // state anyway, but that only holds for pages that use the hook. On the start page, in
     // the inbox and in the editor the sub-menu of the last visited page therefore stayed.
@@ -59,5 +64,5 @@ export function usePageChrome(title: string, tabs: ChromeTab[], active?: string,
     // a sub-menu does not flicker.
     return () => setChrome({ title: "", tabs: [] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, tabsKey, active, layout, wide, frame]);
+  }, [title, tabsKey, active, layout, wide, frame, flush]);
 }
