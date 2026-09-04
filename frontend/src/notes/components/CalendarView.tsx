@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { tr, language } from "../../i18n";
 import { api, type CalEvent } from '../lib/api';
 import { useStore } from '../lib/store';
+import { useAssistantOffer } from '../../assistant/context';
 import Icon from './Icon';
 import EventDialog, { type EventDraft } from './EventDialog';
 import TimeGrid from './TimeGrid';
@@ -111,6 +112,31 @@ export default function CalendarView() {
   );
 
   const shown = useMemo(() => events.filter((e) => !hidden.includes(e.calendar)), [events, hidden]);
+
+  // Was der Kalender dem Assistenten mitgeben kann. Drei Angebote statt eines
+  // Hakens: „was steht diese Woche an" und „was steht heute an" sind zwei
+  // verschiedene Fragen, und der ganze Monat ist fuer die meisten davon zu
+  // viel. Ausgeschaltete Kalender bleiben draussen — was man nicht sieht, will
+  // man auch nicht mitschicken.
+  const span = (from: Date, to: Date, what: string) => {
+    const lines = shown
+      .filter((e) => e.date >= iso(from) && e.date <= iso(to))
+      .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')))
+      .map((e) => `- ${e.date}${e.time ? ' ' + e.time : ''} ${e.title}`
+        + (e.location ? ` (${e.location})` : ''));
+    return tr('assistant.i_see_calendar', { what, list: lines.join('\n') || '—' });
+  };
+  useAssistantOffer([
+    { key: 'cal-month', rank: 30, label: tr('assistant.this_month'),
+      get: () => span(new Date(anchor.getFullYear(), anchor.getMonth(), 1),
+                      new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0),
+                      tr('assistant.this_month')) },
+    { key: 'cal-week', rank: 30, label: tr('assistant.this_week'),
+      get: () => span(startOfWeek(anchor), addDays(startOfWeek(anchor), 6),
+                      tr('assistant.this_week')) },
+    { key: 'cal-day', rank: 30, label: tr('assistant.this_day'),
+      get: () => span(anchor, anchor, tr('assistant.this_day')) },
+  ]);
 
   const byDay = useMemo(() => {
     const m = new Map<string, CalEvent[]>();

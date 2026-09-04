@@ -1016,9 +1016,24 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             title = (label if is_chat else f"{label}: {t.title}") + (
                 " — Fehler" if status == "error"
                 else " — a question" if question_open and not is_chat else "")
+            # An answer goes back where the question was asked. The Telegram
+            # conversation is its own: pushing the answer to something typed in
+            # the browser into that thread drops it into a conversation that
+            # never asked, and the person reads it twice. A report the assistant
+            # makes on its own has no place it came from — that is the one case
+            # the notify mode above is about, and it keeps the messenger.
+            to_chat = owner.telegram_chat_id if owner else None
+            if is_chat and t.source != "telegram":
+                to_chat = None
             db.add(Notification(kind="assistant", title=title[:200],
                                 body=(err if status == "error" else out)[:4000],
-                                chat_id=owner.telegram_chat_id if owner else None))
+                                # Whose answer it is. Without this the row counts
+                                # as everybody's (`user_id IS NULL` is the "for
+                                # all" case in the bell), so a second person
+                                # would read the first one's conversation.
+                                user_id=owner_id,
+                                assistant_task_id=t.id,
+                                chat_id=to_chat))
         elif not t.notified:
             # Done quietly: the result stands in the assistant's inbox. As an unread bell
             # entry without a chat id it would be noise, so nothing at all.

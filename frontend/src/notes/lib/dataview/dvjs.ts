@@ -15,7 +15,7 @@ import { tr } from "../../../i18n";
 import { api, type DvRawPage } from '../api';
 import { useStore } from '../store';
 import { getActiveEditor } from '../activeEditor';
-import { listFoldState as listFoldStateRef, setListFolds } from '../livePreview';
+import { listFoldState as listFoldStateRef, setListFolds } from '../listFolds';
 import { DvDateTime, DvDurationValue, DvLinkValue, revive } from './values';
 import { errorEl } from './render';
 import { inlineMarkdown, valueHtml, wireInternalLinks } from './format';

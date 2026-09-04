@@ -25,6 +25,7 @@ import {
   inlineFieldRegex,
 } from './dataview';
 import { api } from './api';
+import { listFoldState, setListFolds, toggleListFold } from './listFolds';
 import { renderDrawingEmbeds } from './excalidrawEmbed';
 
 /**
@@ -614,24 +615,8 @@ function linkifyEditable(el: HTMLElement): void {
 }
 
 /* ---------------- folding list items (like the predecessor's collapse arrow) ------ */
-
-/** Toggle the fold of the list item whose line starts at this position. */
-export const toggleListFold = StateEffect.define<number>();
-
-/** Replace the whole fold set — used by note scripts that fold on render. */
-export const setListFolds = StateEffect.define<readonly number[]>();
-
-export const listFoldState = StateField.define<readonly number[]>({
-  create: () => [],
-  update(value, tr) {
-    let v = tr.docChanged ? value.map((p) => tr.changes.mapPos(p, 1)) : [...value];
-    for (const e of tr.effects) {
-      if (e.is(toggleListFold)) v = v.includes(e.value) ? v.filter((x) => x !== e.value) : [...v, e.value];
-      else if (e.is(setListFolds)) v = [...e.value];
-    }
-    return v;
-  },
-});
+/* Der Zustand selbst steht in `listFolds` — ein Blattmodul, weil auch die
+   Notiz-Skripte ihn brauchen und der Weg dorthin sonst im Kreis lief. */
 
 const LIST_MARKER_RE = /^(\s*)(?:[-*+]|\d{1,9}[.)])\s/;
 const FOLD_HEADING_RE = /^(#{1,6})\s+\S/;
@@ -3524,3 +3509,5 @@ export const livePreviewTheme = EditorView.baseTheme({
   '.cm-html-block ul, .cm-html-block ol': { paddingLeft: '1.4em', margin: '2px 0' },
   '.cm-html-block a': { color: 'var(--text-accent)', textDecoration: 'underline', cursor: 'pointer' },
 });
+
+export { listFoldState, setListFolds, toggleListFold } from './listFolds';

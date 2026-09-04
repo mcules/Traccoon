@@ -11,6 +11,8 @@ import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
 import UpdateFooter from "./UpdateFooter";
 import { Toasts } from "../toast";
+import { AssistantButton, AssistantDrawer, useAssistantDrawer } from "../assistant/Drawer";
+import { useAssistantOffer } from "../assistant/context";
 
 // Project title (name plus subtitle), at the same time a quick switcher. On project pages it
 // shows the current project; otherwise a compact "projects ▾". A click opens the project list.
@@ -307,6 +309,7 @@ function UserMenu() {
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { chrome } = useChrome();
+  const { open: assistantOpen, setOpen: setAssistantOpen } = useAssistantDrawer();
   // Here and not in the rail: the rail is not drawn on a phone, and the tab title is the one
   // place that has nothing to do with how wide the window is.
   useMailInTitle(useMailCounter());
@@ -315,6 +318,19 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isActive = (t: ChromeTab) => chrome.active ? t.key === chrome.active
     : (loc.pathname === t.to || current === t.to);
   const onProjectPage = /^\/projects\//.test(loc.pathname);
+
+  // Was jede Seite mitgeben kann, ohne selbst etwas dafuer zu tun: wo sie
+  // steht und wie sie heisst. Wenig, aber nie falsch — und eine neue Seite
+  // muss dafuer nichts anmelden. Seiten mit etwas Besserem (die Notizen, der
+  // Kalender) melden ihr Angebot an und ueberschreiben diesen Eintrag.
+  useAssistantOffer([{
+    key: "page",
+    label: tr("assistant.send_page"),
+    get: () => {
+      const title = chrome.title || document.title;
+      return tr("assistant.i_am_on", { title, path: loc.pathname });
+    },
+  }]);
   // On the project list itself the switcher would be a second, smaller copy of the page.
   const onProjectList = loc.pathname === "/projects";
   const sideways = chrome.layout === "side" && chrome.tabs.length > 0;
@@ -348,6 +364,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <div className="hidden sm:block"><AgentsBadge /></div>
+            <AssistantButton open={assistantOpen} onClick={() => setAssistantOpen(!assistantOpen)} />
             <NotificationBell />
             <UserMenu />
           </div>
@@ -372,6 +389,9 @@ export default function Layout({ children }: { children: ReactNode }) {
       </div>
       {/* Once for the whole app: a short message belongs over everything and to no page. */}
       <Toasts />
+      {/* The assistant likewise. It is one conversation, not one per page, and
+          the page it opens over says itself what it can send along. */}
+      <AssistantDrawer open={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   );
 }

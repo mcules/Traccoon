@@ -85,6 +85,33 @@ try {
   const antwort = await page.locator(".assistant-msg.theirs").first().innerText().catch(() => "");
   ok("und die Antwort steht an ihrer Stelle", /nichts an/.test(antwort), antwort.slice(0, 60));
   await page.screenshot({ path: "/w/81-assistant-answer.png" });
+
+  // Seiten wie in einem Messenger: meine Blase rechts, seine links, und keine
+  // von beiden ueber die ganze Breite — sonst hat sie keine Seite mehr.
+  const mass = await page.evaluate(() => {
+    const log = document.querySelector(".assistant-log");
+    const box = (el) => el.getBoundingClientRect();
+    const l = box(log);
+    const mein = document.querySelector(".assistant-msg.mine");
+    const seins = document.querySelector(".assistant-msg.theirs");
+    const farbe = (el) => getComputedStyle(el).backgroundColor;
+    return {
+      meinRechts: Math.round(l.right - box(mein).right),
+      meinLinks: Math.round(box(mein).left - l.left),
+      seinLinks: Math.round(box(seins).left - l.left),
+      seinRechts: Math.round(l.right - box(seins).right),
+      meinBreit: box(mein).width / l.width,
+      farbenGleich: farbe(mein) === farbe(seins),
+    };
+  });
+  ok("meine Blase steht rechts", mass.meinRechts < mass.meinLinks,
+     `${mass.meinRechts}px vom rechten, ${mass.meinLinks}px vom linken Rand`);
+  ok("seine Blase steht links", mass.seinLinks < mass.seinRechts,
+     `${mass.seinLinks}px vom linken, ${mass.seinRechts}px vom rechten Rand`);
+  ok("keine Blase nimmt die ganze Breite", mass.meinBreit < 0.9,
+     `${Math.round(mass.meinBreit * 100)} %`);
+  ok("die beiden sind farblich zu unterscheiden", !mass.farbenGleich);
+  await page.screenshot({ path: "/w/82-assistant-seiten.png" });
 } catch (e) {
   ok("durchgelaufen", false, String(e).slice(0, 220));
 } finally {

@@ -26,6 +26,7 @@ const Office = lazy(() => import("./pages/Office"));
 const ConfigAudit = lazy(() => import("./pages/ConfigAudit"));
 import Layout from "./components/Layout";
 import { PageChromeProvider } from "./pageChrome";
+import { AssistantContextProvider } from "./assistant/context";
 
 /**
  * Addresses of the old shape, kept alive.
@@ -128,6 +129,9 @@ export default function App() {
 
   return (
     <PageChromeProvider>
+      {/* Ueber dem Layout, weil auch Seiten ausserhalb davon (die Notizansicht
+          deckt die Kopfzeile mit einer eigenen Ebene ab) ihr Angebot anmelden. */}
+      <AssistantContextProvider>
       <Layout>
         <Routes>
         <Route path="/" element={<Dashboard />} />
@@ -177,6 +181,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
+      </AssistantContextProvider>
     </PageChromeProvider>
   );
 }

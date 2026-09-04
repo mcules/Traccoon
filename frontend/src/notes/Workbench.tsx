@@ -12,6 +12,7 @@ import { loadVaultSnippets } from './lib/snippets';
 import Ribbon from './components/Ribbon';
 import Sidebar from './components/Sidebar';
 import RightSidebar from './components/RightSidebar';
+import NoteOffer from './components/NoteOffer';
 import Workspace from './components/Workspace';
 import CommandPalette from './components/CommandPalette';
 import TemplatePicker from './components/TemplatePicker';
@@ -423,6 +424,7 @@ export default function App() {
         <Ribbon />
         {showLeft && <Sidebar />}
         <Workspace />
+        <NoteOffer />
         {showRight && <RightSidebar />}
         {/* Always mounted on a phone: while a drawer is being dragged it has to
             darken gradually, which it cannot do if it appears only once open. */}

@@ -1,7 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { tr } from '../../i18n';
-import type { AssistantStep } from '../lib/api';
-import Icon from './Icon';
+import { useEffect, useRef } from "react";
+import { tr } from "../i18n";
+import type { Step } from "./api";
 
 /**
  * What the assistant is doing while it does it.
@@ -28,18 +27,18 @@ type Line = {
 /** Steps into lines. A tool's result belongs to the call it answers, so it
  *  marks that line rather than making one of its own — otherwise every call
  *  would take two lines and the six that fit would show three calls. */
-export function linesOf(steps: AssistantStep[]): Line[] {
+export function linesOf(steps: Step[]): Line[] {
   const out: Line[] = [];
   for (const s of steps) {
-    if (s.kind === 'agent_text') {
+    if (s.kind === "agent_text") {
       if (s.text.trim()) out.push({ key: `t${s.seq}`, text: s.text.trim() });
       continue;
     }
-    if (s.kind === 'tool_start') {
+    if (s.kind === "tool_start") {
       out.push({ key: `s${s.seq}`, tool: s.tool, label: s.label, ok: null, ms: null });
       continue;
     }
-    if (s.kind === 'tool_result') {
+    if (s.kind === "tool_result") {
       // The nearest call of the same tool that has not been answered yet.
       for (let i = out.length - 1; i >= 0; i--) {
         if (out[i].tool === s.tool && out[i].ok === null) {
@@ -52,12 +51,8 @@ export function linesOf(steps: AssistantStep[]): Line[] {
   return out;
 }
 
-export default function AssistantSteps({
-  steps,
-  name,
-  since,
-}: {
-  steps: AssistantStep[];
+export default function Steps({ steps, name, since }: {
+  steps: Step[];
   name: string;
   since: string;
 }) {
@@ -83,26 +78,33 @@ export default function AssistantSteps({
   }, [steps.length, lines.length]);
 
   return (
-    <div className="assistant-msg working">
-      <div className="assistant-working-head">
-        <Icon name="refresh-cw" size={13} style={{ animation: 'spin 1s linear infinite' }} />
-        {tr('notes_assistant.thinking', { name })}
+    <div className="w-[95%] self-start rounded-lg rounded-bl-sm border border-line bg-surface
+                    px-2.5 py-2 text-sm text-muted">
+      <div className="flex items-center gap-1.5">
+        <span className="inline-block animate-spin">↻</span>
+        {tr("notes_assistant.thinking", { name })}
         {since}
       </div>
       {lines.length > 0 && (
-        <div className="assistant-steps" ref={box}>
+        // Sechs Zeilen mal Zeilenhoehe, in em: die Zahl der sichtbaren Zeilen
+        // bleibt, wenn jemand die Schrift groesser stellt.
+        <div ref={box}
+          className="mt-1.5 max-h-[9.6em] overflow-y-auto border-t border-line pt-1.5
+                     text-[0.92em] leading-relaxed">
           {lines.map((l) => (
-            <div key={l.key} className="assistant-step">
+            <div key={l.key} className="flex min-w-0 items-baseline gap-1.5">
               {l.tool ? (
                 <>
-                  <span className={`assistant-step-mark${l.ok === false ? ' failed' : ''}`}>
-                    {l.ok === null ? '·' : l.ok ? '✓' : '✗'}
+                  <span className={`w-3.5 shrink-0 ${l.ok === false ? "text-red-400" : "text-brand"}`}>
+                    {l.ok === null ? "·" : l.ok ? "✓" : "✗"}
                   </span>
-                  <span className="assistant-step-tool">{l.tool}</span>
-                  {l.label && <span className="assistant-step-label">{l.label}</span>}
+                  <span className="shrink-0 font-mono text-[0.95em]">{l.tool}</span>
+                  {l.label && (
+                    <span className="min-w-0 truncate text-muted/70">{l.label}</span>
+                  )}
                 </>
               ) : (
-                <span className="assistant-step-text">{l.text}</span>
+                <span className="break-words text-ink">{l.text}</span>
               )}
             </div>
           ))}

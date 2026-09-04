@@ -4,7 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
-import AssistantChat from "../components/AssistantChat";
+// Eine Umsetzung, nicht zwei: derselbe Bereich, der auch im Schubfach
+// und in der Notizansicht steht.
+import AssistantPanel from "../assistant/Panel";
 import {
   Area, Tag, Errorrow, Listing, ListingEmpty, ListRow, Tab, BUTTON } from "../components/ui";
 import { usePageChrome } from "../pageChrome";
@@ -62,7 +64,7 @@ export default function Inbox() {
           ["statistik", tr("inbox.statistics")],
         ]} />
       </div>
-      {tab === "chat" ? <AssistantChat />
+      {tab === "chat" ? <div className="h-[70vh]"><AssistantPanel /></div>
         : tab === "inbox" ? <InboxList />
         : tab === "statistik" ? <Stats />
         : <AssistantPolicies />}

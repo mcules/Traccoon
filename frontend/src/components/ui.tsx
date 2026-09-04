@@ -18,6 +18,7 @@ import { tr } from "../i18n";
 export const ICON = {
   fresh: "＋", edit: "✏️", remove: "🗑️", testing: "🧪", start: "▶️",
   again: "↻", standard: "⭐", copy: "⧉", back: "↩", open: "↗",
+  archive: "🗄️", assistant: "💬",
 } as const;
 
 /**

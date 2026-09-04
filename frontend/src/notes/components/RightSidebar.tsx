@@ -5,7 +5,7 @@ import { useStore } from '../lib/store';
 import { api, type NoteMatches } from '../lib/api';
 import { outline } from '../lib/markdown';
 import TagsPanel from './TagsPanel';
-import AssistantPanel from './AssistantPanel';
+import AssistantPanel from '../../assistant/Panel';
 import Icon from './Icon';
 
 const MD_RE = /\.(md|markdown)$/i;

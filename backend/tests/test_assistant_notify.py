@@ -16,9 +16,10 @@ from sqlalchemy import select
 
 async def _run(db, monkeypatch, *, owner: User, kind: str = "email",
                 status: str = "done", reports: bool = False, title: str = "Bestellung 123",
-                blocker_kind: str | None = None):
+                blocker_kind: str | None = None, source="web"):
     """Let an assistant item run through; `meldet` = the agent calls notify_human."""
     t = AssistantTask(owner_user_id=owner.id, kind=kind, title=title, status="approved",
+                      source=source,
                       redacted_summary="Zusammenfassung", meta={"chat_text": "Wie spät?"})
     db.add(t)
     await db.commit()
@@ -157,3 +158,48 @@ async def test_the_notify_tool_needs_no_grant(db, owner):
     then important things would stay mute as well."""
     from app.worker.runtime import _ALWAYS_ALLOWED
     assert "traccoon_notify_human" in _ALWAYS_ALLOWED
+
+
+# ── Wohin eine Antwort geht ──────────────────────────────────────────────────
+
+async def test_a_chat_from_the_browser_does_not_land_in_telegram(db, owner, monkeypatch):
+    """An answer goes back where the question was asked.
+
+    The Telegram conversation is its own. Pushing the answer to something typed
+    in the browser into that thread drops it into a conversation that never
+    asked, and the person reads the same answer twice — once in the panel that
+    is already showing it, once on their phone.
+    """
+    await _run(db, monkeypatch, owner=owner, kind="chat", source="web")
+    n = await _messages(db)
+    assert len(n) == 1
+    assert n[0].chat_id is None, "went to Telegram although it was asked in the browser"
+    # The bell still gets it: whoever asked and walked away should learn that the
+    # answer is there.
+    assert n[0].user_id == owner.id
+
+
+async def test_a_chat_from_telegram_is_answered_in_telegram(db, owner, monkeypatch):
+    await _run(db, monkeypatch, owner=owner, kind="chat", source="telegram")
+    n = await _messages(db)
+    assert len(n) == 1 and n[0].chat_id == "123"
+
+
+async def test_a_report_of_its_own_keeps_the_messenger(db, owner, monkeypatch):
+    """The one case with no place it came from: the assistant working through a
+    mail and finding something worth knowing. That is what the notify mode is
+    for, and it reaches the person wherever they are."""
+    owner.assistant_notify = "always"
+    await db.commit()
+    await _run(db, monkeypatch, owner=owner, kind="email", source="ablauf:15")
+    n = await _messages(db)
+    assert len(n) == 1 and n[0].chat_id == "123"
+
+
+async def test_an_answer_belongs_to_the_person_who_asked(db, owner, monkeypatch):
+    """`user_id IS NULL` is the "for everybody" case in the bell, so a chat
+    answer without an owner would be readable by the next person."""
+    await _run(db, monkeypatch, owner=owner, kind="chat", source="web")
+    n = await _messages(db)
+    assert n[0].user_id == owner.id
+    assert n[0].assistant_task_id is not None
