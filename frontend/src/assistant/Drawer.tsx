@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { ICON } from "../components/ui";
+import { HEADER_ROW } from "../nav";
 import AssistantPanel from "./Panel";
 
 /**
@@ -127,7 +128,8 @@ export function AssistantDrawer({ open, onClose }: { open: boolean; onClose: () 
       <div onPointerDown={ziehen} title={tr("assistant.drag_width")}
         className="absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize
                    hover:bg-brand/40 sm:block" />
-      <div className="flex items-center justify-between border-b border-line px-3 py-2">
+      {/* Dieselbe Zeilenhoehe wie die Kopfzeile des Hauses daneben. */}
+      <div data-assistant="head" className={`justify-between ${HEADER_ROW}`}>
         <span className="font-semibold text-ink">{tr("notes_assistant.name")}</span>
         <button type="button" onClick={onClose} title={tr("common.close")}
           aria-label={tr("common.close")} className="px-2 text-muted hover:text-ink">✕</button>

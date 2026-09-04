@@ -75,3 +75,17 @@ export function isArea(path: string, to: string): boolean {
   if (to === "/") return path === "/";
   return path === to || path.startsWith(to + "/");
 }
+
+
+/**
+ * The top row: the house's header, and every column that carries one of its own
+ * beside it.
+ *
+ * The assistant stands as a column next to the page and has its own head. Two
+ * heads of different heights side by side is a stepped edge across the whole
+ * window, and it reads as an accident because it is one. The height stands here
+ * once instead of coming out of whatever each of them happens to contain: 57
+ * pixels on a phone, where the burger sets the pace, 49 above that.
+ */
+export const HEADER_ROW =
+  "flex h-[57px] shrink-0 items-center border-b border-line bg-card px-3 sm:h-[49px] sm:px-5";

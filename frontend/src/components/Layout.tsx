@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Project } from "../api";
 import { useAuth } from "../auth";
 import { useChrome, type ChromeTab } from "../pageChrome";
-import { primaryNavigation, dashboardEntry, isArea, RAIL_WIDTH, type NavEntry } from "../nav";
+import { primaryNavigation, dashboardEntry, isArea, HEADER_ROW, RAIL_WIDTH, type NavEntry } from "../nav";
 import { pluginNav, usePlugins } from "../plugins";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
@@ -344,7 +344,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className={`flex ${frame ? "h-full" : "min-h-full"}`}>
       <AreaRail />
       <div className={`flex min-w-0 flex-1 flex-col ${frame ? "min-h-0" : ""}`}>
-        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
+        <header className={`sticky top-0 z-10 gap-2 sm:gap-3 relative ${HEADER_ROW}`}>
           {/* On the left: the menu (on mobile) plus project title/switcher or page title */}
           <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
             <MobileMenu />

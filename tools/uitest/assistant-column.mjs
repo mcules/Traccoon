@@ -39,6 +39,22 @@ try {
       return ab.left < mb.right - 2;   // Ueberlappung?
     });
     ok(`${seite}: es ueberlappt nichts`, !ueber);
+    // Zwei Kopfzeilen nebeneinander muessen dieselbe Kante haben: eine Stufe
+    // quer durchs Fenster liest sich als Versehen.
+    const kanten = await page.evaluate(() => {
+      const h = document.querySelector("header");
+      const a = document.querySelector('[data-assistant="head"]');
+      if (!h || !a) return null;
+      const hb = h.getBoundingClientRect(), ab = a.getBoundingClientRect();
+      return { haus: Math.round(hb.height), panel: Math.round(ab.height),
+               oben: Math.round(Math.abs(hb.top - ab.top)),
+               unten: Math.round(Math.abs(hb.bottom - ab.bottom)) };
+    });
+    ok(`${seite}: beide Kopfzeilen sind gleich hoch`,
+       kanten && kanten.haus === kanten.panel, `${kanten?.haus} vs ${kanten?.panel}px`);
+    ok(`${seite}: sie stehen auf einer Linie`,
+       kanten && kanten.oben === 0 && kanten.unten === 0,
+       `oben ${kanten?.oben}px, unten ${kanten?.unten}px`);
     // Die Breite laesst sich ziehen und bleibt gemerkt.
     const griff = page.locator("aside [title='Breite ziehen']").first();
     ok(`${seite}: es gibt einen Griff fuer die Breite`, await griff.count() === 1);
