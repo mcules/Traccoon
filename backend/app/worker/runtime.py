@@ -523,8 +523,12 @@ class AgentDef:
     # Thinking shares `max_tokens` with the visible answer, so whoever has much to read but
     # little to write (the reviewer) is safer with a lower level.
     effort: str = ""
-    # The same model at up to two and a half times the output speed, at twice the price.
-    # Off unless somebody is waiting in front of the answer.
+    # MAY this agent use fast mode — not whether this run does. The same model at up to two
+    # and a half times the output speed, at twice the price, and out of a rate limit of its
+    # own. That limit is the reason the two are separate: the assistant answers a person in
+    # a chat AND works through mail, jobs and webhooks, and only the first of those has
+    # anybody waiting. Background work must not spend the allowance the waiting one needs.
+    # `run_agent(waited_for=True)` is the second half, and its default is the safe one.
     fast: bool = False
     # Tool groups that are in the prompt from the first turn. Everything else the allowlist
     # permits waits in the catalogue for `load_tools`. Empty is the normal case.
@@ -1098,7 +1102,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     parent_run_id: int | None = None, parent_tool_use_id: str | None = None,
                     task_id: str = "", speak: str = "",
                     depth: int = 0, delegate_loader=None,
-                    assistant_task_id: int | None = None) -> RunResult:
+                    assistant_task_id: int | None = None,
+                    waited_for: bool = False) -> RunResult:
     permissions = permissions or []
     tokens = tokens or {}
     base_urls = base_urls or {}
@@ -1416,7 +1421,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              fallback_model=agent.fallback_model,
                                              web_search=agent.web_search, tokens=tokens,
                                              base_urls=base_urls, effort=agent.effort,
-                                             fast=agent.fast)
+                                             fast=agent.fast and waited_for)
                 except ProviderError as exc:
                     await log_line("system", None, f"Provider error: {exc}", kind="system")
                     # The turns so far are paid for even when the last one failed. Without the

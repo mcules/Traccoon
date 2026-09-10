@@ -193,7 +193,7 @@ def test_fast_mode_reaches_the_request_as_all_three_parts() -> None:
 
 def test_the_switch_sits_on_the_agent_and_is_off() -> None:
     """Twice the price is not a default. It goes on where somebody waits in front of the
-    answer, and nowhere else."""
+    answer, and nowhere else — see the second half of the gate below."""
     from app.models.agents import AgentDefinition
     from app.worker.runtime import AgentDef
 
@@ -204,3 +204,34 @@ def test_the_switch_sits_on_the_agent_and_is_off() -> None:
                     max_iterations=10, can_code=False, can_read_code=False,
                     can_delegate=False, web_search=False, allowed_tools=[],
                     allowed_skills=[], autoload_skills=[], delegate_to=[]).fast is False
+
+
+def test_background_work_of_the_same_agent_goes_at_ordinary_speed() -> None:
+    """The gate has two halves and both must say yes.
+
+    Fast mode has a rate limit of its own, small and separate. The assistant answers a person
+    in a chat AND works through mail, webhooks and scheduled jobs off the same definition, so
+    a flag on the agent alone would let the background half spend the allowance the waiting
+    half needs. `waited_for` is the second half, and its default is the safe one: a call site
+    that has not thought about it gets ordinary speed.
+    """
+    import inspect
+
+    from app.worker.runtime import run_agent
+
+    assert inspect.signature(run_agent).parameters["waited_for"].default is False
+
+    src = inspect.getsource(run_agent)
+    assert "fast=agent.fast and waited_for" in src
+
+
+def test_the_chat_is_the_only_thing_that_asks_for_fast() -> None:
+    """Named by the kind of the item, not by the agent: `chat` is a person waiting, `email`
+    and `task` are the assistant working through what came in overnight."""
+    import inspect
+
+    from app.worker import __main__ as worker_main
+
+    src = inspect.getsource(worker_main)
+    assert 'waited_for=(t.kind == "chat")' in src
+    assert src.count("waited_for=") == 1

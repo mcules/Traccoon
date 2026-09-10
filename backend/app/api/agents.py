@@ -23,7 +23,8 @@ class AgentIn(BaseModel):
     fallback_model: str = ""
     fallback_token_name: str = ""
     effort: str = ""
-    # Anthropic's fast mode: the same model writing faster, at twice the price per token.
+    # May this agent use Anthropic's fast mode: the same model writing faster, at twice the
+    # price per token. Spent only on runs somebody is waiting for, never on background work.
     fast: bool = False
     temperature: float = 0.3
     max_tokens: int = 8192

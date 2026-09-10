@@ -982,6 +982,10 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                     comment_history=history,
                     history_title="# The conversation so far (oldest message first)",
                     assistant_task_id=t.id, speak=await owner_language(db, owner_id),
+                    # Fast mode only where somebody is sitting in front of the answer. The
+                    # same assistant also works through mail, webhooks and scheduled jobs,
+                    # and those must not spend an allowance that is separate and small.
+                    waited_for=(t.kind == "chat"),
                     continuation_index=rounds, continuation_hint=hint)
                 if result.status != "loop_exhausted" or not continuation.may_continue(rounds):
                     break
