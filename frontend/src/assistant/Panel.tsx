@@ -5,6 +5,7 @@ import Markdown from "../components/Markdown";
 import { BUTTON, BUTTON_SMALL, ICON, IconButton, INPUT_VALUE } from "../components/ui";
 import { assistant, RUNNING, type Message, type Session, type Step } from "./api";
 import { useAssistantOffers } from "./context";
+import AssistantSettings from "./Settings";
 import Steps from "./Steps";
 
 /**
@@ -376,6 +377,15 @@ export default function AssistantPanel({ compact = false }: { compact?: boolean 
           </>
         )}
       </div>
+
+      {/* What this conversation runs on. Under the head and above the exchange:
+          it belongs to the conversation, not to the message being typed, and a
+          change acts from the next message on. Quiet on purpose — it is read
+          once and then left alone. */}
+      {sessions.find((x) => x.id === sessionId) && (
+        <AssistantSettings session={sessions.find((x) => x.id === sessionId)!}
+          onChanged={(s) => setSessions((old) => old.map((x) => (x.id === s.id ? s : x)))} />
+      )}
 
       <div ref={listRef} data-assistant="log" className="min-h-0 flex-1 overflow-y-auto p-2.5">
         {error && <div className="px-2 py-2 text-sm text-red-400">{error}</div>}

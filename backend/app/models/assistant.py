@@ -1,7 +1,7 @@
 import datetime as dt
 
 from sqlalchemy import (
-    Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint,
+    Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,6 +49,27 @@ class AssistantSession(TimestampMixin, Base):
     # already belongs to exactly one person, so one column is the whole story.
     read_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
+    # What this conversation runs on, when it is not to run on what the agent says. Three
+    # overrides, all empty by default, and empty means "whatever the agent is set to" rather
+    # than any value of their own — an agent that gets a better model later should carry its
+    # conversations along instead of pinning them to the day they were opened.
+    #
+    # Per conversation and not per person: the reason to reach for a deeper level or a faster
+    # model is the subject at hand, and it changes between "sort this post" and "think this
+    # through with me". Changing it acts from the next message on; what has been answered
+    # stays answered the way it was.
+    # `server_default` and not only `default`: sessions are also created by inserts that name
+    # their columns (the backfill of the existing history), and a NOT NULL without a default
+    # in the database makes those fail — a column added for a picker must not be able to
+    # break the migration of somebody's old conversations.
+    model: Mapped[str] = mapped_column(String(150), default="", server_default=text("''"),
+                                       nullable=False)
+    effort: Mapped[str] = mapped_column(String(10), default="", server_default=text("''"),
+                                        nullable=False)
+    # Twice the price per token for up to two and a half times the writing speed. Off unless
+    # it is asked for, and only offered on the models that have it (`FAST_MODELS`).
+    fast: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"),
+                                       nullable=False)
     # Room for later. Nothing is invented in here now.
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
 

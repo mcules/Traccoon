@@ -754,3 +754,83 @@ def test_waiting_messages_are_joined_without_repeating_themselves() -> None:
     # Was jemand wirklich geschrieben hat, faellt nie weg — nur die Wiederholung.
     assert join(["eins", "zwei", "eins"]) == "eins\n\nzwei"
     assert join(["", "  ", "etwas"]) == "etwas"
+
+
+# ------------------------------------------- what a conversation runs on
+
+@pytest.mark.asyncio
+async def test_the_picker_only_offers_what_the_model_can_do() -> None:
+    """A thinking level a model does not know is a 400 from the provider in the middle of
+    somebody's sentence. So the levels come from a table, and a picker that offers one the
+    model has never heard of is a picker that ends the conversation."""
+    from app.worker.providers.anthropic import capabilities
+
+    assert capabilities("claude-opus-5")["fast"] is True
+    assert "xhigh" in capabilities("claude-opus-5")["effort_levels"]
+    # `xhigh` arrived with 4.7; the 4.6 pair stops below it.
+    assert "xhigh" not in capabilities("claude-opus-4-6")["effort_levels"]
+    # Fast mode is a research preview on two models, not a rule.
+    assert capabilities("claude-sonnet-5")["fast"] is False
+    # A dated name is the same model as the bare one.
+    assert capabilities("claude-opus-4-5-20251101")["effort_levels"] == ["low", "medium", "high"]
+    # And something nobody catalogued takes neither, rather than being guessed at.
+    assert capabilities("gpt-5") == {"model": "gpt-5", "effort_levels": [], "fast": False}
+
+
+@pytest.mark.asyncio
+async def test_changing_the_model_clears_what_it_cannot_do(db, anna) -> None:
+    """Whoever picks a model that has no fast mode asked for the model, not for a refusal.
+
+    The setting that no longer fits is cleared instead — the alternative is an error message
+    in front of a choice the person is allowed to make.
+    """
+    from app.models.agents import AgentDefinition
+    from app.models.assistant import AssistantSession
+    from app.models.ops import ProviderModel
+    from app.services import assistant_sessions as svc
+
+    db.add(AgentDefinition(role="assistent", display_name="A", system_prompt="x",
+                           provider="claude_code", model="claude-opus-5", effort="",
+                           temperature=0.0, max_tokens=16384, max_turns_planning=5,
+                           max_turns_execution=80, can_code=False, can_read_code=False,
+                           can_delegate=False, web_search=False, allowed_tools=[],
+                           allowed_skills=[], delegate_to=[], active=True, fast=True))
+    db.add_all([ProviderModel(provider="claude_code", model="claude-opus-5", enabled=True),
+                ProviderModel(provider="claude_code", model="claude-sonnet-5", enabled=True)])
+    s = AssistantSession(owner_user_id=anna.id, agent="assistent",
+                         model="claude-opus-5", effort="xhigh", fast=True)
+    db.add(s)
+    await db.commit()
+
+    # As it stands: Opus 5 has both.
+    caps = await svc.capabilities_of(db, s)
+    assert caps["fast"] is True and "xhigh" in caps["effort_levels"]
+
+    # Sonnet 5 keeps the level and loses the speed.
+    s.model = "claude-sonnet-5"
+    caps = await svc.capabilities_of(db, s)
+    assert caps["fast"] is False
+    assert "xhigh" in caps["effort_levels"]
+
+
+@pytest.mark.asyncio
+async def test_a_conversation_cannot_change_provider(db, anna) -> None:
+    """The token, the tools and the whole shape of the request hang off the provider, so the
+    picker offers the models of the agent's provider and no others."""
+    from app.models.agents import AgentDefinition
+    from app.models.ops import ProviderModel
+    from app.services import assistant_sessions as svc
+
+    db.add(AgentDefinition(role="assistent", display_name="A", system_prompt="x",
+                           provider="claude_code", model="claude-opus-5", effort="",
+                           temperature=0.0, max_tokens=16384, max_turns_planning=5,
+                           max_turns_execution=80, can_code=False, can_read_code=False,
+                           can_delegate=False, web_search=False, allowed_tools=[],
+                           allowed_skills=[], delegate_to=[], active=True))
+    db.add_all([ProviderModel(provider="claude_code", model="claude-opus-5", enabled=True),
+                ProviderModel(provider="openai", model="qwen3.6-35b-q8", enabled=True),
+                ProviderModel(provider="claude_code", model="claude-opus-4-1", enabled=False)])
+    await db.commit()
+
+    offered = await svc.choosable_models(db, "assistent", anna.id)
+    assert offered == ["claude-opus-5"]          # not the other provider, not a disabled one

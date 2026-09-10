@@ -168,6 +168,13 @@ async def lifespan(app: FastAPI):
                 "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE locations ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE SET NULL",
+                # Per conversation: what it runs on, when not what the agent says.
+                "ALTER TABLE assistant_sessions ADD COLUMN IF NOT EXISTS model VARCHAR(150) "
+                "DEFAULT '' NOT NULL",
+                "ALTER TABLE assistant_sessions ADD COLUMN IF NOT EXISTS effort VARCHAR(10) "
+                "DEFAULT '' NOT NULL",
+                "ALTER TABLE assistant_sessions ADD COLUMN IF NOT EXISTS fast BOOLEAN "
+                "DEFAULT FALSE NOT NULL",
                 # Fast mode per agent: the same model writing faster, at twice the price.
                 "ALTER TABLE agent_definitions ADD COLUMN IF NOT EXISTS fast BOOLEAN "
                 "DEFAULT FALSE NOT NULL",

@@ -187,6 +187,41 @@ async def _load_agent(db, role: str, project_id: int, mode: str, owner_id: int |
     return d
 
 
+async def _apply_session_choice(db, d: AgentDef, t) -> None:
+    """What the conversation is set to beats what the agent is set to.
+
+    Only for a chat: mail, webhooks and jobs have no conversation and must not inherit one.
+    Empty is an absence, not a value — an agent that gets a better model later carries its
+    conversations along instead of them being pinned to the day they were opened.
+
+    Everything is checked against the model that will actually be used, because a thinking
+    level a model does not know is a 400 in the middle of somebody's sentence. The settings
+    were checked when they were stored; they are checked again here, because the agent's own
+    model can have changed underneath them since.
+    """
+    from ..models.assistant import AssistantSession
+    from .providers.anthropic import capabilities
+
+    if getattr(t, "kind", "") != "chat" or not getattr(t, "session_id", None):
+        return
+    s = await db.get(AssistantSession, t.session_id)
+    if s is None:
+        return
+    if s.model:
+        d.model = s.model
+        # The window belongs to the model, so a different model is a different window. The
+        # value resolved for the agent's model would otherwise stand here as a limit nobody
+        # chose (`_apply_context_window` has already run at this point).
+        d.max_context_tokens = None
+        await _apply_context_window(db, d)
+    caps = capabilities(d.model)
+    if s.effort and s.effort in caps["effort_levels"]:
+        d.effort = s.effort
+    # Two permissions and an occasion: the agent has to allow fast mode at all, the model has
+    # to offer it, and the conversation has to ask for it.
+    d.fast = bool(d.fast and s.fast and caps["fast"])
+
+
 async def _apply_context_window(db, d: AgentDef) -> None:
     """The compaction threshold belongs to the MODEL, not to the agent.
 
@@ -966,6 +1001,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             # The handling agent comes from the item (webhook config), default 'assistent'. No env.
             agent = await _load_agent(db, meta.get("agent") or "assistent",
                                       0, "execute", owner_id)
+            await _apply_session_choice(db, agent, t)
             tokens, base_urls = await _build_tokens(db, owner_id, agent)
             # The same rule as for a free run: a spent budget is continued, not reported as
             # an error. In a conversation that matters twice over — the history belongs to

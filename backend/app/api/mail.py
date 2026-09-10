@@ -253,7 +253,13 @@ class SessionIn(BaseModel):
 
 
 class SessionPatch(BaseModel):
-    title: str
+    # All optional: the same endpoint renames a conversation and sets what it runs on, and a
+    # client that sends only one of them must not clear the others. `None` = leave alone,
+    # `""` = back to what the agent says.
+    title: str | None = None
+    model: str | None = None
+    effort: str | None = None
+    fast: bool | None = None
 
 
 async def _get_session_owned(sid: int, user: User, db: AsyncSession):
@@ -286,15 +292,51 @@ async def create_session(data: SessionIn, user: User = Depends(get_current_user)
 
 
 @router.patch("/assistant/sessions/{sid}")
-async def rename_session(sid: int, data: SessionPatch, user: User = Depends(get_current_user),
-                         db: AsyncSession = Depends(get_session)):
+async def patch_session(sid: int, data: SessionPatch, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    """Rename a conversation, and set what it runs on.
+
+    The three settings are checked against the model they would run on, not against a list of
+    their own: a thinking level a model does not know is a 400 from the provider in the
+    middle of somebody's sentence, and fast mode asked for where it is not offered is the
+    same. Whoever changes the model and thereby takes a level or the speed away gets them
+    cleared here rather than a refusal — the change they asked for is the model.
+    """
     s = await _get_session_owned(sid, user, db)
-    title = (data.title or "").strip()
-    if not title:
-        raise Error(400, "err.empty_title", "Empty title")
-    s.title = title[:200]
+    if data.title is not None:
+        title = data.title.strip()
+        if not title:
+            raise Error(400, "err.empty_title", "Empty title")
+        s.title = title[:200]
+    if data.model is not None:
+        model = data.model.strip()
+        if model and model not in await sessions.choosable_models(db, s.agent, user.id):
+            raise Error(400, "err.unknown_model", f"No model {model!r} to choose here")
+        s.model = model[:150]
+    if data.effort is not None:
+        s.effort = data.effort.strip()[:10]
+    if data.fast is not None:
+        s.fast = bool(data.fast)
+    # Against the model as it stands AFTER this change, whichever of them changed.
+    caps = await sessions.capabilities_of(db, s)
+    if s.effort and s.effort not in caps["effort_levels"]:
+        s.effort = ""
+    if s.fast and not caps["fast"]:
+        s.fast = False
     await db.commit()
     return sessions.out(s)
+
+
+@router.get("/assistant/sessions/{sid}/models")
+async def session_models(sid: int, user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    """What this conversation may be set to, with what each model can do.
+
+    The picker must not offer a choice that ends the next message with a 400, so the levels
+    and the speed come from the same table the check uses.
+    """
+    s = await _get_session_owned(sid, user, db)
+    return await sessions.choices(db, s, user.id)
 
 
 @router.post("/assistant/sessions/{sid}/close")

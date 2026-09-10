@@ -31,6 +31,40 @@ _BETAS = "oauth-2025-04-20,claude-code-20250219"
 # the 360 altogether. Research preview, Opus 5 and 4.8 only, and it needs all three of these
 # — the beta flag, the body field, and the beta endpoint the flag opens.
 _FAST_BETA = "fast-mode-2026-02-01"
+# Which models fast mode is offered on. A research preview, so this is a list and not a rule
+# — asking for it on anything else is an error, not a slower answer.
+FAST_MODELS = frozenset({"claude-opus-5", "claude-opus-4-8"})
+# Which thinking depths a model takes. Not the same everywhere and NOT harmless to get
+# wrong: a level a model does not know is a 400, so a picker that offers one is a picker
+# that breaks the conversation. Empty tuple = the model takes no `effort` at all.
+_FULL = ("low", "medium", "high", "xhigh", "max")
+EFFORT_LEVELS: dict[str, tuple[str, ...]] = {
+    "claude-opus-5": _FULL, "claude-opus-4-8": _FULL, "claude-opus-4-7": _FULL,
+    "claude-sonnet-5": _FULL, "claude-fable-5": _FULL, "claude-fable-5-1": _FULL,
+    # `xhigh` arrived with Opus 4.7; the 4.6 pair stops below it.
+    "claude-opus-4-6": ("low", "medium", "high", "max"),
+    "claude-sonnet-4-6": ("low", "medium", "high", "max"),
+    "claude-opus-4-5": ("low", "medium", "high"),
+}
+
+
+def capabilities(model: str) -> dict:
+    """What a model lets somebody choose. The one source for the picker and the check.
+
+    A dated name (`claude-opus-4-5-20251101`) is the same model as the bare one, so the
+    prefix decides. Anything unknown takes neither — better a picker with nothing in it than
+    one whose choice ends the conversation with a 400.
+    """
+    base = model or ""
+    levels: tuple[str, ...] = ()
+    for known, allowed in EFFORT_LEVELS.items():
+        if base == known or base.startswith(known + "-"):
+            levels = allowed
+            break
+    fast = any(base == m or base.startswith(m + "-") for m in FAST_MODELS)
+    return {"model": model, "effort_levels": list(levels), "fast": fast}
+
+
 _ANTHROPIC_VERSION = "2023-06-01"
 # Web search: web_search_20250305 is the basic variant, where the server searches itself and
 # returns `web_search_tool_result`. The newer type web_search_20260209 (dynamic filtering) on

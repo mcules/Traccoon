@@ -284,7 +284,12 @@ def out(s: AssistantSession, *, message_count: int = 0, running: bool = False,
             # Three states a switcher can show at a glance, and they are not the
             # same thing: working takes time, asking takes somebody, unread takes
             # a look. (see `asking_ids` and `unread`)
-            "asking": asking, "unread": unread(s), "read_at": s.read_at}
+            "asking": asking, "unread": unread(s), "read_at": s.read_at,
+            # What this conversation runs on. Empty is not a value but an absence: it means
+            # "whatever the agent is set to", and the picker shows that as its own entry
+            # rather than resolving it — an agent that gets a better model later should carry
+            # its conversations along instead of pinning them to the day they were opened.
+            "model": s.model, "effort": s.effort, "fast": s.fast}
 
 
 async def context_of(db: AsyncSession, session_ids: list[int]) -> dict[int, dict]:
@@ -434,3 +439,79 @@ async def delete(db: AsyncSession, sessions: list[AssistantSession], *,
     for report in reports:
         await emit(db, "assistant.session_deleted", report)
     return gone
+
+
+# ------------------------------------------------- what a conversation may run on
+
+async def agent_defaults(db: AsyncSession, agent: str, owner_id: int | None) -> dict:
+    """Model, thinking level and speed as the agent has them set.
+
+    The same precedence the worker uses when it loads the definition (own before global), so
+    that "what the agent says" means the same thing in the picker and in the run.
+    """
+    from sqlalchemy import or_
+
+    from ..models.agents import AgentDefinition
+
+    row = (await db.execute(
+        select(AgentDefinition)
+        .where(AgentDefinition.role == agent, AgentDefinition.active.is_(True),
+               or_(AgentDefinition.user_id == owner_id, AgentDefinition.user_id.is_(None))
+               if owner_id is not None else AgentDefinition.user_id.is_(None),
+               AgentDefinition.project_id.is_(None))
+        .order_by(AgentDefinition.user_id.is_(None)))).scalars().first()
+    if row is None:
+        return {"provider": "claude_code", "model": "", "effort": "", "fast": False}
+    return {"provider": row.provider, "model": row.model or "",
+            "effort": (row.effort or "").strip(), "fast": bool(getattr(row, "fast", False))}
+
+
+async def choosable_models(db: AsyncSession, agent: str, owner_id: int | None) -> list[str]:
+    """The models this conversation may be set to: the enabled ones of the agent's provider.
+
+    Not every model in the catalogue — a conversation cannot change provider, because the
+    token, the tools and the whole shape of the request hang off it.
+    """
+    from ..models.ops import ProviderModel
+
+    provider = (await agent_defaults(db, agent, owner_id))["provider"]
+    rows = (await db.execute(
+        select(ProviderModel)
+        .where(ProviderModel.provider == provider, ProviderModel.enabled.is_(True))
+        .order_by(ProviderModel.model))).scalars().all()
+    return [r.model for r in rows]
+
+
+async def capabilities_of(db: AsyncSession, s: AssistantSession) -> dict:
+    """What the model this conversation actually runs on can do."""
+    from ..worker.providers.anthropic import capabilities
+
+    model = s.model or (await agent_defaults(db, s.agent, s.owner_user_id))["model"]
+    return capabilities(model)
+
+
+async def choices(db: AsyncSession, s: AssistantSession, owner_id: int | None) -> dict:
+    """Everything a picker needs, in one answer.
+
+    Including what the agent is set to, so that the empty entry can say what it means. "As
+    the agent" is only an honest label when it says which model that is today.
+    """
+    from ..models.ops import ProviderModel
+    from ..worker.providers.anthropic import capabilities
+
+    defaults = await agent_defaults(db, s.agent, owner_id)
+    rows = (await db.execute(
+        select(ProviderModel)
+        .where(ProviderModel.provider == defaults["provider"], ProviderModel.enabled.is_(True))
+        .order_by(ProviderModel.model))).scalars().all()
+    return {
+        "agent": s.agent,
+        "agent_model": defaults["model"], "agent_effort": defaults["effort"],
+        # A conversation cannot switch fast mode on where the agent is not allowed it at all:
+        # the flag on the agent is the permission, and this is only the occasion.
+        "agent_may_fast": defaults["fast"],
+        "models": [{"model": r.model, "display_name": r.display_name or r.model,
+                    "context_tokens": r.context_tokens, **capabilities(r.model)}
+                   for r in rows],
+        "chosen": {"model": s.model, "effort": s.effort, "fast": s.fast},
+    }
