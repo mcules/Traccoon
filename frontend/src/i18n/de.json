@@ -685,6 +685,7 @@
   "assistant.send_page": "Seite mitschicken",
   "assistant.stop": "Abbrechen",
   "assistant.stop_hint": "Bricht den Lauf ab. Was schon geschrieben wurde, bleibt geschrieben.",
+  "assistant.then_took": "{d} gebraucht",
   "assistant.this_day": "dieser Tag",
   "assistant.this_month": "dieser Monat",
   "assistant.this_week": "diese Woche",

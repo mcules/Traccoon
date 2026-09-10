@@ -685,6 +685,7 @@
   "assistant.send_page": "Send the page along",
   "assistant.stop": "Stop",
   "assistant.stop_hint": "Breaks off the run. What it already wrote stays written.",
+  "assistant.then_took": "took {d}",
   "assistant.this_day": "this day",
   "assistant.this_month": "this month",
   "assistant.this_week": "this week",

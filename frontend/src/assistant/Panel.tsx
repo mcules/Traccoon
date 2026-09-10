@@ -207,6 +207,22 @@ export default function AssistantPanel({ compact = false }: { compact?: boolean 
     const id = window.setInterval(() => tick((n) => n + 1), 10_000);
     return () => window.clearInterval(id);
   }, [waiting]);
+  /** How long an answer took, from the message going out to the answer standing there.
+   *
+   *  Deliberately the whole wait and not the run time: what the person watched is the wait,
+   *  and a message that queued behind another one for two minutes did take that long. Under
+   *  a minute the seconds alone read best; above it nobody counts seconds, but they are what
+   *  makes 4:36 different from 4:05. */
+  const took = (from: string, to: string | null): string | null => {
+    if (!to) return null;
+    const sec = Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000);
+    if (!Number.isFinite(sec) || sec < 1) return null;
+    if (sec < 60) return `${sec} s`;
+    const two = (n: number) => String(n).padStart(2, "0");
+    if (sec < 3600) return `${Math.floor(sec / 60)}:${two(sec % 60)} min`;
+    return `${Math.floor(sec / 3600)}:${two(Math.floor((sec % 3600) / 60))} h`;
+  };
+
   const since = (iso: string): string => {
     const sec = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
     if (!Number.isFinite(sec) || sec < 20) return "…";
@@ -422,6 +438,14 @@ export default function AssistantPanel({ compact = false }: { compact?: boolean 
                 className="max-w-[85%] self-start rounded-lg rounded-bl-sm border border-line
                            border-l-[3px] border-l-brand bg-surface px-3 py-2.5 text-ink">
                 <Markdown text={m.result} />
+                {/* Under the answer, quiet: an answer that took four minutes and one that
+                    took eight look the same afterwards, and the difference is the whole
+                    reason anybody looks. */}
+                {took(m.created_at, m.finished_at) && (
+                  <div className="mt-1.5 text-[11px] leading-none text-muted">
+                    {tr("assistant.then_took", { d: took(m.created_at, m.finished_at)! })}
+                  </div>
+                )}
               </div>
             )}
 
