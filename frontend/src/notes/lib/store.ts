@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { isNarrow } from './useIsMobile';
 import { merge3, toLines, fromLines, type MergeConflict } from './merge';
 import { queueWrite, forgetWrite, pendingWrites, isOffline } from './pending';
-import { api, type TreeNode } from './api';
+import { api, ApiError, type TreeNode } from './api';
 import { findNode } from './tree';
 import { tr } from "../../i18n";
 
@@ -216,8 +216,12 @@ interface AppState {
   /** Show a toast. ms=0 keeps it until another notify() replaces it. */
   notify: (msg: string, ms?: number) => void;
 
-  openFile: (path: string) => Promise<void>;
-  openWikilink: (target: string) => Promise<void>;
+  /** `replaceTab`: navigate INSIDE the current tab instead of opening another one.
+   *  That is what a link click does — the file tree still opens a tab of its own. */
+  openFile: (path: string, opts?: { replaceTab?: boolean }) => Promise<void>;
+  /** Follow a link. Replaces the current tab unless `newTab` says otherwise
+   *  (ctrl/cmd-click), the way the predecessor does it. */
+  openWikilink: (target: string, newTab?: boolean) => Promise<void>;
   closeTab: (path: string) => void;
   setContent: (c: string) => void;
   save: () => Promise<void>;
@@ -230,6 +234,11 @@ interface AppState {
   /** Drop the recorded conflicts once the user has looked at them. */
   clearConflicts: () => void;
   createNote: (path: string, body?: string) => Promise<void>;
+  /** One-shot: the next editor to open takes the keyboard. Opening a note does not
+   *  focus it — creating one does, because that is an act of writing. */
+  pendingEditorFocus: boolean;
+  /** Read the request and clear it; the editor asks once, on mount. */
+  takeEditorFocus: () => boolean;
   /** like the predecessor: create & open a fresh "Untitled" note (no prompt). `dir` = target folder, '' = vault root. */
   newNote: (dir?: string) => Promise<void>;
   /** like the predecessor: create a fresh "Untitled" folder (no prompt) and start inline-renaming it. */
@@ -561,7 +570,7 @@ export const useStore = create<AppState>()(
         }
       },
 
-      openFile: async (path) => {
+      openFile: async (path, opts) => {
         if (path === GRAPH_PATH) return get().openGraph();
         if (path === CALENDAR_PATH) return get().openCalendar();
         if (get().dirty) await get().save();
@@ -571,13 +580,39 @@ export const useStore = create<AppState>()(
         let content = '';
         let hash = '';
         if (!isFolder && TEXT_RE.test(path)) {
-          const r = await api.read(path);
+          let r;
+          try {
+            r = await api.read(path);
+          } catch (err) {
+            // A daily note that is not there yet is not an error — it is the note
+            // for that day, and it gets made from the template. The server decides
+            // whether the path really is one of this vault's daily notes; anything
+            // else keeps throwing, so a mistyped link creates no file.
+            if (!(err instanceof ApiError) || err.status !== 404) throw err;
+            await api.dailyNote({ path });
+            r = await api.read(path);
+            void get().loadTree();
+          }
           content = typeof r === 'string' ? r : r.content;
           hash = typeof r === 'string' ? '' : r.hash ?? '';
         }
         const title = path.split('/').pop() ?? path;
         set((s) => {
-          const tabs = s.tabs.find((t) => t.path === path) ? s.tabs : [...s.tabs, { path, title }];
+          // Following a link travels within the tab you are in — clicking through a
+          // month of daily notes must not leave thirty tabs behind. A target that is
+          // already open is simply activated, and the file tree keeps opening tabs.
+          const tabs = (() => {
+            if (s.tabs.find((t) => t.path === path)) return s.tabs;
+            if (opts?.replaceTab && s.activePath) {
+              const i = s.tabs.findIndex((t) => t.path === s.activePath);
+              if (i >= 0) {
+                const next = [...s.tabs];
+                next[i] = { path, title };
+                return next;
+              }
+            }
+            return [...s.tabs, { path, title }];
+          })();
           const recent = isFolder ? s.recent : [path, ...s.recent.filter((p) => p !== path)].slice(0, 20);
           return {
             tabs,
@@ -593,10 +628,10 @@ export const useStore = create<AppState>()(
         });
       },
 
-      openWikilink: async (target) => {
+      openWikilink: async (target, newTab) => {
         try {
           const { path } = await api.resolve(target);
-          if (path) await get().openFile(path);
+          if (path) await get().openFile(path, { replaceTab: !newTab });
           else {
             // Only append `.md` when the target has no extension at all — a target
             // like `Foo.canvas` must stay `Foo.canvas`, not become `Foo.canvas.md`.
@@ -757,6 +792,13 @@ export const useStore = create<AppState>()(
 
       clearConflicts: () => set({ conflicts: [] }),
 
+      pendingEditorFocus: false,
+      takeEditorFocus: () => {
+        if (!get().pendingEditorFocus) return false;
+        set({ pendingEditorFocus: false });
+        return true;
+      },
+
       createNote: async (path, body) => {
         await api.write(path, body ?? '');
         await get().loadTree();
@@ -771,6 +813,7 @@ export const useStore = create<AppState>()(
         let name = 'Untitled.md';
         for (let i = 1; taken.has(name.toLowerCase()); i++) name = `Untitled ${i}.md`;
         const path = base ? `${base}/${name}` : name;
+        set({ pendingEditorFocus: true });   // a fresh note is opened to be written in
         await get().createNote(path, '');
         // A folder can name the form its notes take — a person, a company, a
         // daily note. Applied after creation so the note exists for the template

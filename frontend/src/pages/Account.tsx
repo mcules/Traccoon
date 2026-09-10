@@ -14,6 +14,8 @@ import {
 import { NotesPrefsPanel } from "../components/NotesPanels";
 import { CalendarsPanel } from "../components/CalendarPanels";
 import { BUTTON, BUTTON_SMALL } from "../components/ui";
+import { passkeysPossible } from "../passkeys";
+import { formatDateTime } from "../lib/formatTime";
 
 /**
  * Everything that belongs to the person, on one page.
@@ -53,11 +55,11 @@ export default function Account() {
           The tokens stand beside the password: both are how this person proves who they are,
           only one of them is meant for a client that runs for months. */}
       {tab === "person" && (
-        <><LanguagePanel /><TimezonePanel /><ProjectAliasPanel /><EmailPanel /><PasswordPanel /><TokensPanel /></>
+        <><LanguagePanel /><TimezonePanel /><ProjectAliasPanel /><EmailPanel /><PasswordPanel /><PasskeyPanel /><TokensPanel /></>
       )}
       {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
       {tab === "notifications" && <><NotificationsPanel /><AssistantNoticesPanel /></>}
-      {tab === "mail" && <MailAccountsPanel />}
+      {tab === "mail" && <><MailViewPanel /><MailAccountsPanel /></>}
       {/* The note area has no settings page of its own: what a person decides
           about their notes is a personal setting like the others here. */}
       {tab === "notes" && <NotesPrefsPanel />}
@@ -72,6 +74,49 @@ export default function Account() {
     </div>
   );
 }
+
+/**
+ * How the message list reads: single messages, or conversations.
+ *
+ * On the person and not in the browser — it is a reading habit, and reading mail at the
+ * desk and on the phone is the same habit. The switch above the list in the mailbox writes
+ * the same value; both are one setting with two entrances.
+ */
+function MailViewPanel() {
+  const { user, refresh } = useAuth();
+  const on = !!user?.mail_threads;
+  const [err, setErr] = useState("");
+  const set = async (value: boolean) => {
+    if (value === on) return;
+    setErr("");
+    try {
+      await api.put("/me/mail-threads", { value });
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : tr("common.not_saved"));
+    }
+  };
+  const btn = (value: boolean, label: string) => (
+    <button onClick={() => void set(value)}
+      className={`rounded border px-3 py-1.5 text-sm ${
+        on === value ? "border-brand bg-brand/20 text-ink" : "border-line bg-surface text-muted hover:text-ink"
+      }`}>
+      {label}
+    </button>
+  );
+  return (
+    <section className="space-y-3 rounded-lg border border-line bg-card p-4">
+      <div className="text-sm font-medium text-ink">{tr("profile.mail_list")}</div>
+      <p className="text-xs text-muted">{tr("profile.mail_list_hint")}</p>
+      <div className="flex gap-2">
+        {btn(false, tr("profile.mail_single_messages"))}
+        {btn(true, tr("profile.mail_conversations"))}
+      </div>
+      {err && <div className="text-sm text-red-400">{err}</div>}
+    </section>
+  );
+}
+
 
 /** Presentation of the PM chat; applies globally across all projects. */
 function PmChatStylePanel() {
@@ -397,6 +442,99 @@ function NotificationsPanel() {
     </section>
   );
 }
+
+/**
+ * The keys of this person, and the way to make another one.
+ *
+ * It sits beside the password and not instead of it: a passkey hangs on the domain, so over
+ * an IP address or a LAN name it says nothing. Taking the password away would be a house
+ * with one door that is locked from the outside on the wrong day.
+ */
+function PasskeyPanel() {
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [err, setErr] = useState("");
+  const [waiting, setWaiting] = useState(false);
+  const { data } = useQuery({
+    queryKey: ["my-passkeys"],
+    queryFn: () => api.get<{ possible: boolean; keys: {
+      id: number; label: string; kind: string;
+      created_at: string; last_used_at: string | null }[] }>("/me/passkeys"),
+  });
+  const drop = useMutation({
+    mutationFn: (id: number) => api.del(`/me/passkeys/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["my-passkeys"] }),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
+  });
+
+  async function add() {
+    setErr("");
+    setWaiting(true);
+    try {
+      const { makePasskey, whereItLives } = await import("../passkeys");
+      const options = await api.post<Record<string, any>>("/me/passkeys/options", {});
+      const credential = await makePasskey(options);
+      await api.post("/me/passkeys", {
+        credential, label: name.trim(), kind: whereItLives(credential) });
+      setName("");
+      qc.invalidateQueries({ queryKey: ["my-passkeys"] });
+    } catch (e) {
+      // Cancelling the dialog is a decision, not a mishap.
+      const kind = (e as any)?.name;
+      if (kind !== "NotAllowedError" && kind !== "AbortError") {
+        setErr(e instanceof ApiError ? e.message : tr("profile.passkey_not_stored"));
+      }
+    } finally {
+      setWaiting(false);
+    }
+  }
+
+  const possible = data?.possible && passkeysPossible();
+  return (
+    <section className="space-y-3 rounded-lg border border-line bg-card p-4">
+      <div className="text-sm font-medium text-ink">{tr("profile.passkeys")}</div>
+      <p className="text-xs text-muted">{tr("profile.passkeys_hint")}</p>
+      {!possible && <p className="text-xs text-amber-400">{tr("profile.passkeys_impossible")}</p>}
+      {!!data?.keys.length && (
+        <div className="divide-y divide-line rounded border border-line">
+          {data.keys.map((k) => (
+            <div key={k.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+              <span className="min-w-0 flex-1 truncate text-ink">
+                {k.label || tr("profile.passkey_unnamed")}
+                {k.kind === "platform" && (
+                  <span className="ml-2 text-xs text-muted">{tr("profile.passkey_on_device")}</span>
+                )}
+              </span>
+              <span className="shrink-0 text-xs text-muted">
+                {k.last_used_at ? tr("profile.passkey_last_used",
+                                     { when: formatDateTime(k.last_used_at) })
+                                : tr("profile.passkey_never_used")}
+              </span>
+              <button className={BUTTON_SMALL.danger} disabled={drop.isPending}
+                onClick={() => drop.mutate(k.id)}>
+                {tr("common.delete")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {possible && (
+        <div className="flex flex-wrap items-center gap-2">
+          {/* The name is what tells three keys apart later. Optional, because whoever has
+              one does not need it and should not be stopped by a field. */}
+          <input value={name} onChange={(e) => setName(e.target.value)}
+            placeholder={tr("profile.passkey_name_placeholder")}
+            className="min-w-48 flex-1 rounded border border-line bg-surface px-3 py-1.5 text-sm outline-none" />
+          <button className={BUTTON.secondary} disabled={waiting} onClick={() => void add()}>
+            🔑 {tr(waiting ? "profile.passkey_waiting" : "profile.passkey_add")}
+          </button>
+        </div>
+      )}
+      {err && <div className="text-sm text-red-400">{err}</div>}
+    </section>
+  );
+}
+
 
 function PasswordPanel() {
   const [oldPassword, setOldPassword] = useState("");

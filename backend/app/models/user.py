@@ -65,6 +65,16 @@ class User(TimestampMixin, Base):
     # is shown exactly once on creation — afterwards it can only be set anew. Whoever has it
     # sees the released mailboxes of this person.
     mail_mcp_token_enc: Mapped[str] = mapped_column(String, default="")
+    # Whether the message list groups conversations. On the person and not in the browser:
+    # it is how somebody reads mail, and reading mail at the desk and on the phone is the
+    # same habit. Off by default — an existing list must not rearrange itself on an update.
+    mail_threads: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When this person said they did not want a passkey. Empty means: not asked yet, and
+    # then the offer stands once. Kept as a moment and not as a flag so the answer can be
+    # read later — "asked in March and said no" is a different state from "never heard of
+    # it", and only one of the two is worth bringing up again after a year.
+    passkey_declined_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
 
     # MCP-Gateway (MCPJungle) pro User — harte serverseitige Tool-Trennung.
     mcp_group: Mapped[str] = mapped_column(String(120), default="")          # MCPJungle-Gruppe

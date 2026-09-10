@@ -179,9 +179,35 @@ async def _load_agent(db, role: str, project_id: int, mode: str, owner_id: int |
         d = agent_def_from_row(row, mode)
         if not d.model:
             d.model = DEFAULT_CLAUDE_MODEL if d.provider in ("claude_code", "claude") else DEFAULT_CODEX_MODEL
+        await _apply_context_window(db, d)
         return d
     prov = "claude_code"
-    return _default_agent_def(role, prov, DEFAULT_CLAUDE_MODEL, mode)
+    d = _default_agent_def(role, prov, DEFAULT_CLAUDE_MODEL, mode)
+    await _apply_context_window(db, d)
+    return d
+
+
+async def _apply_context_window(db, d: AgentDef) -> None:
+    """The compaction threshold belongs to the MODEL, not to the agent.
+
+    Every definition here carried a hand set 180.000 while the models behind them (Opus 5,
+    Sonnet 5, Opus 4.8) hold a million. The consequence was not a safety net but damage: run
+    2511 compacted at 173.736 tokens, spent 78 seconds on the summary, lost its prompt cache
+    and read the same notes over again — for a limit the provider would not have complained
+    about. Runs of this account have gone through at 655.415 tokens without a word.
+
+    So the catalogue decides (`provider_models.context_tokens`), and the value on the agent
+    stays as what it should always have been: an explicit override for whoever deliberately
+    wants a tighter belt than the model. Neither of them set means no compaction, exactly as
+    before.
+    """
+    if d.max_context_tokens:
+        return
+    from ..models.ops import ProviderModel
+    row = (await db.execute(select(ProviderModel).where(
+        ProviderModel.provider == d.provider, ProviderModel.model == d.model))).scalar_one_or_none()
+    if row is not None and row.context_tokens:
+        d.max_context_tokens = int(row.context_tokens)
 
 
 async def handle(job: dict, redis: Redis) -> None:
@@ -631,7 +657,7 @@ async def _handle_agent_free(job: dict, redis: Redis) -> None:
     job, a flow node) makes no difference from here, and the result goes back the same way as
     with all waiting steps.
     """
-    from .runtime import run_agent
+    from .runtime import owner_language, run_agent
     task_id = job["task_id"]
 
     async def report(status: str, text: str) -> None:
@@ -658,6 +684,7 @@ async def _handle_agent_free(job: dict, redis: Redis) -> None:
                     project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
                     mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
                     base_urls=base_urls, owner_id=owner_id, task_id=task_id,
+                    speak=await owner_language(db, owner_id),
                     continuation_index=rounds, continuation_hint=hint)
                 if result.status != "loop_exhausted" or not continuation.may_continue(rounds):
                     break
@@ -842,7 +869,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
     """
     from ..models.assistant import AssistantTask
     from ..models.notification import Notification
-    from .runtime import run_agent
+    from .runtime import owner_language, run_agent
     tid = job["assistant_task_id"]
 
     async def _report(status: str, text: str) -> None:
@@ -954,7 +981,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                     base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"],
                     comment_history=history,
                     history_title="# The conversation so far (oldest message first)",
-                    assistant_task_id=t.id,
+                    assistant_task_id=t.id, speak=await owner_language(db, owner_id),
                     continuation_index=rounds, continuation_hint=hint)
                 if result.status != "loop_exhausted" or not continuation.may_continue(rounds):
                     break
@@ -1039,6 +1066,13 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             # entry without a chat id it would be noise, so nothing at all.
             log.info("assistant task %s quietly done (mode %s)", tid, mode)
         await db.commit()
+        # Whatever was typed while this was running goes now — all of it as one
+        # message, not one after another (`assistant_queue`). Somebody who writes
+        # three sentences in a row is adding to what they said, not asking three
+        # separate questions.
+        if is_chat and t.session_id:
+            from ..services.assistant_queue import release
+            await release(db, t.session_id)
     await _report(status, (err if status == "error" else out) or "")
     log.info("assistant task %s -> %s", tid, status)
     # Trigger the memory upkeep, after the work is done and as a task of its own. `kuratiere`

@@ -43,7 +43,7 @@ from app.models.enums import (  # noqa: E402
 _SESSION_MODULES = (
     "app.db", "app.services.workflow_engine", "app.services.dispatcher",
     "app.services.inbound", "app.services.scheduler", "app.services.testenv",
-    "app.worker.__main__",
+    "app.services.retention", "app.worker.__main__",
 )
 
 
@@ -386,6 +386,27 @@ def redis_stub_real(monkeypatch):
             return int(store[key])
 
     monkeypatch.setattr("app.services.mailbox_cache.get_redis", lambda: Wrong())
+    return store
+
+
+@pytest.fixture
+def passkey_redis(monkeypatch):
+    """A challenge store in memory.
+
+    The real one is a module wide client, and that outlives the event loop of a single test:
+    the second test to touch it gets "Event loop is closed" from the teardown of the first.
+    What is being tested here is the RULE (one shot), not the Redis.
+    """
+    store: dict[str, str] = {}
+
+    class Wrong:
+        async def set(self, key, value, ex=None):
+            store[key] = value
+
+        async def getdel(self, key):
+            return store.pop(key, None)
+
+    monkeypatch.setattr("app.services.passkeys.get_redis", lambda: Wrong())
     return store
 
 

@@ -22,10 +22,24 @@ class RegisterIn(BaseModel):
 
 
 class LoginIn(BaseModel):
+    # Email address or username. The field keeps its name because every client sends it that
+    # way, and renaming it would be a broken login for one deploy.
     email: str
     password: str
 
-    _norm_email = field_validator("email")(_valid_email)
+    @field_validator("email")
+    @classmethod
+    def _trimmed(cls, v: str) -> str:
+        """No `@` check here, unlike at registration.
+
+        A username is a login too, and demanding an email in the schema made it a 422 before
+        the password was ever looked at — with the field validation message of a form the
+        person had filled in correctly.
+        """
+        v = v.strip()
+        if not v:
+            raise ValueError("Email address or username is missing")
+        return v
 
 
 class TokenOut(BaseModel):
@@ -53,6 +67,8 @@ class UserOut(BaseModel):
     # Timezone (IANA): the UI computes its times with it, not with that of the browser.
     timezone: str = "Europe/Berlin"
     mail_last_account_id: int | None = None
+    mail_threads: bool = False
+    passkey_declined: bool = False
     ticket_open_mode: str = "popup"
     ticket_layout: dict = {}
     list_sort: dict = {}

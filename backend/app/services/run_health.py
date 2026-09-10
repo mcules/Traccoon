@@ -56,6 +56,12 @@ _CLASSES: list[tuple[str, tuple[str, ...]]] = [
     ("provider", ("rate_limit_error", "overloaded_error", "connection attempts failed",
                   "upstream connect error", "<!DOCTYPE html>", "truncated at max_tokens",
                   "Verbindungsfehler", "bei max_tokens abgeschnitten")),
+    # The provider refused the credentials. Its own class because it can be either: a token
+    # that is really dead (a person has to act) or one bad minute at the provider (it passes
+    # on its own). Which one it is shows in the timing, not in the text — see
+    # AUTH_MIN_INCIDENTS below.
+    ("auth", ("permission_error", "authentication_error", "invalid_api_key",
+              "HTTP 401", "HTTP 403")),
     # Traccoon itself interrupted the run. Also not the agent's doing.
     ("infra", ("worker restart", "kill channel", "the same assignment was started again",
                "Worker-Neustart", "Kill-Kanal", "Altlast:",
@@ -67,11 +73,26 @@ _CLASSES: list[tuple[str, tuple[str, ...]]] = [
 ]
 
 # What a class means for the supervision. Only two of them justify pulling a person in.
+# `auth` is not among them by default: it earns a ticket only over the incidents below.
 TICKET_WORTHY = ("agent", "bug")
+
+# Failures closer together than this are one incident, not several. A single bad minute at the
+# provider hits every run that happens to be in flight, and counting those runs would make one
+# hiccup look like a pattern.
+AUTH_INCIDENT_GAP_S = 600
+# And from this many separate incidents on, a refused credential is no longer bad luck: a
+# token that is really dead refuses again an hour later, a hiccup does not.
+#
+# Why this exists: on 2026-09-02 two runs of the same second got HTTP 403 permission_error;
+# the next run eight minutes later went through with the same token. Without a class of its
+# own that text fell through every pattern into `bug`, which is ticket worthy from the first
+# occurrence — so the supervision filed a ticket claiming the account had OAuth switched off,
+# while 460 runs in the same window had gone through on that very token.
+AUTH_MIN_INCIDENTS = 3
 
 
 def classify(status: str, error: str | None) -> str:
-    """The class of a finished run: provider | infra | blocked | agent | bug | ok."""
+    """The class of a finished run: provider | auth | infra | blocked | agent | bug | ok."""
     if status in DELIVERED:
         return "ok"
     if status in WAITING:
@@ -86,6 +107,19 @@ def classify(status: str, error: str | None) -> str:
     # Whatever is left with a text is an exception that reached the outside: a defect in this
     # house until somebody proves otherwise.
     return "bug" if text else "agent"
+
+
+def incidents(times: list[dt.datetime], gap_s: float) -> int:
+    """How many separate incidents a list of failure times is — a burst counts as one.
+
+    The gap is the whole judgement: runs that fail within seconds of each other saw the same
+    minute at the provider, however many of them there were.
+    """
+    ordered = sorted(t for t in times if t is not None)
+    if not ordered:
+        return 0
+    return 1 + sum(1 for prev, cur in zip(ordered, ordered[1:])
+                   if (cur - prev).total_seconds() > gap_s)
 
 
 def signature(kind: str, agent: str, detail: str = "") -> str:
@@ -160,21 +194,22 @@ async def _per_agent(db: AsyncSession, since: dt.datetime, project_id: int | Non
 
 async def _problems(db: AsyncSession, since: dt.datetime, project_id: int | None) -> list[dict]:
     """The failed runs of the window, grouped by class and role."""
-    q = (select(Run.id, Run.agent, Run.status, Run.error)
+    q = (select(Run.id, Run.agent, Run.status, Run.error, Run.started_at)
          .where(Run.started_at >= since, Run.status.notin_(DELIVERED + ("running",)))
          .order_by(Run.started_at.desc()))
     if project_id is not None:
         q = q.where(Run.project_id == project_id)
 
     groups: dict[tuple[str, str], dict] = {}
-    for run_id, agent, status, error in (await db.execute(q)).all():
+    for run_id, agent, status, error, started_at in (await db.execute(q)).all():
         kind = classify(status, error)
         slot = groups.setdefault((kind, agent or "?"), {
             "kind": kind, "agent": agent or "?", "n": 0, "runs": [], "examples": [],
             "statuses": {}, "signature": signature(kind, agent or "?"),
-            "ticket_worthy": kind in TICKET_WORTHY,
+            "ticket_worthy": kind in TICKET_WORTHY, "times": [],
         })
         slot["n"] += 1
+        slot["times"].append(started_at)
         # A run that ran into a limit carries no error text, so without the status the group
         # would read as a bare number and say nothing about what actually happened.
         slot["statuses"][status] = slot["statuses"].get(status, 0) + 1
@@ -183,6 +218,14 @@ async def _problems(db: AsyncSession, since: dt.datetime, project_id: int | None
         text = " ".join((error or "").split())[:200]
         if text and text not in slot["examples"] and len(slot["examples"]) < 3:
             slot["examples"].append(text)
+
+    for slot in groups.values():
+        times = slot.pop("times")
+        # Only the refused credentials are judged by their timing; every other class means the
+        # same thing whether it happened once or in a burst.
+        if slot["kind"] == "auth":
+            slot["incidents"] = incidents(times, AUTH_INCIDENT_GAP_S)
+            slot["ticket_worthy"] = slot["incidents"] >= AUTH_MIN_INCIDENTS
     return sorted(groups.values(), key=lambda g: (not g["ticket_worthy"], -g["n"]))
 
 

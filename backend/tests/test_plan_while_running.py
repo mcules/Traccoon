@@ -23,10 +23,12 @@ class _Agent:
     allowed_tools: list = []
     allowed_skills: list = []
     autoload_skills: list = []
+    autoload_tools: list = []
     delegate_to: list = []
     learns = False
     max_context_tokens = None
     effort = ""
+    max_run_seconds = 0
 
 
 async def _messages(db, monkeypatch, mode: str, plan: str) -> list[dict]:

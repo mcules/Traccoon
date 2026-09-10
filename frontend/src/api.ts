@@ -156,6 +156,8 @@ export interface User {
   global_role: string; status: string; onboarded: boolean; theme: string;
   timezone?: string;           // IANA zone: times in the UI and of one's own jobs
   mail_last_account_id?: number | null;  // the mailbox opened last
+  mail_threads?: boolean;      // whether the message list groups conversations
+  passkey_declined?: boolean;  // said no to the passkey offer; it is not made again
   ticket_open_mode?: string;   // popup | page — how a ticket opens on a left click
   ticket_layout?: { left?: string[]; right?: string[] };  // nutzerspez. Block-Anordnung
   // How this person sorts which list, e.g. {"processes.own": {by: "name", dir: "asc"}}.

@@ -19,6 +19,7 @@ scope and nothing else in Traccoon opens with it.
 from __future__ import annotations
 
 import base64
+import difflib
 import logging
 import re
 from typing import Any
@@ -27,6 +28,7 @@ from ..models.user import User
 from ..notes.dv import tasks as dv_tasks
 from ..notes.dv.dql import execute as run_query
 from ..notes.model.frontmatter import split as split_frontmatter
+from ..notes.query.run import explain_empty
 from ..notes.query.run import run as run_search
 from ..notes.registry import workspace_of
 from ..notes.vault.files import content_hash, is_text
@@ -37,7 +39,20 @@ log = logging.getLogger("notes.mcp")
 # How much of a note goes into one answer by default. A note is read to be
 # worked with, not to be poured into a prompt; the caller can ask for more.
 DEFAULT_MAX_CHARS = 40_000
+# A `max_chars` below this is not a wish, it is a probe. Runs asked for 1 or 100 characters
+# to learn `chars` from the answer and then read the note again in full: two round trips to
+# find out something the first, full read already said. The floor turns the probe into the
+# read it was standing in for.
+MIN_MAX_CHARS = 1_000
 MAX_LIST = 500
+# How much of a note goes around a change in the answer of a write. Enough to see the edit
+# in its place, far too little to be worth reading the note back for. Without it every write
+# was followed by a `notes_read` of the whole note, which is what made runs long.
+EXCERPT_CONTEXT = 400
+# Lines of unchanged text around each change. Three is what `diff -u` gives and what a
+# reader needs to place a hunk; more would put the whole note back into the answer, which
+# is the thing this tool exists to avoid.
+DIFF_CONTEXT = 3
 
 STRING = {"type": "string"}
 
@@ -58,14 +73,23 @@ TOOLS: list[dict] = [
     _tool("notes_read",
           "Read one note: its text, the properties at the top, its tags, and the "
           "identity of this version. Hand that identity back when writing and the "
-          "write is refused if somebody changed the note in between.",
+          "write is refused if somebody changed the note in between. The answer says "
+          "how long the note is (`chars`) and how much of it you got (`chars_returned`) "
+          "— when the two match you have all of it, and reading again with a larger "
+          "`max_chars` cannot give you more. Never read a note to find out how long it "
+          "is — the answer of a full read says that too, and a short read costs the same "
+          "round trip as a whole one.",
           {"path": STRING,
            "max_chars": {"type": "integer",
-                         "description": f"default {DEFAULT_MAX_CHARS}"}},
+                         "description": f"default {DEFAULT_MAX_CHARS}, "
+                                        f"less than {MIN_MAX_CHARS} is read as {DEFAULT_MAX_CHARS}"}},
           ["path"]),
     _tool("notes_search",
           "Search the vault. The query language of the notes applies: `tag:#idea`, "
-          "`path:folder`, `\"a phrase\"`, `-not this`, `a OR b`, `/regex/`.",
+          "`path:folder`, `\"a phrase\"`, `-not this`, `a OR b`, `/regex/`. Nothing found "
+          "is an answer, not a failure: `searched` says how many notes were looked at and "
+          "`why_nothing` counts each part of the query on its own. Read that instead of "
+          "asking the same thing again in another spelling.",
           {"query": STRING, "limit": {"type": "integer"}}, ["query"]),
     _tool("notes_query",
           "Run one block of the note query language (TABLE/LIST/TASK … FROM … "
@@ -89,15 +113,27 @@ TOOLS: list[dict] = [
                        "description": "put it under this heading instead of at the end"}},
           ["path", "text"]),
     _tool("notes_replace",
-          "Replace a piece of text in a note, literally. Says how often it "
-          "matched; nothing is written when the count does not match `expect`.",
+          "Replace text in a note, literally. Says how often it matched; nothing is "
+          "written when the count does not match `expect`. The answer carries the new "
+          "`hash`, the new length and an `excerpt` of each changed place, so do not read "
+          "the note back to check what happened. Several changes to the SAME note belong "
+          "in `edits` and go in one call: they are applied in order, and if one of them "
+          "finds nothing, none of them is written.",
           {"path": STRING, "find": STRING, "replace": STRING,
            "expect": {"type": "integer",
-                      "description": "how many matches are expected, if you know"}},
-          ["path", "find", "replace"]),
+                      "description": "how many matches are expected, if you know"},
+           "edits": {"type": "array",
+                     "description": "several changes at once, instead of find/replace",
+                     "items": {"type": "object",
+                               "properties": {"find": STRING, "replace": STRING,
+                                              "expect": {"type": "integer"}},
+                               "required": ["find", "replace"]}}},
+          ["path"]),
     _tool("notes_properties",
           "Read or change the properties at the top of a note. `set` writes the "
-          "keys it names and leaves the others alone; `remove` names keys to drop.",
+          "keys it names and leaves the others alone; `remove` names keys to drop. "
+          "After a change the answer holds the properties as they now stand and the "
+          "new `hash`, so do not read the note back to check.",
           {"path": STRING, "set": {"type": "object"},
            "remove": {"type": "array", "items": STRING}},
           ["path"]),
@@ -124,6 +160,16 @@ TOOLS: list[dict] = [
           "the folder.",
           {"name": STRING, "data": STRING, "note": STRING, "folder": STRING},
           ["name", "data"]),
+    _tool("notes_diff",
+          "What is different between two notes, as a unified diff. This is the tool "
+          "for a sync conflict and for checking what an edit changed — do not rebuild "
+          "a comparison out of `notes_query` or out of two `notes_read` calls.",
+          {"a": STRING, "b": STRING,
+           "context": {"type": "integer",
+                       "description": f"lines of context around a change, default {DIFF_CONTEXT}"},
+           "max_chars": {"type": "integer",
+                         "description": f"default {DEFAULT_MAX_CHARS}"}},
+          ["a", "b"]),
 ]
 
 TOOL_NAMES = {t["name"] for t in TOOLS}
@@ -137,9 +183,17 @@ Two things follow from that and they are not style:
   `base_hash` you got from `notes_read` and a change somebody else made in the
   meantime is reported instead of overwritten. To add something, use
   `notes_append` — it does not need the rest of the note at all.
+* One round trip carries more than one change. Several changes to the same note go
+  into `edits` of a single `notes_replace`; independent calls on DIFFERENT notes go
+  into one turn together. What costs time here is the number of turns, not the size
+  of one answer: the tools themselves answer in milliseconds.
 * A link is `[[Note name]]`, a tag is `#tag`. Use `notes_move` to rename, never
   a write plus a delete: only `notes_move` carries the links along, and a link
   to a note that has gone looks exactly like a link to one that never existed.
+* The sync leaves conflict copies behind, named `<note>.sync-conflict-<date>-<id>.md`.
+  Resolving one is a comparison, so use `notes_diff` on the copy and the original.
+  Do not read both in full and do not take a query language to it: what you need is
+  the handful of lines that differ, and that is what the diff gives you.
 """
 
 
@@ -148,6 +202,24 @@ def toollist() -> list[dict]:
 
 
 # ------------------------------------------------------------------ helpers
+
+def _read_limit(args: dict) -> int:
+    """How much text one answer may carry, with the probe floor applied.
+
+    A caller that asks for less than `MIN_MAX_CHARS` is not saving anything: the round trip
+    costs the same, and what it is after (`chars`) stands in the answer of the full read as
+    well. So the tiny number is read as the default rather than obeyed.
+    """
+    want = int(args.get("max_chars") or DEFAULT_MAX_CHARS)
+    return DEFAULT_MAX_CHARS if want < MIN_MAX_CHARS else want
+
+
+def _excerpt(text: str, at: int, length: int) -> str:
+    """The changed place with `EXCERPT_CONTEXT` characters of note around it."""
+    start = max(0, at - EXCERPT_CONTEXT)
+    end = min(len(text), at + length + EXCERPT_CONTEXT)
+    return ("…" if start else "") + text[start:end] + ("…" if end < len(text) else "")
+
 
 def _text_of(ws, path: str) -> str:
     """A note as text, or a sentence saying why not.
@@ -246,12 +318,20 @@ async def execute(user: User, name: str, args: dict) -> Any:
 
     if name == "notes_read":
         raw = _text_of(ws, path)
-        limit = int(args.get("max_chars") or DEFAULT_MAX_CHARS)
+        limit = _read_limit(args)
         page = ws.pages.get(path)
+        text = raw[:limit]
+        # `truncated: false` alone is a negative, and a negative is easy to read past. On
+        # 2026-09-09 a run read the same note five times with an ever larger `max_chars`,
+        # having had the whole of it and the flag from the first call, because it took the
+        # note for cut off. Two numbers that either match or do not are harder to argue with
+        # than a flag, and they say WHY nothing more is coming.
         return {
             "path": path,
-            "content": raw[:limit],
+            "content": text,
             "truncated": len(raw) > limit,
+            "chars": len(raw),
+            "chars_returned": len(text),
             "hash": content_hash(raw),
             "properties": page.fields if page else {},
             "tags": page.tags if page else [],
@@ -259,8 +339,17 @@ async def execute(user: User, name: str, args: dict) -> Any:
 
     if name == "notes_search":
         limit = min(int(args.get("limit") or 50), MAX_LIST)
-        hits = run_search(ws.graph, str(args.get("query") or ""), ws.words)
-        return {"hits": [h.as_json() for h in hits[:limit]], "total": len(hits)}
+        query = str(args.get("query") or "")
+        hits = run_search(ws.graph, query, ws.words)
+        out = {"hits": [h.as_json() for h in hits[:limit]], "total": len(hits)}
+        if not hits:
+            # A nought that says how it came about. Whoever gets a bare `total: 0` cannot
+            # tell a wrong query from a right one about something that is not there, and
+            # asks again in another spelling — three times, in run 2517.
+            out["searched"] = len(ws.graph.docs)
+            if (why := explain_empty(ws.graph, query, ws.words)):
+                out["why_nothing"] = why
+        return out
 
     if name == "notes_query":
         return run_query(ws.pages, str(args.get("query") or ""),
@@ -292,18 +381,42 @@ async def execute(user: User, name: str, args: dict) -> Any:
 
     if name == "notes_replace":
         raw = _text_of(ws, path)
-        find = str(args.get("find") or "")
-        if not find:
-            raise ValueError("`find` must not be empty")
-        count = raw.count(find)
-        expect = args.get("expect")
-        if expect is not None and int(expect) != count:
-            raise ValueError(f"expected {int(expect)} matches, found {count} — "
-                             "nothing was written")
-        if count == 0:
-            raise ValueError("that text is not in this note — nothing was written")
-        return {**ws.save(path, raw.replace(find, str(args.get("replace") or ""))),
-                "replaced": count}
+        edits = args.get("edits")
+        if edits is None:
+            edits = [{"find": args.get("find"), "replace": args.get("replace"),
+                      "expect": args.get("expect")}]
+        elif not isinstance(edits, list) or not edits:
+            raise ValueError("`edits` must be a list with at least one change in it")
+        text, done, excerpts = raw, 0, []
+        for number, edit in enumerate(edits, 1):
+            # Only a batch says WHICH of its changes went wrong; with one change the number
+            # would be noise in front of a sentence that is already unambiguous.
+            where = f"change {number}: " if len(edits) > 1 else ""
+            find = str(edit.get("find") or "")
+            if not find:
+                raise ValueError(f"{where}`find` must not be empty")
+            count = text.count(find)
+            expect = edit.get("expect")
+            if expect is not None and int(expect) != count:
+                raise ValueError(f"{where}expected {int(expect)} matches, found {count} — "
+                                 "nothing was written")
+            if count == 0:
+                raise ValueError(f"{where}that text is not in this note — nothing was written")
+            replacement = str(edit.get("replace") or "")
+            at = text.index(find)
+            text = text.replace(find, replacement)
+            done += count
+            excerpts.append(_excerpt(text, at, len(replacement)))
+        # Nothing is written before every change has been found. A batch that gives up
+        # halfway would leave the note in a state nobody asked for and nobody can name.
+        # The changed places come back in their context, with the answer. Every write used
+        # to be followed by a `notes_read` of the whole note to see whether it had landed: a
+        # round trip and, on a long note, a second full copy in the history. The excerpt
+        # answers the same question in a few hundred characters.
+        out = {**ws.save(path, text), "replaced": done}
+        out["excerpt" if len(excerpts) == 1 else "excerpts"] = (
+            excerpts[0] if len(excerpts) == 1 else excerpts)
+        return out
 
     if name == "notes_properties":
         raw = _text_of(ws, path)
@@ -316,8 +429,12 @@ async def execute(user: User, name: str, args: dict) -> Any:
         data.update(changes)
         for key in drops:
             data.pop(str(key), None)
-        ws.save(path, _with_properties(raw, data))
-        return {"path": path, "properties": data}
+        # The `hash` of the write comes back with it: whoever changes properties usually
+        # writes again straight after, and without the identity that means reading the whole
+        # note once more only to be allowed to write.
+        saved = ws.save(path, _with_properties(raw, data))
+        return {"path": path, "properties": data,
+                "hash": saved.get("hash", ""), "chars": saved.get("chars", 0)}
 
     if name == "notes_tags":
         add = [str(t).lstrip("#") for t in (args.get("add") or [])]
@@ -365,6 +482,21 @@ async def execute(user: User, name: str, args: dict) -> Any:
         return ws.upload(str(args.get("name") or "file"), data,
                          folder=str(folder) if folder is not None else None,
                          note=str(args.get("note") or ""))
+
+    if name == "notes_diff":
+        a, b = str(args.get("a") or ""), str(args.get("b") or "")
+        rows = list(difflib.unified_diff(
+            _text_of(ws, a).splitlines(), _text_of(ws, b).splitlines(),
+            fromfile=a, tofile=b, lineterm="",
+            n=max(0, int(args.get("context") or DIFF_CONTEXT))))
+        limit = _read_limit(args)
+        text = "\n".join(rows)
+        # "Nothing came back" has to be distinguishable from "they are the same". A model
+        # that gets an empty string reads it as a failed call and tries again — which is
+        # exactly the loop this tool was built to end.
+        return {"a": a, "b": b, "identical": not rows,
+                "diff": text[:limit],
+                "truncated": len(text) > limit}
 
     raise LookupError(f"no tool called {name!r}")
 

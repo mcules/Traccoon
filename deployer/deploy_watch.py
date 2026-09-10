@@ -275,6 +275,10 @@ class PreviewHandler(BaseHTTPRequestHandler):
                                          int(body.get("tail") or 200)))
         elif self.path == "/preview/list":
             self._json(200, {"stacks": preview_list()})
+        elif self.path == "/stack/logs":
+            self._json(200, stack_logs(body.get("service", ""), int(body.get("tail") or 200)))
+        elif self.path == "/stack/services":
+            self._json(200, {"services": stack_services()})
         else:
             self._json(404, {"error": "not found"})
 
@@ -428,6 +432,48 @@ def preview_logs(project_name, service, tail):
                            capture_output=True, text=True, timeout=120)
         out = q.stdout + q.stderr
     return {"project_name": project_name, "service": service, "log": out[-200000:]}
+
+
+# The containers of the Traccoon stack itself. The backend has no docker socket and is
+# not supposed to get one — it faces the web, and the socket is root on the host. The
+# deployer already holds it, so the log view asks here instead.
+STACK_PROJECT = os.getenv("STACK_PROJECT", "traccoon")
+
+
+def stack_services():
+    """Services of the own stack with their container state."""
+    fmt = '{{.Label "com.docker.compose.service"}}\t{{.Names}}\t{{.State}}\t{{.Status}}'
+    p = subprocess.run(
+        ["docker", "ps", "-a", "--filter", f"label=com.docker.compose.project={STACK_PROJECT}",
+         "--format", fmt], capture_output=True, text=True, timeout=30)
+    out = []
+    for line in p.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 4 and parts[0]:
+            out.append({"service": parts[0], "container": parts[1],
+                        "state": parts[2], "status": parts[3]})
+    return sorted(out, key=lambda s: s["service"])
+
+
+def stack_logs(service, tail):
+    """Container log of ONE service of the own stack.
+
+    Without a service name this would return the whole stack interleaved, which for a
+    dozen containers is unreadable and large — so the service is mandatory and is checked
+    against the actual list rather than being pasted into the command line.
+    """
+    tail = max(1, min(int(tail or 200), 5000))
+    # Over the container name and not over `docker compose logs`: compose wants its file,
+    # which the deployer does not have in its own image. The name comes from the label
+    # query, so nothing an admin types reaches the command line unchecked.
+    names = {s["service"]: s["container"] for s in stack_services()}
+    if service not in names:
+        return {"service": service, "log": "", "error": "unknown service"}
+    p = subprocess.run(
+        ["docker", "logs", "--timestamps", "--tail", str(tail), names[service]],
+        capture_output=True, text=True, timeout=120)
+    out = p.stdout + p.stderr
+    return {"service": service, "log": out[-400000:]}
 
 
 def preview_list():

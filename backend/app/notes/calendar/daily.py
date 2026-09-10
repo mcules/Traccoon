@@ -16,13 +16,20 @@ appointment that disappears is struck through and kept.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 
 from .fetch import Event
 
 HEADING = "# Termine"
-EVENT_LINE = re.compile(r"^(\s*)- (?:(\d{2}:\d{2}) )?(?:~~)?(.+?)(?:~~)?(?: · ([^·]+))?\s*$")
+# The end time is optional and is thrown away: a line may have been written as
+# `14:00-14:50`, by a person or by an earlier writer, and a pattern that only
+# knew `14:00 ` did not recognise it. That is not a cosmetic miss — an
+# unrecognised line is not found again, so the appointment is appended a second
+# time and the day shows it twice. Both dashes count, the hyphen and the en dash.
+EVENT_LINE = re.compile(
+    r"^(\s*)- (?:(\d{2}:\d{2})(?:[-\u2013]\d{2}:\d{2})? )?(?:~~)?(.+?)(?:~~)?(?: · ([^·]+))?\s*$")
 ANY_HEADING = re.compile(r"^#{1,6}\s")
 # Something written under an appointment. A tab counts as much as two spaces:
 # this vault indents its sub-bullets with tabs, and a rule that only knew spaces
@@ -39,6 +46,24 @@ DAY_COUNTER = re.compile(r"\s*\(Tag \d+/\d+\)\s*$")
 # The same thing wherever it stands. Comparing two whole lines needs this: there
 # the counter sits inside, before the calendar, not at the end.
 DAY_COUNTER_ANY = re.compile(r"\s*\(Tag \d+/\d+\)")
+# Obsidian's block id at the end of a line. Same character set as the editor's
+# own rule in `livePreview.ts`, so what is written here is what that hides.
+BLOCK_ID = re.compile(r"[ \t]+\^([a-zA-Z0-9-]+)[ \t]*$")
+# What this house writes UNDER an appointment: where it went, or that it was
+# called off. It sits where the reader's own notes sit, so it needs a mark of its
+# own — without one the next sync could not tell its own sentence from somebody
+# else's and would either write a second copy or overwrite a note.
+MARK = "\u21aa"                     # ↪  what became of it
+NEXT_MARK = "\u27f3"                # ⟳  where the series goes next
+ANNOTATION = re.compile(rf"^(?:\t|\s{{2,}})\s*{MARK}\s")
+# Both marks together: the block of lines under an appointment that this house
+# owns. Two kinds, because they answer different questions and one must not
+# push the other out — a cancelled occurrence of a series is still part of a
+# series. Anything else indented under an appointment is somebody's own note and
+# is never touched.
+HOUSE = re.compile(rf"^(?:\t|\s{{2,}})\s*[{MARK}{NEXT_MARK}]\s")
+# The same indent the agenda blocks use, so the two line up under an appointment.
+INDENT = "    "
 
 
 @dataclass
@@ -56,25 +81,96 @@ class Result:
     cancelled: int = 0
 
 
+def block_id(event: Event) -> str:
+    """The name this appointment answers to in a note.
+
+    Obsidian's own block id (`^name` at the end of a line), so both readers
+    already know what it is: the reading view drops it, the editor shows it only
+    while the caret is in that line, and it can be linked to.
+
+    Computed from the UID and nothing else, which is the whole point. The index
+    in the database is then only an index — throw it away, copy the vault to
+    another machine, and a line still says which appointment it is. An id handed
+    out by a counter would have made the database the truth and the vault a
+    printout of it.
+
+    `Event.id` would have been the obvious choice and is the wrong one: it is
+    `uid@start`, so it changes the moment an appointment is moved — which is
+    exactly the case this has to survive. Occurrences of a series do share an id
+    this way, but they live in different notes, and a block id only ever has to
+    be unique inside its own note.
+    """
+    return "ev-" + hashlib.sha1(event.uid.encode("utf-8")).hexdigest()[:8]
+
+
+def split_block_id(line: str) -> tuple[str, str]:
+    """`(line without its block id, the id)` — the id is "" when there is none."""
+    m = BLOCK_ID.search(line)
+    return (line[: m.start()].rstrip(), m.group(1)) if m else (line, "")
+
+
 def line_for(event: Event) -> str:
-    time = "" if event.allDay else f"{event.time} "
+    """One appointment as one line.
+
+    With the end time where there is one: "when is it" is a span, not a moment,
+    and a list that only says when things start makes the reader work out from
+    the next entry how long they have. An end that equals the start says nothing
+    and is left off.
+    """
+    if event.allDay:
+        time = ""
+    elif event.endTime and event.endTime != event.time:
+        time = f"{event.time}\u2013{event.endTime} "
+    else:
+        time = f"{event.time} "
     title = f"~~{event.title}~~" if event.cancelled else event.title
-    return f"- {time}{title} · {event.calendar}"
+    return f"- {time}{title} · {event.calendar} ^{block_id(event)}"
 
 
 def matches(line: str, event: Event) -> bool:
     """Does this line describe that appointment?"""
-    m = EVENT_LINE.match(line)
+    bare, ident = split_block_id(line)
+    m = EVENT_LINE.match(bare)
     if not m:
         return False
     indent, time, title, calendar = m.groups()
     if indent:
         return False                       # a sub-bullet is the reader's own note
+    if ident:
+        # A line that carries a name is answered by the name alone. Everything
+        # else about it may have changed — that is what the name is for: an
+        # appointment renamed in the calendar used to look like a different one
+        # and landed in the note a second time.
+        return ident == block_id(event)
+    # Nothing written by this house yet: fall back to what it looked like before
+    # there were ids, so the lines already in the vault keep being recognised.
     if (calendar or "").strip() != event.calendar:
         return False
     # A moved appointment keeps its title: same title, same calendar, other time.
     written = title.strip().replace("~~", "")
     return written == event.title or DAY_COUNTER.sub("", written) == event.title
+
+
+def annotation(text: str) -> str:
+    """One line of this house's own, under the appointment it belongs to."""
+    return f"{INDENT}{MARK} {text}"
+
+
+def next_note(target_note: str, label: str) -> str:
+    """Where this series meets again. A link, so it is a button in both readers."""
+    return f"{INDENT}{NEXT_MARK} nächster Termin: [[{target_note}|{label}]]"
+
+
+def moved_note(target_note: str, label: str) -> str:
+    """Where an appointment went. The link is the button: a wikilink is a link in
+    both readers, so nothing has to be rendered for it to be clickable."""
+    return annotation(f"verschoben auf [[{target_note}|{label}]]")
+
+
+CANCELLED_NOTE = annotation("abgesagt")
+# An appointment that is no longer in the feed at all. Different from cancelled,
+# which the feed still carries and still calls an appointment.
+GONE_NOTE = annotation("entfällt")
 
 
 def _template_for(templates: list[Template], title: str) -> Template | None:
@@ -115,7 +211,14 @@ def apply_lines(content: str, events: list[Event], *, heading: str = HEADING,
     added = updated = cancelled = 0
     seen: set[str] = set()
 
+    # Lines this pass has already dealt with: the annotation under an appointment
+    # is rewritten together with it, so it must not be copied over a second time
+    # when the loop reaches it.
+    consumed: set[int] = set()
+
     for i, line in enumerate(section):
+        if i in consumed:
+            continue
         event = next((e for e in events if matches(line, e)), None)
         if event is None:
             out.append(line)
@@ -140,11 +243,25 @@ def apply_lines(content: str, events: list[Event], *, heading: str = HEADING,
             if event.cancelled:
                 cancelled += 1
         out.append(wanted)
+        # The house's own note under the appointment. An appointment that is on
+        # this day says only whether it was called off — where one WENT is written
+        # by `mark_moved` on the day it left, which this pass never sees.
+        following = section[i + 1] if i + 1 < len(section) else ""
+        had = ANNOTATION.match(following)
+        if had:
+            consumed.add(i + 1)
+        want_note = CANCELLED_NOTE if event.cancelled else ""
+        if want_note:
+            out.append(want_note)
+            if not had:
+                updated += 1
+        elif had:
+            updated += 1                  # a cancellation withdrawn: the note goes
         # A recurring appointment can bring its own agenda — but only once: if
         # anything is written under it already, that is the note and it stays.
         template = _template_for(templates, event.title)
-        following = section[i + 1] if i + 1 < len(section) else ""
-        if template and not INDENTED.match(following):
+        after = section[i + 2] if had and i + 2 < len(section) else following
+        if template and not INDENTED.match(after):
             out.extend(template.lines)
 
     fresh = [e for e in events if e.id not in seen]
@@ -155,6 +272,8 @@ def apply_lines(content: str, events: list[Event], *, heading: str = HEADING,
         for event in fresh:
             out.append(line_for(event))
             added += 1
+            if event.cancelled:
+                out.append(CANCELLED_NOTE)
             template = _template_for(templates, event.title)
             if template:
                 out.extend(template.lines)
@@ -162,6 +281,116 @@ def apply_lines(content: str, events: list[Event], *, heading: str = HEADING,
 
     return Result(text="\n".join(lines[:head + 1] + out + lines[end:]),
                   added=added, updated=updated, cancelled=cancelled)
+
+
+KEEP = object()                     # "leave that annotation as it is"
+
+
+def _house_under(lines: list[str], at: int) -> tuple[list[str], int]:
+    """The house's own annotation lines directly under `at`, and how many."""
+    n = 0
+    while at + 1 + n < len(lines) and HOUSE.match(lines[at + 1 + n]):
+        n += 1
+    return lines[at + 1: at + 1 + n], n
+
+
+def annotate(content: str, ident: str, *, state=KEEP, nav=KEEP,
+             strike: bool = False) -> Result:
+    """Change what this house says about the appointment with that block id.
+
+    `state` is what became of it (called off, moved away, fell away) and `nav` is
+    where its series meets next; either can be a line, None to take it away, or
+    left alone. They are kept apart because they answer different questions — an
+    occurrence can be cancelled AND still be part of a series that goes on.
+
+    Whatever the reader wrote under the appointment stays where it is. That is
+    the whole reason for a marked block: without it, this could not tell its own
+    sentence from somebody else's.
+    """
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        bare, found = split_block_id(line)
+        if found != ident or INDENTED.match(line):
+            continue
+        m = EVENT_LINE.match(bare)
+        if not m:
+            continue
+
+        before = list(lines)
+        if strike and "~~" not in bare:
+            _, time, title, calendar = m.groups()
+            head = f"- {time + ' ' if time else ''}~~{title.strip()}~~"
+            lines[i] = f"{head} · {calendar.strip()} ^{found}" if calendar else f"{head} ^{found}"
+
+        had, count = _house_under(lines, i)
+        keep_state = next((l for l in had if ANNOTATION.match(l)), None)
+        keep_nav = next((l for l in had if not ANNOTATION.match(l)), None)
+        want = [x for x in (keep_state if state is KEEP else state,
+                            keep_nav if nav is KEEP else nav) if x]
+        lines[i + 1: i + 1 + count] = want
+        return (Result(text="\n".join(lines), updated=1) if lines != before
+                else Result(text=content))
+    return Result(text=content)
+
+
+def remove_line(content: str, ident: str) -> tuple[Result, bool]:
+    """Take the appointment with that block id out of the note altogether.
+
+    For a series that ended: its future occurrences never happen, and a
+    struck-through phantom in every note of the next year is noise rather than
+    history. The one-off that was simply dropped is kept instead — that had been
+    planned, and the record of it is worth something.
+
+    Refuses when the reader wrote something under it, and says so in the second
+    value. Their sentences are not this program's to throw away, and an
+    appointment somebody made notes against is one they cared about. The caller
+    then strikes it through instead.
+    """
+    lines = content.split("\n")
+    for i, line in enumerate(lines):
+        bare, found = split_block_id(line)
+        if found != ident or INDENTED.match(line):
+            continue
+        if not EVENT_LINE.match(bare):
+            continue
+        _, count = _house_under(lines, i)
+        after = lines[i + 1 + count] if i + 1 + count < len(lines) else ""
+        if INDENTED.match(after):
+            return Result(text=content), True          # somebody wrote under it
+        del lines[i: i + 1 + count]
+        return Result(text="\n".join(lines), updated=1), False
+    return Result(text=content), False
+
+
+def mark_next(content: str, ident: str, target_note: str, label: str) -> Result:
+    """Point an occurrence of a series at the next one."""
+    return annotate(content, ident, nav=next_note(target_note, label))
+
+
+def mark_gone(content: str, ident: str) -> Result:
+    """Say that an appointment is not in the calendar any more.
+
+    Only ever on a calendar that answered. A feed that could not be read carries
+    no appointments either, and striking a day's meetings through because a
+    server was briefly down would be the worst kind of wrong: quiet, plausible,
+    and in somebody's record of what they did.
+    """
+    return annotate(content, ident, state=GONE_NOTE, strike=True)
+
+
+def mark_moved(content: str, ident: str, target_note: str, label: str) -> Result:
+    """Say, on the day an appointment left, where it went.
+
+    The day it moved TO gets its line the ordinary way; this is the other half,
+    and it is the half a sync cannot work out on its own: the appointment is
+    simply not among that day's events any more, and without this the line would
+    either be left standing as though it still took place, or quietly dropped
+    together with whatever was written under it.
+
+    The link underneath is the way to the new day; a wikilink is a link in both
+    readers, so there is nothing to render for it to be clickable.
+    """
+    return annotate(content, ident, state=moved_note(target_note, label), strike=True)
 
 
 # ------------------------------------------------------------- where it goes
@@ -180,6 +409,74 @@ def daily_note_path(day, folder: str, fmt: str) -> str:
     for token, code in TOKENS:
         name = name.replace(token, day.strftime(code))
     return f"{folder}/{name}.md" if folder else f"{name}.md"
+
+
+def _path_pattern(folder: str, fmt: str) -> tuple[re.Pattern, list[str]] | None:
+    """The path rule as something that can be read backwards.
+
+    Built from the same `TOKENS` the forward direction uses, so a vault that
+    files its days as `DD.MM.YYYY` or `YYYY/MM/DD` is understood as readily as
+    this one's `YYYY/MM/YYYY-MM-DD`. Everything between the tokens is taken
+    literally — a dot in a format is a dot, not "any character".
+
+    A token may appear more than once (the year does, above); each occurrence
+    gets its own group and they are checked against each other afterwards.
+    """
+    groups = {"YYYY": r"(\d{4})", "YY": r"(\d{2})", "MM": r"(\d{2})", "DD": r"(\d{2})"}
+    order: list[str] = []
+    out, rest = "", fmt
+    while rest:
+        for token, _ in TOKENS:
+            if rest.startswith(token):
+                out += groups[token]
+                order.append(token)
+                rest = rest[len(token):]
+                break
+        else:
+            out += re.escape(rest[0])
+            rest = rest[1:]
+    if not ({"YYYY", "YY"} & set(order)) or "MM" not in order or "DD" not in order:
+        return None            # not a rule that names a single day
+    head = re.escape(folder.strip("/") + "/") if folder.strip("/") else ""
+    # The order comes back beside the pattern: a group cannot carry a name that
+    # repeats, and the year repeats in this vault's own format.
+    return re.compile(rf"\A{head}{out}\.(?:md|markdown)\Z", re.IGNORECASE), order
+
+
+def day_of_daily_path(rel: str, folder: str, fmt: str):
+    """Which day a path is the daily note of, or None if it is not one.
+
+    The inverse of `daily_note_path`, built from the same rule so the format
+    stays defined in exactly one place. Whatever the pattern reads out is handed
+    back through the forward direction, and only a path that comes out identical
+    counts — a name that merely looks like a date, filed somewhere else entirely,
+    is not mistaken for one.
+
+    What it refuses matters more than what it accepts. This decides whether
+    opening a note that is not there creates a file, so a rule that guessed would
+    leave notes behind in places nobody asked for.
+    """
+    import datetime as _d
+
+    built = _path_pattern(folder, fmt)
+    if built is None:
+        return None
+    pattern, order = built
+    m = pattern.match(rel)
+    if not m:
+        return None
+
+    parts: dict[str, str] = {}
+    for token, value in zip(order, m.groups()):
+        if parts.setdefault(token, value) != value:
+            return None                  # the same token twice, saying two things
+    try:
+        year = (int(parts["YYYY"]) if "YYYY" in parts
+                else _d.datetime.strptime(parts["YY"], "%y").year)
+        day = _d.date(year, int(parts["MM"]), int(parts["DD"]))
+    except ValueError:
+        return None
+    return day if daily_note_path(day, folder, fmt) == rel else None
 
 
 def template_lines(raw: str) -> list[str]:

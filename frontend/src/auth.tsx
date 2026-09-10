@@ -6,6 +6,8 @@ interface AuthCtx {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  /** The other door: username, then the key on the device. */
+  loginWithPasskey: (email: string) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
 }
@@ -52,6 +54,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refresh();
   }
 
+  /**
+   * Two calls, and the split is the point: the server first says WHAT is to be signed
+   * (challenge plus which keys may answer), the device signs, and the signature goes back.
+   * The challenge is spent on reading, so a signature cannot be handed in twice.
+   */
+  async function loginWithPasskey(email: string) {
+    const { usePasskey } = await import("./passkeys");
+    const options = await api.post<Record<string, any>>("/auth/passkey/options", { email });
+    const credential = await usePasskey(options);
+    const res = await api.post<{ access_token: string }>("/auth/passkey/login",
+                                                          { email, credential });
+    setToken(res.access_token);
+    await refresh();
+  }
+
   function logout() {
     setToken(null);
     setUser(null);
@@ -59,6 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ user, loading, login, logout, refresh }}>{children}</Ctx.Provider>
+    <Ctx.Provider value={{ user, loading, login, loginWithPasskey, logout, refresh }}>{children}</Ctx.Provider>
   );
 }

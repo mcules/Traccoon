@@ -256,6 +256,39 @@ def parse_query(text: str) -> Node | None:
     return _Parser(tokenize(text)).parse()
 
 
+def render(node: Node | None) -> str:
+    """A parsed query written back out, so a part of it can be quoted to whoever asked.
+
+    Not a round trip and not meant as one: what it has to do is name ONE part of a query
+    recognisably enough that a reader sees which part they wrote. The parser keeps no source
+    text, and an answer that says "part 2 of your query found nothing" helps nobody.
+    """
+    if node is None:
+        return ""
+    if isinstance(node, Text):
+        return node.value
+    if isinstance(node, Phrase):
+        return f'"{node.value}"'
+    if isinstance(node, Regex):
+        return f"/{node.source}/"
+    if isinstance(node, Const):
+        return node.value
+    if isinstance(node, Not):
+        return f"-{render(node.item)}"
+    if isinstance(node, Cmp):
+        return f"{node.dir}{render(node.item)}"
+    if isinstance(node, Op):
+        return f"{node.op}:{render(node.item)}"
+    if isinstance(node, Prop):
+        inner = render(node.name)
+        return f"[{inner}:{render(node.value)}]" if node.value is not None else f"[{inner}]"
+    if isinstance(node, And):
+        return " ".join(render(i) for i in node.items)
+    if isinstance(node, Or):
+        return " OR ".join(render(i) for i in node.items)
+    return ""
+
+
 def plain_terms(node: Node | None) -> list[str]:
     """The ordinary words in a query, enough to pre-select candidates."""
     if node is None:

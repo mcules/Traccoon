@@ -37,3 +37,9 @@ lzstring==1.0.4
 pytest==8.3.4
 pytest-asyncio==0.25.0
 aiosqlite==0.20.0
+# Passkeys (WebAuthn): key handling, CBOR and the attestation formats. Server side only —
+# the browser does the crypto, this checks what comes back.
+# 2.4.0 and not the newest: from 2.5 on it demands cryptography>=44.0.2, and that one is
+# pinned here at 44.0.0. Bumping the crypto library for a login button is the wrong trade —
+# it sits under the token and secret handling of the whole house.
+webauthn==2.4.0

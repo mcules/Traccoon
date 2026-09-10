@@ -42,6 +42,13 @@ class AssistantSession(TimestampMixin, Base):
         DateTime(timezone=True), nullable=True, index=True)
     closed_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True)
+    # How far the person has read. Compared against `last_message_at`, that is
+    # what makes an answer "unread" — the one state a conversation has that the
+    # conversation itself knows nothing about. Kept here rather than in a browser
+    # so that an answer read at the desk is read on the phone as well; a session
+    # already belongs to exactly one person, so one column is the whole story.
+    read_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
     # Room for later. Nothing is invented in here now.
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
 

@@ -1,5 +1,5 @@
 import { tr } from "../i18n";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, fetchFile } from "../api";
 import { usePageChrome } from "../pageChrome";
@@ -28,6 +28,12 @@ interface Header {
   /** Where this message lies. Only interesting when searching the whole mailbox: then the
    *  hits come from several folders and a UID alone would open the wrong mail. */
   folder?: string;
+  /** In the conversation view a row is the newest message of its thread and carries the
+   *  rest with it, newest first, itself included. Only from two on — a single mail is a
+   *  mail, and a "1" behind every subject would be noise on every line. */
+  thread?: Header[];
+  thread_count?: number;
+  thread_unseen?: number;
 }
 interface Address { name: string; addr: string }
 interface Attachment { index: number; filename: string; content_type: string; size: number }
@@ -165,6 +171,8 @@ type FolderCommand = "read" | "empty" | "child" | "rename" | "delete";
  */
 const WIDTH_KEY = "traccoon_mail_list_width";
 const WIDTH_STANDARD = 420;
+/** What a row stands for: one message, or every message of the conversation it heads. */
+const uidsOf = (m: Header): number[] => m.thread?.map((k) => k.uid) ?? [m.uid];
 
 function storedWidth(): number {
   const raw = Number(localStorage.getItem(WIDTH_KEY));
@@ -732,7 +740,25 @@ function FolderCommands({ accountId, account, folder: folder, kind, onClose, onG
     onError: gonewrong(tr("mail.delete")),
   });
 
+  // "Mark everything read" without a question, unless the mailbox asks for one. The handle
+  // sits in the folder's own menu and is chosen deliberately; a dialog in front of it buys a
+  // second click for something that is undone message by message either way. Fired from an
+  // effect and once: at this point the component is already standing, `kind` is the choice.
+  // `!!account`: while the mailboxes are still being fetched the setting is unknown, and
+  // "unknown" must not read as "do not ask" — that would skip a question somebody asked for.
+  const straightAway = kind === "read" && !!account && !account.ask_before_folder_read;
+  const fired = useRef(false);
+  useEffect(() => {
+    if (!straightAway || fired.current) return;
+    fired.current = true;
+    read.mutate();
+    // `read` is left out on purpose: a mutation is a fresh object on every render, and with
+    // it in here the effect would fire again on the render its own call causes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [straightAway]);
+
   if (kind === "read") {
+    if (straightAway) return null;
     return (
       <ConfirmDialog
         title={tr("mail.mark_all_read_q")}
@@ -1119,7 +1145,42 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
   useEffect(() => { setQuestion(search); }, [search, folder]);
   // Where the last tick sat, for the range that shift asks for.
   const [anchor, setAnchor] = useState<number | null>(null);
+  // One row per conversation instead of one per message. Kept on the PERSON, not in the
+  // browser: it is how somebody reads mail, and that habit does not change between the desk
+  // and the phone. The switch here and the one in the account settings are the same value.
+  const { user, refresh: refreshUser } = useAuth();
+  const threads = !!user?.mail_threads;
+  const setThreads = async (value: boolean) => {
+    try {
+      await api.put("/me/mail-threads", { value });
+      await refreshUser();
+    } catch (e) {
+      onError(e instanceof ApiError ? e.message : tr("common.not_saved"));
+    }
+  };
+  // Not across the whole mailbox: threading is a question inside ONE folder. An answer filed
+  // elsewhere is its own row over there, and pretending otherwise would show a conversation
+  // whose parts cannot be handled together.
+  const grouped = threads && !(search && scope === "all");
   const limit = 50;
+
+  // The addresses of this mailbox, for "this one is from me". In a conversation that is the
+  // difference between a question and an answer, and without it one reads a thread as if
+  // nobody had replied yet. Held in a `useMemo` because it travels into a `memo`'d row: a
+  // fresh Set on every render would make that comparison pointless.
+  const { data: identities } = useQuery({
+    queryKey: ["mail-identities", accountId],
+    queryFn: () => api.get<MailIdentity[]>(`/mailbox/accounts/${accountId}/identities`),
+    enabled: !!accountId,
+  });
+  const mine = useMemo(() => {
+    const set = new Set<string>();
+    for (const i of identities || []) if (i.email) set.add(i.email.toLowerCase());
+    // The login is an address on most servers and is often the one nobody entered as an
+    // identity — a mail to oneself would otherwise read as a stranger's.
+    if (account?.imap_user?.includes("@")) set.add(account.imap_user.toLowerCase());
+    return set;
+  }, [identities, account?.imap_user]);
 
   /**
    * The list grows while one scrolls, in packs of fifty.
@@ -1132,11 +1193,12 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
    */
   const { data, isLoading, isPlaceholderData, isFetchingNextPage, hasNextPage, fetchNextPage,
           error } = useInfiniteQuery({
-    queryKey: ["mail-list", accountId, folder, search, scope],
-    queryFn: ({ pageParam }) => api.get<{ total: number; capped?: boolean; messages: Header[] }>(
+    queryKey: ["mail-list", accountId, folder, search, scope, grouped],
+    queryFn: ({ pageParam }) => api.get<{
+      total: number; capped?: boolean; threaded?: boolean; messages: Header[] }>(
       `/mailbox/accounts/${accountId}/messages?folder=${encodeURIComponent(folder)}`
       + `&q=${encodeURIComponent(search)}&scope=${scope}`
-      + `&offset=${pageParam}&limit=${limit}`),
+      + `&offset=${pageParam}&limit=${limit}${grouped ? "&threads=true" : ""}`),
     initialPageParam: 0,
     getNextPageParam: (last, all) => {
       const have = all.reduce((n, p) => n + p.messages.length, 0);
@@ -1178,8 +1240,13 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
   const messages = data?.pages.flatMap((p) => p.messages) || [];
   const total = data?.pages[0]?.total ?? 0;
   const capped = data?.pages[0]?.capped;
+  // The server answers whether it can thread at all. Asked for and not delivered means the
+  // list is the plain one — said out loud, because a view that quietly does nothing is worse
+  // than one that is not there.
+  const cannotThread = grouped && data?.pages[0]?.threaded === false;
   const ticked = new Set(chosen);
-  const allTicked = messages.length > 0 && messages.every((m) => ticked.has(m.uid));
+  const allTicked = messages.length > 0
+    && messages.every((m) => uidsOf(m).every((u) => ticked.has(u)));
 
   /**
    * The current state, in a box that stays the same.
@@ -1192,22 +1259,34 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
   const now = useRef({ chosen, messages, anchor });
   now.current = { chosen, messages, anchor };
 
-  const tick = useCallback((uid: number, index: number, shift: boolean) => {
+  /**
+   * Ticking a row.
+   *
+   * `uids` is what the row stands for: one message, or a whole conversation when the row is
+   * the head of one. That is the only honest reading of the tick — the row shows a
+   * conversation, so what is done to it is done to the conversation. A single message out of
+   * one is reached by opening it: then it has its own row and its own tick.
+   *
+   * `index` is where the row sits in the list, for the range shift asks for. Members of an
+   * opened conversation pass -1: they lie between two rows and are no range of their own.
+   */
+  const tick = useCallback((uids: number[], index: number, shift: boolean) => {
     const { chosen: had, messages: rows, anchor: from_uid } = now.current;
     const set = new Set(had);
-    if (shift && from_uid !== null) {
-      const from = rows.findIndex((k) => k.uid === from_uid);
+    const add = !uids.every((u) => set.has(u));
+    if (shift && from_uid !== null && index >= 0) {
+      const from = rows.findIndex((k) => uidsOf(k).includes(from_uid));
       if (from >= 0) {
         const [a, b] = from < index ? [from, index] : [index, from];
         // The range follows what the anchor did: ticking it ticks, unticking unticks.
-        const add = !set.has(uid);
-        rows.slice(a, b + 1).forEach((k) => (add ? set.add(k.uid) : set.delete(k.uid)));
+        rows.slice(a, b + 1).flatMap(uidsOf)
+          .forEach((u) => (add ? set.add(u) : set.delete(u)));
         onChosen([...set]);
         return;
       }
     }
-    set.has(uid) ? set.delete(uid) : set.add(uid);
-    setAnchor(uid);
+    uids.forEach((u) => (add ? set.add(u) : set.delete(u)));
+    if (index >= 0) setAnchor(uids[0]);
     onChosen([...set]);
   }, [onChosen]);
 
@@ -1256,7 +1335,7 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
           <input type="checkbox" checked={allTicked} disabled={!messages.length}
             className="h-4 w-4 shrink-0 accent-brand disabled:opacity-40"
             title={tr("mail.choose_all_on_page")} aria-label={tr("mail.choose_all_on_page")}
-            onChange={() => onChosen(allTicked ? [] : messages.map((m) => m.uid))} />
+            onChange={() => onChosen(allTicked ? [] : messages.flatMap(uidsOf))} />
           {/* The folder stands in the placeholder, not as a heading: it is marked in the tree
               beside this column anyway, and a line for it would be a line of mail less. */}
           <form className="flex min-w-0 flex-1 items-center gap-2"
@@ -1271,11 +1350,25 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
           </form>
           {/* While a new answer is on its way the old number is not wrong, it is stale.
               Dimmed it says so, and it keeps its place so the row does not jump. */}
+          {/* The view, next to the number it changes: with conversations on, the count is
+              conversations and not messages. A switch somewhere else would leave that
+              unexplained. */}
+          <button type="button" onClick={() => void setThreads(!threads)}
+            title={tr(threads ? "mail.threads_off" : "mail.threads_on")}
+            aria-pressed={threads}
+            className={`shrink-0 rounded border px-1.5 py-0.5 text-xs ${threads
+              ? "border-brand bg-brand/20 text-ink" : "border-line text-muted hover:text-ink"}`}>
+            {tr("mail.threads_short")}
+          </button>
           <span className={`shrink-0 text-xs text-muted ${isPlaceholderData ? "opacity-40" : ""}`}>
             {total}{capped ? "+" : ""}{" "}
-            {search ? tr("mail.hits") : tr("mail.messages")}
+            {search ? tr("mail.hits") : grouped ? tr("mail.conversations") : tr("mail.messages")}
           </span>
         </div>
+
+        {cannotThread && (
+          <div className="w-full text-xs text-muted">{tr("mail.threads_unsupported")}</div>
+        )}
 
         {/* How far the search reaches. Its own row, and only while something is being
             searched for: beside the field it squeezed everything else out at the width the
@@ -1330,8 +1423,9 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
         {messages.map((m, index) => (
           <MessageRow key={`${m.folder || folder}:${m.uid}`} m={m} index={index}
             folder={folder} showFolder={scope === "all" && !!search}
-            open={m.uid === open} ticked={ticked.has(m.uid)}
-            onOpen={onOpen_it} onTick={tick} />
+            open={open !== null && uidsOf(m).includes(open)}
+            openUid={open} onOpen={onOpen_it} onTick={tick} mine={mine}
+            tickedKey={uidsOf(m).filter((u) => ticked.has(u)).join(",")} />
         ))}
         {isLoading && <ListingEmpty>{tr("mail.loading")}</ListingEmpty>}
         {!isLoading && !messages.length && (
@@ -1366,42 +1460,158 @@ function MessagesListing({ accountId, folder: folder, search, scope, account,
  * unchanged messages (structural sharing), an unchanged row really is unchanged: what gets
  * redrawn is the mail that arrived and the one that was read.
  */
+/** Ist diese Nachricht von mir? `von` ist „Name <adresse>", verglichen wird die Adresse. */
+function fromMe(row: Header, mine: Set<string>): boolean {
+  const at = /<([^>]+)>\s*$/.exec(row.from || "");
+  const address = (at ? at[1] : row.from || "").trim().toLowerCase();
+  return !!address && mine.has(address);
+}
+
 const MessageRow = memo(function MessageRow({ m, index, folder: folder, showFolder, open,
-                                              ticked, onOpen: onOpen_it, onTick }: {
+                                              openUid, tickedKey, mine, onOpen: onOpen_it,
+                                              onTick }: {
   m: Header; index: number; folder: string; showFolder: boolean; open: boolean;
-  ticked: boolean; onOpen: (uid: number, folder: string) => void;
-  onTick: (uid: number, index: number, shift: boolean) => void;
+  /** The addresses of this mailbox: what came from here is an answer, not a question. */
+  mine: Set<string>;
+  /** Which message is being read. In a conversation that is one of the members, and the row
+   *  stays marked as the place one is standing. */
+  openUid: number | null;
+  /** Which uids of this row are ticked, as text. A `Set` would be a new object on every
+   *  render and `memo` would compare nothing; a string compares by its value. */
+  tickedKey: string;
+  onOpen: (uid: number, folder: string) => void;
+  onTick: (uids: number[], index: number, shift: boolean) => void;
 }) {
+  const members = m.thread && m.thread.length > 1 ? m.thread : null;
+  const uids = members ? members.map((k) => k.uid) : [m.uid];
+  const ticked = new Set(tickedKey ? tickedKey.split(",").map(Number) : []);
+  const allTicked = uids.every((u) => ticked.has(u));
+  // An opened conversation stays open while one reads through it. Closed by default: a list
+  // in which everything is unfolded is the flat list with extra indentation.
+  const [unfolded, setUnfolded] = useState(false);
+  const unread = members ? (m.thread_unseen ?? 0) > 0 : !m.seen;
+
   return (
-    <ListRow dense active={open} onClick={() => onOpen_it(m.uid, m.folder || folder)}>
+    <>
+    {/* Der Streifen links ist das eigentliche Zeichen: eine Zahl unter Zahlen sieht man
+        beim Durchlaufen nicht, eine gefärbte Kante sieht man ohne hinzuschauen. */}
+    <ListRow dense active={open} accent={unread && !open}
+             onClick={() => onOpen_it(m.uid, m.folder || folder)}>
       <div className="flex items-start gap-2">
         {/* Its own click target, and it must not open the mail: a tick is a decision about
             the row, not a way into it. */}
-        <input type="checkbox" checked={ticked} className="mt-1 h-4 w-4 shrink-0 accent-brand"
-          onClick={(e) => { e.stopPropagation(); onTick(m.uid, index, (e as any).shiftKey); }}
+        <input type="checkbox" checked={allTicked} className="mt-1 h-4 w-4 shrink-0 accent-brand"
+          onClick={(e) => { e.stopPropagation(); onTick(uids, index, (e as any).shiftKey); }}
           onChange={() => {/* der Klick oben entscheidet */}} />
+        {/* The handle for the conversation, and it does NOT open the mail: unfolding is a
+            question about the list, opening is a question about a message. */}
+        {members && (
+          <button type="button" aria-expanded={unfolded}
+            title={tr(unfolded ? "mail.thread_fold" : "mail.thread_unfold")}
+            className="mt-0.5 shrink-0 rounded px-1 text-xs text-muted hover:bg-line hover:text-ink"
+            onClick={(e) => { e.stopPropagation(); setUnfolded((v) => !v); }}>
+            {unfolded ? "▾" : "▸"}
+          </button>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className={`min-w-0 flex-1 truncate text-ink ${
-              open || !m.seen ? "font-semibold" : ""}`}>
+              open || unread ? "font-semibold" : ""}`}>
               {m.subject || tr("mail.no_subject")}
             </span>
+            {/* Wie lang der Verlauf ist, leise: ein Etikett um diese Zahl herum stand
+                gleichberechtigt neben dem ungelesen-Etikett, und dann waren es zwei
+                Zahlen, von denen keine heraussticht. Der Pfeil links sagt ohnehin
+                schon, dass hier mehrere hängen. */}
+            {members && (
+              <span className="shrink-0 text-xs text-muted"
+                title={tr("mail.thread_of_n", { n: m.thread_count ?? members.length })}>
+                {m.thread_count ?? members.length}
+              </span>
+            )}
             {showFolder && m.folder && m.folder !== folder && (
               <Tag title={tr("mail.lies_in", { folder: m.folder })}>📁 {m.folder}</Tag>
             )}
-            {!m.seen && <Tag color="brand">{tr("mail.new_short")}</Tag>}
+            {unread && (
+              <Tag color="brand">
+                {members ? tr("mail.n_new", { n: m.thread_unseen ?? 0 }) : tr("mail.new_short")}
+              </Tag>
+            )}
             {m.has_attachment && <span title={tr("mail.has_attachment")}>📎</span>}
             {m.flagged && <span title={tr("mail.flagged")}>⭐</span>}
             {m.answered && <span title={tr("mail.answered")}>↩</span>}
             {m.forwarded && <span title={tr("mail.forwarded")}>↪</span>}
             <span className="shrink-0 text-xs text-muted">{formatDateTime(m.date)}</span>
           </div>
-          <div className="mt-0.5 truncate text-xs text-muted">{m.from}</div>
+          {/* Who is talking. In a conversation that is more than one name, and which names
+              those are says more about it than the newest sender alone. */}
+          <div className="mt-0.5 flex items-baseline gap-2 truncate text-xs text-muted">
+            {fromMe(m, mine) && (
+              <span className="shrink-0 text-muted" title={tr("mail.from_me_hint")}>
+                ↗ {tr("mail.from_me")}
+              </span>
+            )}
+            <span className="truncate">{members ? speakers(members) : m.from}</span>
+          </div>
         </div>
       </div>
     </ListRow>
+    {members && unfolded && members.map((k) => (
+      // Die Einrückung sagt „gehört zum Verlauf darüber", die Farbe sagt „ungelesen".
+      // Vorher war die Einrückung selbst schon in der Hausfarbe und hat damit jede
+      // Nachricht wie eine neue aussehen lassen.
+      <div key={k.uid} className={`border-l-2 pl-3 ${
+        !k.seen && k.uid !== openUid ? "border-brand" : "border-line"}`}>
+        <ListRow dense active={k.uid === openUid}
+          onClick={() => onOpen_it(k.uid, k.folder || folder)}>
+          <div className="flex items-start gap-2">
+            <input type="checkbox" checked={ticked.has(k.uid)}
+              className="mt-1 h-4 w-4 shrink-0 accent-brand"
+              onClick={(e) => { e.stopPropagation(); onTick([k.uid], -1, false); }}
+              onChange={() => {/* der Klick oben entscheidet */}} />
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                {/* Von mir: das steht VOR dem Absender, nicht dahinter. In einem
+                    aufgeklappten Verlauf liest man diese Spalte von oben nach unten,
+                    und wer geantwortet hat, ist die Frage, die man dabei hat. */}
+                {fromMe(k, mine) && (
+                  <span className="shrink-0 text-xs text-muted" title={tr("mail.from_me_hint")}>
+                    ↗ {tr("mail.from_me")}
+                  </span>
+                )}
+                <span className={`min-w-0 flex-1 truncate ${
+                  fromMe(k, mine) ? "text-muted" : "text-ink"} ${
+                  k.uid === openUid || !k.seen ? "font-semibold" : ""}`}>
+                  {k.from || tr("mail.no_subject")}
+                </span>
+                {!k.seen && <Tag color="brand">{tr("mail.new_short")}</Tag>}
+                {k.has_attachment && <span title={tr("mail.has_attachment")}>📎</span>}
+                {k.flagged && <span title={tr("mail.flagged")}>⭐</span>}
+                {k.answered && <span title={tr("mail.answered")}>↩</span>}
+                {k.forwarded && <span title={tr("mail.forwarded")}>↪</span>}
+                <span className="shrink-0 text-xs text-muted">{formatDateTime(k.date)}</span>
+              </div>
+            </div>
+          </div>
+        </ListRow>
+      </div>
+    ))}
+    </>
   );
 });
+
+/** Who spoke in a conversation, oldest first and each of them once. Three names, then a
+ *  count: a row is one line wide, and the fourth name is what gets cut off anyway. */
+function speakers(rows: Header[]): string {
+  const names: string[] = [];
+  for (const r of [...rows].reverse()) {
+    const name = (r.from || "").replace(/\s*<[^>]*>$/, "").replace(/^"|"$/g, "").trim()
+      || r.from;
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names.length <= 3 ? names.join(", ")
+    : `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
+}
 
 /**
  * "Move to…": the tree as in the folder column, only without counters.

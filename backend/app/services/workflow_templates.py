@@ -135,6 +135,52 @@ def _check_with_grant() -> dict:
 
 # -- 3) Liste abarbeiten --------------------
 
+def _daily_notes_from_calendar() -> dict:
+    """Keep the daily notes and their appointments up to date.
+
+    What replaced a container that fetched ICS feeds and wrote them into notes.
+    That one ran on its own schedule with its own copy of the rules; this is the
+    same work as a flow somebody can open and change.
+
+    The run of days sits in the tool, not in the graph. A loop node could hold
+    it, but the dates would then be arithmetic written in a template language,
+    and what a person wants to change about this is how many days — one number,
+    on one node.
+
+    Fifteen minutes because that is how long a fetched set of appointments stays
+    good (`calendar/store.GOOD_FOR`). Asking more often reads the same answer
+    again; asking less often means an appointment moved this morning is still
+    wrong in the note this afternoon. Nothing is written when nothing changed,
+    so a quiet day costs a few file reads.
+
+    **It reports nothing.** There was a `notify` on the changed case here, and
+    running every quarter of an hour that is a messenger notification for every
+    appointment that moves — the person gets told about their own calendar, in a
+    channel they keep for things that need them. What changed stands in the daily
+    note, which is where one looks for it anyway. A run that FAILS is the job's
+    business (`notify_mode=on_error`) and stays that way.
+    """
+    nodes = [
+        _n("start", "start", 0, 0, {
+            "label": "Alle 15 Minuten",
+            "trigger": {"kind": "manuell"}}),
+        _n("abgleich", "auto_action", 0, 1, _action(
+            "tool_call", "Tage und Termine abgleichen",
+            tool="calendar__sync_window",
+            # `default:7`, not `default(7)`: the filters take their argument after a
+            # colon (`workflow_expr`). Written with brackets the expression comes out
+            # EMPTY, and the step then fails on `days=""` — found by trying it before
+            # hanging the job in.
+            arguments={"date": "{{ today }}", "days": "{{ days_ahead | default:7 }}"},
+            context_key="abgleich")),
+        _end("end_ok", 0, 2, "Fertig"),
+    ]
+    return {"nodes": nodes, "edges": [
+        _e("start", "abgleich"),
+        _e("abgleich", "end_ok"),
+    ]}
+
+
 def _listing_process() -> dict:
     """Fetch a list and do something with it item by item.
 
@@ -580,6 +626,15 @@ TEMPLATES: list[dict] = [
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Choose the tool in the step \"Fetch data\"; start it from a job.",
      "build": _check_with_grant},
+    {"key": "daily-notes-from-calendar",
+     "name": "Tagesnotizen und Termine pflegen",
+     "description": "Legt die Tagesnotizen der nächsten Tage an und hält ihre Termine "
+                    "aktuell — neue, geänderte, abgesagte, verschobene und weggefallene.",
+     "subject_kind": WorkflowSubjectKind.standalone,
+     "hinweis": "Als Job mit Zeitplan `*/15 * * * *` einhängen. Wie weit im Voraus, steht "
+                "als `days_ahead` in den Job-Parametern (Vorgabe 7). Das Werkzeug "
+                "calendar__sync_window muss für den Ablauf freigegeben sein.",
+     "build": _daily_notes_from_calendar},
     {"key": "process-a-list",
      "name": "Work through a list element by element",
      "description": "Fetch a list, walk it, do something per element, report at the end.",

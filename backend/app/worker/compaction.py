@@ -145,8 +145,13 @@ TASK = (
     "Summarise the following excerpt of an agent run. The summary REPLACES the excerpt — what "
     "is missing here is lost for the rest of the run.\n\n"
     "Take in: finished steps and their result, decisions taken including the reasoning, facts "
-    "found (names, paths, ids, numbers), open threads and everything the person laid down. "
-    "Leave out: repetitions, raw tool output, politeness.\n\n"
+    "found (names, paths, ids, numbers), open threads and everything the person laid down.\n"
+    "Take in as well, and this matters most: what was fetched and WHAT WAS IN IT. Name every "
+    "file, note or record that was read, with its path, and keep the part of its content the "
+    "run is working on — the lines it is about to change, the values it is about to compare. "
+    "A path on its own does not survive: whoever gets only the name fetches the thing again, "
+    "and that is what this summary exists to prevent.\n"
+    "Leave out: repetitions, politeness, and tool output nothing further depends on.\n\n"
     "Schreib in Stichpunkten, deutsch, ohne Vorrede.\n\n--- Ausschnitt ---\n"
 )
 
@@ -299,6 +304,40 @@ async def _summarise(db, messages: list[dict], chunks: list[tuple[int, int]], *,
     return "\n".join(parts)
 
 
+def _already_fetched(block: list[dict]) -> str:
+    """The list of what this part of the history had already fetched.
+
+    The summary is written by a small model and it can leave something out; this list
+    cannot, because it is read off the tool calls rather than written. It is what tells the
+    run that it has been to a path before. On 2026-09-09 an assistant read six notes a
+    second time with identical arguments, all of them directly after a compaction, and each
+    of those turns pushed it closer to the limit that then cost it its whole context.
+    """
+    seen: list[str] = []
+    for m in block:
+        for call in (m.get("tool_calls") or []):
+            fn = (call.get("function") or {})
+            args = fn.get("arguments") or ""
+            # The argument is JSON as the provider sent it; a path is worth having, a
+            # broken line of it is not.
+            import json as _json
+            try:
+                data = _json.loads(args) if isinstance(args, str) else dict(args or {})
+            except (ValueError, TypeError):
+                continue
+            what = data.get("path") or data.get("a") or data.get("from") or data.get("file")
+            if what and isinstance(what, str):
+                entry = f"{fn.get('name') or '?'}: {what}"
+                if entry not in seen:
+                    seen.append(entry)
+    if not seen:
+        return ""
+    return ("\n\n## Schon geholt\n"
+            "Das hier lag bereits vor. Steht der Inhalt oben, arbeite damit weiter; hol ihn "
+            "nur erneut, wenn du ihn zwischenzeitlich selbst geändert hast.\n"
+            + "\n".join(f"- {s}" for s in seen))
+
+
 async def compact(db, *, messages: list[dict], limit_tokens: int, measured: int,
                       owner_id: int | None, agent, tokens: dict, base_urls: dict) -> list[dict] | None:
     """Truncate the history. Returns the new message list, or None when there was nothing to do."""
@@ -324,6 +363,7 @@ async def compact(db, *, messages: list[dict], limit_tokens: int, measured: int,
     replacement = ("# Zusammenfassung des bisherigen Verlaufs\n"
               "(The detailed history was shortened to stay inside the context window. "
               "What stands here is all that is left of it — work on with that instead of "
-              "starting from the beginning again.)\n\n" + summary)
+              "starting from the beginning again.)\n\n" + summary
+              + _already_fetched(messages[von:to]))
 
     return messages[:von] + [{"role": "system", "content": replacement}] + messages[to:]

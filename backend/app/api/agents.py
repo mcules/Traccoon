@@ -28,6 +28,8 @@ class AgentIn(BaseModel):
     max_context_tokens: int | None = None
     max_turns_planning: int = 10
     max_turns_execution: int = 80
+    # Seconds one run of this agent may take. 0 = the house default (AGENT_RUN_TIMEOUT_SEC).
+    max_run_seconds: int = 0
     can_code: bool = False
     can_read_code: bool = False
     can_delegate: bool = False
@@ -36,6 +38,9 @@ class AgentIn(BaseModel):
     allowed_tools: list = []
     allowed_skills: list = []
     autoload_skills: list = []
+    # Tool groups (server names without `__`) that are in the prompt from the first turn.
+    # Empty: every group the allowlist permits is fetched with `load_tools` when needed.
+    autoload_tools: list = []
     delegate_to: list = []
     active: bool = True
     project_id: int | None = None
@@ -94,9 +99,10 @@ async def update_agent(agent_id: int, data: AgentIn, user: User = Depends(get_cu
 _COPY_FIELDS = (
     "display_name", "system_prompt", "provider", "model", "token_name", "fallback",
     "fallback_model", "fallback_token_name", "effort", "temperature", "max_tokens",
-    "max_context_tokens", "max_turns_planning", "max_turns_execution", "can_code",
+    "max_context_tokens", "max_turns_planning", "max_turns_execution", "max_run_seconds",
+    "can_code",
     "can_read_code", "can_delegate", "web_search", "learns", "allowed_tools", "allowed_skills",
-    "autoload_skills", "delegate_to", "active",
+    "autoload_skills", "autoload_tools", "delegate_to", "active",
 )
 
 

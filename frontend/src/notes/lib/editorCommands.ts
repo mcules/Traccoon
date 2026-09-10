@@ -182,13 +182,21 @@ export function notesKeymap(h: NotesKeymapHandlers): KeyBinding[] {
 }
 
 /**
- * Put the caret on the first line that is safe to sit on: past the frontmatter
- * and outside any code fence.
+ * Put the caret where sitting there shows nothing.
  *
- * Landing on line 1 sounds harmless until the note starts with a ```dataviewjs
- * block — Live Preview then shows that block as source instead of the buttons
- * it renders, on every single daily note. The vault worked around this with a
- * startup template; the editor can simply place the caret correctly.
+ * Wherever the caret is, Live Preview shows that line as source — that is what
+ * it is for. On opening a note nobody put it anywhere, so it must land where
+ * that has no effect, or the reader is looking at markup they did not ask to
+ * see. It has bitten twice in this vault: first a note starting with a
+ * ```dataviewjs block, which then showed its code instead of its buttons, and
+ * after that a note starting with `![[Daily Note Header]]`, which showed the
+ * link instead of the header. Clicking anywhere afterwards made the header
+ * appear and shoved the whole note down, which reads as the editor scrolling by
+ * itself.
+ *
+ * An EMPTY line is the best place there is: nothing to reveal, and the caret is
+ * ready to type on. Only when a note has none does it fall back to a line with
+ * text on it, and even then not to one that would open something up.
  */
 export function caretToFirstSafeLine(view: EditorView): void {
   const doc = view.state.doc;
@@ -201,13 +209,25 @@ export function caretToFirstSafeLine(view: EditorView): void {
   for (let m = fence.exec(text); m; m = fence.exec(text)) {
     blocked.push([m.index, m.index + m[0].length]);
   }
+  const free = (line: { from: number }) => !blocked.some(([a, b]) => line.from >= a && line.from < b);
+  // A line that renders as something other than itself: a transclusion, an
+  // image, a bare wikilink. Sitting on one replaces what it draws with what it
+  // is written as.
+  const renders = /!?\[\[[^\]]+\]\]/;
 
   for (let n = 1; n <= doc.lines; n++) {
     const line = doc.line(n);
-    if (blocked.some(([a, b]) => line.from >= a && line.from < b)) continue;
-    if (!line.text.trim()) continue; // an empty line is safe but unhelpful
-    view.dispatch({ selection: { anchor: line.to }, scrollIntoView: true });
-    return;
+    if (free(line) && !line.text.trim()) {
+      view.dispatch({ selection: { anchor: line.from } });
+      return;
+    }
+  }
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    if (free(line) && line.text.trim() && !renders.test(line.text)) {
+      view.dispatch({ selection: { anchor: line.to } });
+      return;
+    }
   }
   view.dispatch({ selection: { anchor: doc.length } });
 }

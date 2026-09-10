@@ -53,6 +53,8 @@ class AccountIn(BaseModel):
     folder_archive: str = "Archive"
     archive_mode: str = "folder"          # folder | pattern
     archive_pattern: str = "Archive/{year}"
+    trash_marks_read: bool = True
+    ask_before_folder_read: bool = False
     mcp_enabled: bool = False
     mcp_ignore_folders: list[str] = []
     mcp_tools: list[str] = []
@@ -65,6 +67,7 @@ class AccountOut(BaseModel):
     smtp_host: str; smtp_port: int; smtp_security: str; smtp_user: str
     folder_sent: str; folder_drafts: str; folder_trash: str; folder_junk: str
     folder_archive: str; archive_mode: str; archive_pattern: str
+    trash_marks_read: bool; ask_before_folder_read: bool
     mcp_enabled: bool; mcp_ignore_folders: list[str]; mcp_tools: list[str]
     mcp_instructions: str
     auth_type: str
@@ -82,7 +85,9 @@ def _account_out(a: MailAccount) -> AccountOut:
         folder_sent=a.folder_sent, folder_drafts=a.folder_drafts,
         folder_trash=a.folder_trash, folder_junk=a.folder_junk,
         folder_archive=a.folder_archive, archive_mode=a.archive_mode,
-        archive_pattern=a.archive_pattern, mcp_enabled=a.mcp_enabled,
+        archive_pattern=a.archive_pattern,
+        trash_marks_read=a.trash_marks_read,
+        ask_before_folder_read=a.ask_before_folder_read, mcp_enabled=a.mcp_enabled,
         mcp_ignore_folders=list(a.mcp_ignore_folders or []),
         mcp_tools=list(a.mcp_tools or []), mcp_instructions=a.mcp_instructions,
         auth_type=a.auth_type,
@@ -477,7 +482,7 @@ async def folder_rename(kid: int, data: FolderRenameIn,
 
 @router.get("/accounts/{kid}/messages")
 async def messages(kid: int, folder: str = "INBOX", q: str = "", scope: str = "folder",
-                      offset: int = 0, limit: int = 50,
+                      offset: int = 0, limit: int = 50, threads: bool = False,
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     """The messages of a folder, or the hits of a search.
@@ -485,6 +490,11 @@ async def messages(kid: int, folder: str = "INBOX", q: str = "", scope: str = "f
     `scope=all` searches the whole mailbox instead of the open folder. That is one SELECT and
     one SEARCH per folder and therefore nothing that happens by itself: whoever wants it says
     so, and the answer says whether it had to stop at the cap.
+
+    `threads=true` asks for conversations instead of single messages: a row is then the
+    newest mail of its thread and carries the rest with it. Not across the whole mailbox —
+    threading is a question inside one folder, and an answer filed elsewhere is a different
+    row there, not a member here.
     """
     account = await _account(db, kid, user)
     capped = max(1, min(limit, 200))
@@ -492,6 +502,16 @@ async def messages(kid: int, folder: str = "INBOX", q: str = "", scope: str = "f
     # been moved already would be particularly annoying in a search.
     if q and scope == "all":
         return await mailbox.search_all(account, q, offset, capped)
+    if threads:
+        if q:
+            return await mailbox.threaded(account, folder, q, offset, capped)
+        # Cached like the flat list and just as short: threading costs the server a THREAD
+        # over the whole folder — measured at 200 ms against 5 ms out of the cache — and the
+        # list asks again every minute. Every write invalidates it (`cache.invalidate`), so
+        # what is answered from here is at most 45 seconds behind on new mail alone.
+        return await cache.cached(
+            account.id, f"threads:{folder}:{offset}:{capped}", cache.TTL_LISTING,
+            lambda: mailbox.threaded(account, folder, "", offset, capped))
     if q:
         return await mailbox.listing(account, folder, q, offset, capped)
     return await cache.cached(account.id, f"list:{folder}:{offset}:{capped}", cache.TTL_LISTING,

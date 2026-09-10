@@ -137,7 +137,11 @@ class RunRetentionIn(BaseModel):
 
 @router.get("/admin/run-retention")
 async def get_run_retention(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """How many days archived agent runs are kept."""
+    """How many days finished agent runs are kept.
+
+    Kept next to `/admin/retention` because it is the one period that existed before and
+    is referred to by name in several places. Same setting, one value out of the list.
+    """
     from ..services.scheduler import RUN_RETENTION_DEFAULT, RUN_RETENTION_KEY
     raw = await get_setting(db, RUN_RETENTION_KEY, str(RUN_RETENTION_DEFAULT))
     return {"days": int(raw) if raw.isdigit() else RUN_RETENTION_DEFAULT}
@@ -150,6 +154,87 @@ async def put_run_retention(
     from ..services.scheduler import RUN_RETENTION_KEY
     await set_setting(db, RUN_RETENTION_KEY, str(data.days))
     return {"days": data.days}
+
+
+@router.get("/admin/retention")
+async def get_retention(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
+    """All protocol sources: period, rows held, rows the next sweep would take."""
+    from ..services import retention
+    return {"rules": await retention.overview(db)}
+
+
+class RetentionIn(BaseModel):
+    key: str = Field(max_length=60)
+    days: int = Field(ge=0, le=3650)  # 0 = never delete
+
+
+@router.put("/admin/retention")
+async def put_retention(
+    data: RetentionIn, _: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
+):
+    from ..services import retention
+    if retention.rule_by_key(data.key) is None:
+        raise Error(400, "err.unknown_retention_rule", "Unknown retention rule")
+    await set_setting(db, data.key, str(data.days))
+    return {"key": data.key, "days": data.days}
+
+
+@router.post("/admin/retention/sweep")
+async def run_retention_sweep(_: User = Depends(require_admin)):
+    """Sweep now instead of waiting for the hourly pass. Returns what was deleted."""
+    from ..services import retention
+    return {"removed": await retention.sweep()}
+
+
+@router.get("/admin/logs")
+async def get_logs(
+    sources: str = "", hours: int = 24, errors: bool = False, q: str = "", limit: int = 200,
+    _: User = Depends(require_admin), db: AsyncSession = Depends(get_session),
+):
+    """Merged protocol of runs, flows, jobs and inbound deliveries, newest first.
+
+    `sources` is a comma list; empty means all of them. Unknown names are dropped rather
+    than rejected, so a stale bookmark still returns something.
+    """
+    from ..services import adminlogs
+    picked = tuple(n for n in (sources.split(",") if sources else adminlogs.SOURCES)
+                   if n in adminlogs.SOURCES)
+    return {
+        "sources": list(adminlogs.SOURCES),
+        "entries": await adminlogs.collect(
+            db, sources=picked or adminlogs.SOURCES, hours=hours,
+            only_errors=errors, query=q.strip(), limit=limit),
+    }
+
+
+@router.get("/admin/logs/containers")
+async def get_log_containers(_: User = Depends(require_admin)):
+    """Which containers the stack has. Asked of the deployer, which holds the socket."""
+    from ..services import adminlogs
+    try:
+        return {"services": await adminlogs.container_services()}
+    except Exception as e:  # noqa: BLE001 - the deployer being away is not a server fault
+        raise Error(503, "err.deployer_unreachable", "The deployer cannot be reached: {why}",
+                    why=str(e)) from e
+
+
+@router.get("/admin/logs/container/{service}")
+async def get_container_log(
+    service: str, tail: int = 300, _: User = Depends(require_admin),
+):
+    """Container log of one service. The deployer checks the name against the real list."""
+    from ..services import adminlogs
+    try:
+        got = await adminlogs.container_log(service, tail)
+    except Exception as e:  # noqa: BLE001
+        raise Error(503, "err.deployer_unreachable", "The deployer cannot be reached: {why}",
+                    why=str(e)) from e
+    # The deployer answers a name it does not know with a note instead of a status. Passing
+    # that through as 200 would call a miss a success.
+    if got.get("error"):
+        raise Error(404, "err.unknown_container", "No container named {name} in this stack",
+                    name=service)
+    return got
 
 
 class SmtpConfigIn(BaseModel):

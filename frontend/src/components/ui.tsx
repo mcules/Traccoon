@@ -336,8 +336,11 @@ export function ListHeader({ columns, children }: { columns: string; children: R
 export const LINE = "group block bg-surface px-3 py-2.5 text-sm transition-colors hover:bg-card";
 
 export function ListRow({ columns, dimmed = false, warning = false, dense = false,
-                             active = false, onClick, children }: {
+                             accent = false, active = false, onClick, children }: {
   columns?: string; dimmed?: boolean; warning?: boolean; dense?: boolean;
+  /** A stripe in the house colour: something in this row is still open. Same idea as
+   *  `warning`, other reason — amber says "look at this", the house colour says "new". */
+  accent?: boolean;
   /** Where one IS. The whole row carries it, not the writing in it: a coloured word among
    *  black ones is something one has to look for, a coloured row one simply sees, and in a
    *  list of thirty that is the difference between finding and searching. */
@@ -359,7 +362,8 @@ export function ListRow({ columns, dimmed = false, warning = false, dense = fals
         dimmed ? "opacity-55" : ""} ${
         // A stripe on the left instead of a coloured surface: the row stays readable, and in a
         // long list one still sees the conspicuous entries from afar.
-        warning ? "border-l-2 border-amber-400 pl-[calc(0.75rem-2px)]" : ""}`}
+        warning ? "border-l-2 border-amber-400 pl-[calc(0.75rem-2px)]"
+          : accent ? "border-l-2 border-brand pl-[calc(0.75rem-2px)]" : ""}`}
     >
       {children}
     </div>

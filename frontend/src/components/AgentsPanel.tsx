@@ -10,10 +10,10 @@ interface Agent {
   provider: string; model: string; token_name: string; effort: string;
   fallback: string | null; fallback_model: string; fallback_token_name: string;
   temperature: number; max_tokens: number; max_context_tokens: number | null;
-  max_turns_planning: number; max_turns_execution: number;
+  max_turns_planning: number; max_turns_execution: number; max_run_seconds: number;
   can_code: boolean; can_read_code: boolean; can_delegate: boolean; web_search: boolean;
   learns: boolean;
-  allowed_tools: string[]; allowed_skills: string[]; autoload_skills: string[]; delegate_to: string[]; active: boolean;
+  allowed_tools: string[]; allowed_skills: string[]; autoload_skills: string[]; autoload_tools: string[]; delegate_to: string[]; active: boolean;
   project_id: number | null; origin_agent_id: number | null; customized: boolean;
 }
 
@@ -21,9 +21,9 @@ const PROVIDERS = ["claude_code", "codex", "openai"];
 const EMPTY: Partial<Agent> = {
   role: "", display_name: "", system_prompt: "", provider: "claude_code", model: "", token_name: "", effort: "",
   fallback: null, fallback_model: "", fallback_token_name: "", max_context_tokens: null,
-  temperature: 0.3, max_tokens: 8192, max_turns_planning: 10, max_turns_execution: 80,
+  temperature: 0.3, max_tokens: 8192, max_turns_planning: 10, max_turns_execution: 80, max_run_seconds: 0,
   can_code: false, can_read_code: false, can_delegate: false, web_search: false, learns: true,
-  allowed_tools: [], allowed_skills: [], autoload_skills: [], delegate_to: [], active: true,
+  allowed_tools: [], allowed_skills: [], autoload_skills: [], autoload_tools: [], delegate_to: [], active: true,
 };
 
 export default function AgentsPanel({ projectId }: { projectId?: number } = {}) {
@@ -225,9 +225,19 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                     <F label="max_turns Plan"><input type="number" value={edit.max_turns_planning} onChange={(e) => setEdit({ ...edit, max_turns_planning: +e.target.value })} className={inp} /></F>
                     <F label="max_turns Exec"><input type="number" value={edit.max_turns_execution} onChange={(e) => setEdit({ ...edit, max_turns_execution: +e.target.value })} className={inp} /></F>
                     <F label="max_tokens"><input type="number" value={edit.max_tokens} onChange={(e) => setEdit({ ...edit, max_tokens: +e.target.value })} className={inp} /></F>
+                    <F label="max_run_seconds"><input type="number" value={edit.max_run_seconds ?? 0} onChange={(e) => setEdit({ ...edit, max_run_seconds: +e.target.value })} placeholder="0 = Vorgabe" className={inp} /></F>
                   </div>
                   <F label={tr("agents_panel.reasoning_effort_empty_default_low_medium_hig")}>
                     <input value={edit.effort || ""} onChange={(e) => setEdit({ ...edit, effort: e.target.value })} placeholder="leer = Default" className={inp} />
+                  </F>
+                  <F label="autoload_tools">
+                    <input value={(edit.autoload_tools || []).join(", ")}
+                      onChange={(e) => setEdit({ ...edit, autoload_tools: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
+                      placeholder="leer = alle Gruppen erst bei Bedarf" className={inp} />
+                    <span className="mt-0.5 block text-[11px] text-muted">
+                      Werkzeuggruppen, die ab der ersten Runde im Prompt stehen (z.B. <code>vault, calendar</code>).
+                      Alles andere holt sich der Agent selbst mit <code>load_tools</code>.
+                    </span>
                   </F>
                 </div>
               )}

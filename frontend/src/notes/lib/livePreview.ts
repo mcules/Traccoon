@@ -27,6 +27,7 @@ import {
 import { api } from './api';
 import { listFoldState, setListFolds, toggleListFold } from './listFolds';
 import { renderDrawingEmbeds } from './excalidrawEmbed';
+import { calendarBadgeStyle } from './calendarColour';
 
 /**
  * Live Preview for CodeMirror 6 — an like the predecessor WYSIWYG editing mode.
@@ -526,9 +527,36 @@ class DrawingWidget extends WidgetType {
   }
 }
 
+// How tall each transcluded note turned out, remembered per target. A widget
+// that is scrolled out of view is destroyed, and without a size to reserve for
+// it CodeMirror falls back to one line — a header of fourteen hundred pixels
+// then becomes twenty, the document shrinks, and what the reader was looking at
+// moves. The number is only ever an estimate, and the moment the widget is
+// rendered again the real measurement replaces it.
+const embedHeights = new Map<string, number>();
+
+/** "ganztägig" where the time would be, so the column still lines up. */
+class AllDayWidget extends WidgetType {
+  eq() {
+    return true;
+  }
+  toDOM() {
+    const el = document.createElement('span');
+    el.className = 'cm-appt-allday';
+    el.textContent = 'ganztägig';
+    return el;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
 class NoteEmbedWidget extends WidgetType {
   constructor(readonly target: string) {
     super();
+  }
+  get estimatedHeight() {
+    return embedHeights.get(this.target) ?? -1;
   }
   eq(o: NoteEmbedWidget) {
     return o.target === this.target;
@@ -539,7 +567,7 @@ class NoteEmbedWidget extends WidgetType {
   toDOM(view: EditorView) {
     const box = document.createElement('div');
     box.className = 'internal-embed markdown-embed cm-note-embed';
-    measureOnResize(box, view);
+    measureOnResize(box, view, (h) => embedHeights.set(this.target, h));
     const open = document.createElement('span');
     open.className = 'markdown-embed-link';
     open.title = 'Open link';
@@ -549,14 +577,13 @@ class NoteEmbedWidget extends WidgetType {
       e.preventDefault();
       openLink(this.target);
     });
-    // Filename title above the note content, like the predecessor's markdown-embed-title.
-    const title = document.createElement('div');
-    title.className = 'markdown-embed-title';
-    title.textContent = this.target.split('#')[0].split('/').pop() ?? this.target;
+    // No title line. A transcluded note is meant to read as part of the note showing
+    // it — a header block pulled into a daily note must not announce the file it came
+    // from. Which note it is stays reachable: the link button above opens it.
     const content = document.createElement('div');
     content.className = 'markdown-embed-content markdown-preview';
     content.textContent = '…';
-    box.append(open, title, content);
+    box.append(open, content);
     void noteEmbedProvider(this.target).then((res) => {
       if (!res) {
         box.textContent = '';
@@ -981,18 +1008,16 @@ function buildDataview(state: EditorState): DecorationSet {
     if (end < 0) continue;
     const from = line.from;
     const to = doc.line(end).to;
-    const ro = state.field(livePreviewReadonly, false) ?? false;
-    const focused = (state.field(editorFocusedField, false) ?? false) && (state.field(userEngagedField, false) ?? false);
-    let touched = false;
-    // Put the cursor in the block to get the source back, exactly like mermaid.
-    if (!ro && focused)
-      for (const r of state.selection.ranges) {
-        if (r.from <= to && r.to >= from) {
-          touched = true;
-          break;
-        }
-      }
-    if (!touched) {
+    // A query block does NOT open up when the caret lands in it. It used to, the
+    // way mermaid still does, and for something somebody writes that is right —
+    // but these are not written, they are stated once and then read. Clicking
+    // anywhere near the task list collapsed the whole result back into its five
+    // lines of query, which is never what the click meant, and the note jumped
+    // by however tall the result had been.
+    //
+    // The source is still reachable, in the one place that says so: source mode,
+    // where live preview is off entirely and this function renders nothing.
+    {
       const code = end > n + 1 ? doc.sliceString(doc.line(n + 1).from, doc.line(end - 1).to) : '';
       const lang = open[2].toLowerCase() as QueryLang;
       let blockFrom = from;
@@ -1039,6 +1064,53 @@ export const dataviewField = StateField.define<DecorationSet>({
 });
 
 /**
+ * A note transcluded on a line of its own, as a block.
+ *
+ * It sits in a state field and not in the view plugin because CodeMirror only
+ * takes block decorations from a field — and a block is what this has to be. As
+ * an inline widget it hung inside a line of text, and a line of text is what the
+ * height map measures: a header fourteen hundred pixels tall had no honest entry
+ * there, was dropped the moment the viewport moved, and the document lost its
+ * height in one step. Measured on 2026-09-09 — 4443 pixels down to 3217 on a
+ * single click, with everything on screen sliding by the difference.
+ *
+ * Deliberately not gated on the caret: a transclusion never opens up into its
+ * source in live preview. Source mode is where source is.
+ */
+function buildNoteEmbeds(state: EditorState): DecorationSet {
+  if (!state.field(livePreviewState, false)) return Decoration.none;
+  const ranges: Range<Decoration>[] = [];
+  const only = /^!\[\[([^\]]+?)\]\]$/;
+  for (let n = 1; n <= state.doc.lines; n++) {
+    const line = state.doc.line(n);
+    const m = only.exec(line.text.trim());
+    if (!m || m[1].includes('[[')) continue;
+    const href = href_of(m[1]).replace(/\\$/, '').replace(/ /g, ' ').normalize('NFC');
+    // Pictures, media and drawings stay with the plugin: they are shown, not read.
+    if (/\.(bmp|png|jpe?g|gif|svg|webp|avif)$/i.test(href)) continue;
+    if (VIDEO_EXT_RE.test(href) || AUDIO_EXT_RE.test(href)) continue;
+    if (/\.excalidraw(\.md)?$/i.test(href)) continue;
+    if (/\.[a-z0-9]{1,5}$/i.test(href)) continue;
+    ranges.push(
+      Decoration.replace({ widget: new NoteEmbedWidget(href), block: true }).range(line.from, line.to),
+    );
+  }
+  return Decoration.set(ranges, true);
+}
+
+export const noteEmbedField = StateField.define<DecorationSet>({
+  create: (state) => buildNoteEmbeds(state),
+  update(value, tr) {
+    if (tr.docChanged || tr.effects.some((e) => e.is(setLivePreviewEnabled))) {
+      return buildNoteEmbeds(tr.state);
+    }
+    return value.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+
+/**
  * Tell CodeMirror when a widget changes size.
  *
  * Query blocks, embeds and mermaid diagrams are empty when they are first put
@@ -1047,15 +1119,25 @@ export const dataviewField = StateField.define<DecorationSet>({
  * viewport could end up rendering almost nothing — until something forced a
  * re-measure, which is exactly what switching tabs did.
  */
-function measureOnResize(el: HTMLElement, view: EditorView): void {
+function measureOnResize(el: HTMLElement, view: EditorView, remember?: (h: number) => void): void {
   if (typeof ResizeObserver === 'undefined') return;
   let last = -1;
   const ro = new ResizeObserver(() => {
+    // Leaving the document is not a change of size. The observer fires once more
+    // as the element is torn down, with a height of zero, and asking for a
+    // measurement THEN wrote that zero into the height map: scrolling a tall
+    // embed out of the viewport made the document shrink by its whole height,
+    // and everything still on screen slid. Measured on 2026-09-09 — a header of
+    // 1431px, a note that lost 1226 of them on one click.
+    if (!el.isConnected) {
+      ro.disconnect();
+      return;
+    }
     const h = el.offsetHeight;
     if (h === last) return;
     last = h;
+    remember?.(h);
     view.requestMeasure();
-    if (!el.isConnected) ro.disconnect();
   });
   ro.observe(el);
 }
@@ -2535,13 +2617,21 @@ function buildDecorations(view: EditorView): DecorationSet {
   // selection overlaps [from,to] (inclusive) → reveal raw syntax for that span.
   // In reading mode (readonly) nothing is ever revealed — same render, no edit.
   const readonly = view.state.field(livePreviewReadonly, false) ?? false;
+  // Deliberately NOT tied to the focus. It was, for one afternoon: a note opens
+  // without the keyboard now, and the caret still sits somewhere, so the first
+  // line rendered as raw source. Gating on `view.hasFocus` fixed that and bought
+  // something far worse — the decorations then differ between focused and
+  // unfocused, so the first click rebuilt them, the height map moved under the
+  // reader, and the note jumped. A click must not scroll. The caret is put out
+  // of the way instead (see `Editor.tsx`, where a note opens with it at the end).
+  const editing = !readonly;
   const touches = (from: number, to: number) => {
-    if (readonly) return false;
+    if (!editing) return false;
     for (const r of sel.ranges) if (r.from <= to && r.to >= from) return true;
     return false;
   };
   const lineActive = (pos: number) => {
-    if (readonly) return false;
+    if (!editing) return false;
     const line = doc.lineAt(pos);
     return touches(line.from, line.to);
   };
@@ -3045,11 +3135,67 @@ function buildDecorations(view: EditorView): DecorationSet {
         all.push(Decoration.mark({ class: 'cm-footref' }).range(s, e));
       }
 
+      // An appointment line, as the calendar sync writes it:
+      //   - 09:00 Daily Dev · Vostura ^ev-a1b2c3
+      // Read as three things rather than one sentence — when it is, what it is,
+      // and which calendar it came from. Only styling: the text in the note is
+      // untouched, so the same line still reads as itself in Obsidian and in
+      // anything else that opens the vault.
+      const APPT = /^([ \t]*)- (?:(\d{2}:\d{2}(?:[-\u2013]\d{2}:\d{2})?) )?(.*?) \u00b7 ([^\u00b7]+?)(?:[ \t]+\^[a-zA-Z0-9-]+)?[ \t]*$/;
+      // Was jemand UNTER einen Termin geschrieben hat, gehoert unter dessen Text
+      // und nicht unter dessen Uhrzeit. Die Zeile selbst weiss nicht, zu wem sie
+      // gehoert, also wird rueckwaerts bis zum naechsten nicht eingerueckten
+      // Punkt gesucht — ein paar Zeilen, und unabhaengig davon, wo das Fenster
+      // gerade steht.
+      if (/^(?:\t|\s{2,})\S/.test(text) && !inCode(line.from, line.to)) {
+        for (let zurueck = line.number - 1; zurueck >= 1; zurueck--) {
+          const oben = doc.line(zurueck).text;
+          if (/^(?:\t|\s{2,})/.test(oben) || !oben.trim()) continue;
+          if (APPT.test(oben)) all.push(Decoration.line({ class: 'cm-appt-child' }).range(line.from));
+          break;
+        }
+      }
+      const appt = APPT.exec(text);
+      if (appt && !inCode(line.from, line.to)) {
+        const nachStrich = line.from + appt[1].length + 2;
+        if (appt[2]) {
+          // Das Leerzeichen hinter der Uhrzeit gehoert IN die Spalte. Draussen
+          // schiebt es den Titel um seine eigene Breite nach rechts, und ein
+          // ganztaegiger Termin hat keines — dann faengt dessen Titel als
+          // einziger weiter links an, obwohl beide Spalten gleich breit sind.
+          all.push(Decoration.mark({ class: 'cm-appt-time' })
+            .range(nachStrich, nachStrich + appt[2].length + 1));
+        } else {
+          all.push(Decoration.widget({ widget: new AllDayWidget(), side: -1 }).range(nachStrich));
+        }
+        const trenner = line.from + text.lastIndexOf(' \u00b7 ');
+        all.push(Decoration.mark({ class: 'cm-appt-sep' }).range(trenner, trenner + 3));
+        // Same hue the calendar views give that calendar, so a reader who has
+        // learnt which colour Vostura is does not have to learn it again here.
+        all.push(
+          Decoration.mark({
+            class: 'cm-appt-cal',
+            attributes: { style: calendarBadgeStyle(appt[4]) },
+          }).range(trenner + 3, trenner + 3 + appt[4].length),
+        );
+      }
+
       // Trailing block id ` ^abc-123` (charset [a-zA-Z0-9-] only, §7).
+      // Gone from sight unless the caret is in that line — a block id is an
+      // address, not text somebody wrote, and the reading view drops it outright.
+      // Appointments carry one so that renaming or moving one can be recognised,
+      // and a line of them at the end of every appointment would be noise.
       const bid = text.match(/(^|\s)(\^[a-zA-Z0-9-]+)$/);
       if (bid) {
         const s = line.to - bid[2].length;
-        all.push(Decoration.mark({ class: 'cm-blockid' }).range(s, line.to));
+        // Always out of sight, the caret being in the line included. It is an
+        // address, not text: the reading view drops it outright, and appointments
+        // carry one only so that renaming or moving one can be recognised.
+        // Revealing it on the active line meant a click changed the line's width,
+        // and with a rendered header above it the note moved under the reader.
+        // Source mode is where source is, and that is enough for a name nobody
+        // types by hand. The space in front goes too, or the line ends in a gap.
+        pushReplace(s - (bid[1] ? 1 : 0), line.to, Decoration.replace({}));
       }
 
       // Bare URLs → styled like links (the predecessor cm-url).
@@ -3067,10 +3213,23 @@ function buildDecorations(view: EditorView): DecorationSet {
       while ((m = wikiRe.exec(text))) {
         const s = line.from + m.index;
         const e = s + m[0].length;
-        if (touches(s, e) || inCode(s, e)) continue;
+        if (inCode(s, e)) continue;
         const inner = m[2];
         if (inner.includes('[[')) continue;
         const isEmbed = m[1] === '!';
+        // A transclusion does NOT open up when the caret lands in its line. It
+        // is not text somebody is writing — it is another note being shown, and
+        // it can be a page tall. The header of every daily note is one, and the
+        // whole task list lives inside it, so a click on a task WAS a click
+        // inside that line: the header collapsed to `![[Daily Note Header]]` and
+        // the note shot up by however tall the header had been. The source is
+        // reachable where source belongs, in source mode.
+        // A plain `[[link]]` is ordinary text and still reveals, as does an
+        // embedded image — those are one line high and editing them in place is
+        // the point.
+        const transclusion =
+          isEmbed && !/\.[a-z0-9]{1,5}$/i.test(href_of(inner));
+        if (!transclusion && touches(s, e)) continue;
         const pi = inner.indexOf('|');
         const href = (pi > 0 ? inner.slice(0, pi) : inner)
           .replace(/\\$/, '')
@@ -3108,6 +3267,18 @@ function buildDecorations(view: EditorView): DecorationSet {
           pushReplace(s, e, Decoration.replace({ widget: new DrawingWidget(href) }));
         } else if (isEmbed && !/\.[a-z0-9]{1,5}$/i.test(href.split('#')[0])) {
           // `![[note]]` (no binary extension) → real transclusion like the predecessor.
+          // A whole note on its own line becomes a BLOCK, the way the query blocks
+          // already are. As an inline widget it hung inside one line of text, and
+          // a line of text is what CodeMirror's height map measures: a header
+          // fourteen hundred pixels tall then had no honest entry there, was
+          // dropped as soon as the viewport moved, and the document lost its
+          // height in one step. Measured on 2026-09-09 — 4443 to 3217 on a single
+          // click, with everything on screen sliding by the difference.
+          // A whole note alone on its line is a BLOCK, and block decorations may
+          // only come from a state field — `noteEmbedField` below has it. Here
+          // only the inline case is left: a transclusion in the middle of a
+          // sentence, which is one line high and behaves like any other widget.
+          if (text.trim() === m[0]) continue;
           pushReplace(s, e, Decoration.replace({ widget: new NoteEmbedWidget(href) }));
         } else {
           // LP shows the raw target text (`Note#Head`); the `Note > Head` display
@@ -3369,6 +3540,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
  * several clicks". We only act on a plain click (no shift = not range-extending)
  * and let CodeMirror still handle drag-select normally.
  */
+/** The target of a wikilink, before the alias — enough to tell a note from a file. */
+function href_of(inner: string): string {
+  const pi = inner.indexOf('|');
+  return (pi > 0 ? inner.slice(0, pi) : inner).split('#')[0].trim();
+}
+
+
 export const editorClickFix = EditorView.domEventHandlers({
   mousedown(event, view) {
     if (event.button !== 0 || event.shiftKey || event.detail > 1) return false;

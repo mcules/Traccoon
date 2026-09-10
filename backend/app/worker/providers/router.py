@@ -65,10 +65,11 @@ class Router:
         return self._cooldown.get(prov, 0.0) > time.monotonic()
 
     def _trip(self, prov: str, exc: ProviderError) -> None:
+        """Put a provider aside for a while — it is busy or it refuses its credentials."""
         cd = exc.retry_after if exc.retry_after else _COOLDOWN_DEFAULT
         cd = max(1.0, min(cd, _COOLDOWN_MAX))
         self._cooldown[prov] = time.monotonic() + cd
-        log.warning("Provider '%s' rate limited (HTTP %s), cooldown %ss", prov, exc.status, int(cd))
+        log.warning("Provider '%s' set aside (HTTP %s), cooldown %ss", prov, exc.status, int(cd))
 
     def cooldown_status(self) -> dict[str, int]:
         now = time.monotonic()
@@ -140,7 +141,15 @@ class Router:
                         self._trip(prov, exc)
                         await asyncio.sleep(wait)
                         continue
-                    if exc.status in (429, 529):
+                    # Everything about THIS provider — busy (429/529) or refusing these
+                    # credentials (401/403) — lets the chain go on to the fallback, which has
+                    # a token and an account of its own. Only a refusal of the request itself
+                    # ends the run: repeating that anywhere else would fail the same way.
+                    #
+                    # The credential case used to fall into the branch below and raise, which
+                    # skipped the fallback entirely: on 2026-09-02 two runs died within half a
+                    # second on a 403 that was gone again eight minutes later.
+                    if exc.status in (401, 403, 429, 529):
                         self._trip(prov, exc)
                     elif not exc.retryable:
                         raise

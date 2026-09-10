@@ -58,6 +58,17 @@ class MailAccount(TimestampMixin, Base):
     archive_mode: Mapped[str] = mapped_column(String(10), default="folder")  # folder | pattern
     archive_pattern: Mapped[str] = mapped_column(String(255), default="Archive/{year}")
 
+    # ── How this mailbox behaves ────────────────────────────────────────────
+    # Whatever goes into the trash counts as read. Thrown away is dealt with, and an unread
+    # counter that keeps counting the discarded is a number nobody can bring back to zero.
+    # It sits on the account because the answer depends on the mailbox: on a shared one the
+    # marks say what the OTHERS have already seen, and there it has to stay off.
+    trash_marks_read: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Whether "mark everything read" asks first. Off by default: the handle is on the folder's
+    # own menu, it is chosen deliberately, and what it does is undone message by message —
+    # a question in front of it only buys a second click.
+    ask_before_folder_read: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # ── What agents may see of this mailbox ─────────────────────────────────
     # A mailbox is the mail of a person, no data store. That is why everything here is off
     # until somebody switches it on — per tool individually, not as a

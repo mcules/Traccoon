@@ -55,6 +55,7 @@ from ..notes.calendar import caldav as cal_dav
 from ..notes.calendar import daily as cal_daily
 from ..notes.calendar import fetch as cal_fetch
 from ..notes.calendar import store as cal_store
+from ..notes.calendar import sync as cal_sync
 from ..notes.dv import settings as note_settings
 from ..notes.dv import tasks as dv_tasks
 from ..notes.dv import tasktoggle as dv_toggle
@@ -849,14 +850,26 @@ async def calendar_sync_day(body: SyncDayIn, user: User = Depends(get_current_us
                     "A date is written YYYY-MM-DD: {given}", given=body.date)
     ws = workspace_of(user)
     options = ws.options
-    rel = cal_daily.daily_note_path(_dt.date.fromisoformat(body.date),
-                                    options.daily_folder, options.daily_format)
+    day = _dt.date.fromisoformat(body.date)
+    rel = cal_daily.daily_note_path(day, options.daily_folder, options.daily_format)
+    # Every appointment belongs in the note of its day, so a missing note is made
+    # rather than a reason to give up. It used to be the other way round, from a
+    # time when something else did the creating.
+    made = False
     if not vault_write.exists(ws.vault, rel):
-        return {"path": rel, "added": 0, "updated": 0, "cancelled": 0, "written": False}
+        if body.dryRun:
+            return {"path": rel, "added": 0, "updated": 0, "cancelled": 0,
+                    "written": False, "created": False}
+        made, _ = _ensure_daily(ws, options,
+                                _dt.datetime.combine(day, _dt.time(), zone_of(user)), rel)
 
     sources = await cal_access.sources_of(db, user)
     snapshot = await cal_store.ensure(user.id, sources, zone=zone_of(user))
-    events = cal_fetch.on_day(snapshot, body.date)
+    # Not every appointment of the day belongs in the note: a series that never
+    # ends is held to its next couple of occurrences, or one weekly class alone
+    # would put a line into fifty-seven notes.
+    ahead = cal_sync.endless_ahead(snapshot, _dt.datetime.now(zone_of(user)).date().isoformat())
+    events = cal_sync.writable_on(snapshot, body.date, ahead)
 
     content = _guard(lambda: ws.vault.read_text(rel), rel)
     # The old long form is folded down first, and this is not tidiness for its
@@ -868,12 +881,92 @@ async def calendar_sync_day(body: SyncDayIn, user: User = Depends(get_current_us
     result = cal_daily.apply_lines(
         folded.text, events, templates=_event_templates(ws, options),
         keep_strikes=body.date < _dt.datetime.now(zone_of(user)).date().isoformat())
-    changed = result.text != content
+    # What the note still carries but the day no longer has: the appointment left.
+    # Where it went cannot be seen from here — that day's events do not contain
+    # it — so the whole fetched window is asked, and only an appointment that
+    # turns up somewhere else gets its old line marked. One that is simply gone
+    # from the feed is left exactly as it stands: a deletion upstream is not a
+    # reason to rewrite somebody's note.
+    text = result.text
+    today = {cal_daily.block_id(e) for e in events}
+    moved = 0
+    for ident in cal_sync._ids_in(text):
+        if ident in today:
+            continue
+        target = cal_sync.where_now(snapshot, ident, not_on=body.date)
+        if target is None:
+            continue
+        gone_to = cal_daily.daily_note_path(_dt.date.fromisoformat(target.date),
+                                            options.daily_folder, options.daily_format)
+        marked = cal_daily.mark_moved(text, ident, gone_to,
+                                      cal_sync.label_for(_dt.date.fromisoformat(target.date)))
+        if marked.updated:
+            text, moved = marked.text, moved + 1
+
+    changed = text != content
     if changed and not body.dryRun:
-        _writing(lambda: ws.save(rel, result.text), rel)
+        _writing(lambda: ws.save(rel, text), rel)
+    if not body.dryRun:
+        await cal_sync.record_marks(
+            db, user.id, rel, day,
+            {cal_daily.block_id(e): (e.uid, e.series) for e in events})
+        await db.commit()
     return {"path": rel, "added": result.added, "updated": result.updated,
-            "cancelled": result.cancelled, "folded": folded.changed,
-            "written": changed and not body.dryRun}
+            "cancelled": result.cancelled, "folded": folded.changed, "moved": moved,
+            "created": made, "written": changed and not body.dryRun}
+
+
+class SyncWindowIn(BaseModel):
+    # The first day. Empty means today, which is what a nightly job wants.
+    date: str = ""
+    days: int = 7
+    dryRun: bool = False
+
+
+@router.post("/calendar/sync-window")
+async def calendar_sync_window(body: SyncWindowIn, user: User = Depends(get_current_user),
+                               db: AsyncSession = Depends(get_session)) -> dict:
+    """A run of days, and the tidying that only makes sense across all of them.
+
+    The day loop lives here rather than in a flow's graph. A graph can hold it —
+    there is a loop node — but the dates would then be arithmetic written in a
+    template language, and what a person actually wants to change about this is
+    how many days, not how a date is added up. That is one number, and it stands
+    on the node.
+
+    After the days comes `reconcile_moves`, which is the pass a single day cannot
+    do: it marks the notes an appointment moved OUT of, including days far
+    outside this window that nobody is otherwise reading.
+    """
+    if body.days < 1 or body.days > 120:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_bad_window",
+                    "Between 1 and 120 days, not {days}", days=body.days)
+    zone = zone_of(user)
+    start = (_dt.date.fromisoformat(body.date) if body.date
+             else _dt.datetime.now(zone).date())
+
+    days = []
+    for i in range(body.days):
+        one = await calendar_sync_day(
+            SyncDayIn(date=(start + _dt.timedelta(days=i)).isoformat(), dryRun=body.dryRun),
+            user=user, db=db)
+        days.append(one)
+
+    ws = workspace_of(user)
+    sources = await cal_access.sources_of(db, user)
+    snapshot = await cal_store.ensure(user.id, sources, zone=zone)
+    moved = await cal_sync.reconcile_moves(db, user, ws, ws.options, snapshot,
+                                           dry_run=body.dryRun)
+    if not body.dryRun:
+        await db.commit()
+    return {"from": start.isoformat(), "days": body.days,
+            "created": sum(1 for d in days if d.get("created")),
+            "added": sum(d["added"] for d in days),
+            "updated": sum(d["updated"] for d in days),
+            "cancelled": sum(d["cancelled"] for d in days),
+            "moved": sum(d.get("moved", 0) for d in days) + moved,
+            "written": sum(1 for d in days if d.get("written")),
+            "notes": [d["path"] for d in days if d.get("written")]}
 
 
 class TidyIn(BaseModel):
@@ -1155,23 +1248,25 @@ async def appearance_snippet(name: str, user: User = Depends(browser_user)):
 class DailyIn(BaseModel):
     # Days from today, so yesterday is -1 and tomorrow 1.
     offset: int = 0
+    # A day by name, for the cases where counting from today is the wrong
+    # question: following a link into next month, or a flow filling a week
+    # ahead. Wins over `offset` when both are given.
+    date: str | None = None
+    # A path that turned out not to exist. The day is read back out of it, and
+    # a path that is not a daily note of this vault is refused rather than
+    # created — see `day_of_daily_path`.
+    path: str | None = None
 
 
-@router.post("/files/daily")
-async def daily_note(body: DailyIn, user: User = Depends(get_current_user)) -> dict:
-    """The daily note of a day, made from its template if it is not there yet.
+def _ensure_daily(ws, o, day: _dt.datetime, rel: str) -> tuple[bool, list[str]]:
+    """Make the daily note of `day` from its template, unless it is there already.
 
-    Where it goes and what it is called come from the vault: that folder is
-    already full of notes with those names, and a second opinion here would put
-    tomorrow's note somewhere nobody looks.
+    Pulled out of the route because two callers want it: the person opening a day
+    that does not exist yet, and the sync, which must not write a day's
+    appointments into thin air.
     """
-    ws = workspace_of(user)
-    o = ws.options
-    day = _dt.datetime.now(zone_of(user)) + _dt.timedelta(days=body.offset)
-    rel = cal_daily.daily_note_path(day.date(), o.daily_folder, o.daily_format)
     if vault_write.exists(ws.vault, rel):
-        return {"path": rel, "created": False, "unresolved": []}
-
+        return False, []
     title = PurePosixPath(rel).name.rsplit(".", 1)[0]
     text, unresolved = "", []
     if o.daily_template:
@@ -1189,7 +1284,40 @@ async def daily_note(body: DailyIn, user: User = Depends(get_current_user)) -> d
             # one is still the note somebody asked for.
             text = ""
     _writing(lambda: ws.save(rel, text), rel)
-    return {"path": rel, "created": True, "unresolved": unresolved}
+    return True, unresolved
+
+
+@router.post("/files/daily")
+async def daily_note(body: DailyIn, user: User = Depends(get_current_user)) -> dict:
+    """The daily note of a day, made from its template if it is not there yet.
+
+    Where it goes and what it is called come from the vault: that folder is
+    already full of notes with those names, and a second opinion here would put
+    tomorrow's note somewhere nobody looks.
+    """
+    ws = workspace_of(user)
+    o = ws.options
+    if body.path:
+        named = cal_daily.day_of_daily_path(body.path.lstrip("/"),
+                                            o.daily_folder, o.daily_format)
+        if named is None:
+            raise Error(status.HTTP_404_NOT_FOUND, "err.notes_not_daily",
+                        "Not a daily note of this vault: {path}", path=body.path)
+        day = _dt.datetime.combine(named, _dt.time(), zone_of(user))
+    elif body.date:
+        try:
+            named = _dt.date.fromisoformat(body.date)
+        except ValueError:
+            raise Error(status.HTTP_400_BAD_REQUEST, "err.notes_bad_date",
+                        "Not a date: {date}", date=body.date) from None
+        # Midnight in the person's zone: the template fills in `now`, and a day
+        # built in UTC would put the wrong date into a note named after another.
+        day = _dt.datetime.combine(named, _dt.time(), zone_of(user))
+    else:
+        day = _dt.datetime.now(zone_of(user)) + _dt.timedelta(days=body.offset)
+    rel = cal_daily.daily_note_path(day.date(), o.daily_folder, o.daily_format)
+    created, unresolved = _ensure_daily(ws, o, day, rel)
+    return {"path": rel, "created": created, "unresolved": unresolved}
 
 
 # ------------------------------------------------- what a search found, where

@@ -609,8 +609,12 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .cm-s-notes .cm-line.cm-list-continuation .cm-list-prefix { padding-top: 0; }
 /* Note embed (transclusion). `white-space: normal` resets CodeMirror's pre-wrap,
    which would otherwise turn the \n between rendered blocks into blank lines. */
-.cm-note-embed { position: relative; border-left: 2px solid var(--background-modifier-border);
-  padding: 4px 12px 4px 20px; margin: 4px 0; border-radius: 0; white-space: normal; }
+/* No frame and no indent: a transcluded note is meant to read as part of the note
+   showing it, and a header pulled into a daily note must not look like a quotation
+   from somewhere else. Which note it came from stays reachable through the link
+   button that appears in the corner on hover. */
+.cm-note-embed { position: relative; padding: 0 12px 0 0; margin: 0; border: 0;
+  border-radius: 0; white-space: normal; }
 .cm-html-block, .cm-mermaid { white-space: normal; }
 .cm-note-embed .markdown-embed-title { font-size: var(--font-small); font-weight: 600;
   color: var(--text-normal); line-height: var(--line-height-tight); margin-bottom: 2px; }
@@ -855,8 +859,8 @@ body.wo-col-resizing .sidebar, body.wo-col-resizing .right-sidebar { transition:
 .markdown-preview .mermaid { text-align: center; padding: 8px 0; }
 
 /* Embedded notes */
-.embed-note { border: 1px solid var(--bg-modifier-border); border-radius: var(--radius); padding: 2px 16px; margin: 12px 0; }
-.embed-note .embed-title { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; margin: 8px 0; }
+/* Reading view, same reasoning as .cm-note-embed above. */
+.embed-note { border: 0; padding: 0; margin: 0; }
 
 /* Search & lists */
 .text-input {
@@ -1940,6 +1944,8 @@ audio.media-embed { display: block; width: min(100%, 480px); max-width: 100%; pa
    widget by its box — a margin is height it never accounts for, which drags
    every click below the block off by that much. */
 .dataview-block { padding: .6em 0; }
+/* A block that opens a note has nothing above it to be kept apart from. */
+.cm-note-embed .dataview-block:first-child, .embed-note .dataview-block:first-child { padding-top: 0; }
 .dataview-table-wrap { overflow-x: auto; max-width: 100%; }
 /* Slightly smaller than body text, like the plugin's own tables: more columns
    fit before the browser has to break inside a word. */
@@ -2948,3 +2954,57 @@ div.dataview-error-box {
 .assistant-tab:hover { background: var(--bg-modifier-hover); color: var(--text-normal); }
 .assistant-tab.active { border-color: var(--interactive-accent); color: var(--text-normal); }
 .assistant-tab .assistant-busy-dot { width: 5px; height: 5px; }
+
+
+/* ---------------------------------------------------------- appointments
+   A line the calendar sync wrote, read as three things instead of one
+   sentence: when it is, what it is, and which calendar it came from. Styling
+   only — the markdown on disk stays a plain bullet, so the same line still
+   reads as itself in Obsidian and in anything else that opens the vault. */
+.cm-appt-time, .appt-time, .cm-appt-allday, .appt-allday {
+  /* One column for "when", so the titles start at the same place whether the
+     appointment has a time, a span, or lasts all day. Without it the eye has to
+     find the beginning of each title separately, which is most of what makes a
+     list of appointments hard to read.
+
+     In rem, not em: the all-day label is set smaller than a time, and an em
+     would then be a different width for each of them — which is exactly the
+     misalignment this is here to remove. */
+  display: inline-block;
+  min-width: 6.8rem;
+  margin-inline-end: 6px;
+}
+/* What somebody wrote under an appointment belongs under its TEXT, not under
+   its time. The lines carry their own list indent already; this adds the width
+   of the time column on top, so a note sits under the sentence it is about. */
+/* Margin, not padding: the list already uses padding for its own indent, and
+   setting that here would replace the nesting instead of adding to it. */
+.cm-appt-child { margin-inline-start: calc(6.8rem + 6px); }
+.cm-appt-time, .appt-time {
+  font-variant-numeric: tabular-nums;          /* times line up under each other */
+  font-weight: 600;
+  color: var(--text-accent);
+}
+.cm-appt-allday, .appt-allday {
+  font-size: var(--font-smaller);
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+/* The " · " that separates the title from the calendar. The badge says the same
+   thing more clearly, so the separator goes — out of sight, still in the file. */
+.cm-appt-sep { display: none; }
+.cm-appt-cal, .appt-cal {
+  display: inline-block;
+  padding: 0 6px;
+  margin-inline-start: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+  line-height: 1.5;
+  vertical-align: baseline;
+  white-space: nowrap;
+}

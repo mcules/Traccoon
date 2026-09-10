@@ -154,6 +154,30 @@ async def test_a_judged_report_leaves_the_open_list(client, db, helpers):
 
 
 @pytest.mark.asyncio
+async def test_done_settles_a_report_without_judging_the_reporter(client, db, helpers):
+    """Answered and finished: not a duplicate, not rejected, simply over.
+
+    Without this state the only ways out of the list said something about the reporter that
+    was not true, so reports that had long been answered stayed open for ever.
+    """
+    _, token = await make_source(db)
+    await client.post("/bugs/report", json=REPORT, headers={"X-Bug-Token": token})
+    person = await helpers.make_user(db, "hans")
+    bug_id = (await client.get("/bugs", headers=helpers.auth(person))).json()[0]["id"]
+    warten = await client.get("/bugs/waiting", headers=helpers.auth(person))
+    assert warten.json()["unanswered"] == 1
+
+    answer = await client.post(f"/bugs/{bug_id}/status", json={"status": "done"},
+                               headers=helpers.auth(person))
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["status"] == "done"
+
+    assert (await client.get("/bugs?state=open", headers=helpers.auth(person))).json() == []
+    warten = await client.get("/bugs/waiting", headers=helpers.auth(person))
+    assert warten.json()["unanswered"] == 0
+
+
+@pytest.mark.asyncio
 async def test_a_wish_is_not_a_fault(client, db, helpers):
     """Three kinds share the list: bug, wish, question. The words come from the first caller."""
     _, token = await make_source(db)

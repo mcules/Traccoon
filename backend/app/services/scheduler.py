@@ -254,33 +254,16 @@ _purge_after = 0.0  # monotonic mark: clean-up runs at most hourly
 _vault_after = 0.0
 
 
-async def _purge_archived_runs() -> None:
-    """Delete archived agent runs after the retention period.
+async def _purge_protocols() -> None:
+    """Delete finished protocol rows after their period.
 
-    The period in days comes from the AppSetting `run_retention_days` (default 30, 0 = never
-    delete). RunSteps hang off it over ON DELETE CASCADE.
+    The rules and the reasoning live in `services/retention.py`. This used to delete only
+    ARCHIVED agent runs, which meant it never touched the ones that actually pile up:
+    runs from jobs and flows have no ticket and are therefore never archived.
     """
-    from sqlalchemy import delete
+    from .retention import sweep
 
-    from ..models.agents import Run
-    from .appsettings import get_setting
-
-    async with SessionLocal() as db:
-        raw = await get_setting(db, RUN_RETENTION_KEY, str(RUN_RETENTION_DEFAULT))
-        try:
-            days = int(raw)
-        except ValueError:
-            days = RUN_RETENTION_DEFAULT
-        if days <= 0:
-            return
-        cutoff = _now() - dt.timedelta(days=days)
-        res = await db.execute(
-            delete(Run).where(Run.archived.is_(True), Run.archived_at.isnot(None),
-                              Run.archived_at < cutoff)
-        )
-        await db.commit()
-        if res.rowcount:
-            log.info("%d archived agent runs older than %d days deleted", res.rowcount, days)
+    await sweep()
 
 
 async def _spam_digest() -> None:
@@ -344,7 +327,7 @@ async def run_scheduler() -> None:
             await _spam_digest()
             if loop.time() >= _purge_after:
                 _purge_after = loop.time() + 3600
-                await _purge_archived_runs()
+                await _purge_protocols()
             if loop.time() >= _vault_after:
                 _vault_after = loop.time() + 3600
                 await _vault_contacts()

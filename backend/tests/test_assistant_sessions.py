@@ -166,9 +166,49 @@ async def test_a_task_without_a_session_keeps_the_old_window(db, anna, monkeypat
 
 # ── 3. Schließen, wieder öffnen, weiterreden ─────────────────────────────────
 
+async def test_a_conversation_says_whether_it_is_unread(client, db, anna):
+    """The one state a conversation has that it knows nothing about by itself.
+
+    Three of them ride along on the listing so a switcher can be drawn without a
+    round trip per entry: working, asking, and not yet seen.
+    """
+    sid = (await client.post("/assistant/sessions", json={"title": "Frisch"},
+                             headers=auth(anna))).json()["id"]
+    einer = lambda rows: next(s for s in rows if s["id"] == sid)  # noqa: E731
+
+    # Nothing said yet is not "unread" — there is nothing in there to read.
+    rows = (await client.get("/assistant/sessions", headers=auth(anna))).json()
+    assert einer(rows)["unread"] is False
+    assert einer(rows)["asking"] is False
+
+    await client.post("/assistant/chat", json={"text": "eine Frage", "session_id": sid},
+                      headers=auth(anna))
+    rows = (await client.get("/assistant/sessions", headers=auth(anna))).json()
+    assert einer(rows)["unread"] is True
+
+    assert (await client.post(f"/assistant/sessions/{sid}/read",
+                              headers=auth(anna))).status_code == 200
+    rows = (await client.get("/assistant/sessions", headers=auth(anna))).json()
+    assert einer(rows)["unread"] is False
+
+
+async def test_an_empty_conversation_is_deleted_rather_than_archived(client, db, anna):
+    """Archiving one that was never spoken in is the gesture for "this was a
+    mistake". Keeping it under "show closed" makes a graveyard out of that list."""
+    sid = (await client.post("/assistant/sessions", json={"title": "Vertippt"},
+                             headers=auth(anna))).json()["id"]
+    r = await client.post(f"/assistant/sessions/{sid}/close", headers=auth(anna))
+    assert r.status_code == 200 and r.json() == {"id": sid, "deleted": True}
+    assert (await client.get("/assistant/sessions", headers=auth(anna))).json() == []
+    assert (await client.get("/assistant/sessions?closed=1", headers=auth(anna))).json() == []
+
+
 async def test_closing_takes_it_out_of_the_list_and_reopen_brings_it_back(client, db, anna):
     sid = (await client.post("/assistant/sessions", json={"title": "Steuer"},
                              headers=auth(anna))).json()["id"]
+    # Something said in it, or archiving would delete it (see the test above).
+    await client.post("/assistant/chat", json={"text": "erste Frage", "session_id": sid},
+                      headers=auth(anna))
 
     assert [s["id"] for s in (await client.get("/assistant/sessions",
                                                headers=auth(anna))).json()] == [sid]
@@ -466,6 +506,12 @@ async def test_an_assistant_token_reaches_every_session_endpoint(client, db, ann
     sid = created.json()["id"]
     assert (await client.patch(f"/assistant/sessions/{sid}", json={"title": "Umbenannt"},
                                headers=head)).status_code == 200
+    assert (await client.post(f"/assistant/sessions/{sid}/read",
+                              headers=head)).status_code == 200
+    # Something said in it first: archiving an empty one deletes it, and the
+    # reopen below would then have nothing to find.
+    assert (await client.post("/assistant/chat", json={"text": "erste", "session_id": sid},
+                              headers=head)).status_code == 200
     assert (await client.post(f"/assistant/sessions/{sid}/close",
                               headers=head)).status_code == 200
     assert (await client.post(f"/assistant/sessions/{sid}/reopen",
@@ -692,3 +738,19 @@ async def test_reopening_makes_it_the_current_one_again(db) -> None:
     await sessions.reopen(db, s)
     back = await sessions.current(db, user.id, "web")
     assert back is not None and back.id == s.id
+
+
+# ── Was getippt wird, waehrend der Assistent noch arbeitet ───────────────────
+
+def test_waiting_messages_are_joined_without_repeating_themselves() -> None:
+    """Every message carries the context the page offered along with it. Three
+    typed in a row carry it three times, and joined verbatim the result reads as
+    three requests that each begin by introducing themselves."""
+    from app.services.assistant_queue import join
+
+    kontext = "Ich sehe gerade die Notiz X."
+    assert join([f"{kontext}\n\ntest", f"{kontext}\n\ntest2"]) == \
+        f"{kontext}\n\ntest\n\ntest2"
+    # Was jemand wirklich geschrieben hat, faellt nie weg — nur die Wiederholung.
+    assert join(["eins", "zwei", "eins"]) == "eins\n\nzwei"
+    assert join(["", "  ", "etwas"]) == "etwas"

@@ -19,6 +19,7 @@ export interface MailAccount {
   smtp_host: string; smtp_port: number; smtp_security: string; smtp_user: string;
   folder_sent: string; folder_drafts: string; folder_trash: string; folder_junk: string;
   folder_archive: string; archive_mode: string; archive_pattern: string;
+  trash_marks_read: boolean; ask_before_folder_read: boolean;
   mcp_enabled: boolean; mcp_ignore_folders: string[]; mcp_tools: string[];
   mcp_instructions: string;
   imap_password_set: boolean; smtp_password_set: boolean; auth_type: string;
@@ -35,6 +36,7 @@ const EMPTY = {
   smtp_host: "", smtp_port: 587, smtp_security: "starttls", smtp_user: "", smtp_password: "",
   folder_sent: "Sent", folder_drafts: "Drafts", folder_trash: "Trash", folder_junk: "Junk",
   folder_archive: "Archive", archive_mode: "folder", archive_pattern: "Archive/{year}",
+  trash_marks_read: true, ask_before_folder_read: false,
   mcp_enabled: false, mcp_ignore_folders: [] as string[], mcp_tools: [] as string[],
   mcp_instructions: "",
 };
@@ -310,6 +312,34 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
           <PatternField accountId={start.id} value={f.archive_pattern}
             onChange={(v) => set({ archive_pattern: v })} />
         )}
+
+        {/* Two habits rather than two addresses, but they belong to the same handles as
+            the folders above: what the trash does with a mail, and how loudly the folder
+            menu asks. Both are answers of THIS mailbox — on a shared one the read marks
+            say what the others have seen, and there the trash must keep its hands off. */}
+        <div className="text-xs font-medium uppercase tracking-wider text-muted/70">
+          {tr("mail_accounts.behaviour_group")}
+        </div>
+        <label className="flex items-start gap-2 text-sm text-ink">
+          <input type="checkbox" className="mt-0.5" checked={f.trash_marks_read}
+            onChange={(e) => set({ trash_marks_read: e.target.checked })} />
+          <span>
+            {tr("mail_accounts.trash_marks_read")}
+            <span className="block text-xs text-muted">
+              {tr("mail_accounts.trash_marks_read_hint")}
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm text-ink">
+          <input type="checkbox" className="mt-0.5" checked={f.ask_before_folder_read}
+            onChange={(e) => set({ ask_before_folder_read: e.target.checked })} />
+          <span>
+            {tr("mail_accounts.ask_before_folder_read")}
+            <span className="block text-xs text-muted">
+              {tr("mail_accounts.ask_before_folder_read_hint")}
+            </span>
+          </span>
+        </label>
 
         </>)}
 

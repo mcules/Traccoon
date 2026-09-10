@@ -120,7 +120,10 @@ class Workspace:
             recovery.snapshot(self.recovery_root, rel, previous)
         write.write_text(self.vault, rel, text)
         self.touch(rel)
-        return {"ok": True, "path": rel, "hash": content_hash(text)}
+        # `chars` so that a writer knows the size of what it just wrote without reading the
+        # note back. That read back, after every single write, was a large part of what made
+        # agent runs long.
+        return {"ok": True, "path": rel, "hash": content_hash(text), "chars": len(text)}
 
     def create_folder(self, rel: str) -> dict:
         write.create_folder(self.vault, rel)

@@ -37,7 +37,11 @@ def user(vault):
 @pytest.mark.asyncio
 async def test_a_save_answers_with_the_version_it_made(user) -> None:
     out = await nn.save(nn.SaveIn(path="Ordner/Ziel.md", content="neu\n"), user)
-    assert out == {"ok": True, "path": "Ordner/Ziel.md", "hash": content_hash("neu\n")}
+    # `chars` rides along so that a writing agent knows the size of what it wrote without
+    # reading the note back — that read after every write was a large part of what made
+    # agent runs long.
+    assert out == {"ok": True, "path": "Ordner/Ziel.md", "hash": content_hash("neu\n"),
+                   "chars": 4}
 
 
 @pytest.mark.asyncio

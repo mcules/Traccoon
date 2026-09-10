@@ -7,6 +7,7 @@ from .enums import (  # noqa: F401
 )
 from .user import SYSTEM_USER_ID, User  # noqa: F401
 from .api_token import ApiToken  # noqa: F401
+from .passkey import Passkey  # noqa: F401
 from .project import Project, ProjectMember, ResourceGrant, default_ai_assign  # noqa: F401
 from .invitation import ProjectInvitation  # noqa: F401
 from .mail import MailAccount, MailIdentity  # noqa: F401

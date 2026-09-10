@@ -25,6 +25,7 @@ import ssl
 import threading
 import time
 from contextlib import contextmanager
+from email.header import decode_header
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid, parseaddr
 
@@ -423,7 +424,7 @@ def _attachments(msg: email.message.Message) -> list[dict]:
 
 def _header(raw) -> str:
     """Kopfzeile lesbar machen (=?utf-8?B?…?= und Konsorten)."""
-    from email.header import decode_header, make_header
+    from email.header import make_header
 
     if raw is None:
         return ""
@@ -627,6 +628,214 @@ def _listing_sync(account: MailAccount, folder: str, search: str, offset: int,
                 "messages": [_row(uid, raw.get(uid) or {}, folder) for uid in excerpt]}
 
 
+# How the server is asked to thread. REFERENCES follows the headers a mail carries about
+# what it answers (`In-Reply-To`, `References`) and is the one that gets it right; ORDERED‐
+# SUBJECT only groups by subject and is the emergency exit. A server that offers neither
+# gets no conversations — and says so, rather than pretending with a guess of our own.
+_THREADING = ("REFERENCES", "REFS", "ORDEREDSUBJECT")
+
+
+def _algorithm(client) -> str:
+    have = {c.decode().upper() for c in client.capabilities()}
+    return next((a for a in _THREADING if f"THREAD={a}" in have), "")
+
+
+def _flatten(node) -> list[int]:
+    """The uids out of one thread, however deeply the server nested it.
+
+    THREAD answers with a tree: an answer to an answer sits inside the answer. What a list
+    needs is who belongs together, not who answered whom — the order inside a conversation
+    comes from the dates, and those are read anyway.
+    """
+    out: list[int] = []
+    for item in node:
+        if isinstance(item, (tuple, list)):
+            out.extend(_flatten(item))
+        else:
+            out.append(int(item))
+    return out
+
+
+# How many messages of one conversation are read for the list. A thread with three hundred
+# mails in it is a mailing list, and nobody opens the list to read three hundred lines: the
+# newest ones are shown, the count says how many there are altogether.
+THREAD_CAP = 50
+
+
+# The headers threading needs, and the answer key they come back under.
+THREAD_HEADERS = "BODY.PEEK[HEADER.FIELDS (MESSAGE-ID IN-REPLY-TO REFERENCES)]"
+# Fetched in the same go: the arrival time. Sorting a conversation by uid looked wrong in
+# exactly the case this is about — a mail copied into the folder later carries an older time
+# and a higher uid, and the list then showed 14:34, 14:23, 14:28, 14:13 under each other.
+THREAD_FIELDS = [THREAD_HEADERS, "INTERNALDATE"]
+_THREAD_HEADERS_KEY = b"BODY[HEADER.FIELDS (MESSAGE-ID IN-REPLY-TO REFERENCES)]"
+_MSGID = re.compile(r"<[^<>@\s]+@[^<>\s]+>")
+
+
+def _spelled_out(value: str) -> str:
+    """A header value with its encoded words spelled out.
+
+    `Message-ID`, `In-Reply-To` and `References` are structured headers and must never carry
+    RFC 2047 encoded words. Senders do it anyway — and then the ids inside are invisible to
+    every parser, the server's own threading included. That is not a curiosity: such a mail
+    hangs in no conversation, because the line saying what it answers reads as
+    `=?utf-8?q?=3CAM0PR01...` and contains no `<...@...>` at all.
+    """
+    out = []
+    for chunk, charset in decode_header(value or ""):
+        out.append(chunk.decode(charset or "ascii", "replace") if isinstance(chunk, bytes)
+                   else chunk)
+    return " ".join(out)
+
+
+def _when(value) -> dt.datetime:
+    """A time one may compare with another. imapclient hands INTERNALDATE over naive in UTC
+    for most servers and aware for some — mixed, the comparison raises."""
+    if not isinstance(value, dt.datetime):
+        return dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+    return value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)
+
+
+def _links(raw: bytes) -> tuple[str, list[str]]:
+    """(own Message-ID, the ids this message answers) out of a fetched header block."""
+    head = email.message_from_bytes(raw or b"")
+    mine = _MSGID.search(_spelled_out(head.get("Message-ID", "")))
+    answers = _MSGID.findall(_spelled_out(head.get("References", ""))) \
+        + _MSGID.findall(_spelled_out(head.get("In-Reply-To", "")))
+    return (mine.group(0) if mine else ""), answers
+
+
+class _Groups:
+    """Union-find over uids: who ends up in one conversation with whom."""
+
+    def __init__(self) -> None:
+        self._up: dict[int, int] = {}
+
+    def root(self, uid: int) -> int:
+        while self._up.get(uid, uid) != uid:
+            self._up[uid] = self._up.get(self._up[uid], self._up[uid])
+            uid = self._up[uid]
+        return uid
+
+    def join(self, a: int, b: int) -> None:
+        ra, rb = self.root(a), self.root(b)
+        if ra != rb:
+            self._up[max(ra, rb)] = min(ra, rb)
+
+
+def _conversations(raw: dict, uids: list[int],
+                   server_threads: list[list[int]]) -> list[list[int]]:
+    """The server's threads, repaired along the references the server could not read.
+
+    The server does the hard part — RFC 5256, including the subject rule that catches a reply
+    which brought no `References` at all. What it cannot do is read an id out of a header
+    somebody encoded (see `_spelled_out`), and such a mail is then its own conversation. One
+    mail thread in this mailbox fell apart exactly there: four messages that answer each
+    other, and the newest one stood alone because its sender encoded `In-Reply-To`.
+
+    So the server's groups are taken as given and only ever joined further, never split, and
+    only on hard evidence: message A names the `Message-ID` of message B. A subject is never
+    a reason here — the server has already weighed that one, and two different "Re: Rechnung"
+    are two conversations.
+    """
+    groups = _Groups()
+    for thread in server_threads:
+        for other in thread[1:]:
+            groups.join(thread[0], other)
+    answers: dict[int, list[str]] = {}
+    at: dict[str, int] = {}
+    for uid in uids:
+        mine, refs = _links((raw.get(uid) or {}).get(_THREAD_HEADERS_KEY, b""))
+        # First one wins: a Message-ID handed out twice is a broken sender, and the older
+        # message is the one everything else already points at.
+        if mine and mine not in at:
+            at[mine] = uid
+        if refs:
+            answers[uid] = refs
+    for uid, refs in answers.items():
+        for ref in refs:
+            target = at.get(ref)
+            if target is not None:
+                groups.join(uid, target)
+
+    out: dict[int, list[int]] = {}
+    for uid in uids:
+        out.setdefault(groups.root(uid), []).append(uid)
+    return list(out.values())
+
+
+# How many messages of one conversation are read for the list. A thread with three hundred
+# mails in it is a mailing list, and nobody opens the list to read three hundred lines: the
+# newest ones are shown, the count says how many there are altogether.
+THREAD_CAP = 50
+
+
+def _threaded_sync(account: MailAccount, folder: str, search: str, offset: int,
+                   limit: int) -> dict:
+    """The folder as conversations instead of single messages.
+
+    One row per conversation, and the row is its newest message — so everything that works
+    on a row (ticking, moving, deleting, opening) keeps working unchanged; what is new is
+    the `thread` hanging off it.
+
+    The order is the same as in the flat list: by uid, descending. A uid grows with arrival,
+    so the newest member decides where its conversation stands — a thread that was answered
+    today goes to the top, even when it began in March.
+
+    `threaded: false` in the answer means the server cannot do it. The list then shows what
+    it always showed rather than a guess of ours: grouping mail by subject alone puts two
+    different "Re: Rechnung" into one conversation, and that is a mistake one does not see.
+    """
+    with _imap(account) as client:
+        state = client.select_folder(folder, readonly=True)
+        total = state.get(b"EXISTS", 0)
+        algorithm = _algorithm(client)
+        if not algorithm:
+            flat = _listing_sync(account, folder, search, offset, limit)
+            return {**flat, "threaded": False}
+        criterion = ["TEXT", search] if search else ["ALL"]
+        server = [_flatten(t) for t in client.thread(algorithm, criterion)]
+        server = [t for t in server if t]
+        every = sorted({u for t in server for u in t})
+        raw_head = client.fetch(every, THREAD_FIELDS) if every else {}
+        # Sorted by what the list SHOWS, and that is the time, not the uid. The two only
+        # agree while every mail arrived here in the order it was written; a copied one
+        # breaks that, and then the conversation reads as if it had no order at all.
+        when = {uid: (raw_head.get(uid) or {}).get(b"INTERNALDATE") or dt.datetime.min
+                for uid in every}
+        rank = {uid: (_when(when[uid]), uid) for uid in every}
+        threads = _conversations(raw_head, every, server)
+        for thread in threads:
+            thread.sort(key=lambda uid: rank[uid], reverse=True)
+        threads.sort(key=lambda t: rank[t[0]], reverse=True)
+        excerpt = threads[offset:offset + limit]
+        if not excerpt:
+            return {"total": len(threads), "exists": total, "messages": [], "threaded": True}
+
+        # One FETCH for every message that is going to be shown, not one per conversation.
+        wanted: list[int] = []
+        for uids in excerpt:
+            wanted.extend(uids[:THREAD_CAP])
+        raw = client.fetch(wanted, LIST_FIELDS)
+
+        out = []
+        for uids in excerpt:
+            rows = [_row(uid, raw.get(uid) or {}, folder) for uid in uids[:THREAD_CAP]]
+            if not rows:
+                continue
+            head = dict(rows[0])
+            # The head carries the conversation. Only from two on: a single mail is a mail,
+            # and a "1" behind every subject would be noise on every line.
+            if len(uids) > 1:
+                head["thread"] = rows
+                head["thread_count"] = len(uids)
+                # A conversation with something unread in it is unread, wherever it sits.
+                # Otherwise an answer read this morning would hide the question below it.
+                head["thread_unseen"] = sum(1 for r in rows if not r["seen"])
+            out.append(head)
+        return {"total": len(threads), "exists": total, "messages": out, "threaded": True}
+
+
 def _search_all_sync(account: MailAccount, search: str, offset: int, limit: int) -> dict:
     """Search the whole mailbox, every folder.
 
@@ -814,6 +1023,22 @@ def _shift(client, uids: list[int], target: str) -> None:
         client.expunge()
 
 
+def _mark_discarded(client, account: MailAccount, uids: list[int], target: str) -> None:
+    """Whatever goes into the trash counts as read — when the account says so.
+
+    Thrown away is dealt with, and an unread counter that keeps counting the discarded is a
+    number nobody can bring back to zero: the mails are no longer in a folder anybody opens.
+
+    Set BEFORE the move, and that is not a detail: after a MOVE the messages have new uids in
+    the trash, so the flag would have to be found again over there — a second search, in a
+    folder whose contents nobody is looking at.
+    """
+    if not target or target != account.folder_trash or not account.trash_marks_read:
+        return
+    for start in range(0, len(uids), BLOCK):
+        client.add_flags(uids[start:start + BLOCK], [b"\\Seen"])
+
+
 def _erase(client, uids: list[int]) -> None:
     """Really gone. Meant for the trash, and for whatever one empties there."""
     for start in range(0, len(uids), BLOCK):
@@ -824,6 +1049,7 @@ def _erase(client, uids: list[int]) -> None:
 def _move_sync(account: MailAccount, folder: str, uid: int, target: str) -> None:
     with _imap(account) as client:
         client.select_folder(folder)
+        _mark_discarded(client, account, [uid], target)
         _shift(client, [uid], target)
 
 
@@ -1020,6 +1246,7 @@ def _folder_empty_sync(account: MailAccount, folder: str, trash: str) -> dict:
         if not trash or folder == trash:
             _erase(client, uids)
             return {"deleted": len(uids), "target": ""}
+        _mark_discarded(client, account, uids, trash)
         _shift(client, uids, trash)
         return {"deleted": len(uids), "target": trash}
 
@@ -1088,6 +1315,7 @@ def _bulk_sync(account: MailAccount, folder: str, uids: list[int], action: str,
                     "targets": sorted(set(goals.values()))}
         if action == "move":
             _sure_folder(client, target)
+            _mark_discarded(client, account, uids, target)
             _shift(client, uids, target)
             return {"done": len(uids), "action": action, "target": target}
         if action == "delete":
@@ -1095,6 +1323,7 @@ def _bulk_sync(account: MailAccount, folder: str, uids: list[int], action: str,
             if not trash or folder == trash:
                 _erase(client, uids)
                 return {"done": len(uids), "action": action, "target": ""}
+            _mark_discarded(client, account, uids, trash)
             _shift(client, uids, trash)
             return {"done": len(uids), "action": action, "target": trash}
         raise ValueError(f"unknown action {action!r}")
@@ -1238,6 +1467,11 @@ async def folder(account: MailAccount, count: bool = False) -> list[dict]:
 async def listing(account: MailAccount, folder_name: str, search: str = "", offset: int = 0,
                 limit: int = 50) -> dict:
     return await asyncio.to_thread(_listing_sync, account, folder_name, search, offset, limit)
+
+
+async def threaded(account: MailAccount, folder_name: str, search: str = "", offset: int = 0,
+                   limit: int = 50) -> dict:
+    return await asyncio.to_thread(_threaded_sync, account, folder_name, search, offset, limit)
 
 
 async def search_all(account: MailAccount, search: str, offset: int = 0,

@@ -262,6 +262,7 @@ class AnthropicProvider(Provider):
         # explicitly graspable so that the runtime can take cache_read into the cost and the
         # CostEntry.
         cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
+        cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
         return ChatResponse(text=text, tool_calls=calls,
                             raw={"choices": [{"message": raw_msg}]}, usage=usage,
-                            cache_read_tokens=cache_read)
+                            cache_read_tokens=cache_read, cache_write_tokens=cache_write)

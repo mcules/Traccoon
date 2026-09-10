@@ -12,7 +12,7 @@ import datetime as dt
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -38,6 +38,7 @@ from .tools_memory import (
 from . import compaction as _compaction
 from .compaction import compact as _compact
 from .compaction import handover as _handover
+from .read_ledger import ReadLedger as _ReadLedger
 from .tools_traccoon import (
     TRACCOON_GATED_TOOLS,
     TRACCOON_TOOL_NAMES,
@@ -54,7 +55,13 @@ MAX_DELEGATION_DEPTH = 2
 # through the quadratically growing message history. On overrun the run ends like it does on
 # the iteration limit, as loop_exhausted.
 # finalisiert (Continuation greift in frischem Run; Per-Ticket-Cap deckelt gesamt).
-MAX_RUN_INPUT_TOKENS = int(os.getenv("MAX_RUN_INPUT_TOKENS", "2000000"))
+#
+# Counted against it is the WHOLE input of a run, cached share included. It used to be the
+# uncached remainder alone, and that made the brake sleep: run 2432 on 2026-09-09 read
+# 4.07 million cached tokens across 40 turns and booked 80 against a bound of two million.
+# The cache makes a token cheaper, it does not make it go away — and it is the sum of the
+# context over all turns that this limit is about.
+MAX_RUN_INPUT_TOKENS = int(os.getenv("MAX_RUN_INPUT_TOKENS", "8000000"))
 # Wall clock limit per run. The loop watchdog in the worker only sees a BLOCKED event loop;
 # an agent that cheerfully keeps calling tools and still never finishes ticks along fine and
 # used to run unbounded (`run_timeout` applies to shell and HTTP jobs in the scheduler only).
@@ -70,6 +77,13 @@ RAW_HISTORY_CHARS = 40_000
 # (Destination.max_response_chars); this is only the bar against a misconfigured destination
 # flooding a whole run context.
 MAX_HTTP_TOOL_CHARS = int(os.getenv("MAX_HTTP_TOOL_CHARS", "60000"))
+# The note tools bound their own answer (`notes_mcp.DEFAULT_MAX_CHARS`, 40.000 characters)
+# and wrap it in JSON. The blanket 8.000 below cut straight through that: a note of 13.650
+# characters arrived as a JSON blob severed mid-string, while the envelope it came in went
+# on claiming `chars_returned: 13650`. A model that gets that reads it as "cut off" and asks
+# again with a larger `max_chars` — and gets the same 8.000 back, because the cut was never
+# the tool's doing. Run 2511 read one note seven times that way.
+MAX_NOTE_TOOL_CHARS = int(os.getenv("MAX_NOTE_TOOL_CHARS", "48000"))
 
 DEPLOYER_URL = os.getenv("DEPLOYER_URL", "http://deployer:8661")
 SHOTTER_URL = os.getenv("SHOTTER_URL", "http://shotter:8700")
@@ -77,6 +91,36 @@ SHOTTER_URL = os.getenv("SHOTTER_URL", "http://shotter:8700")
 
 def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
+
+
+def _cap_for(tool_name: str) -> int:
+    """How much of one tool answer may go into the context.
+
+    `traccoon_http_call` already got its limit from the destination
+    (`Destination.max_response_chars`) and brings it along in the answer; the note tools
+    bound theirs themselves. Both would be cut back here by the blanket limit, which is what
+    the wider frames are for. Everything else keeps the 8.000.
+    """
+    if tool_name == "traccoon_http_call":
+        return MAX_HTTP_TOOL_CHARS
+    if tool_name.rsplit("__", 1)[-1].startswith("notes_"):
+        return MAX_NOTE_TOOL_CHARS
+    return 8000
+
+
+def _cut(result: str, cap: int) -> str:
+    """The answer, and when it has to be cut, a line saying so.
+
+    A silent cut is the worse of the two. What arrives is a JSON object severed mid-string
+    whose own fields go on describing the whole answer — and a reader that cannot see the
+    knife blames the tool and calls it again, which is exactly the loop this is here to end.
+    """
+    if len(result) <= cap:
+        return result
+    return (result[:cap] +
+            f"\n\n[cut off here by the runtime: {cap} of {len(result)} characters. "
+            f"This is the context limit for one tool answer, not the tool's doing — "
+            f"calling it again with a larger limit gives you no more.]")
 
 
 # ---------- Tool-Schemas (Port) ----------
@@ -90,8 +134,8 @@ def _now() -> dt.datetime:
 # would mean "silently never learns", exactly the state the memory was built to end. They
 # write only into the
 # memory folder of the agent's own person.
-_ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "submit_plan",
-                   "delegate", "traccoon_notify_human"} | MEMORY_TOOL_NAMES
+_ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "load_tools",
+                   "submit_plan", "delegate", "traccoon_notify_human"} | MEMORY_TOOL_NAMES
 
 SUBMIT_PLAN_TOOL = {"type": "function", "function": {
     "name": "submit_plan",
@@ -479,6 +523,11 @@ class AgentDef:
     # Thinking shares `max_tokens` with the visible answer, so whoever has much to read but
     # little to write (the reviewer) is safer with a lower level.
     effort: str = ""
+    # Tool groups that are in the prompt from the first turn. Everything else the allowlist
+    # permits waits in the catalogue for `load_tools`. Empty is the normal case.
+    autoload_tools: list[str] = field(default_factory=list)
+    # Wall clock bound for one run, in seconds. 0 takes the house default MAX_RUN_SECONDS.
+    max_run_seconds: int = 0
 
     def tool_allowed(self, name: str) -> bool:
         # Loop and control tools are agent mechanics, not bounded by the allowlist.
@@ -504,6 +553,8 @@ def agent_def_from_row(row: AgentDefinition, mode: str) -> AgentDef:
         autoload_skills=list(row.autoload_skills or []), delegate_to=list(row.delegate_to or []),
         learns=bool(row.learns), max_context_tokens=row.max_context_tokens,
         effort=(row.effort or "").strip(),
+        autoload_tools=list(row.autoload_tools or []),
+        max_run_seconds=int(row.max_run_seconds or 0),
     )
 
 
@@ -749,13 +800,46 @@ def _project_knowledge(project: dict) -> str:
             "the ticket.\n\n" + text)
 
 
-def _build_system_prompt(agent: AgentDef) -> str:
+# The two shipped languages have no row in `ui_locales`; anything else stands there with a
+# name. Is it neither, the bare code has to do — "pt-BR" tells a model enough.
+_SHIPPED_LOCALES = {"de": "German (Deutsch)", "en": "English"}
+
+
+async def owner_language(db: AsyncSession, owner_id: int | None) -> str:
+    """The language this person reads, by name, for the prompt.
+
+    Only asked where somebody is being spoken to — an assistant conversation, a free run.
+    NOT on project runs: there the language of the work follows the repository (commit
+    messages, comments, documentation in English), and the person is not sitting in front
+    of the answer anyway.
+    """
+    from ..models.i18n import UiLocale
+    from ..models.user import User
+
+    if not owner_id:
+        return ""
+    user = await db.get(User, owner_id)
+    code = ((user.locale if user else "") or "").strip()
+    if not code:
+        return ""
+    row = (await db.execute(select(UiLocale).where(UiLocale.locale == code))).scalar_one_or_none()
+    return (row.name if row and row.name else "") or _SHIPPED_LOCALES.get(code, code)
+
+
+def _build_system_prompt(agent: AgentDef, speak: str = "") -> str:
     today = dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     parts = [agent.system_prompt or f"Du bist {agent.role}.",
-             f"Current date and time: {today}.",
-             "Work the assignment through on your own. Use tools when you need them. When you are "
-             "finished, answer with a short summary WITHOUT a tool call. Ask only on real blockers "
-             "with `ask_human`."]
+             f"Current date and time: {today}."]
+    if speak:
+        # Not just the final answer: the sentences between the tool calls stand in the panel
+        # while the work runs, and they were the ones showing up in English. Whoever reads
+        # them is the same person who reads the summary.
+        parts.append(f"Write to the person in {speak}, in every text they get to see — the "
+                     "closing summary, the sentences between the tool calls, questions. Names "
+                     "of tools, paths and code stay as they are.")
+    parts.append("Work the assignment through on your own. Use tools when you need them. When you "
+                 "are finished, answer with a short summary WITHOUT a tool call. Ask only on real "
+                 "blockers with `ask_human`.")
     return "\n\n".join(parts)
 
 
@@ -884,6 +968,53 @@ LOAD_SKILL_TOOL = {
             "required": ["key"]},
     }}
 
+LOAD_TOOLS_TOOL = {
+    "type": "function", "function": {
+        "name": "load_tools",
+        "description": "Loads tool groups that the context lists as not yet loaded. Do it in "
+                       "your first turn, as soon as you can tell from the task which subjects "
+                       "it touches — the tools are there from your next turn on. Name every "
+                       "group you are going to need at once rather than one per turn.",
+        "parameters": {"type": "object", "properties": {
+            "groups": {"type": "array", "items": {"type": "string"},
+                       "description": "Group names from the list, without the `__`."}},
+            "required": ["groups"]},
+    }}
+
+# How many tool names of a group the catalogue shows. Enough to say what the group is about,
+# far too few to be a tool list — that is the whole point of the catalogue.
+CATALOGUE_SAMPLE = 6
+
+
+def _group_of(tool_name: str) -> str:
+    """The tool server a tool belongs to, or "" for the house's own tools."""
+    return tool_name.split("__", 1)[0] if "__" in tool_name else ""
+
+
+def _catalogue(deferred: dict[str, Any]) -> str:
+    """What the model gets instead of the schemas of every tool it may use.
+
+    Server name, how many there are, and a handful of names as the hook a task hangs on.
+    Nothing to configure and nothing to keep up to date: it is built from whatever the
+    gateway offered this run.
+    """
+    if not deferred:
+        return ""
+    groups: dict[str, list[str]] = {}
+    for full in deferred:
+        groups.setdefault(_group_of(full), []).append(full.split("__", 1)[1])
+    lines = []
+    for name in sorted(groups):
+        names = sorted(groups[name])
+        shown = ", ".join(names[:CATALOGUE_SAMPLE])
+        lines.append(f"- `{name}` ({len(names)}): {shown}"
+                     + (", …" if len(names) > CATALOGUE_SAMPLE else ""))
+    return ("# Tool groups that are not loaded yet\n"
+            "You may load any of them, and you do not need anybody's permission or a "
+            "keyword from the task to do it. Work out from the task which subjects it "
+            "touches, then fetch those groups with `load_tools` in one call.\n"
+            + "\n".join(lines))
+
 
 # How many turns the look back gets at most: one to remember, one to close.
 MAX_REFLEXION_TURNS = 2
@@ -952,7 +1083,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     continuation_index: int = 0, continuation_hint: str = "",
                     comment_history: list[dict] | None = None, history_title: str = "",
                     parent_run_id: int | None = None, parent_tool_use_id: str | None = None,
-                    task_id: str = "",
+                    task_id: str = "", speak: str = "",
                     depth: int = 0, delegate_loader=None,
                     assistant_task_id: int | None = None) -> RunResult:
     permissions = permissions or []
@@ -987,7 +1118,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     await office.open_room(db, ctx, agent=agent, mode=mode, issue=issue)
 
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": _build_system_prompt(agent)},
+        {"role": "system", "content": _build_system_prompt(agent, speak)},
         {"role": "user", "content": f"# Auftrag: {issue['summary']}\n\n{issue.get('description') or ''}".strip()},
     ]
     # Skills: autoload as full text, available (non auto) ones as a menu plus the load_skill tool.
@@ -1061,8 +1192,45 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         async with mcp_session(agent.name, servers=await _agent_mcp(db, agent, owner_id),
                                gateway_url=gw_url or "", gateway_token=gw_token or "") as mcp:
             mcp_tools = await mcp.list_tools()
-            openai_tools = [t.to_openai() for t in mcp_tools if agent.tool_allowed(t.name)]
+            # Only the groups named in `autoload_tools` go into the prompt; the rest waits in
+            # `deferred` for a `load_tools`. What the allowlist forbids is in neither — the
+            # catalogue must not advertise a group the agent would be refused.
+            _eager = set(agent.autoload_tools or [])
+            _allowed = [t for t in mcp_tools if agent.tool_allowed(t.name)]
+            openai_tools = [t.to_openai() for t in _allowed if _group_of(t.name) in _eager]
+            deferred: dict[str, Any] = {t.name: t for t in _allowed
+                                        if _group_of(t.name) not in _eager}
             openai_tools.append(ASK_HUMAN_TOOL)
+            if deferred:
+                openai_tools.append(LOAD_TOOLS_TOOL)
+                messages.append({"role": "system", "content": _catalogue(deferred)})
+
+            def _load_groups(names: list[str]) -> str:
+                """Move whole groups out of the catalogue into the prompt.
+
+                `openai_tools` is handed to the provider by reference on every turn, so an
+                append here is in effect from the next one on — no restructuring of the loop
+                and no second list to keep in step.
+                """
+                done, unknown = [], []
+                for raw in names:
+                    grp = str(raw or "").strip().rstrip("_")
+                    picked = [t for n, t in deferred.items() if _group_of(n) == grp]
+                    if not picked:
+                        unknown.append(grp)
+                        continue
+                    for t in picked:
+                        openai_tools.append(t.to_openai())
+                        deferred.pop(t.name, None)
+                    done.append(f"{grp}: {len(picked)} tools, prefix {grp}__")
+                out = ("Loaded — " + "; ".join(done) + "." if done else "")
+                if unknown:
+                    # Not an error: the model guessed a name, and the answer that helps is
+                    # which names there actually are, not that this one was wrong.
+                    left = sorted({_group_of(n) for n in deferred})
+                    out += (f"\nNo group called {', '.join(unknown)}. "
+                            f"Still to be had: {', '.join(left) or 'none'}.")
+                return out.strip() or "Nothing loaded."
             if _att_rows:  # the ticket has attachments, so offer the read tool (read only, always allowed)
                 openai_tools.append(READ_ATTACHMENT_TOOL)
             if skill_menu:  # there are available non auto skills, so offer the loading tool
@@ -1143,7 +1311,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             empties = 0
             build_gate_fails = 0
             last_context = 0     # real context size of the last call (for the compaction)
-            deadline = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
+            # Which note versions this run has already been handed in full. See read_ledger:
+            # the same note read seven times was the single largest source of context growth.
+            ledger = _ReadLedger()
+            # The agent's own bound comes first, the house default stands in for a 0. Either
+            # of them may be 0, and 0 means no time limit at all.
+            run_seconds = float(agent.max_run_seconds or MAX_RUN_SECONDS)
+            deadline = (asyncio.get_running_loop().time() + run_seconds) if run_seconds else 0.0
             # Has this run delivered anything yet (a change or a plan)? That decides whether a
             # reminder follows, not how much it has read.
             result_tools = RESULT_TOOLS["plan" if mode == "plan" else "execute"] & {
@@ -1155,8 +1329,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             for iteration in range(1, agent.max_iterations + 1):
                 if deadline and asyncio.get_running_loop().time() > deadline:
                     # As with the token budget: `break` falls into the loop_exhausted ending.
-                    ran = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - deadline)
-                    limit_reason = f"Time limit reached ({ran}s, bound {int(MAX_RUN_SECONDS)}s)."
+                    ran = int(run_seconds + asyncio.get_running_loop().time() - deadline)
+                    limit_reason = f"Time limit reached ({ran}s, bound {int(run_seconds)}s)."
                     log.warning("Run %s: time limit reached (%ds), loop_exhausted", run_id, ran)
                     await log_line("system", None,
                               f"⚠️ {limit_reason} -> loop_exhausted (continuation in a fresh run)",
@@ -1172,8 +1346,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 if result_tools and not result_there:
                     used = max(
                         iteration / max(1, agent.max_iterations),
-                        ((MAX_RUN_SECONDS - (deadline - asyncio.get_running_loop().time()))
-                         / MAX_RUN_SECONDS) if deadline else 0.0)
+                        ((run_seconds - (deadline - asyncio.get_running_loop().time()))
+                         / run_seconds) if deadline else 0.0)
                     due = reminders_due(used, reminded)
                     while reminded < due:
                         reminded += 1
@@ -1211,6 +1385,17 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                   kind="system")
                         messages = _new
                         last_context = 0     # measurement spent: measure again, then shorten again
+                        # What was handed over may have been summarised away. Pointing a run
+                        # at a note it "already has" would then send it looking for something
+                        # that is no longer in its history.
+                        ledger.forget_all()
+                        # The catalogue stands behind the assignment, so a compaction may cut
+                        # it away — and a run that has lost it cannot ask for a group any
+                        # more, because it no longer knows any exist. Written afresh rather
+                        # than saved: what has been fetched in the meantime does not belong
+                        # in it a second time.
+                        if deferred:
+                            messages.append({"role": "system", "content": _catalogue(deferred)})
                 try:
                     resp = await router.chat(provider=agent.provider, model=agent.model, messages=messages,
                                              tools=openai_tools, temperature=agent.temperature,
@@ -1235,17 +1420,25 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 # For the compaction the ENTIRE context of this call counts, so the uncached
                 # remainder PLUS the cached share. Taking only `input_tokens` would be almost
                 # zero on a good cache hit, and the limit would never take effect.
+                # Plus the share newly written into the cache: that is input as well, the
+                # model read it. Without it the measurement lags a round behind every time a
+                # large tool answer comes in — which is when it matters.
                 last_context = (int(resp.usage.get("input_tokens", 0) or 0)
-                                   + int(resp.cache_read_tokens or 0))
-                if in_tok >= MAX_RUN_INPUT_TOKENS:
+                                   + int(resp.cache_read_tokens or 0)
+                                   + int(resp.cache_write_tokens or 0))
+                # What the run has read in total, cached share included — see the comment on
+                # MAX_RUN_INPUT_TOKENS. `in_tok` alone is the uncached remainder and stays at
+                # a two-digit number for a whole run once the cache works.
+                spent_in = in_tok + cache_read
+                if spent_in >= MAX_RUN_INPUT_TOKENS:
                     # Hard token budget reached: end the run exactly as on the iteration limit.
                     # `break` falls into the loop_exhausted ending below (the same
                     # _end_run/RunResult path) so that the continuation semantics apply.
-                    limit_reason = f"Token budget reached ({in_tok} >= {MAX_RUN_INPUT_TOKENS})."
+                    limit_reason = f"Token budget reached ({spent_in} >= {MAX_RUN_INPUT_TOKENS})."
                     log.warning("Run %s: token budget reached (%d >= %d), loop_exhausted",
-                                run_id, in_tok, MAX_RUN_INPUT_TOKENS)
+                                run_id, spent_in, MAX_RUN_INPUT_TOKENS)
                     await log_line("system", None,
-                              f"⚠️ Token budget reached ({in_tok} >= {MAX_RUN_INPUT_TOKENS}) "
+                              f"⚠️ Token budget reached ({spent_in} >= {MAX_RUN_INPUT_TOKENS}) "
                               f"-> loop_exhausted (continuation in a fresh run)", kind="system")
                     break
                 # The content stays verbatim as before (`AgentMonitor` reads it that way), but
@@ -1430,6 +1623,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             sk = await _latest_skill(db, skey)
                             result = (f"## Skill: {sk.name}\n{sk.body}" if sk
                                       else f"ERROR: skill '{skey}' not found.")
+                    elif call.name == "load_tools":
+                        _want = call.arguments.get("groups")
+                        # One name instead of the list is the mistake worth catching: the
+                        # tool would otherwise walk over the string letter by letter.
+                        if isinstance(_want, str):
+                            _want = [_want]
+                        result = _load_groups(list(_want or []))
                     elif call.name == "delegate" and agent.can_delegate and delegate_loader is not None:
                         sub_role = (call.arguments.get("role") or "").strip()
                         sub_task = (call.arguments.get("task") or "").strip()
@@ -1445,6 +1645,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 gate_on=gate_on, tokens=tokens, base_urls=base_urls, verify_command=verify_command,
                                 strict_success=strict_success, owner_id=owner_id,
                                 screenshot_enabled=screenshot_enabled, testenv_url=testenv_url,
+                                # A helper reports back to its caller, and the caller passes it
+                                # on — so it speaks the same language, otherwise the answer is
+                                # half translated.
+                                speak=speak,
                                 depth=depth + 1, delegate_loader=delegate_loader, parent_run_id=run_id,
                                 # The joint key: `delegate` awaits the subrun inline, so the
                                 # tool row only appears at its END. The moment of the spawn
@@ -1492,6 +1696,17 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     elif not agent.tool_allowed(call.name):
                         result = f"ERROR: tool '{call.name}' is not allowed for this agent."
                     else:
+                        # The catalogue names groups, not tools, so a model that reads it can
+                        # end up calling a tool whose schema it never saw — with a name it got
+                        # right. Refusing that would cost a turn and teach it nothing: fetch
+                        # the group and let the call through. It is allowed, only not loaded.
+                        if call.name in deferred:
+                            _grp = _group_of(call.name)
+                            _load_groups([_grp])
+                            await log_line("system", None,
+                                           f"`{call.name}` was called before its group was "
+                                           f"loaded — {_grp} fetched and the call carried out.",
+                                           kind="system")
                         try:
                             result = await mcp.call(call.name, call.arguments)
                         except Exception as exc:  # noqa: BLE001
@@ -1518,7 +1733,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         # (Destination.max_response_chars) and brings it along in the
                         # answer. The blanket cap would take it back here, hence the wider
                         # frame for this tool.
-                        cap = MAX_HTTP_TOOL_CHARS if call.name == "traccoon_http_call" else 8000
+                        cap = _cap_for(call.name)
                         # `tool_ok` knows only the PROVEN error (the prefix) and otherwise
                         # "unknown". The runtime knows more here: the call came back, and every
                         # exception would have become "TOOL-ERROR:" above. So "no error
@@ -1528,8 +1743,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         await log_line("tool", call.name, result[:2000], kind="tool_result",
                                         tool_use_id=call.id, target=_target,
                                         ok=True if _ok is None else _ok, duration_ms=_duration_ms)
+                        # The step row above keeps the answer as it came; only what goes into
+                        # the CONTEXT is shortened when the run already holds that version.
+                        # That way the record of the run stays complete and the history does
+                        # not carry the same note a second time.
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
-                                         "content": result[:cap]})
+                                         "content": _cut(ledger.filter(call.name, result,
+                                                                       iteration, cap), cap)})
 
             # `grenze_grund` names WHICH limit ended the run: this used to say "iteration
             # limit" even after the token budget, which twists the search for a cause. The

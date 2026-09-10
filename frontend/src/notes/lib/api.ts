@@ -310,11 +310,14 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ path, content, baseHash }),
     }),
-  /** Open/create the vault's daily note; offset in days from today. */
-  dailyNote: (offset = 0) =>
+  /** Open/create the vault's daily note. Say which day in one of three ways:
+   *  a number of days from today, a date, or the path that turned out to be
+   *  missing — the server reads the day back out of it and refuses a path that
+   *  is not a daily note of this vault. */
+  dailyNote: (which: number | { date?: string; path?: string } = 0) =>
     native<{ path: string; created: boolean; unresolved: string[] }>('/files/daily', {
       method: 'POST',
-      body: JSON.stringify({ offset }),
+      body: JSON.stringify(typeof which === 'number' ? { offset: which } : which),
     }),
   // calendar
   calendar: (from: string, to: string) =>

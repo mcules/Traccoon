@@ -12,6 +12,7 @@ import { renderDrawingEmbeds } from '../lib/excalidrawEmbed';
 import { extractEmbedSection } from '../lib/embedSection';
 import { memo } from '../lib/dataview/cache';
 import { tr } from "../../i18n";
+import { calendarBadgeStyle } from '../lib/calendarColour';
 
 /** Syntax-highlight a `<code class="language-x">` block with the SAME CodeMirror
  *  grammars Live Preview uses (token classes styled by the predecessor's palette). */
@@ -166,6 +167,12 @@ export default function Preview({ source }: { source?: string }) {
     // Dataview blocks run before syntax highlighting so their source is never
     // highlighted first and then thrown away.
     renderDataviewBlocks(root, activePath);
+    // The calendar badges in appointment lines, in their calendar's own hue.
+    // Done here rather than in the markdown: the sanitiser strips a `style`
+    // attribute, and rightly so — this is our own DOM, after it is clean.
+    for (const el of root.querySelectorAll<HTMLElement>('.appt-cal')) {
+      el.setAttribute('style', calendarBadgeStyle((el.textContent || '').trim()));
+    }
     renderDrawingEmbeds(root);
     // Code blocks: same grammars + palette as Live Preview.
     for (const codeEl of root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]:not(.language-mermaid)')) {
@@ -210,7 +217,8 @@ export default function Preview({ source }: { source?: string }) {
     if (target) {
       e.preventDefault();
       const link = target.getAttribute('data-wikilink');
-      if (link) openWikilink(link);
+      // Ctrl/Cmd-click opens another tab, a plain click travels within this one.
+      if (link) openWikilink(link, e.ctrlKey || e.metaKey);
       return;
     }
     // Foldable callout: clicking the title toggles its content.

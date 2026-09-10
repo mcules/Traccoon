@@ -2,6 +2,7 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { tr } from "../../i18n";
 import type { CalEvent } from '../lib/api';
 import type { EventDraft } from './EventDialog';
+import { hueFor } from '../lib/calendarColour';
 
 /**
  * Day and week as a clock, not as a list.
@@ -20,11 +21,6 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
-function hueFor(name: string): number {
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return h;
-}
 
 const minutesOf = (t: string) => {
   const [h, m] = t.split(':').map(Number);

@@ -23,7 +23,10 @@ log = logging.getLogger("traccoon.assistant.sessions")
 
 # What counts as "something is still going on in there". Same set as the chat archive uses:
 # a message that is being worked on must not be swept away underneath the answer.
-RUNNING = ("new", "approved", "running", "awaiting")
+# "queued" belongs in here: a message waiting behind the one being worked on is
+# outstanding work, and a switcher that showed it as idle would be lying about the
+# one thing it is there to say.
+RUNNING = ("new", "approved", "queued", "running", "awaiting")
 
 # Channels that may hold a pointer. Deliberately a closed list: a typo would otherwise create
 # a second, silently unused pointer instead of failing.
@@ -198,6 +201,39 @@ async def running_ids(db: AsyncSession, session_ids: list[int]) -> set[int]:
     return {r for r in rows if r is not None}
 
 
+async def asking_ids(db: AsyncSession, session_ids: list[int]) -> set[int]:
+    """Which of these conversations are waiting for an answer FROM the person.
+
+    Not the same as running, and the difference is the whole point of telling
+    them apart: a conversation that is working needs time, one that is asking
+    needs somebody. Left alone, the second looks exactly like the first and is
+    simply never answered.
+    """
+    if not session_ids:
+        return set()
+    rows = (await db.execute(select(AssistantTask.session_id).where(
+        AssistantTask.session_id.in_(session_ids),
+        AssistantTask.status == "awaiting"))).scalars().all()
+    return {r for r in rows if r is not None}
+
+
+def unread(s: AssistantSession) -> bool:
+    """Is there something in here the person has not seen?
+
+    Never for a conversation that has said nothing yet, and never while it is
+    the one being read — the client marks it read as it opens it.
+    """
+    if s.last_message_at is None:
+        return False
+    if s.read_at is None:
+        return True
+    return _aware(s.last_message_at) > _aware(s.read_at)
+
+
+def _aware(when: dt.datetime) -> dt.datetime:
+    return when if when.tzinfo else when.replace(tzinfo=dt.timezone.utc)
+
+
 async def message_counts(db: AsyncSession, session_ids: list[int]) -> dict[int, int]:
     if not session_ids:
         return {}
@@ -240,10 +276,15 @@ def recency(s: AssistantSession) -> dt.datetime:
     return when if when.tzinfo else when.replace(tzinfo=dt.timezone.utc)
 
 
-def out(s: AssistantSession, *, message_count: int = 0, running: bool = False) -> dict:
+def out(s: AssistantSession, *, message_count: int = 0, running: bool = False,
+        asking: bool = False) -> dict:
     return {"id": s.id, "agent": s.agent, "title": s.title,
             "created_at": s.created_at, "last_message_at": s.last_message_at,
-            "closed_at": s.closed_at, "message_count": message_count, "running": running}
+            "closed_at": s.closed_at, "message_count": message_count, "running": running,
+            # Three states a switcher can show at a glance, and they are not the
+            # same thing: working takes time, asking takes somebody, unread takes
+            # a look. (see `asking_ids` and `unread`)
+            "asking": asking, "unread": unread(s), "read_at": s.read_at}
 
 
 async def context_of(db: AsyncSession, session_ids: list[int]) -> dict[int, dict]:
@@ -339,8 +380,10 @@ async def out_many(db: AsyncSession, rows: list[AssistantSession]) -> list[dict]
     ids = [s.id for s in rows]
     counts = await message_counts(db, ids)
     busy = await running_ids(db, ids)
+    asks = await asking_ids(db, ids)
     context = await context_of(db, ids)
-    return [{**out(s, message_count=counts.get(s.id, 0), running=s.id in busy),
+    return [{**out(s, message_count=counts.get(s.id, 0), running=s.id in busy,
+                   asking=s.id in asks),
              # None when the conversation has never run: there is nothing to report yet, and
              # a zero would read as "empty window" instead of "not measured".
              "context": context.get(s.id)}

@@ -268,11 +268,24 @@ export function makeApp(state: RunState) {
       getFirstLinkpathDest: (link: string) => ({ path: link }),
     },
     workspace: {
-      // Cursor placement (eState) has no equivalent here — open the note.
-      openLinkText: (target: string) => {
-        void openWikilink()(target);
+      // Cursor placement (eState) has no equivalent here — open the note. The third
+      // argument is the predecessor's `newLeaf`: a plain click travels within the tab
+      // you are in, ctrl/cmd-click opens another one. Without it, clicking through a
+      // month of daily notes left a tab per day behind.
+      openLinkText: (target: string, _source?: string, newLeaf?: boolean) => {
+        void openWikilink()(target, !!newLeaf);
       },
-      getActiveFile: () => (state.path ? { path: state.path } : null),
+      // The note the PERSON has open, which inside an embed is not the note this
+      // block sits in. `dv.current()` stays the embedded note — that is what a query
+      // in an embed should run against — but a header block transcluded into a daily
+      // note has to know which day it is showing, and that is the active file. Falls
+      // back to the rendered note, which is the same thing outside an embed.
+      getActiveFile: () => {
+        const open = useStore.getState().activePath ?? state.path;
+        if (!open) return null;
+        const base = open.slice(open.lastIndexOf('/') + 1);
+        return { path: open, name: base, basename: base.replace(/\.(md|markdown)$/i, ''), extension: 'md' };
+      },
       // Enough of the editor for scripts that fold on render — the daily note's
       // navigation block collapses the details of each appointment this way.
       get activeLeaf() {
@@ -383,7 +396,18 @@ export function renderJsBlock(code: string, path: string | null): HTMLElement {
       await fn.call(host, dv, app, undefined, host);
     } catch (err) {
       scriptCache.delete(code);
-      host.appendChild(errorEl(`dataviewjs: ${(err as Error).message}`));
+      // A parse error says nothing about WHICH block failed, and a block that is
+      // transcluded can come from a note the reader is not even looking at. So the
+      // message carries where it came from and how it starts — without that, the
+      // same syntax error costs an afternoon of guessing.
+      const first = code.split('\n').find((l) => l.trim()) ?? '';
+      host.appendChild(
+        errorEl(
+          `dataviewjs: ${(err as Error).message}\n` +
+            `aus: ${path ?? '(keine Notiz)'} · ${code.length} Zeichen\n` +
+            `beginnt mit: ${first.slice(0, 80)}`,
+        ),
+      );
       return;
     }
     // Data the script asked for that we did not have yet → fetch and replay.

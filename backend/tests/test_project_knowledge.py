@@ -22,10 +22,12 @@ class _Agent:
     allowed_tools: list = []
     allowed_skills: list = []
     autoload_skills: list = []
+    autoload_tools: list = []
     delegate_to: list = []
     learns = False
     max_context_tokens = None
     effort = ""
+    max_run_seconds = 0
 
 
 DESCRIPTION = ("Cabrillo logs of a radio contest, evaluated in the browser.\n"

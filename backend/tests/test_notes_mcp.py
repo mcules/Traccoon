@@ -199,6 +199,79 @@ async def test_an_attachment_arrives_as_bytes(user) -> None:
 
 
 @pytest.mark.asyncio
+async def test_reading_says_how_long_the_note_is_and_how_much_came_back(user) -> None:
+    """Two numbers instead of a flag to read past.
+
+    A run that has the whole note and reads it again with a larger `max_chars` gets
+    nothing new and spends a turn on it. `chars == chars_returned` settles that without
+    the reader having to notice a `false`.
+    """
+    whole = await call(user, "notes_read", path="Ordner/Ziel.md")
+    assert whole["chars"] == whole["chars_returned"]
+    assert whole["truncated"] is False
+
+    await call(user, "notes_write", path="Lang.md", content="z" * 5_000)
+    part = await call(user, "notes_read", path="Lang.md", max_chars=1_200)
+    assert part["chars_returned"] == 1_200
+    assert part["chars"] == 5_000
+    assert part["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_tiny_max_chars_is_a_probe_and_is_read_as_a_whole_read(user) -> None:
+    """`max_chars: 1` asks nothing anybody wants.
+
+    Run 2511 read a note with `max_chars: 1`, took `chars` out of the answer and read it
+    again properly: two round trips for a number the first full read would have carried. A
+    short read saves nothing — the round trip is the cost, not the characters — so the
+    floor turns the probe into the read it stood in for.
+    """
+    await call(user, "notes_write", path="Lang.md", content="z" * 5_000)
+    probe = await call(user, "notes_read", path="Lang.md", max_chars=1)
+    assert probe["chars_returned"] == 5_000     # the whole note, not one character
+    assert probe["chars"] == 5_000
+    assert probe["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_sync_conflict_comes_back_as_the_lines_that_differ(user) -> None:
+    """The case this tool was built for: a conflict copy beside its original.
+
+    What comes back must be the difference and not the notes — a run that got both
+    notes in full spent five minutes rebuilding the comparison out of queries.
+    """
+    await call(user, "notes_write", path="05 Daily/2026-09-07.md",
+               content="# Tag\n\n- 09:00 — eins\n- 10:00 — zwei\n")
+    await call(user, "notes_write",
+               path="05 Daily/2026-09-07.sync-conflict-20260907-183530-EVID52R.md",
+               content="# Tag\n\n- 09:00 — eins\n- 10:00 — zwei\n- 11:00 — drei\n")
+
+    out = await call(user, "notes_diff", a="05 Daily/2026-09-07.md",
+                     b="05 Daily/2026-09-07.sync-conflict-20260907-183530-EVID52R.md")
+    assert out["identical"] is False
+    assert "+- 11:00 — drei" in out["diff"]
+    # Only the changed line and its context, not both notes back again.
+    assert "# Tag" not in out["diff"].split("@@")[0]
+    assert not out["truncated"]
+
+
+@pytest.mark.asyncio
+async def test_two_notes_that_are_the_same_say_so_instead_of_answering_nothing(user) -> None:
+    """An empty answer reads as a failed call, and a model tries a failed call again."""
+    await call(user, "notes_write", path="a.md", content="gleich\n")
+    await call(user, "notes_write", path="b.md", content="gleich\n")
+    out = await call(user, "notes_diff", a="a.md", b="b.md")
+    assert out["identical"] is True
+    assert out["diff"] == ""
+
+
+@pytest.mark.asyncio
+async def test_diffing_against_a_note_that_is_not_there_says_which_one(user) -> None:
+    with pytest.raises(LookupError):
+        await call(user, "notes_diff", a="Ordner/Ziel.md", b="Ordner/gibtsnicht.md")
+
+
+@pytest.mark.asyncio
 async def test_a_tool_nobody_offers_says_so(user) -> None:
     with pytest.raises(LookupError):
         await call(user, "notes_erase_everything")
@@ -209,3 +282,136 @@ def test_the_note_scope_does_not_open_the_live_channel() -> None:
     somebody's open window."""
     assert not scopes.allowed({scopes.NOTES}, "GET", "/notes-native/ws")
     assert scopes.allowed(None, "GET", "/notes-native/ws")     # a session may
+
+
+@pytest.mark.asyncio
+async def test_a_replace_shows_what_it_wrote_so_nobody_reads_the_note_back(user) -> None:
+    """The verify read after every write was half the round trips of a run.
+
+    Run 2511 wrote six times and read the whole note back after every one of them, only to
+    see whether the edit had landed. The answer of the write now says so itself: the new
+    identity, the new length, and the changed place in its context.
+    """
+    await call(user, "notes_write", path="Lang.md", content="a" * 2_000 + "ALT" + "b" * 2_000)
+    out = await call(user, "notes_replace", path="Lang.md", find="ALT", replace="NEU")
+
+    assert out["replaced"] == 1
+    assert out["chars"] == 4_003
+    assert out["hash"]
+    assert "NEU" in out["excerpt"]
+    assert "ALT" not in out["excerpt"]
+    # An excerpt, not the note: the whole point is that it is short.
+    assert len(out["excerpt"]) < 1_000
+
+    # And the identity is good enough to write again without reading in between.
+    await call(user, "notes_write", path="Lang.md", content="egal", base_hash=out["hash"])
+
+
+@pytest.mark.asyncio
+async def test_changing_properties_hands_back_the_identity(user) -> None:
+    """Whoever sets a property usually writes straight after. Without the `hash` in the
+    answer that means reading the whole note again just to be allowed to."""
+    out = await call(user, "notes_properties", path="Ordner/Ziel.md", set={"status": "aktiv"})
+
+    assert out["properties"]["status"] == "aktiv"
+    assert out["hash"]
+    await call(user, "notes_write", path="Ordner/Ziel.md", content="egal", base_hash=out["hash"])
+
+
+@pytest.mark.asyncio
+async def test_several_changes_to_one_note_go_in_one_call(user) -> None:
+    """Thirteen replacements in one run were thirteen round trips.
+
+    In run 2515 the tools answered in 5,3 seconds altogether while the run took 4:36. What
+    costs time is the number of turns, so changes to the same note belong in one.
+    """
+    await call(user, "notes_write", path="Lang.md",
+               content="EINS\n" + "x" * 1_000 + "\nZWEI\n" + "y" * 1_000 + "\nDREI\n")
+    out = await call(user, "notes_replace", path="Lang.md", edits=[
+        {"find": "EINS", "replace": "1", "expect": 1},
+        {"find": "ZWEI", "replace": "2"},
+        {"find": "DREI", "replace": "3"},
+    ])
+
+    assert out["replaced"] == 3
+    assert len(out["excerpts"]) == 3
+    assert "1" in out["excerpts"][0] and "2" in out["excerpts"][1]
+    text = (await call(user, "notes_read", path="Lang.md"))["content"]
+    assert text.startswith("1\n") and "\n2\n" in text and text.endswith("3\n")
+
+
+@pytest.mark.asyncio
+async def test_a_batch_that_cannot_find_one_of_its_changes_writes_nothing(user) -> None:
+    """Half an applied batch would leave the note in a state nobody asked for and nobody
+    can name. The message says WHICH change was the problem."""
+    await call(user, "notes_write", path="Lang.md", content="EINS\nZWEI\n")
+    with pytest.raises(ValueError) as err:
+        await call(user, "notes_replace", path="Lang.md", edits=[
+            {"find": "EINS", "replace": "1"},
+            {"find": "GIBTSNICHT", "replace": "x"},
+        ])
+    assert "change 2" in str(err.value)
+    assert "nothing was written" in str(err.value)
+    assert (await call(user, "notes_read", path="Lang.md"))["content"] == "EINS\nZWEI\n"
+
+
+@pytest.mark.asyncio
+async def test_one_change_still_answers_the_way_it_did(user) -> None:
+    """The single form is what most calls are, and its answer must not grow a list."""
+    await call(user, "notes_write", path="Lang.md", content="EINS\n")
+    out = await call(user, "notes_replace", path="Lang.md", find="EINS", replace="1")
+    assert out["replaced"] == 1
+    assert "1" in out["excerpt"]
+    assert "excerpts" not in out
+
+
+# --------------------------------------------------------------- the grounded nought
+
+@pytest.mark.asyncio
+async def test_finding_nothing_says_which_part_of_the_query_is_to_blame(user) -> None:
+    """A bare `total: 0` gets asked again in another spelling.
+
+    Run 2517 searched five times for open checkboxes in the day's notes and correctly got
+    none every time. It could not tell "there are no such checkboxes anywhere" from "none in
+    that folder" from "I wrote the query wrong", so it tried three more spellings. Counting
+    each part on its own settles all three in one answer.
+    """
+    out = await call(user, "notes_search", query='path:"Ordner" Zwiebelkuchenkonferenz')
+
+    assert out["total"] == 0
+    assert out["searched"] == 2                      # the notes of the fixture
+    parts = {p["part"]: p["matches"] for p in out["why_nothing"]}
+    assert parts['path:"Ordner"'] == 1               # the folder is there
+    assert parts["Zwiebelkuchenkonferenz"] == 0      # the word is not
+
+
+@pytest.mark.asyncio
+async def test_two_parts_that_each_match_are_the_interesting_answer(user) -> None:
+    """The case that cost run 2517 five turns: both halves are fine, they just never meet
+    in the same note. That is a fact about the vault, not a broken query."""
+    out = await call(user, "notes_search", query='path:"Ordner" Alpha')
+
+    assert out["total"] == 0
+    parts = {p["part"]: p["matches"] for p in out["why_nothing"]}
+    assert parts['path:"Ordner"'] == 1
+    assert parts["Alpha"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_a_query_of_one_part_has_nothing_to_take_apart(user) -> None:
+    """One part cannot be to blame for itself. `searched` still says how far it looked."""
+    out = await call(user, "notes_search", query="Zwiebelkuchenkonferenz")
+
+    assert out["total"] == 0
+    assert out["searched"] == 2
+    assert "why_nothing" not in out
+
+
+@pytest.mark.asyncio
+async def test_a_search_that_finds_something_stays_as_it_was(user) -> None:
+    """The nought is the only case that grew. Nothing is counted when nothing is wrong."""
+    out = await call(user, "notes_search", query="Zwiebelkuchen")
+
+    assert out["total"] == 1
+    assert "searched" not in out
+    assert "why_nothing" not in out

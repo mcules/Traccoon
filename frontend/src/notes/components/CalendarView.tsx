@@ -6,6 +6,7 @@ import { useAssistantOffer } from '../../assistant/context';
 import Icon from './Icon';
 import EventDialog, { type EventDraft } from './EventDialog';
 import TimeGrid from './TimeGrid';
+import { hueFor } from '../lib/calendarColour';
 
 /**
  * The calendar, as a place of its own.
@@ -38,12 +39,6 @@ const WEEKDAYS = named({ weekday: 'short' }, new Date(2024, 0, 1),
 const MONTHS = named({ month: 'long' }, new Date(2024, 0, 1),
   (i) => new Date(2024, i, 1), 12);
 
-/** A stable colour per calendar, so the same source keeps its hue. */
-function hueFor(name: string): number {
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return h;
-}
 
 export default function CalendarView() {
   const [mode, setMode] = useState<Mode>('month');

@@ -20,6 +20,7 @@ import {
   htmlBlockField,
   mermaidField,
   dataviewField,
+  noteEmbedField,
   emptyBlockState,
   listFoldState,
   setListFolds,
@@ -293,9 +294,12 @@ export default function Editor() {
     view.current?.destroy();
 
     const isMd = activePath ? /\.(md|markdown)$/i.test(activePath) : false;
-    // Place the caret after the frontmatter so Properties render immediately.
-    const fmMatch = isMd ? content.match(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/) : null;
-    const initPos = Math.min(fmMatch ? fmMatch[0].length : 0, content.length);
+    // Where the caret starts before the note's text has even arrived. This effect
+    // runs on the path, not on the content (see its dependency list), so `content`
+    // here is still the note before this one — the real placing happens in the
+    // sync effect below, through `caretToFirstSafeLine`. Position 0 until then,
+    // and never a position computed from the wrong note's length.
+    const initPos = 0;
     const state = EditorState.create({
       doc: content,
       selection: { anchor: initPos },
@@ -370,6 +374,7 @@ export default function Editor() {
         userEngagedField,
         emptyBlockState,
         dataviewField,
+        noteEmbedField,
         listFoldState,
         listFoldDeco,
         dataviewInlineField,
@@ -403,8 +408,41 @@ export default function Editor() {
     const v = new EditorView({ state, parent: host.current });
     view.current = v;
     setActiveEditor(v);
-    v.focus();
+
+    // A click inside a rendered block has to put the caret somewhere too.
+    // Those blocks answer `ignoreEvent()` with true — their links, checkboxes and
+    // buttons are their own business and must not become editor input — and
+    // CodeMirror then skips ALL of its own handlers for that event, including the
+    // one that normally moves the caret to where somebody clicked. The caret
+    // stayed where it was, the editor took the focus anyway, and the browser
+    // scrolled that old caret into view: click below the task list, land at the
+    // end of the note. So the caret is placed here, before CodeMirror sees the
+    // event, and everything the block does with the click still happens.
+    const caretIntoBlocks = (event: MouseEvent) => {
+      if (event.button !== 0 || event.shiftKey || event.detail > 1) return;
+      const target = event.target as HTMLElement | null;
+      // A transcluded note is another note. Clicking inside it must not drag the
+      // caret onto the ONE line that holds it — from there, every later click
+      // takes the caret away again, that line is redrawn, and the embed rebuilds
+      // and drops to its loading height before filling back in. The note jumps,
+      // and only ever after a click in the header first: that was the report.
+      if (target?.closest('.cm-note-embed')) return;
+      if (!target?.closest('.cm-dataview, .cm-drawing-embed')) return;
+      const pos = v.posAtCoords({ x: event.clientX, y: event.clientY }, false);
+      if (pos !== v.state.selection.main.head) v.dispatch({ selection: { anchor: pos } });
+    };
+    host.current.addEventListener('mousedown', caretIntoBlocks, true);
+    // Opening a note does NOT take the keyboard. A note is opened to be read far
+    // more often than to be written in, and a caret placed by nobody still counts
+    // as a caret: it revealed the raw syntax of whatever line it landed on, which
+    // for a note starting with a transclusion meant the embed never rendered until
+    // you clicked elsewhere. Click into the text and it is yours.
+    // The exception is a note that was just created: that one was opened in order
+    // to be written in, and asking for a click first would only be in the way.
+    if (useStore.getState().takeEditorFocus()) v.focus();
+    const leaving = host.current;
     return () => {
+      leaving.removeEventListener('mousedown', caretIntoBlocks, true);
       setActiveEditor(null);
       v.destroy();
     };

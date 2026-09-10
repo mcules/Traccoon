@@ -23,7 +23,7 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models.assistant import AssistantTask, SpamVerdict
+from ..models.assistant import AssistantSession, AssistantTask, SpamVerdict
 from ..models.enums import TicketAgentStatus
 from ..models.notification import Notification
 from ..models.ops import PermRequest
@@ -73,6 +73,54 @@ def _open():
     )
 
 
+def _chat_answer():
+    """A row that is the answer to something somebody asked in a conversation.
+
+    Not every `assistant` card is one: the assistant also reports about items out of its
+    inbox, and those belong to no conversation and stay under the old rule — there is
+    nowhere else they could be read.
+    """
+    return and_(
+        Notification.kind == "assistant",
+        select(AssistantTask.id)
+        .join(AssistantSession, AssistantSession.id == AssistantTask.session_id)
+        .where(AssistantTask.id == Notification.assistant_task_id).exists())
+
+
+def _chat_unread():
+    """…and nobody has read it yet.
+
+    The bell is not the place where a conversation is read — the assistant's own panel is,
+    and it marks the conversation read as it opens it. So an answer belongs here for exactly
+    as long as nobody has looked at it, and afterwards it is history like everything else.
+
+    Asked over the conversation, not over a flag on the notification: reading happens in the
+    panel, on the phone, in the messenger, and none of those would think to tick a row in
+    the bell. Same reasoning as `_open()`.
+    """
+    return and_(
+        Notification.kind == "assistant",
+        # What went out over the messenger has been read there — the house rule at the top
+        # of this file, and it holds here too. Without it an answer that went to Telegram
+        # months ago would come back into the bell just because nobody opened that
+        # conversation in the browser afterwards.
+        Notification.notified_at.is_(None),
+        # Ticked away here counts as read too. Otherwise "mark all read" could not clear
+        # these rows at all — it writes on the notification, and the conversation would go
+        # on saying nobody had looked. Fourteen old answers that nobody wants to open one by
+        # one would then sit in the bell for good.
+        Notification.read_at.is_(None),
+        select(AssistantTask.id)
+        .join(AssistantSession, AssistantSession.id == AssistantTask.session_id)
+        .where(AssistantTask.id == Notification.assistant_task_id,
+               # Per ROW, not per conversation. Measured against the conversation's unread
+               # flag, a new message would fetch every older answer of that conversation
+               # back into the bell — three cards for one thread nobody had asked twice.
+               # What counts is whether anybody looked AFTER this answer was written.
+               or_(AssistantSession.read_at.is_(None),
+                   Notification.created_at > AssistantSession.read_at)).exists())
+
+
 def _q_own(user: User):
     return or_(Notification.user_id == user.id, Notification.user_id.is_(None))
 
@@ -80,7 +128,13 @@ def _q_own(user: User):
 def _q_visible(user: User, all_rows: bool = False):
     if all_rows:
         return _q_own(user)
-    return and_(_q_own(user), or_(Notification.notified_at.is_(None), _open()))
+    # The answers of the assistant follow their own rule: unread or not here at all. Without
+    # it every answer stayed in the bell for good — nothing went out over a messenger, so
+    # `notified_at IS NULL` held for all of them, and the person had already read them in
+    # the panel long before.
+    return and_(_q_own(user), or_(
+        _chat_unread(),
+        and_(~_chat_answer(), or_(Notification.notified_at.is_(None), _open()))))
 
 
 @router.get("")

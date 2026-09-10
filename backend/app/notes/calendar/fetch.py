@@ -61,6 +61,15 @@ class Event:
     cancelled: bool = False
     location: str | None = None
     description: str | None = None
+    # When the appointment was last touched in its calendar (LAST-MODIFIED, or
+    # DTSTAMP where the feed carries no other). What lets a run write only what
+    # actually changed, however far out it sits, instead of walking a window of
+    # days and hoping the change fell inside it.
+    changed_at: str = ""
+    # "" for a one-off, "bounded" for a series that ends, "endless" for one that
+    # does not. The rule sits on the original component, not on the occurrence
+    # this is expanded from, so it has to be carried along from there.
+    series: str = ""
 
     def as_json(self) -> dict:
         out = {
@@ -117,6 +126,26 @@ def _is_all_day(value: Any) -> bool:
     return isinstance(value, dt.date) and not isinstance(value, dt.datetime)
 
 
+def _stamp(item) -> str:
+    """When this appointment was last touched, as an ISO string.
+
+    `LAST-MODIFIED` where the feed writes one — not every feed does, and one of
+    the five here writes it for 58 of 131 appointments. `DTSTAMP` stands in;
+    every feed writes that, and for a comparison of "newer than the last run"
+    it is close enough. Empty when neither is there, which reads as "no idea",
+    and no idea has to mean "look at it" rather than "skip it".
+    """
+    for key in ("LAST-MODIFIED", "DTSTAMP"):
+        field = item.get(key)
+        if field is None:
+            continue
+        try:
+            return field.dt.isoformat()
+        except AttributeError:
+            return str(field)
+    return ""
+
+
 def expand(ics_text: str, calendar: str, first: dt.date, last: dt.date,
            zone: dt.tzinfo | None = None) -> list[Event]:
     """Every occurrence between two days, from one feed.
@@ -125,6 +154,20 @@ def expand(ics_text: str, calendar: str, first: dt.date, last: dt.date,
     runs in, which is right for a script and wrong for a request.
     """
     parsed = icalendar.Calendar.from_ical(ics_text)
+    # Which appointments repeat, and which of those never stop. An expanded
+    # occurrence carries no RRULE — the rule belongs to the component it was
+    # expanded from — so it is read off those first and looked up per UID.
+    series_of: dict[str, str] = {}
+    for component in parsed.walk("VEVENT"):
+        rule = component.get("RRULE")
+        if rule is None:
+            continue
+        uid = str(component.get("UID") or "")
+        kind = "bounded" if (rule.get("UNTIL") or rule.get("COUNT")) else "endless"
+        # A series with an override for a single day appears twice; the rule on
+        # the master is the one that says whether it ends.
+        series_of.setdefault(uid, kind)
+
     out: list[Event] = []
     for item in recurring_ical_events.of(parsed).between(first, last):
         start_raw = item.get("DTSTART").dt
@@ -156,6 +199,8 @@ def expand(ics_text: str, calendar: str, first: dt.date, last: dt.date,
             cancelled=str(item.get("STATUS") or "") == "CANCELLED",
             location=location,
             description=description,
+            changed_at=_stamp(item),
+            series=series_of.get(uid, ""),
         ))
     return out
 

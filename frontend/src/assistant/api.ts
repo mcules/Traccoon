@@ -24,6 +24,11 @@ export interface Session {
   closed_at: string | null;
   message_count: number;
   running: boolean;
+  /** Waiting for an answer FROM the person — not the same as working. */
+  asking: boolean;
+  /** Something in there the person has not seen yet. */
+  unread: boolean;
+  read_at: string | null;
 }
 
 /** One step of a running message: what the console shows, as data. */
@@ -42,8 +47,13 @@ export interface Step {
 export const assistant = {
   sessions: (closed = false) =>
     api.get<Session[]>(`/assistant/sessions${closed ? "?closed=1" : ""}`),
+  /** Archive or reopen. An archived conversation that was never spoken in is
+   *  deleted outright — the answer then says `{deleted: true}`. */
   closeSession: (id: number, close: boolean) =>
-    api.post(`/assistant/sessions/${id}/${close ? "close" : "reopen"}`),
+    api.post<{ id: number; deleted?: boolean }>(
+      `/assistant/sessions/${id}/${close ? "close" : "reopen"}`),
+  /** Everything in this conversation has been seen, as of now. */
+  markRead: (id: number) => api.post(`/assistant/sessions/${id}/read`),
   newSession: (title = "") =>
     api.post<Session>("/assistant/sessions", { title }),
   chat: (limit = 30, sessionId?: number) =>
@@ -51,6 +61,9 @@ export const assistant = {
       `/assistant/chat?limit=${limit}${sessionId ? `&session_id=${sessionId}` : ""}`),
   send: (text: string, sessionId?: number) =>
     api.post<Message>("/assistant/chat", { text, session_id: sessionId }),
+  /** Break off what the assistant is doing. What it already wrote stays
+   *  written — this stops the work, it does not undo it. */
+  stop: (id: number) => api.post(`/assistant/chat/${id}/stop`),
   decide: (id: number, decision: "once" | "always" | "never") =>
     api.post(`/assistant/chat/${id}/decide`, { decision }),
   /**
@@ -64,4 +77,7 @@ export const assistant = {
       `/assistant/chat/${id}/progress?after=${after}`),
 };
 
-export const RUNNING = ["new", "approved", "running", "awaiting"];
+// "queued" belongs in here: a message waiting behind the one being worked on is
+// outstanding work, and showing it as idle would misstate the one thing the
+// switcher is there to say.
+export const RUNNING = ["new", "approved", "queued", "running", "awaiting"];

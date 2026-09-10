@@ -110,6 +110,30 @@ TOOLS: list[dict] = [
           "Take an appointment out of a calendar you may write to.",
           {"calendar": {"type": "integer"}, "uid": STRING},
           ["calendar", "uid"]),
+    _tool("sync_day",
+          "Write one day's appointments into that day's daily note, and make the "
+          "note first if it is not there yet. Appointments already in it are "
+          "recognised and left alone, one that was called off is struck through "
+          "and says so, and one that has moved away has its old line marked with "
+          "where it went. Running it twice changes nothing the second time.",
+          {"date": {"type": "string", "description": "YYYY-MM-DD"},
+           "dry_run": {"type": "boolean",
+                       "description": "work out what would change and write nothing"}},
+          ["date"]),
+    _tool("sync_window",
+          "The same for a run of days, starting at `date` (today when left out). "
+          "Also marks the notes an appointment has moved OUT of, including days "
+          "far outside the window that nobody is otherwise reading — a single day "
+          "cannot see that. This is the one a nightly job wants.",
+          {"date": {"type": "string", "description": "YYYY-MM-DD, default today"},
+           "days": {"type": "integer", "description": "1 to 120, default 7"},
+           "dry_run": {"type": "boolean"}},
+          []),
+    _tool("daily_note",
+          "The daily note of a day, made from the vault's template if it is not "
+          "there yet. Answers with its path and whether it had to be made.",
+          {"date": {"type": "string", "description": "YYYY-MM-DD"}},
+          ["date"]),
 ]
 
 TOOL_NAMES = {t["name"] for t in TOOLS}
@@ -150,6 +174,26 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
         raise LookupError(f"no tool called {name!r}")
     zone = zone_of(user)
     today = dt.datetime.now(zone).date()
+
+    if name == "sync_day":
+        # The route holds the whole reconciliation — creating the note, folding
+        # the old form, recognising what moved, keeping the index. Repeating any
+        # of that here would be a second version of it that drifts.
+        from ..api.notes_native import SyncDayIn, calendar_sync_day
+        return await calendar_sync_day(
+            SyncDayIn(date=str(args.get("date") or ""),
+                      dryRun=bool(args.get("dry_run"))), user=user, db=db)
+
+    if name == "sync_window":
+        from ..api.notes_native import SyncWindowIn, calendar_sync_window
+        return await calendar_sync_window(
+            SyncWindowIn(date=str(args.get("date") or ""),
+                         days=int(args.get("days") or 7),
+                         dryRun=bool(args.get("dry_run"))), user=user, db=db)
+
+    if name == "daily_note":
+        from ..api.notes_native import DailyIn, daily_note
+        return await daily_note(DailyIn(date=str(args.get("date") or "")), user=user)
 
     if name == "list_calendars":
         servers = {s.id: s for s in await cal_access.servers_of(db, user)}

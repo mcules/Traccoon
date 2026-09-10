@@ -8,6 +8,7 @@ rather than as an error.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -247,7 +248,9 @@ def test_what_was_written_under_an_appointment_stays_there() -> None:
     section: the sub-bullets are somebody's notes."""
     out = cd.apply_lines(NOTE, [ev("Daily Dev", "09:00", "Vostura")])
     assert "\t- was ich mir dazu notiert habe" in out.text
-    assert out.added == 0 and out.updated == 0
+    # Nothing new, but the line without an id gets one — that is how the notes
+    # written before there were ids grow into them.
+    assert out.added == 0 and out.updated == 1
 
 
 def test_an_appointment_that_moved_keeps_its_line() -> None:
@@ -298,6 +301,47 @@ def test_the_note_of_a_day_is_where_the_vault_puts_it() -> None:
     assert cd.daily_note_path(day, "05 Daily Notes", "YYYY/MM/YYYY-MM-DD") == \
         "05 Daily Notes/2026/09/2026-09-03.md"
     assert cd.daily_note_path(day, "", "YYYY-MM-DD") == "2026-09-03.md"
+
+
+def test_a_path_says_which_day_it_is_the_note_of_or_says_nothing() -> None:
+    """The inverse of the path rule, and the gate for creating a note on a 404.
+
+    What it refuses matters more than what it accepts: a name that looks like a
+    date is not enough, or a mistyped link would leave files behind in places
+    nobody asked for.
+    """
+    folder, fmt = "05 Daily Notes", "YYYY/MM/YYYY-MM-DD"
+    assert cd.day_of_daily_path("05 Daily Notes/2026/09/2026-09-03.md", folder, fmt) \
+        == dt.date(2026, 9, 3)
+    # Right name, wrong month folder — the round trip does not come back the same.
+    assert cd.day_of_daily_path("05 Daily Notes/2026/01/2026-09-03.md", folder, fmt) is None
+    # Right name, somewhere else entirely.
+    assert cd.day_of_daily_path("02 Projekte/2026-09-03.md", folder, fmt) is None
+    # Not a date at all.
+    assert cd.day_of_daily_path("05 Daily Notes/2026/09/Notizen.md", folder, fmt) is None
+    # A vault without a folder.
+    assert cd.day_of_daily_path("2026-09-03.md", "", "YYYY-MM-DD") == dt.date(2026, 9, 3)
+
+
+def test_a_path_is_read_by_the_vault_s_own_format_not_by_a_guess() -> None:
+    """Not everybody files their days the way this vault does.
+
+    The pattern is built from the same `TOKENS` the forward direction uses, so
+    whatever a vault was set to is understood — and what stands between the
+    tokens is taken literally, or a format with dots in it would accept anything
+    in their place.
+    """
+    assert cd.day_of_daily_path("Journal/03.09.2026.md", "Journal", "DD.MM.YYYY") \
+        == dt.date(2026, 9, 3)
+    assert cd.day_of_daily_path("Journal/2026/09/03.md", "Journal", "YYYY/MM/DD") \
+        == dt.date(2026, 9, 3)
+    assert cd.day_of_daily_path("26-09-03.md", "", "YY-MM-DD") == dt.date(2026, 9, 3)
+    # A dot in the format is a dot.
+    assert cd.day_of_daily_path("Journal/03x09x2026.md", "Journal", "DD.MM.YYYY") is None
+    # A day that does not exist is not a day.
+    assert cd.day_of_daily_path("Journal/2026-13-01.md", "Journal", "YYYY-MM-DD") is None
+    # A format that names no single day — weekly notes — has no answer here.
+    assert cd.day_of_daily_path("Wochen/2026-W40.md", "Wochen", "YYYY-[W]WW") is None
 
 
 def test_a_template_loses_its_properties_block_and_gains_an_indent() -> None:
@@ -598,11 +642,150 @@ def test_a_past_day_keeps_what_was_struck_through() -> None:
     assert "~~" not in cd.apply_lines(note, live).text
 
 
+def test_a_line_carries_the_end_time_when_there_is_one() -> None:
+    """When something is is a span, not a moment. A list that only says when
+    things start makes the reader work it out from the next entry."""
+    with_end = ev("Daily Dev", "09:00", "Vostura")
+    with_end.endTime = "09:30"
+    assert cd.line_for(with_end).startswith("- 09:00\u201309:30 Daily Dev · Vostura ^")
+
+    # An end that equals the start says nothing.
+    same = ev("Kurz", "09:00", "Vostura")
+    same.endTime = "09:00"
+    assert cd.line_for(same).startswith("- 09:00 Kurz · Vostura ^")
+
+    # All day has no time at all, and no dash where one would be.
+    whole = ev("Urlaub", "", "Privat")
+    whole.allDay = True
+    whole.endTime = "23:59"
+    assert cd.line_for(whole).startswith("- Urlaub · Privat ^")
+
+
+def test_a_line_written_with_a_time_range_is_recognised_not_repeated() -> None:
+    """Found in the vault on 2026-09-09, a single line among 432.
+
+    It is the shape of the failure that matters, not the count: a line this
+    house does not recognise is not found again, so the appointment is appended
+    a second time and the day shows it twice — with whatever was written under
+    the first one now hanging under the wrong copy.
+    """
+    event = ev("Community Session", "14:00", "Vostura")
+    note = "# Termine\n\n- 14:00\u201314:50 Community Session · Vostura\n"
+    out = cd.apply_lines(note, [event])
+    lines = [l for l in out.text.split("\n") if l.startswith("- ")]
+    assert len(lines) == 1, lines
+    assert lines[0] == f"- 14:00 Community Session · Vostura ^{cd.block_id(event)}"
+    assert out.added == 0
+    # The plain hyphen just as much as the en dash.
+    assert cd.apply_lines("# Termine\n\n- 14:00-14:50 Community Session · Vostura\n",
+                          [event]).added == 0
+
+
+def test_a_renamed_appointment_is_recognised_instead_of_written_twice() -> None:
+    """The case the id exists for.
+
+    Before it, a line was found again by its title and calendar. Rename the
+    appointment in the calendar and the old line no longer looked like it, so the
+    new one was appended and the day showed the same meeting twice — with the
+    reader's notes hanging under the old one.
+    """
+    event = ev("Daily Dev", "09:00", "Vostura")
+    first = cd.apply_lines("# Termine\n", [event])
+    assert first.added == 1
+
+    renamed = ev("Daily Dev (neuer Name)", "09:00", "Vostura")
+    renamed.uid = event.uid                      # same appointment, other title
+    out = cd.apply_lines(first.text, [renamed])
+    lines = [l for l in out.text.split("\n") if l.startswith("- ")]
+    assert len(lines) == 1, lines
+    assert "neuer Name" in lines[0]
+    assert out.added == 0 and out.updated == 1
+
+
+def test_an_id_belongs_to_the_appointment_and_not_to_the_day_it_falls_on() -> None:
+    """It has to survive a move, so it must not be built from the start time.
+
+    `Event.id` is `uid@start` and changes with it; that is why the id comes from
+    the UID alone.
+    """
+    monday = ev("Daily Dev", "09:00", "Vostura")
+    moved = ev("Daily Dev", "14:30", "Vostura")
+    moved.uid = monday.uid
+    assert cd.block_id(monday) == cd.block_id(moved)
+    assert cd.block_id(ev("Anderes", "09:00", "Vostura")) != cd.block_id(monday)
+    # And it is a name Obsidian accepts: letters, digits and the hyphen only.
+    assert re.fullmatch(r"[a-zA-Z0-9-]+", cd.block_id(monday))
+
+
+def test_a_line_gives_its_id_back_and_says_nothing_when_it_has_none() -> None:
+    assert cd.split_block_id("- 09:00 X · Y ^ev-1234abcd") == ("- 09:00 X · Y", "ev-1234abcd")
+    assert cd.split_block_id("- 09:00 X · Y") == ("- 09:00 X · Y", "")
+    # A caret in the middle of a line is not an id.
+    assert cd.split_block_id("- 2^3 ist acht") == ("- 2^3 ist acht", "")
+
+
+def test_a_cancelled_appointment_says_so_under_its_line() -> None:
+    """Struck through says something did not happen; the note says why."""
+    event = ev("Daily Dev", "09:00", "Vostura")
+    event.cancelled = True
+    out = cd.apply_lines("# Termine\n", [event])
+    assert out.text.split("\n")[1:3] == [
+        f"- 09:00 ~~Daily Dev~~ · Vostura ^{cd.block_id(event)}",
+        cd.CANCELLED_NOTE,
+    ]
+    # Twice does not say it twice.
+    again = cd.apply_lines(out.text, [event])
+    assert again.text == out.text
+
+
+def test_a_withdrawn_cancellation_takes_its_note_with_it() -> None:
+    event = ev("Daily Dev", "09:00", "Vostura")
+    event.cancelled = True
+    cancelled = cd.apply_lines("# Termine\n", [event]).text
+    back = ev("Daily Dev", "09:00", "Vostura")
+    back.uid = event.uid
+    out = cd.apply_lines(cancelled, [back])
+    assert cd.CANCELLED_NOTE not in out.text
+    assert "~~" not in out.text
+
+
+def test_the_day_an_appointment_left_says_where_it_went() -> None:
+    """The half a sync cannot work out: the appointment is simply not among that
+    day's events any more."""
+    event = ev("Daily Dev", "09:00", "Vostura")
+    note = cd.apply_lines("# Termine\n", [event]).text + "\t- meine Notiz dazu\n"
+    out = cd.mark_moved(note, cd.block_id(event),
+                        "05 Daily Notes/2026/09/2026-09-15", "15.09.2026")
+    lines = out.text.split("\n")
+    at = next(i for i, l in enumerate(lines) if l.startswith("- "))
+    assert lines[at] == f"- 09:00 ~~Daily Dev~~ · Vostura ^{cd.block_id(event)}"
+    assert lines[at + 1] == \
+        "    \u21aa verschoben auf [[05 Daily Notes/2026/09/2026-09-15|15.09.2026]]"
+    # What the reader wrote under it is still there, and still under it.
+    assert lines[at + 2] == "\t- meine Notiz dazu"
+    assert out.updated == 1
+    # Saying it again changes nothing.
+    assert cd.mark_moved(out.text, cd.block_id(event),
+                         "05 Daily Notes/2026/09/2026-09-15", "15.09.2026").text == out.text
+
+
+def test_a_move_note_goes_to_the_line_with_that_id_and_nowhere_else() -> None:
+    one, two = ev("Daily Dev", "09:00", "Vostura"), ev("Weekly", "10:00", "Vostura")
+    note = cd.apply_lines("# Termine\n", [one, two]).text
+    out = cd.mark_moved(note, cd.block_id(two), "05 Daily Notes/2026/09/2026-09-16", "16.09.")
+    assert f"- 09:00 Daily Dev · Vostura ^{cd.block_id(one)}" in out.text
+    assert f"- 10:00 ~~Weekly~~ · Vostura ^{cd.block_id(two)}" in out.text
+    assert out.text.count("verschoben auf") == 1
+    # An id nobody wrote leaves the note alone.
+    assert cd.mark_moved(note, "ev-doesnotexist", "x", "y").text == note
+
+
 def test_a_coming_day_may_take_the_strike_off_again() -> None:
     """A withdrawn cancellation is news worth carrying — for a day still ahead."""
     note = "# Termine\n\n- 09:00 ~~AI Exchange~~ · Vostura\n"
-    out = cd.apply_lines(note, [ev("AI Exchange", "09:00", "Vostura")])
-    assert "- 09:00 AI Exchange · Vostura" in out.text.split("\n")
+    event = ev("AI Exchange", "09:00", "Vostura")
+    out = cd.apply_lines(note, [event])
+    assert f"- 09:00 AI Exchange · Vostura ^{cd.block_id(event)}" in out.text.split("\n")
     assert out.updated == 1
 
 
@@ -630,3 +813,55 @@ def test_of_two_lines_for_one_appointment_the_fuller_one_stays() -> None:
     out = cd.tidy_legacy_lines(text, CALENDARS).text.split("\n")
     assert "- Fieldday (Tag 1/3) · B37" in out
     assert "- Fieldday · B37" not in out
+
+
+# --------------------------------------------------- what became of an appointment
+
+from app.notes.calendar.sync import verdict
+
+
+REACH = ("2026-01-01", "2026-12-31")
+
+
+def test_a_series_does_not_count_as_moved_just_because_it_meets_again() -> None:
+    """The trap a block id sets, and the reason this rule is its own function.
+
+    An id belongs to the appointment, not to the occurrence: every week of a
+    weekly meeting carries the same one. Asking "is this id on another day?"
+    answers yes for every series there is — the first version of the walk read
+    302 moves out of four appointments that had not moved at all.
+    """
+    weekly = {"ev-weekly": {"2026-09-07", "2026-09-14", "2026-09-21"}}
+    assert verdict(weekly, "ev-weekly", "2026-09-14", reach=REACH) == ("stay", None)
+    # But an occurrence that fell away does move — to the next one there is.
+    assert verdict(weekly, "ev-weekly", "2026-09-10", reach=REACH) == ("moved", "2026-09-14")
+
+
+def test_an_appointment_in_no_calendar_any_more_has_fallen_away() -> None:
+    assert verdict({}, "ev-weg", "2026-09-09", reach=REACH) == ("gone", None)
+
+
+def test_a_day_outside_what_was_fetched_gets_no_opinion() -> None:
+    """No events there means "not asked about", not "nothing happens"."""
+    days = {"ev-x": {"2026-09-15"}}
+    assert verdict(days, "ev-x", "2025-01-01", reach=REACH) == ("unknown", None)
+    assert verdict(days, "ev-x", "2026-09-09", reach=REACH) == ("moved", "2026-09-15")
+
+
+def test_a_move_backwards_still_finds_its_day() -> None:
+    """Nothing says an appointment only ever moves forward."""
+    days = {"ev-x": {"2026-09-02"}}
+    assert verdict(days, "ev-x", "2026-09-09", reach=REACH) == ("moved", "2026-09-02")
+
+
+def test_a_fallen_away_appointment_says_so_and_keeps_what_was_written_under_it() -> None:
+    event = ev("Daily Dev", "09:00", "Vostura")
+    note = cd.apply_lines("# Termine\n", [event]).text + "\t- meine Notiz\n"
+    out = cd.mark_gone(note, cd.block_id(event))
+    lines = out.text.split("\n")
+    at = next(i for i, l in enumerate(lines) if l.startswith("- "))
+    assert lines[at] == f"- 09:00 ~~Daily Dev~~ · Vostura ^{cd.block_id(event)}"
+    assert lines[at + 1] == cd.GONE_NOTE
+    assert lines[at + 2] == "\t- meine Notiz"
+    # Saying it twice says it once.
+    assert cd.mark_gone(out.text, cd.block_id(event)).text == out.text

@@ -1,5 +1,7 @@
 """Personal settings (/me/*) plus Redis flags (layer C) plus admin toggles."""
 import datetime as dt
+import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -12,6 +14,8 @@ from ..db import get_session
 from ..models.user import User
 from ..schemas.auth import _valid_email
 from .deps import get_current_user, require_admin
+
+log = logging.getLogger("me")
 
 router = APIRouter(tags=["me"])
 
@@ -196,6 +200,105 @@ async def set_ticket_open_mode(d: StrIn, u: User = Depends(get_current_user),
                                db: AsyncSession = Depends(get_session)):
     """How a ticket opens on a left click: popup (drawer) or page (full page)."""
     u.ticket_open_mode = d.value if d.value in ("popup", "page") else "popup"
+    await db.commit()
+
+
+class SwitchIn(BaseModel):
+    """A plain on/off. `BoolIn` above is already taken and means something else (`active`)."""
+    value: bool
+
+
+@router.put("/me/mail-threads", status_code=204)
+async def set_mail_threads(d: SwitchIn, u: User = Depends(get_current_user),
+                           db: AsyncSession = Depends(get_session)):
+    """Whether the message list groups conversations.
+
+    On the person, not in the browser: it is how somebody reads mail, and that habit does
+    not change between the desk and the phone.
+    """
+    u.mail_threads = bool(d.value)
+    await db.commit()
+
+
+# ── Passkeys of this person ─────────────────────────────────────────────────
+
+
+class PasskeyName(BaseModel):
+    """What the person calls this key, plus where the browser says it lives."""
+    label: str = ""
+    kind: str = ""
+
+
+class PasskeyDone(PasskeyName):
+    credential: dict
+
+
+@router.get("/me/passkeys")
+async def my_passkeys(u: User = Depends(get_current_user),
+                      db: AsyncSession = Depends(get_session)):
+    """The keys of this person. Never the key material — only what is needed to tell them
+    apart and to take one out again."""
+    from ..services import passkeys
+
+    return {"possible": passkeys.configured(),
+            "keys": [{"id": k.id, "label": k.label, "kind": k.kind,
+                      "created_at": k.created_at, "last_used_at": k.last_used_at}
+                     for k in await passkeys.keys_of(db, u.id)]}
+
+
+@router.put("/me/passkey-offer", status_code=204)
+async def my_passkey_offer(d: SwitchIn, u: User = Depends(get_current_user),
+                           db: AsyncSession = Depends(get_session)):
+    """"I do not want one" — or "ask me again".
+
+    The offer stands exactly once, and once turned down it stays down. A house that keeps
+    suggesting the same thing teaches people to click things away without reading them, and
+    the next suggestion is then the one that mattered.
+    """
+    u.passkey_declined_at = dt.datetime.now(tz=dt.timezone.utc) if d.value else None
+    await db.commit()
+
+
+@router.post("/me/passkeys/options")
+async def my_passkey_options(u: User = Depends(get_current_user),
+                             db: AsyncSession = Depends(get_session)):
+    from ..services import passkeys
+
+    if not passkeys.configured():
+        raise Error(503, "err.passkeys_not_configured",
+                    "Passkeys are not set up on this installation")
+    return json.loads(await passkeys.offer_registration(db, u))
+
+
+@router.post("/me/passkeys", status_code=201)
+async def my_passkey_add(data: PasskeyDone, u: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    from ..services import passkeys
+
+    try:
+        key = await passkeys.take_registration(db, u, data.credential,
+                                               label=data.label, kind=data.kind)
+    except passkeys.NoPasskey as exc:
+        raise Error(400, "err.passkey_not_stored", str(exc)) from None
+    except Exception as exc:  # noqa: BLE001 — the library raises its own kinds
+        log.info("passkey not stored for %s: %s", u.id, exc)
+        raise Error(400, "err.passkey_not_stored",
+                    "The passkey could not be stored") from None
+    return {"id": key.id, "label": key.label, "kind": key.kind,
+            "created_at": key.created_at, "last_used_at": key.last_used_at}
+
+
+@router.delete("/me/passkeys/{pid}", status_code=204)
+async def my_passkey_drop(pid: int, u: User = Depends(get_current_user),
+                          db: AsyncSession = Depends(get_session)):
+    """Take a key out. Only one's own — a passkey of somebody else is not found here, and
+    that is the answer, not a message about a foreign account."""
+    from ..models.passkey import Passkey
+
+    key = await db.get(Passkey, pid)
+    if key is None or key.user_id != u.id:
+        return
+    await db.delete(key)
     await db.commit()
 
 

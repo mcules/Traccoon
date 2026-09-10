@@ -10,7 +10,7 @@ the file sync carries to every device would put a password on every device.
 """
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -75,3 +75,45 @@ class NotesCalendar(TimestampMixin, Base):
     # wants for a calendar that is temporarily noisy, rather than deleting it
     # and typing the address in again next week.
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class NotesCalendarMark(TimestampMixin, Base):
+    """Where an appointment's line was last written.
+
+    An index, and nothing more. Which appointment a line is stays readable in the
+    vault itself — the block id at the end of the line is computed from the
+    appointment's UID (`calendar/daily.block_id`), so a note says what it is on a
+    machine that has never seen this table. Delete every row here and the next
+    sync writes them again.
+
+    What it buys is the one question the files cannot answer quickly: an
+    appointment moved out of a day the sync is not looking at. Without a note of
+    where its line was put, finding it would mean reading the whole vault, and the
+    day it left would keep saying it takes place.
+    """
+    __tablename__ = "notes_calendar_marks"
+    __table_args__ = (
+        UniqueConstraint("user_id", "block_id", "note_path", name="uq_notes_calendar_mark"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # `ev-` plus eight characters, as it stands in the note.
+    block_id: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    note_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    # The day that note is of — so a move can say where it came from without
+    # taking the file name apart again.
+    day: Mapped[object] = mapped_column(Date, nullable=False, index=True)
+    # The appointment's own identity, kept for reading the table by eye and for
+    # rebuilding it: the block id is a one-way street.
+    uid: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    # What kind of appointment wrote the line: "" one-off, "bounded" a series
+    # that ends, "endless" one that does not. Kept because it cannot be asked
+    # afterwards — the case that needs it is exactly the one where the
+    # appointment has vanished from the calendar, and a series that ended is
+    # cleared out of the future while a single dropped appointment is kept,
+    # struck through, as the record of something that had been planned.
+    series: Mapped[str] = mapped_column(String(16), nullable=False, default="")
+    seen_at: Mapped[object] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False)

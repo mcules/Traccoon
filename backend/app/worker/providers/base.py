@@ -30,6 +30,12 @@ class ChatResponse:
     # fill it, the router sets it: empty by default, so that nothing changes for anybody else.
     provider: str = ""
     model: str = ""
+    # The share of the input newly WRITTEN into the cache by this call. It counts towards the
+    # context exactly like the read share does, but it used to be collected nowhere: a call
+    # that put 80k fresh tokens into the cache reported a small `input_tokens` and a
+    # `cache_read` from before, so the measured context lagged a whole round behind. That is
+    # why the compaction of run 2511 fired at 96 % of the limit instead of the intended 80 %.
+    cache_write_tokens: int = 0
 
 
 class ProviderError(RuntimeError):

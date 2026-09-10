@@ -30,6 +30,10 @@ class AgentDefinition(TimestampMixin, Base):
     max_context_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_turns_planning: Mapped[int] = mapped_column(Integer, default=10)
     max_turns_execution: Mapped[int] = mapped_column(Integer, default=80)
+    # Wall clock bound for one run of this agent, in seconds. 0 means the house default
+    # (AGENT_RUN_TIMEOUT_SEC). A long development session and a mail sorter want different
+    # numbers, and until now both got the same one from an environment variable.
+    max_run_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     can_code: Mapped[bool] = mapped_column(Boolean, default=False)
     can_read_code: Mapped[bool] = mapped_column(Boolean, default=False)
     can_delegate: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -37,6 +41,13 @@ class AgentDefinition(TimestampMixin, Base):
     allowed_tools: Mapped[list] = mapped_column(JSON, default=list)   # Tool-Glob-Whitelist
     allowed_skills: Mapped[list] = mapped_column(JSON, default=list)  # available skill keys
     autoload_skills: Mapped[list] = mapped_column(JSON, default=list) # subset: always in the prompt
+    # Which tool groups are in the prompt from the first turn. Everything else `allowed_tools`
+    # permits stands in a catalogue instead and is fetched with `load_tools` when the task
+    # turns out to need it — the same arrangement `autoload_skills` makes for skills, and for
+    # the same reason: on 2026-09-09 an assistant run carried 293 tool schemas, 141 of them
+    # one game's, through 40 turns of a task about notes. Empty means every group is fetched
+    # on demand. Names are server names without the `__`.
+    autoload_tools: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     delegate_to: Mapped[list] = mapped_column(JSON, default=list)     # Sub-Agenten-Rollen
     # Learns: reads the memory from the vault of the owner at the beginning and looks
     # back after a successful run in order to file what is permanently valid there. Needs a

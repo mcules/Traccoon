@@ -10,6 +10,7 @@ import { pluginNav, usePlugins } from "../plugins";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
 import UpdateFooter from "./UpdateFooter";
+import PasskeyOffer from "./PasskeyOffer";
 import { Toasts } from "../toast";
 import { AssistantButton, AssistantDrawer, useAssistantDrawer } from "../assistant/Drawer";
 import { useAssistantOffer } from "../assistant/context";
@@ -374,6 +375,10 @@ export default function Layout({ children }: { children: ReactNode }) {
           chrome.flush ? "" : "p-3 sm:p-5"} ${
           wide ? "" : "max-w-[1400px]"} ${
           frame ? "flex min-h-0 flex-col overflow-hidden" : ""}`}>
+          {/* Over the page and not on one: the offer belongs to the person, and which page
+              they happen to be on has nothing to do with it. It draws nothing at all once
+              a key exists or the question has been answered. */}
+          <PasskeyOffer />
           {sideways ? (
             <div className="flex flex-col gap-4 md:flex-row md:gap-6">
               <PagesNavigation tabs={chrome.tabs} active={isActive} sideways />

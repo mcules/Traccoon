@@ -300,9 +300,33 @@ async def rename_session(sid: int, data: SessionPatch, user: User = Depends(get_
 @router.post("/assistant/sessions/{sid}/close")
 async def close_session(sid: int, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    """Out of the default list, not out of the world: it stays loadable and continuable."""
+    """Out of the default list, not out of the world: it stays loadable and continuable.
+
+    Unless nothing was ever said in it. A conversation with no messages holds no
+    record and is nobody's history — archiving one is the gesture for "this was a
+    mistake", and leaving it to be found again under "show closed" makes a
+    graveyard out of a list. That one is deleted, and the answer says so.
+    """
     s = await _get_session_owned(sid, user, db)
+    counts = await sessions.message_counts(db, [s.id])
+    if not counts.get(s.id):
+        await sessions.delete(db, [s])
+        return {"id": sid, "deleted": True}
     await sessions.close(db, s)
+    return sessions.out(s)
+
+
+@router.post("/assistant/sessions/{sid}/read")
+async def read_session(sid: int, user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    """Everything in here has been seen, as of now.
+
+    Sent by whoever opens the conversation. Kept on the session rather than in a
+    browser so that an answer read at the desk is read on the phone as well.
+    """
+    s = await _get_session_owned(sid, user, db)
+    s.read_at = sessions.now()
+    await db.commit()
     return sessions.out(s)
 
 
@@ -441,15 +465,50 @@ async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
     if data.session_id and await sessions.get_owned(db, data.session_id, user.id) is None:
         raise Error(404, "err.not_found", "Not found")
     s = await sessions.for_message(db, user.id, "web", text, session_id=data.session_id)
-    t = AssistantTask(owner_user_id=user.id, kind="chat", source="web", status="approved",
+    # Something already running in this conversation? Then this waits behind it
+    # rather than starting a run beside it — see `assistant_queue`. Two runs in one
+    # conversation answer each other's questions.
+    from ..services import assistant_queue
+    wartet = await assistant_queue.busy(db, s.id)
+    t = AssistantTask(owner_user_id=user.id, kind="chat", source="web",
+                      status="queued" if wartet else "approved",
                       title=text[:200], meta={"chat_text": text}, session_id=s.id)
     db.add(t)
     await db.commit()
     await db.refresh(t)
-    from ..core.redis import enqueue_task
-    # A conversation goes into the lane of its own: somebody is sitting in front of it.
-    await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
-                        "assistant_task_id": t.id, "is_chat": True})
+    if not wartet:
+        from ..core.redis import enqueue_task
+        # A conversation goes into the lane of its own: somebody is sitting in front of it.
+        await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
+                            "assistant_task_id": t.id, "is_chat": True})
+    return _chat_out(t)
+
+
+@router.post("/assistant/chat/{tid}/stop")
+async def chat_stop(tid: int, user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)):
+    """Break off what the assistant is doing.
+
+    A run takes as long as it takes, and sometimes the answer to "keep going" is
+    no. The run is cancelled where it stands; what it had already written to the
+    vault or to a ticket stays written — this stops the work, it does not undo it.
+
+    Whatever was waiting behind it is let go afterwards, or a stop would leave the
+    queue standing there for good.
+    """
+    t = (await db.execute(select(AssistantTask).where(
+        AssistantTask.id == tid, AssistantTask.owner_user_id == user.id))).scalar_one_or_none()
+    if t is None:
+        raise Error(404, "err.not_found", "Not found")
+    from ..core.redis import publish_kill
+    from ..services import assistant_queue
+    if t.status in assistant_queue.BUSY:
+        await publish_kill(f"assistant-{t.id}")
+        t.status = "stopped"
+        t.error = "Abgebrochen"
+        t.finished_at = sessions.now()
+        await db.commit()
+        await assistant_queue.release(db, t.session_id)
     return _chat_out(t)
 
 
