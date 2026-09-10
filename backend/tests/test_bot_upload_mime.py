@@ -4,7 +4,7 @@ metadatum filled freely by the sending client (potentially by an attacker or use
 verified server side property. Only known audio MIME types are let through, and everything
 else falls back on a safe default.
 """
-from app.bot.__main__ import _upload_name_kind
+from app.services.transcribe import upload_name_kind as _upload_name_kind
 
 
 def test_a_video_note_is_always_mp4():

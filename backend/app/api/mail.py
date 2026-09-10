@@ -7,7 +7,7 @@ import datetime as dt
 import logging
 import re
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -524,6 +524,31 @@ async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
         await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
                             "assistant_task_id": t.id, "is_chat": True})
     return _chat_out(t)
+
+
+@router.post("/assistant/transcribe")
+async def chat_transcribe(audio: UploadFile = File(...), user: User = Depends(get_current_user)):
+    """A recording in, its words out. Nothing is sent anywhere by this: the client puts the
+    text into its input field, reads it, and sends it as it sends anything typed.
+
+    The same two containers and the same limits as a voice message to the bot. The size is
+    checked before the whole body is read, because a recording of arbitrary length loaded into
+    memory and handed to the CPU container is exactly what the limit is there to prevent.
+    """
+    from ..services import transcribe as speech
+
+    raw = await audio.read(speech.VOICE_MAX_BYTES + 1)
+    if len(raw) > speech.VOICE_MAX_BYTES:
+        raise Error(413, "err.audio_too_large", "The recording is too large (the limit is {mb} MB)",
+                    mb=speech.VOICE_MAX_BYTES // (1024 * 1024))
+    if not raw:
+        raise Error(400, "err.empty_audio", "The recording is empty")
+    try:
+        text = await speech.transcribe(raw, mediakind="audio", mime_type=audio.content_type)
+    except Exception as exc:  # noqa: BLE001 - the containers raise their own kinds
+        logging.getLogger("traccoon.assistant").warning("transcription failed: %s", exc)
+        raise Error(502, "err.transcription_failed", "The transcription did not work") from None
+    return {"text": text}
 
 
 @router.post("/assistant/chat/{tid}/stop")

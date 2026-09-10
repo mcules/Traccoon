@@ -65,6 +65,13 @@ services:
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
       ANDROID_APPS: ${ANDROID_APPS:-}
+      # Speech to text for the phone app, the same containers and limits as the bot's voice
+      # messages (see the `telegram-bot` service for what each of these means).
+      WHISPER_URL: ${WHISPER_URL:-http://whisper:9000}
+      ASR_URL: ${ASR_URL:-http://asr-gpu:9100}
+      TELEGRAM_VOICE_MAX_SECONDS: ${TELEGRAM_VOICE_MAX_SECONDS:-600}
+      TELEGRAM_VOICE_MAX_BYTES: ${TELEGRAM_VOICE_MAX_BYTES:-19922944}
+      TELEGRAM_VOICE_VOCABULARY: ${TELEGRAM_VOICE_VOCABULARY:-${TELEGRAM_VOICE_VOKABULAR:-}}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}

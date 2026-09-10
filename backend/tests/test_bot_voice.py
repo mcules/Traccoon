@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from app.bot import __main__ as bot_main
+from app.services import transcribe as speech
 
 
 def _mock(recording: list, replies: list[dict]):
@@ -70,7 +71,7 @@ async def test_a_server_error_is_passed_on(monkeypatch):
 
 
 async def test_without_a_whisper_url_it_stops_at_once(monkeypatch):
-    monkeypatch.setattr(bot_main, "WHISPER_URL", "")
+    monkeypatch.setattr(speech, "WHISPER_URL", "")
 
     with pytest.raises(RuntimeError):
         await bot_main._transcribe(b"fake-bytes")
@@ -112,8 +113,8 @@ async def test_vocabulary_travels_as_the_initial_prompt(monkeypatch):
 
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
-    monkeypatch.setattr(bot, "VOICE_VOCABULARY", "Traccoon, Game.")
-    monkeypatch.setattr(bot, "_vocabulary_cache", (0.0, ""))
+    monkeypatch.setattr(speech, "VOICE_VOCABULARY", "Traccoon, Game.")
+    monkeypatch.setattr(speech, "_vocabulary_cache", (0.0, ""))
 
     assert await bot._transcribe(b"x", "voice", None) == "fertig"
     assert seen[0]["initial_prompt"] == "Traccoon, Game."
@@ -157,8 +158,8 @@ async def test_no_field_without_a_vocabulary(monkeypatch):
     async def _empty():
         return ""
 
-    monkeypatch.setattr(bot, "VOICE_VOCABULARY", "")
-    monkeypatch.setattr(bot, "_vocabulary", _empty)
+    monkeypatch.setattr(speech, "VOICE_VOCABULARY", "")
+    monkeypatch.setattr(speech, "vocabulary", _empty)
 
     await bot._transcribe(b"x", "voice", None)
     assert "initial_prompt" not in seen[0]
@@ -199,7 +200,7 @@ async def test_vocabulary_lands_in_the_prompt(monkeypatch):
 
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
-    monkeypatch.setattr(bot, "_vocabulary", _words)
+    monkeypatch.setattr(speech, "vocabulary", _words)
 
     await bot._transcribe(b"x", "voice", None)
     assert seen[0]["initial_prompt"] == "Traccoon, Ticket ABC-31"
@@ -210,9 +211,9 @@ def test_asr_text_strips_the_control_markers():
     <asr_text>…" would stand as "🎙 understood" in the chat and go on to the assistant that way."""
     import app.bot.__main__ as bot
 
-    assert bot._asr_text("language German<asr_text>Hallo Welt.") == "Hallo Welt."
-    assert bot._asr_text("<asr_text>Hallo</asr_text>") == "Hallo"
-    assert bot._asr_text("  schon sauber  ") == "schon sauber"
+    assert speech.asr_text("language German<asr_text>Hallo Welt.") == "Hallo Welt."
+    assert speech.asr_text("<asr_text>Hallo</asr_text>") == "Hallo"
+    assert speech.asr_text("  schon sauber  ") == "schon sauber"
 
 
 async def test_qwen_is_first_choice_whisper_catches_the_rest(monkeypatch):
@@ -230,9 +231,9 @@ async def test_qwen_is_first_choice_whisper_catches_the_rest(monkeypatch):
         attempts.append("whisper")
         return "über Whisper verstanden"
 
-    monkeypatch.setattr(bot, "ASR_URL", "http://asr-gpu:9100")
-    monkeypatch.setattr(bot, "_transcribe_qwen", qwen_broken)
-    monkeypatch.setattr(bot, "_vocabulary", whisper_ok)   # only so that the Whisper path runs
+    monkeypatch.setattr(speech, "ASR_URL", "http://asr-gpu:9100")
+    monkeypatch.setattr(speech, "transcribe_qwen", qwen_broken)
+    monkeypatch.setattr(speech, "vocabulary", whisper_ok)   # only so that the Whisper path runs
 
     class _Resp:
         status_code = 200
