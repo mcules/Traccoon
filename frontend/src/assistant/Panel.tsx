@@ -187,12 +187,23 @@ export default function AssistantPanel({ compact = false }: { compact?: boolean 
   // denen man gerade nicht steht. Dafuer muss die Liste sich bewegen: der Takt
   // oben holt nur die Nachrichten der offenen Unterhaltung, und ein Marker, der
   // seine Farbe von vorhin behaelt, sagt genau das Falsche.
-  const regung = sessions.some((x) => !x.closed_at && (x.running || x.asking));
+  //
+  // Always, not only while something runs here: a message sent from the phone
+  // lands in the same conversation, and this tab only learns of it from the
+  // list (`running`, `last_message_at`). With the beat tied to what THIS tab
+  // had started, a conversation begun elsewhere stayed invisible until reload.
   useEffect(() => {
-    if (!regung && !waiting) return;
     const id = window.setInterval(() => void loadSessions(), 4000);
     return () => window.clearInterval(id);
-  }, [regung, waiting, loadSessions]);
+  }, [loadSessions]);
+
+  // The conversation moved without us: something was sent into it from another
+  // device, or an answer landed while nothing was outstanding here. Then the
+  // messages are fetched again, which is what makes the phone and the desk show
+  // the same exchange.
+  const shown = sessions.find((x) => x.id === sessionId);
+  const moved = `${shown?.last_message_at ?? ""}|${shown?.running ?? ""}`;
+  useEffect(() => { void load(); }, [moved, load]);
 
   // Und einmal, sobald hier nichts mehr laeuft. Ohne das bliebe der Marker gelb,
   // nachdem alles abgebrochen wurde: der Takt darueber haelt dann ja auch an,
