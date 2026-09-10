@@ -650,8 +650,8 @@ async def add_step(db: AsyncSession, ctx: RunCtx, *, role: str, kind: str, conte
                    tool: str | None = None, target: str | None = None,
                    tool_use_id: str | None = None, ok: bool | None = None,
                    duration_ms: int | None = None, in_tokens: int = 0, out_tokens: int = 0,
-                   cache_read_tokens: int = 0, provider: str = "", model: str = "",
-                   commit: bool = True) -> RunStep:
+                   cache_read_tokens: int = 0, cache_write_tokens: int = 0,
+                   provider: str = "", model: str = "", commit: bool = True) -> RunStep:
     """Write a step row, the ONE way there.
 
     The worker (`_add_step`) and `open_room` use the same function, so there can be no row
@@ -664,7 +664,8 @@ async def add_step(db: AsyncSession, ctx: RunCtx, *, role: str, kind: str, conte
         run_id=ctx.run_id, seq=ctx.seq, role=role, kind=kind, tool_name=tool,
         content=(content or "")[:8000], target=(target or None), tool_use_id=tool_use_id,
         ok=ok, duration_ms=duration_ms, in_tokens=in_tokens, out_tokens=out_tokens,
-        cache_read_tokens=cache_read_tokens, provider=provider or None, model=model or None,
+        cache_read_tokens=cache_read_tokens, cache_write_tokens=cache_write_tokens,
+        provider=provider or None, model=model or None,
     )
     db.add(step)
     if commit:

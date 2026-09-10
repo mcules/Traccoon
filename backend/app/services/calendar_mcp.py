@@ -73,7 +73,9 @@ TOOLS: list[dict] = [
           {}),
     _tool("list_events",
           "The appointments between two dates, across every calendar unless one "
-          f"is named. At most {DAYS_BACK} days back and {DAYS_AHEAD} days ahead.",
+          f"is named. At most {DAYS_BACK} days back and {DAYS_AHEAD} days ahead. "
+          "Descriptions come shortened; `get_event` has the whole text of one "
+          "appointment, and `description_chars` says when there is more of it.",
           {"from": DATE, "to": DATE,
            "calendar": {"type": "integer", "description": "id from list_calendars"},
            "limit": {"type": "integer", "description": f"at most {MAX_EVENTS}"}},
@@ -236,7 +238,10 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
             hits = [e for e in hits if needle in " ".join(
                 filter(None, (e.title, e.location, e.description))).casefold()]
         limit = min(int(args.get("limit") or MAX_EVENTS), MAX_EVENTS)
-        answer: dict[str, Any] = {"events": [e.as_json() for e in hits[:limit]],
+        # `brief`: a listing carries the beginning of a description, not all of it. Whoever
+        # needs the whole text of ONE appointment asks `get_event` for it, which is what
+        # that tool is for.
+        answer: dict[str, Any] = {"events": [e.as_json(brief=True) for e in hits[:limit]],
                                   "total": len(hits)}
         # A calendar that could not be read is said out loud. Silently returning
         # what the others held would be an answer that looks complete.

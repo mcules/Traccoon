@@ -45,6 +45,24 @@ class Source:
     auth_password: str = ""
 
 
+# How much of an appointment's text a LISTING carries. Enough to tell the appointments
+# apart, far too little to be worth reading a whole calendar for. `get_event` has the rest.
+BRIEF_DESCRIPTION = 200
+
+
+def _shorten(text: str) -> str:
+    """The beginning of a description, cut at a word and without the boilerplate below it.
+
+    The line of underscores is where an office suite starts its joining instructions, and
+    nothing under it is about the appointment.
+    """
+    text = text.split("____")[0].strip()
+    if len(text) <= BRIEF_DESCRIPTION:
+        return text
+    cut = text[:BRIEF_DESCRIPTION]
+    return cut[:cut.rfind(" ")].rstrip() + " …" if " " in cut else cut + " …"
+
+
 @dataclass
 class Event:
     """One occurrence, as flat as a view needs it."""
@@ -71,7 +89,7 @@ class Event:
     # this is expanded from, so it has to be carried along from there.
     series: str = ""
 
-    def as_json(self) -> dict:
+    def as_json(self, *, brief: bool = False) -> dict:
         out = {
             "id": self.id, "uid": self.uid, "calendar": self.calendar,
             "title": self.title, "date": self.date, "time": self.time,
@@ -82,7 +100,14 @@ class Event:
         if self.location:
             out["location"] = self.location
         if self.description:
-            out["description"] = self.description
+            # A listing gets the beginning of it, the whole thing lives in `get_event`.
+            # A meeting invitation from an office suite carries several hundred characters
+            # of joining boilerplate and a tracking link per appointment, and six weeks of a
+            # working calendar is then mostly footer. A run on 2026-09-10 fetched such a
+            # window, called it too large, threw it away and asked again a different way.
+            out["description"] = _shorten(self.description) if brief else self.description
+            if brief and len(self.description) > BRIEF_DESCRIPTION:
+                out["description_chars"] = len(self.description)
         return out
 
 

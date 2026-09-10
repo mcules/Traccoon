@@ -139,3 +139,34 @@ def test_a_part_of_a_query_can_be_quoted_back_to_whoever_wrote_it() -> None:
     for text in ['path:"05 Daily Notes"', '"a phrase"', "/^- \\[ \\]/", "-nope",
                  'tag:#idea path:"02 Projekte"', "a OR b"]:
         assert render(parse_query(text)) == text
+
+
+# ------------------------------------------------- what the run writes down about itself
+
+def test_a_step_row_keeps_the_written_cache_share_beside_the_read_one() -> None:
+    """The reading nobody can explain gets a second number to be checked against.
+
+    On three turns of one run the reported cache read was two and three times what the turns
+    either side reported, with the reported input at 4 and 6 instead of 2. It goes back to at
+    least 2026-09-06, so it is nothing that was introduced. Both shares doubled would mean
+    two requests were really made and paid for; only the read one doubled would mean the
+    accounting counts a cached stretch twice. Without the written share neither can be told.
+    """
+    from app.models.agents import RunStep
+
+    assert hasattr(RunStep, "cache_write_tokens")
+    step = RunStep(run_id=1, seq=1, role="assistant", kind="usage",
+                   in_tokens=4, cache_read_tokens=183_780, cache_write_tokens=91_510)
+    assert step.cache_write_tokens == 91_510
+
+
+def test_the_anthropic_answer_hands_the_written_share_on() -> None:
+    """It was collected nowhere: a turn that put eighty thousand fresh tokens into the cache
+    reported a small input and a cache read from before, so the measured context lagged a
+    whole round behind — which is why one run compacted at 96 per cent of its limit instead
+    of the intended 80."""
+    from app.worker.providers.base import ChatResponse
+
+    empty = ChatResponse()
+    assert empty.cache_write_tokens == 0
+    assert ChatResponse(cache_write_tokens=91_510).cache_write_tokens == 91_510

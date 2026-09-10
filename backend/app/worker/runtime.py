@@ -614,7 +614,8 @@ async def _add_step(db: AsyncSession, ctx: office.RunCtx, role: str, tool: str |
                     content: str, *, kind: str = "", tool_use_id: str | None = None,
                     target: str | None = None, ok: bool | None = None,
                     duration_ms: int | None = None, in_tokens: int = 0, out_tokens: int = 0,
-                    cache_read_tokens: int = 0, provider: str = "", model: str = "") -> None:
+                    cache_read_tokens: int = 0, cache_write_tokens: int = 0,
+                    provider: str = "", model: str = "") -> None:
     """Write a step row and put it into the live channel right away.
 
     Writing goes through `office.add_step`, the same way `open_room` takes. There should be no
@@ -633,8 +634,8 @@ async def _add_step(db: AsyncSession, ctx: office.RunCtx, role: str, tool: str |
         step = await office.add_step(
             db, ctx, role=role, kind=kind, content=content, tool=tool, target=target,
             tool_use_id=tool_use_id, ok=ok, duration_ms=duration_ms, in_tokens=in_tokens,
-            out_tokens=out_tokens, cache_read_tokens=cache_read_tokens, provider=provider,
-            model=model)
+            out_tokens=out_tokens, cache_read_tokens=cache_read_tokens,
+            cache_write_tokens=cache_write_tokens, provider=provider, model=model)
     except Exception as exc:  # noqa: BLE001 — bookkeeping is never a reason to give up
         log.warning("Step row not written (%s/%s): %s", role, tool or "—", exc)
         try:
@@ -836,7 +837,11 @@ def _build_system_prompt(agent: AgentDef, speak: str = "") -> str:
         # them is the same person who reads the summary.
         parts.append(f"Write to the person in {speak}, in every text they get to see — the "
                      "closing summary, the sentences between the tool calls, questions. Names "
-                     "of tools, paths and code stay as they are.")
+                     "of tools, paths and code stay as they are. Your FIRST sentence "
+                     "included, and that is the one that goes wrong: everything around you "
+                     "here describes itself in English, so the opening line comes out in "
+                     "English and the language changes over from the second one on. The "
+                     f"person watches that first line arrive. Begin in {speak}.")
     parts.append("Work the assignment through on your own. Use tools when you need them. When you "
                  "are finished, answer with a short summary WITHOUT a tool call. Ask only on real "
                  "blockers with `ask_human`.")
@@ -974,7 +979,12 @@ LOAD_TOOLS_TOOL = {
         "description": "Loads tool groups that the context lists as not yet loaded. Do it in "
                        "your first turn, as soon as you can tell from the task which subjects "
                        "it touches — the tools are there from your next turn on. Name every "
-                       "group you are going to need at once rather than one per turn.",
+                       "group you are going to need at once rather than one per turn, and "
+                       "name one you MIGHT need rather than fetch it later: the tools stand "
+                       "at the very front of your context, so adding a group throws away "
+                       "everything cached behind it. A group fetched in turn twelve cost one "
+                       "run 80.000 tokens of warm cache; the same group named in turn one "
+                       "costs its own size and nothing else.",
         "parameters": {"type": "object", "properties": {
             "groups": {"type": "array", "items": {"type": "string"},
                        "description": "Group names from the list, without the `__`."}},
@@ -1453,6 +1463,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 in_tokens=int(resp.usage.get("input_tokens", 0) or 0),
                                 out_tokens=int(resp.usage.get("output_tokens", 0) or 0),
                                 cache_read_tokens=int(resp.cache_read_tokens or 0),
+                                cache_write_tokens=int(resp.cache_write_tokens or 0),
                                 provider=resp.provider or agent.provider,
                                 model=resp.model or agent.model)
                 if resp.text:

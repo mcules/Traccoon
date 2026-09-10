@@ -235,3 +235,45 @@ def _pretend(cid):
         assert access.may_write(row, by_agent)
         return dav.Account(url="https://example.invalid/dav/", user="wer", password="x"), row
     return writing_to
+
+
+# ------------------------------------------- a listing is not the whole appointment
+
+def test_a_listing_carries_the_beginning_of_a_description_not_all_of_it() -> None:
+    """A meeting invitation from an office suite is mostly footer.
+
+    Several hundred characters of joining instructions and a tracking link, per appointment.
+    Six weeks of a working calendar is then a prompt full of boilerplate — a run on
+    2026-09-10 fetched such a window, said out loud that it was too large, threw it away and
+    asked again a different way. One wasted turn for text nobody wanted.
+    """
+    from app.notes.calendar.fetch import BRIEF_DESCRIPTION, Event
+
+    footer = ("Tägliche Abstimmung: Was wurde gemacht?\n"
+              + "_" * 80
+              + "\nMicrosoft Teams Benötigen Sie Hilfe? <https://eur02.safelinks."
+              + "protection.outlook.com/?url=" + "x" * 400 + ">")
+    ev = Event(id="i", uid="u", calendar="Arbeit", title="Daily", date="2026-09-10",
+               time="09:00", endTime="09:30", allDay=False, start="", end="",
+               description=footer)
+
+    brief = ev.as_json(brief=True)
+    assert "safelinks" not in brief["description"]
+    assert "Tägliche Abstimmung" in brief["description"]
+    assert len(brief["description"]) <= BRIEF_DESCRIPTION + 2
+    # And it says there is more, so nobody has to guess whether to fetch the rest.
+    assert brief["description_chars"] == len(footer)
+
+    # `get_event` is the tool for the whole text, and it stays whole.
+    assert ev.as_json()["description"] == footer
+
+
+def test_a_short_description_comes_through_untouched_and_says_nothing_extra() -> None:
+    from app.notes.calendar.fetch import Event
+
+    ev = Event(id="i", uid="u", calendar="Privat", title="Zahnarzt", date="2026-09-11",
+               time="10:00", endTime="10:30", allDay=False, start="", end="",
+               description="Bitte Karte mitbringen")
+    brief = ev.as_json(brief=True)
+    assert brief["description"] == "Bitte Karte mitbringen"
+    assert "description_chars" not in brief

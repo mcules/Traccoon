@@ -168,6 +168,11 @@ async def lifespan(app: FastAPI):
                 "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE locations ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE SET NULL",
+                # The share newly written into the cache, beside the share read from it. Kept
+                # so that a reading nobody can explain can answer itself next time it turns
+                # up: see the column comment on `RunStep.cache_write_tokens`.
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS cache_write_tokens INTEGER "
+                "DEFAULT 0 NOT NULL",
                 # Agent runs follow the ticket into the archive.
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE NOT NULL",
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",

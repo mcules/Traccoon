@@ -134,6 +134,14 @@ class RunStep(Base):
     in_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     out_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # The share newly WRITTEN into the cache by this turn. Kept because of a reading nobody
+    # can explain: on three turns of one run the reported cache read was two and three times
+    # what the turns either side of it reported, and `in_tokens` on exactly those turns was
+    # 4 and 6 instead of 2. It goes back to at least 2026-09-06, so it is not new. With the
+    # written share beside the read one the next occurrence answers itself: both doubled
+    # means two requests were really made and paid for, only the read one means the
+    # accounting counts a cached stretch twice.
+    cache_write_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     # Who actually answered: on a fallback that is not the provider on the `Run`.
     provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     model: Mapped[str | None] = mapped_column(String(150), nullable=True)
