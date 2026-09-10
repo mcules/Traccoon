@@ -23,6 +23,8 @@ class AgentIn(BaseModel):
     fallback_model: str = ""
     fallback_token_name: str = ""
     effort: str = ""
+    # Anthropic's fast mode: the same model writing faster, at twice the price per token.
+    fast: bool = False
     temperature: float = 0.3
     max_tokens: int = 8192
     max_context_tokens: int | None = None
@@ -98,7 +100,7 @@ async def update_agent(agent_id: int, data: AgentIn, user: User = Depends(get_cu
 # Config fields taken over on copying and syncing (not id/role/user/project/origin).
 _COPY_FIELDS = (
     "display_name", "system_prompt", "provider", "model", "token_name", "fallback",
-    "fallback_model", "fallback_token_name", "effort", "temperature", "max_tokens",
+    "fallback_model", "fallback_token_name", "effort", "fast", "temperature", "max_tokens",
     "max_context_tokens", "max_turns_planning", "max_turns_execution", "max_run_seconds",
     "can_code",
     "can_read_code", "can_delegate", "web_search", "learns", "allowed_tools", "allowed_skills",

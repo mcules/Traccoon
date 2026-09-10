@@ -28,6 +28,7 @@ class _Agent:
     learns = False
     max_context_tokens = None
     effort = ""
+    fast = False
     max_run_seconds = 0
 
 

@@ -32,9 +32,12 @@ class _Fake:
     def __init__(self, *replies):
         self.replies = list(replies)
         self.bodies: list[dict] = []
+        # Which speed each request went out at, so the fast mode tests can look.
+        self.fast: list[bool] = []
 
-    async def post(self, body, token):
+    async def post(self, body, token, fast: bool = False):
         self.bodies.append(body)
+        self.fast.append(fast)
         return self.replies.pop(0)
 
 

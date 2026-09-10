@@ -54,6 +54,8 @@ class Provider(Protocol):
                    tools: list[dict[str, Any]] | None = None,
                    temperature: float = 0.3, max_tokens: int = 4096,
                    web_search: bool = False, auth_token: str | None = None) -> ChatResponse:
-        # `effort` (thinking depth) is known only to the Anthropic adapter; the router passes
-        # it exclusively there, because elsewhere it would be an unknown field.
+        # `effort` (thinking depth) and `fast` (the same model at up to two and a half times
+        # the output speed, at twice the price) are known only to the Anthropic adapter; the
+        # router passes them exclusively there, because elsewhere they would be unknown
+        # fields and a 400.
         ...

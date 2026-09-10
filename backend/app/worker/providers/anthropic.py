@@ -25,6 +25,12 @@ class _Truncated(ProviderError):
 
 IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude."
 _BETAS = "oauth-2025-04-20,claude-code-20250219"
+# Fast mode: the same model, writing up to two and a half times as fast, at twice the price
+# per token. Worth it exactly where the wall clock IS the output: a run of the assistant on
+# 2026-09-10 wrote 24.158 tokens at 67 a second, and the tools it called took 3,3 seconds of
+# the 360 altogether. Research preview, Opus 5 and 4.8 only, and it needs all three of these
+# — the beta flag, the body field, and the beta endpoint the flag opens.
+_FAST_BETA = "fast-mode-2026-02-01"
 _ANTHROPIC_VERSION = "2023-06-01"
 # Web search: web_search_20250305 is the basic variant, where the server searches itself and
 # returns `web_search_tool_result`. The newer type web_search_20260209 (dynamic filtering) on
@@ -149,14 +155,14 @@ class AnthropicProvider(Provider):
         self._ver = claude_code_version
         self._timeout = timeout
 
-    def _headers(self, token: str | None) -> dict[str, str]:
+    def _headers(self, token: str | None, fast: bool = False) -> dict[str, str]:
         if not token:
             raise ProviderError("claude: no setup token (the secret vault is empty). "
                                 "Store the token under Settings -> secrets.")
         return {
             "Authorization": f"Bearer {token}",
             "anthropic-version": _ANTHROPIC_VERSION,
-            "anthropic-beta": _BETAS,
+            "anthropic-beta": _BETAS + ("," + _FAST_BETA if fast else ""),
             "user-agent": f"claude-cli/{self._ver} (external, cli)",
             "x-app": "cli",
             "content-type": "application/json",
@@ -166,7 +172,7 @@ class AnthropicProvider(Provider):
                    tools: list[dict[str, Any]] | None = None,
                    temperature: float = 0.3, max_tokens: int = 4096,
                    web_search: bool = False, auth_token: str | None = None,
-                   effort: str = "") -> ChatResponse:
+                   effort: str = "", fast: bool = False) -> ChatResponse:
         system_blocks, a_msgs, a_tools = _translate(messages, tools)
         body: dict[str, Any] = {
             "model": model or self.model,
@@ -186,8 +192,27 @@ class AnthropicProvider(Provider):
         if all_tools:
             body["tools"] = all_tools
             body["tool_choice"] = {"type": "auto"}
+        if fast:
+            body["speed"] = "fast"
 
-        data = await self._post(body, auth_token)
+        try:
+            data = await self._post(body, auth_token, fast=fast)
+        except ProviderError as exc:
+            # Fast mode has a rate limit of its own, separate from the standard one. Running
+            # into it must not end the run: the same request at ordinary speed is a slower
+            # answer, which is still an answer. Only once, and only here — the router's own
+            # retry would otherwise walk into the same wall again.
+            if not fast or exc.status != 429:
+                raise
+            log.warning("claude: fast mode is rate limited, this turn goes at ordinary speed")
+            body.pop("speed", None)
+            data = await self._post(body, auth_token)
+        # The answer says which speed it was actually written at. Asking for fast and being
+        # served standard is not an error and raises nothing — it would just be paid for at
+        # the fast price while looking like a slow day.
+        if fast and (data.get("usage") or {}).get("speed") != "fast":
+            log.warning("claude: fast mode was asked for and not granted (speed=%r)",
+                        (data.get("usage") or {}).get("speed"))
         try:
             return self._parse(data)
         except _Truncated:
@@ -200,13 +225,14 @@ class AnthropicProvider(Provider):
                 second.pop("output_config", None)   # "disabled" is a 400 above `high`
             log.warning("claude: the answer was cut off at max_tokens (%d), second attempt without thinking",
                         max_tokens)
-            return self._parse(await self._post(second, auth_token), rescued=True)
+            return self._parse(await self._post(second, auth_token, fast=fast), rescued=True)
 
-    async def _post(self, body: dict[str, Any], auth_token: str | None) -> dict[str, Any]:
+    async def _post(self, body: dict[str, Any], auth_token: str | None,
+                    fast: bool = False) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post("https://api.anthropic.com/v1/messages",
-                                         headers=self._headers(auth_token), json=body)
+                                         headers=self._headers(auth_token, fast=fast), json=body)
         except httpx.HTTPError as exc:
             raise ProviderError(f"claude: Verbindungsfehler: {exc}", retryable=True) from exc
 

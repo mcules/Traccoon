@@ -170,3 +170,37 @@ def test_the_anthropic_answer_hands_the_written_share_on() -> None:
     empty = ChatResponse()
     assert empty.cache_write_tokens == 0
     assert ChatResponse(cache_write_tokens=91_510).cache_write_tokens == 91_510
+
+
+# ------------------------------------------------------------------- fast mode
+
+def test_fast_mode_reaches_the_request_as_all_three_parts() -> None:
+    """The beta flag, the body field, and nothing of either when it is off.
+
+    Measured against the endpoint on 2026-09-10: 51,2 tokens a second at ordinary speed,
+    136,2 with `speed: "fast"` — 2,66 times, at twice the price per token. Worth it exactly
+    where the wall clock IS the output, which an agent run is: one wrote 24.158 tokens while
+    the tools it called took 3,3 seconds of 360 altogether.
+    """
+    from app.worker.providers.anthropic import _FAST_BETA, AnthropicProvider
+
+    p = AnthropicProvider()
+    assert _FAST_BETA in p._headers("t", fast=True)["anthropic-beta"]
+    assert _FAST_BETA not in p._headers("t")["anthropic-beta"]
+    # The ordinary betas keep their place either way.
+    assert "oauth-2025-04-20" in p._headers("t", fast=True)["anthropic-beta"]
+
+
+def test_the_switch_sits_on_the_agent_and_is_off() -> None:
+    """Twice the price is not a default. It goes on where somebody waits in front of the
+    answer, and nowhere else."""
+    from app.models.agents import AgentDefinition
+    from app.worker.runtime import AgentDef
+
+    assert hasattr(AgentDefinition, "fast")
+    assert AgentDef(id=1, name="x", role="x", system_prompt="", provider="claude_code",
+                    model="claude-opus-5", token_name="", fallback=None, fallback_model="",
+                    fallback_token_name="", temperature=0.0, max_tokens=16384,
+                    max_iterations=10, can_code=False, can_read_code=False,
+                    can_delegate=False, web_search=False, allowed_tools=[],
+                    allowed_skills=[], autoload_skills=[], delegate_to=[]).fast is False

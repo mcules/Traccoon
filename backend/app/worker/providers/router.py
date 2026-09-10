@@ -81,7 +81,8 @@ class Router:
                    web_search: bool = False,
                    tokens: dict[str, str | None] | None = None,
                    base_urls: dict[str, str | None] | None = None,
-                   extra_body: dict | None = None, effort: str = "") -> ChatResponse:
+                   extra_body: dict | None = None, effort: str = "",
+                   fast: bool = False) -> ChatResponse:
         tokens = tokens or {}
         base_urls = base_urls or {}
         # The last line of defence, one choke point for every provider and every caller. A
@@ -122,6 +123,10 @@ class Router:
                     # On a fallback to codex or openai it drops out instead of causing a 400.
                     if effort and prov in _ANTHROPIC:
                         extra["effort"] = effort
+                    # Fast mode is Anthropic's and, within it, Opus 5 and 4.8's. On a
+                    # fallback to another provider it drops out rather than causing a 400.
+                    if fast and prov in _ANTHROPIC:
+                        extra["fast"] = True
                     resp = await impl.chat(model=use_model, messages=messages, tools=tools,
                                            temperature=temperature, max_tokens=max_tokens,
                                            web_search=web_search, auth_token=token, **extra)

@@ -523,6 +523,9 @@ class AgentDef:
     # Thinking shares `max_tokens` with the visible answer, so whoever has much to read but
     # little to write (the reviewer) is safer with a lower level.
     effort: str = ""
+    # The same model at up to two and a half times the output speed, at twice the price.
+    # Off unless somebody is waiting in front of the answer.
+    fast: bool = False
     # Tool groups that are in the prompt from the first turn. Everything else the allowlist
     # permits waits in the catalogue for `load_tools`. Empty is the normal case.
     autoload_tools: list[str] = field(default_factory=list)
@@ -552,7 +555,7 @@ def agent_def_from_row(row: AgentDefinition, mode: str) -> AgentDef:
         allowed_skills=list(row.allowed_skills or []),
         autoload_skills=list(row.autoload_skills or []), delegate_to=list(row.delegate_to or []),
         learns=bool(row.learns), max_context_tokens=row.max_context_tokens,
-        effort=(row.effort or "").strip(),
+        effort=(row.effort or "").strip(), fast=bool(getattr(row, "fast", False)),
         autoload_tools=list(row.autoload_tools or []),
         max_run_seconds=int(row.max_run_seconds or 0),
     )
@@ -1412,7 +1415,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              max_tokens=agent.max_tokens, fallback=agent.fallback,
                                              fallback_model=agent.fallback_model,
                                              web_search=agent.web_search, tokens=tokens,
-                                             base_urls=base_urls, effort=agent.effort)
+                                             base_urls=base_urls, effort=agent.effort,
+                                             fast=agent.fast)
                 except ProviderError as exc:
                     await log_line("system", None, f"Provider error: {exc}", kind="system")
                     # The turns so far are paid for even when the last one failed. Without the

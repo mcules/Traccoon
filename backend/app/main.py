@@ -168,6 +168,9 @@ async def lifespan(app: FastAPI):
                 "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE locations ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE SET NULL",
+                # Fast mode per agent: the same model writing faster, at twice the price.
+                "ALTER TABLE agent_definitions ADD COLUMN IF NOT EXISTS fast BOOLEAN "
+                "DEFAULT FALSE NOT NULL",
                 # The share newly written into the cache, beside the share read from it. Kept
                 # so that a reading nobody can explain can answer itself next time it turns
                 # up: see the column comment on `RunStep.cache_write_tokens`.

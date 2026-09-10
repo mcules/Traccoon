@@ -25,6 +25,13 @@ class AgentDefinition(TimestampMixin, Base):
     fallback_model: Mapped[str] = mapped_column(String(150), default="")     # model of the fallback provider
     fallback_token_name: Mapped[str] = mapped_column(String(120), default="")
     effort: Mapped[str] = mapped_column(String(10), default="")
+    # The same model, writing up to two and a half times as fast, at twice the price per
+    # token. Off by default and worth switching on exactly where somebody is waiting in front
+    # of the answer: the wall clock of an agent run IS its output divided by the writing
+    # speed. One run of the assistant wrote 24.158 tokens at 67 a second while the tools it
+    # called took 3,3 seconds of the 360 altogether. Anthropic only, Opus 5 and 4.8 only, and
+    # a research preview — on another provider or model it simply drops out.
+    fast: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     temperature: Mapped[float] = mapped_column(Float, default=0.3)
     max_tokens: Mapped[int] = mapped_column(Integer, default=16384)
     max_context_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
