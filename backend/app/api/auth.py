@@ -201,6 +201,15 @@ async def passkey_login(data: PasskeyFinish, db: AsyncSession = Depends(get_sess
     return TokenOut(access_token=create_access_token(user.id))
 
 
+@router.get("/passkey/assetlinks.json", include_in_schema=False)
+async def passkey_asset_links():
+    """Digital Asset Links: what Android checks before it lets an app use the site's
+    passkeys. Android reads it at `/.well-known/assetlinks.json` and nowhere else; the
+    frontend's nginx hands exactly that path on to here, because the content is this
+    server's configuration (ANDROID_APPS), not a file of the frontend."""
+    return passkeys.asset_links()
+
+
 @router.post("/refresh", response_model=TokenOut)
 async def refresh(user: User = Depends(get_current_user)):
     """Extends an **existing** session and gives no new right.

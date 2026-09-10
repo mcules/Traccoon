@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # Public base URL (for invitation links and the like), for instance https://traccoon.example.com
     app_base_url: str = ""
 
+    # Android apps that log in with this house's passkeys, `<package>:<SHA-256 of the signing
+    # certificate>` (the colon form `keytool -list -v` prints), several separated by commas.
+    # One line, two uses: the app's WebAuthn origin (`android:apk-key-hash:...`) and the
+    # `/.well-known/assetlinks.json` Android reads before it lets the app use the site's keys.
+    android_apps: str = ""                          # ANDROID_APPS
+
     # The mail webhook and the assistant are configured completely over the web UI and the
     # database (WebhookSub plus classifying and handler agent): deliberately NO MAIL_* env or file config any more.
 

@@ -21,6 +21,7 @@ Two things are deliberately NOT in here:
 """
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import logging
 import secrets
@@ -74,6 +75,43 @@ def house() -> tuple[str, str]:
     if not parts.hostname:
         raise RuntimeError(f"APP_BASE_URL is no URL: {base!r}")
     return parts.hostname, f"{parts.scheme}://{parts.netloc}"
+
+
+def android_apps() -> list[tuple[str, str]]:
+    """(package, certificate fingerprint) out of ANDROID_APPS. The fingerprint stays in the
+    colon form, upper case: that is the form assetlinks wants it in."""
+    out = []
+    for entry in (settings.android_apps or "").split(","):
+        package, _, fingerprint = entry.strip().partition(":")
+        if package and fingerprint:
+            out.append((package, fingerprint.strip().upper()))
+    return out
+
+
+def android_origin(fingerprint: str) -> str:
+    """What an Android app reports as its origin: the SHA-256 of its signing certificate,
+    base64url without padding. The Credential Manager computes it the same way, so this is
+    what has to stand in `expected_origin` for a key used from an app."""
+    raw = bytes.fromhex(fingerprint.replace(":", ""))
+    return "android:apk-key-hash:" + base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def origins() -> list[str]:
+    """Who may ask a key something: the browser on the house's domain, and every app named
+    in ANDROID_APPS. A list, because the library takes one and checks the caller against
+    all of them."""
+    _, web = house()
+    return [web] + [android_origin(fp) for _, fp in android_apps()]
+
+
+def asset_links() -> list[dict]:
+    """Content of `/.well-known/assetlinks.json`: the apps that may use this site's keys."""
+    return [{
+        "relation": ["delegate_permission/common.handle_all_urls",
+                     "delegate_permission/common.get_login_creds"],
+        "target": {"namespace": "android_app", "package_name": package,
+                   "sha256_cert_fingerprints": [fingerprint]},
+    } for package, fingerprint in android_apps()]
 
 
 def configured() -> bool:
@@ -136,13 +174,13 @@ async def offer_registration(db: AsyncSession, user: User) -> str:
 
 async def take_registration(db: AsyncSession, user: User, credential: dict,
                             label: str = "", kind: str = "") -> Passkey:
-    rp_id, origin = house()
+    rp_id, _ = house()
     challenge = await _redeem("reg", str(user.id))
     if challenge is None:
         raise NoPasskey("the offer has expired — please try again")
     checked = verify_registration_response(
         credential=credential, expected_challenge=challenge,
-        expected_rp_id=rp_id, expected_origin=origin)
+        expected_rp_id=rp_id, expected_origin=origins())
     from webauthn.helpers import bytes_to_base64url
 
     key = Passkey(
@@ -180,7 +218,7 @@ async def offer_login(db: AsyncSession, user: User) -> str:
 
 async def take_login(db: AsyncSession, user: User, credential: dict) -> Passkey:
     """Check a signature. Raises when anything is off — the caller answers one 401 to all of it."""
-    rp_id, origin = house()
+    rp_id, _ = house()
     challenge = await _redeem("login", str(user.id))
     if challenge is None:
         raise NoPasskey("the offer has expired — please try again")
@@ -191,7 +229,7 @@ async def take_login(db: AsyncSession, user: User, credential: dict) -> Passkey:
         raise NoPasskey("unknown passkey")
     checked = verify_authentication_response(
         credential=credential, expected_challenge=challenge,
-        expected_rp_id=rp_id, expected_origin=origin,
+        expected_rp_id=rp_id, expected_origin=origins(),
         credential_public_key=key.public_key,
         credential_current_sign_count=key.sign_count)
     # The counter of an authenticator only ever grows. One that stands still or goes back is
