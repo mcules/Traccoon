@@ -152,7 +152,7 @@ const GATE_OF: Record<string, GateKind> = {
 };
 
 const RUN_STATUS: readonly string[] = [
-  "running", "success", "failed", "blocked", "planned", "loop_exhausted",
+  "running", "success", "failed", "blocked", "planned", "loop_exhausted", "handed_over",
 ];
 
 /** The backend builds `status` from a free mapping (`_run_end_fields`) and can deliver an

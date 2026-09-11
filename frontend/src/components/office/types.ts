@@ -23,7 +23,7 @@ export type MoodKind = "work" | "wait" | "error" | "done";
 
 /** Spiegelt `Run.status` im Backend. */
 export type RunStatus =
-  | "running" | "success" | "failed" | "blocked" | "planned" | "loop_exhausted";
+  | "running" | "success" | "failed" | "blocked" | "planned" | "loop_exhausted" | "handed_over";
 
 /** Colours the edge of a speech bubble and nothing else.
  *  `success|planned → ok` · `failed|loop_exhausted → err` · `blocked → blocked` · otherwise `null`. */

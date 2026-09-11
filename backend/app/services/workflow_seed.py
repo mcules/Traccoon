@@ -258,6 +258,9 @@ def build_ticket_lifecycle() -> dict:
         _e("exec", "needs_test", "done", "fertig"),
         _e("exec", "may_continue", "loop_exhausted", "Limit erreicht"),
         _e("exec", "st_exec_stop", "blocked", "a question"),
+        # Another role takes the ticket: back to the cost window, so the new agent starts
+        # fresh, and the implementation runs again with it.
+        _e("exec", "cap_baseline", "handed_over", "übergeben"),
         _e("exec", "st_exec_stop", "failed", "Fehler"),
         _e("exec", "st_exec_stop", "err"),
         _e("may_continue", "exec", "continue", "weiter"),

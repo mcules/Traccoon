@@ -15,7 +15,7 @@ ALLOWED = {
     "approval": {"approved", "rejected"},
     "subflow": {"completed", "failed", "cancelled", "out"},
     "wait_event": {"out"},          # plus the configured events
-    "agent_task": {"planned", "done", "blocked", "failed", "loop_exhausted", "err", "out"},
+    "agent_task": {"planned", "done", "blocked", "failed", "loop_exhausted", "handed_over", "err", "out"},
     "auto_action": {"out", "merged", "pr_open", "no_git", "conflict", "push_failed",
                     "pr_failed", "gone", "error"},
     "loop": {"element", "fertig"},

@@ -53,7 +53,7 @@ export const ST_COLOR: Record<string, string> = {
 export const ST_TEXT: Record<string, string> = {
   running: "office_room.st_running", success: "office_room.st_success", failed: "office_room.st_failed",
   blocked: "office_room.st_blocked", planned: "office_room.st_planned",
-  loop_exhausted: "office_room.st_loop_exhausted",
+  loop_exhausted: "office_room.st_loop_exhausted", handed_over: "office_room.st_handed_over",
 };
 
 export function statusText(s: RunStatus | string | null | undefined): string {

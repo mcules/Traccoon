@@ -135,7 +135,7 @@ def _cut(result: str, cap: int) -> str:
 # write only into the
 # memory folder of the agent's own person.
 _ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "load_tools",
-                   "submit_plan", "delegate", "traccoon_notify_human"} | MEMORY_TOOL_NAMES
+                   "submit_plan", "delegate", "hand_over", "traccoon_notify_human"} | MEMORY_TOOL_NAMES
 
 SUBMIT_PLAN_TOOL = {"type": "function", "function": {
     "name": "submit_plan",
@@ -157,6 +157,26 @@ CONTINUE_LATER_TOOL = {"type": "function", "function": {
     "description": "Signal that you need another round. Traccoon starts a continuation with the "
                    "same worktree state automatically. NEVER together with ask_human.",
     "parameters": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}}}
+
+def _hand_over_tool(roles: list[str]) -> dict:
+    """Give the ticket to another role. Unlike `delegate` nothing comes back: this run ends,
+    the process assigns the ticket to the named role and starts the implementation again
+    with it. For work the current role cannot do at all (no fitting tools), not for a
+    subtask."""
+    return {"type": "function", "function": {
+        "name": "hand_over",
+        "description": "Hand the WHOLE ticket over to another role and end this run. Use it when "
+                       "the task turns out to be something you cannot do with your tools at all, "
+                       "for example a configuration change inside Traccoon itself (flows, "
+                       "webhooks, jobs, destinations) instead of a code change — that is the "
+                       "assistant's job. Not for a subtask (that is `delegate`) and not for a "
+                       "question (that is `ask_human`).",
+        "parameters": {"type": "object", "properties": {
+            "role": {"type": "string", "enum": roles, "description": "The role that takes over"},
+            "reason": {"type": "string", "description": "What the next role has to do and why "
+                                                        "you cannot do it — it reads this first"}},
+            "required": ["role", "reason"]}}}
+
 
 FS_READ_TOOL = {"type": "function", "function": {
     "name": "fs_read",
@@ -239,6 +259,9 @@ CODE_WORKFLOW = (
     "3. Call `check` after EVERY change and fix the errors until the build is GREEN.\n"
     "4. ONLY with a green build: `deploy`.\n"
     "With a stubborn build error (2-3 red checks): `ask_human` instead of carrying on blindly.\n"
+    "If the ticket turns out to be no code change at all but something only another role has the "
+    "tools for (a setting inside Traccoon — flows, webhooks, jobs, destinations — is the "
+    "assistant's job): `hand_over` to that role, do not ask the person to do it by hand.\n"
     "With UI changes: change the existing element instead of duplicating it, read it again after an "
     "edit; if `screenshot` is available, take one after the deploy and check the image yourself; "
     "otherwise ask for a visual check."
@@ -573,6 +596,7 @@ class RunResult:
     summary: str = ""
     run_id: int | None = None
     blocker_kind: str | None = None   # ask_human | permission
+    handover_role: str | None = None  # set when status == handed_over
 
 
 # ---------- DB-Helfer ----------
@@ -1103,7 +1127,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     task_id: str = "", speak: str = "",
                     depth: int = 0, delegate_loader=None,
                     assistant_task_id: int | None = None,
-                    waited_for: bool = False) -> RunResult:
+                    waited_for: bool = False,
+                    handover_roles: list[str] | None = None) -> RunResult:
     permissions = permissions or []
     tokens = tokens or {}
     base_urls = base_urls or {}
@@ -1219,6 +1244,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             deferred: dict[str, Any] = {t.name: t for t in _allowed
                                         if _group_of(t.name) not in _eager}
             openai_tools.append(ASK_HUMAN_TOOL)
+            # Handing the ticket on only makes sense where a process holds it: a ticket run
+            # in execution. A plan, a job or a conversation has nobody to take over.
+            if issue_id and mode != "plan" and handover_roles:
+                openai_tools.append(_hand_over_tool(handover_roles))
             if deferred:
                 openai_tools.append(LOAD_TOOLS_TOOL)
                 messages.append({"role": "system", "content": _catalogue(deferred)})
@@ -1553,6 +1582,22 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                        in_tok=in_tok, out_tok=out_tok, cache_read=cache_read,
                                        blocker_kind="ask_human", ctx=ctx)
                         return RunResult("blocked", question, iteration, run_id=run_id, blocker_kind="ask_human")
+
+                    if call.name == "hand_over":
+                        role_to = (call.arguments.get("role") or "").strip()
+                        reason = (call.arguments.get("reason") or "").strip()
+                        if role_to not in (handover_roles or []) or not reason:
+                            messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
+                                             "content": "Name one of the offered roles and a reason "
+                                                        "the next role can work from."})
+                            continue
+                        # The note goes into the ticket history as work state, so the next
+                        # agent reads it first. The process itself reassigns the ticket.
+                        await _end_run(db, run_id, "handed_over", summary=f"→ {role_to}: {reason}",
+                                       iterations=iteration, in_tok=in_tok, out_tok=out_tok,
+                                       cache_read=cache_read, ctx=ctx)
+                        return RunResult("handed_over", reason, iteration, run_id=run_id,
+                                         summary=f"→ {role_to}: {reason}", handover_role=role_to)
 
                     if call.name == "continue_later":
                         s = (call.arguments.get("summary") or "").strip()

@@ -357,6 +357,18 @@ async def handle(job: dict, redis: Redis) -> None:
             for c in crows if c.kind == "agent"
         ]
 
+        # Roles the ticket can be handed on to: what the owner may run here, minus the role
+        # that is running. `mail_classifier` is a model behind the mail inbox, not an agent
+        # anyone hands a ticket to.
+        _hand_rows = (await db.execute(
+            select(AgentDefinition.role).where(
+                AgentDefinition.active.is_(True),
+                or_(AgentDefinition.user_id == owner_id, AgentDefinition.user_id.is_(None))
+                if owner_id is not None else AgentDefinition.user_id.is_(None),
+                or_(AgentDefinition.project_id == project.id, AgentDefinition.project_id.is_(None)),
+            ).distinct())).scalars().all()
+        handover_roles = sorted(r for r in _hand_rows if r not in (role, "mail_classifier"))
+
         result = await run_agent(
             db=db, agent=agent,
             issue={"id": issue.id, "key": issue.key, "summary": issue.summary,
@@ -377,6 +389,7 @@ async def handle(job: dict, redis: Redis) -> None:
             comment_history=comment_history, task_id=task_id,
             delegate_loader=(lambda r: _load_agent(db, r, project.id, "execute", owner_id)
                              if r in _DEFAULTS else _none()),
+            handover_roles=handover_roles,
         )
 
         # Review gate (at most 2 correction rounds) before finishing
@@ -393,8 +406,9 @@ async def handle(job: dict, redis: Redis) -> None:
             changes = await gitops.file_changes(ctx)
             cmsg = await gitops.commit(ctx, f"ticket {issue.key}: {issue.summary}")
             log.info("git commit %s: %s", issue.key, cmsg)
-            # Make 0 changes visible, otherwise a ticket lands on to_test in silence.
-            if not changes:
+            # Make 0 changes visible, otherwise a ticket lands on to_test in silence. A
+            # handover changes nothing by design, there the warning would only mislead.
+            if not changes and result.status != "handed_over":
                 db.add(Comment(
                     issue_id=issue.id, author_id=None, author_label="System", kind="internal",
                     body="⚠️ No code changes made. The agent implemented nothing "
@@ -420,6 +434,7 @@ async def handle(job: dict, redis: Redis) -> None:
             "output": result.text, "summary": result.summary or result.text[:400],
             "run_id": result.run_id, "worktree_fingerprint": fp,
             "blocker": {"kind": result.blocker_kind} if result.blocker_kind else None,
+            "handover": {"role": result.handover_role} if result.handover_role else None,
             "merge_status": merge_status,
         }
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps(payload), ex=RESULT_TTL)

@@ -62,6 +62,9 @@ WAIT_NODES = ("human_task", "approval", "agent_task", "wait_event", "subflow", "
 _DEFAULT_AGENT_MAP = {
     "planned": "ok", "done": "ok", "failed": "err",
     "blocked": "blocked", "loop_exhausted": "blocked",
+    # A graph without a "handed_over" outlet stops like on a question: the ticket carries
+    # the new role and the note, a person pushes it on.
+    "handed_over": "blocked",
 }
 # Hard cap for waiting on an agent run: NONE by default.
 #
@@ -1210,6 +1213,9 @@ async def _agent_note(db, issue_id: int, status: str, summary: str, stalled: boo
         note = head + (f":\n{summary}" if summary else ".")
     elif status == "failed":
         note = f"❌ Fehlgeschlagen: {summary or 'unbekannter Fehler'}"
+    elif status == "handed_over":
+        # The summary already carries "→ role: reason"; the next agent reads this first.
+        note = f"🔀 Übergeben {summary}" if summary else "🔀 Übergeben an eine andere Rolle."
     if note:
         # `kind` separates work state from incident log. The ticket history shows both,
         # the prompt of the next agent only the work state: a message about a worker
@@ -1279,6 +1285,14 @@ async def _await_agent_inner(instance_id: int, token_id: int, step_id: int, task
                         issue.plan = (result or {}).get("output", "")
                     if (result or {}).get("merge_status") == "conflict":
                         issue.merge_status = "conflict"
+                    handover_role = ((result or {}).get("handover") or {}).get("role")
+                    if status == "handed_over" and handover_role:
+                        # The run gave the ticket away: from here on the process staffs the
+                        # implementation with the new role (`_resolve_agent_role` reads
+                        # `assigned_agent`). The exec agent of the ticket goes with it, so a
+                        # PM assignment does not pull the old developer back in.
+                        issue.assigned_agent = handover_role
+                        issue.exec_agent = handover_role
                     if status == "loop_exhausted":
                         cont += 1
                         issue.continuation_count = cont
