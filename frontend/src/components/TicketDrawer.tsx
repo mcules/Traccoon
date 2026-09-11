@@ -290,6 +290,9 @@ export default function TicketDrawer({
   const planText = (issue?.plan || "").replace(/<subtickets>[\s\S]*?<\/subtickets>/g, "").trim();
   const planLabel = tr(isUmbrella ? "ticket_drawer.reason_overview" : "ticket_drawer.plan");
   const preApproval = issue?.agent_status === "planning" || issue?.agent_status === "plan_review";
+  const foldDescription = useFold(issueKey, "description", true);
+  const foldPlan = useFold(issueKey, "plan", preApproval);
+  const foldLifecycle = useFold(issueKey, "lifecycle", true);
   const wait = issue ? waitInfo(issue) : null;
   const WAIT_KIND_COLOR: Record<string, string> = {
     error: "border-red-500/40 bg-red-500/10 text-red-300",
@@ -396,7 +399,7 @@ export default function TicketDrawer({
   // list a bullet, every heading a hash, and nobody sees what they wrote. Saving stays where
   // it was, on the save button of the drawer, so the draft is not a second way to keep it.
   const bDescription = (
-    <details open className="mb-3 rounded border border-line">
+    <details {...foldDescription} className="mb-3 rounded border border-line">
       <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">
         {tr("ticket_drawer.description")}
       </summary>
@@ -483,7 +486,7 @@ export default function TicketDrawer({
 
   // Plan and reasoning overview as markdown, collapsible
   const bPlan = planText && (
-    <details open={preApproval} className="mb-4 rounded border border-line">
+    <details {...foldPlan} className="mb-4 rounded border border-line">
       <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">{planLabel}</summary>
       <div className="px-3 pb-3"><Markdown text={planText} /></div>
     </details>
@@ -881,7 +884,7 @@ export default function TicketDrawer({
   // adjustments of the project) together with its open approvals and tasks; otherwise the
   // shipped scheme as an orientation.
   const bLifecycle = (issue.assigned_agent || issue.agent_status != null) && (
-    <details open className="mb-4 rounded-lg border border-line">
+    <details {...foldLifecycle} className="mb-4 rounded-lg border border-line">
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-muted">
         KI-Lebenszyklus
       </summary>
@@ -1035,6 +1038,34 @@ export default function TicketDrawer({
       </div>
     </div>
   );
+}
+
+/** Whether a section of the drawer stands open, remembered per ticket in this browser.
+ *  A section somebody folded away stays folded on the next open of the same ticket, until
+ *  they open it again; the default only counts while nothing was remembered. */
+function useFold(issueKey: string, section: string, defaultOpen: boolean) {
+  const key = `ticket-fold:${issueKey}:${section}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? defaultOpen : v === "1";
+    } catch { return defaultOpen; }
+  });
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(key);
+      setOpen(v === null ? defaultOpen : v === "1");
+    } catch { setOpen(defaultOpen); }
+    // The stored choice wins over the default; the default only moves it while nothing
+    // is stored (a plan that just arrived opens by itself once).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, defaultOpen]);
+  const onToggle = (e: React.SyntheticEvent<HTMLDetailsElement>) => {
+    const v = e.currentTarget.open;
+    setOpen(v);
+    try { localStorage.setItem(key, v ? "1" : "0"); } catch { /* no storage, no memory */ }
+  };
+  return { open, onToggle };
 }
 
 /** Compact view of the workflow instances of a ticket plus open steps.

@@ -17,7 +17,13 @@ export type FlowNodeProps = NodeProps<FlowNode>;
 
 const RS: Record<RuntimeState, { icon: string; ring: string; text: string }> = {
   done: { icon: "✓", ring: "border-green-500", text: "text-green-400" },
-  active: { icon: "◉", ring: "border-yellow-500", text: "text-yellow-400" },
+  // The one node the run stands on has to be found at a glance in a graph of forty:
+  // a thicker border, a glow around it and a pulsing marker, not just a yellow line.
+  active: {
+    icon: "◉",
+    ring: "border-2 border-yellow-400 shadow-[0_0_0_4px_rgba(250,204,21,0.35),0_0_18px_rgba(250,204,21,0.45)]",
+    text: "text-yellow-300 animate-pulse",
+  },
   pending: { icon: "○", ring: "border-line", text: "text-muted" },
   failed: { icon: "✕", ring: "border-red-500", text: "text-red-400" },
 };

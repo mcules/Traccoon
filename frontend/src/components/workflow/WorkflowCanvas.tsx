@@ -58,8 +58,10 @@ export interface WorkflowCanvasProps {
   /** `edgeId` is set when the building block was dragged onto an existing connection;
    *  then it belongs in between, not beside it. */
   onDropNode?: (type: WorkflowNodeType, pos: { x: number; y: number }, edgeId?: string) => void;
-  /** Show this point (canvas coordinates) at the top centre. `token` triggers it. */
-  focus?: { x: number; y: number; token: number };
+  /** Show this point (canvas coordinates) at the top centre. `token` triggers it.
+   *  `zoom` sets a scale instead of keeping the current one (a runtime view fitted to the
+   *  whole graph is too small to read the node it points at). */
+  focus?: { x: number; y: number; token: number; zoom?: number };
 }
 
 function Inner(props: WorkflowCanvasProps) {
@@ -72,12 +74,13 @@ function Inner(props: WorkflowCanvasProps) {
   // arbitrary excerpt of the newly distributed cards after the click.
   useEffect(() => {
     if (!focus || !height) return;
-    const zoom = rf.getZoom();
+    const zoom = focus.zoom ?? rf.getZoom();
     const edge = 60;
     rf.setCenter(focus.x, focus.y - edge + height / (2 * zoom), { zoom, duration: 400 });
-    // Deliberately only on `token`: aiming at the same target again is a new wish.
+    // Deliberately only on `token` (and the first measured height, before that there is
+    // nothing to aim in): aiming at the same target again is a new wish.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus?.token]);
+  }, [focus?.token, height > 0]);
 
   const onDrop = useCallback(
     (ev: React.DragEvent) => {

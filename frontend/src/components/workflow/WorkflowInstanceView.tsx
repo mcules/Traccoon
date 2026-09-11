@@ -102,6 +102,17 @@ export default function WorkflowInstanceView({
     return graphToFlow(graph, runtimeStates(instance as WorkflowInstance));
   }, [instance]);
 
+  // The view opens on the node the run stands on, readable, not on the whole graph
+  // shrunk to a thumbnail. Re-aimed only when that node changes.
+  const focus = useMemo(() => {
+    if (!flow) return undefined;
+    const active = flow.nodes.find((n) => n.data.runtimeState === "active");
+    if (!active) return undefined;
+    const w = active.measured?.width ?? 200;
+    return { x: active.position.x + w / 2, y: active.position.y, zoom: 1,
+             token: active.id.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0) };
+  }, [flow]);
+
   if (!instance || !flow) return <div className="text-xs text-muted">{tr("workflow_instance_view.loading")}</div>;
 
   return (
@@ -125,7 +136,7 @@ export default function WorkflowInstanceView({
           <details className="mt-2">
             <summary className="cursor-pointer text-xs text-muted">{tr("workflow_instance_view.flow_graph")}</summary>
             <div className="mt-1 overflow-hidden rounded-lg border border-line" style={{ height }}>
-              <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
+              <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly focus={focus} />
             </div>
           </details>
           {members && <OpenSteps instance={instance as WorkflowInstance} members={members} />}
@@ -133,7 +144,7 @@ export default function WorkflowInstanceView({
       ) : (
         <>
           <div className="overflow-hidden rounded-lg border border-line" style={{ height }}>
-            <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
+            <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly focus={focus} />
           </div>
           {members && <OpenSteps instance={instance as WorkflowInstance} members={members} />}
           <details className="mt-2" open>
