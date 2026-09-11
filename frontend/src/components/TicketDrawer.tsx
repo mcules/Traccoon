@@ -241,6 +241,21 @@ export default function TicketDrawer({
     mutationFn: (text: string) => api.post(`/issues/${issueKey}/blocker/answer`, { answer: text }),
     onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
+  // A permission the agent asked for is decided where the ticket is read, not in a
+  // separate tab: the hold says "permission" and the person needs the buttons right here.
+  const { data: permReqs } = useQuery({
+    queryKey: ["permreqs", project.id],
+    queryFn: () => api.get<{ id: number; issue_key: string; tool: string; resource: string }[]>(
+      `/projects/${project.id}/permission-requests`),
+    refetchInterval: 4000,
+    enabled: issue?.agent_status === "hold" && issue?.hold_reason === "permission",
+  });
+  const decidePerm = useMutation({
+    mutationFn: (v: { id: number; decision: string }) =>
+      api.post(`/permission-requests/${v.id}/decide`, { decision: v.decision }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["permreqs", project.id] }); invalidate(); },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
+  });
   const del = useMutation({
     mutationFn: () => api.del(`/issues/${issueKey}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["issues", project.id] }); onClose(); },
@@ -805,7 +820,32 @@ export default function TicketDrawer({
                 className={BUTTON.primary}>{tr("ticket_drawer.reply")}</button>
             </div>
           ) : issue.hold_reason === "permission" ? (
-            <div className="mt-1 text-muted">{tr("ticket_drawer.decide_permission_monitor_tab")}</div>
+            <div className="mt-2 space-y-2">
+              {(permReqs ?? []).filter((p) => p.issue_key === issue.key).map((p) => (
+                <div key={p.id} className="rounded border border-orange-400/40 bg-orange-400/5 p-2.5">
+                  <div className="text-ink">
+                    {tr("ticket_drawer.perm_wants")} <b className="font-mono">{p.tool}</b>
+                    {p.resource && p.resource !== "*" && <> · <span className="font-mono">{p.resource}</span></>}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted">{tr("ticket_drawer.perm_scope")}</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button onClick={() => decidePerm.mutate({ id: p.id, decision: "always" })}
+                      disabled={decidePerm.isPending} className={BUTTON.confirm}>
+                      {tr("agent_monitor.always")}</button>
+                    <button onClick={() => decidePerm.mutate({ id: p.id, decision: "once" })}
+                      disabled={decidePerm.isPending} className={BUTTON.primary}>
+                      {tr("agent_monitor.once")}</button>
+                    <button onClick={() => decidePerm.mutate({ id: p.id, decision: "never" })}
+                      disabled={decidePerm.isPending}
+                      className="rounded border border-red-400/50 px-3 py-1 text-sm text-red-400 hover:bg-red-400/10 disabled:opacity-50">
+                      {tr("agent_monitor.never")}</button>
+                  </div>
+                </div>
+              ))}
+              {permReqs && !permReqs.some((p) => p.issue_key === issue.key) && (
+                <div className="text-muted">{tr("ticket_drawer.perm_none_open")}</div>
+              )}
+            </div>
           ) : issue.hold_reason === "review" ? (
             <div className="mt-2 space-y-2">
               <div className="text-muted">{tr("ticket_drawer.review_findings_are_open_check_the_diff_below")}</div>
