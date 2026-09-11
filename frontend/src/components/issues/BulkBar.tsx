@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { tr } from "../../i18n";
-import { api, ApiError, Project, ProjectMeta } from "../../api";
+import { api, ApiError, CLOSED_REASONS, Project, ProjectMeta } from "../../api";
 import { BUTTON_SMALL, ConfirmDialog } from "../ui";
 
 /**
@@ -19,11 +19,11 @@ const PRIOS = ["highest", "high", "medium", "low", "lowest"];
 const SELECT = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
 export type BulkAction = "status" | "priority" | "assignee" | "sprint" | "archive" | "unarchive"
-  | "delete" | "assign_agent";
+  | "close" | "delete" | "assign_agent";
 type BulkBody = {
   keys: string[]; action: BulkAction;
   status_id?: number; priority?: string; user_id?: number | null; sprint_id?: number | null;
-  agent?: string;
+  agent?: string; reason?: string;
 };
 type BulkFail = { key: string; error: string; error_key?: string; values?: Record<string, string> };
 type BulkResult = { done: number; action: BulkAction; failed: BulkFail[] };
@@ -133,6 +133,17 @@ export default function BulkBar({
             onClick={() => run({ keys: picked, action: archived ? "unarchive" : "archive" })}>
             {archived ? tr("issue_list.unarchive") : tr("issue_list.archive")}
           </button>
+          {!archived && (
+            <select className={SELECT} value="" disabled={bulk.isPending}
+              onChange={(e) => e.target.value && run(
+                { keys: picked, action: "close", reason: e.target.value },
+                { text: tr("issue_list.really_close_n_tickets", { n: picked.length }),
+                  hint: tr("issue_list.closing_stops_agents_and_archives"),
+                  confirmText: tr("issue_list.close"), danger: true })}>
+              <option value="">{tr("issue_list.close_as")}</option>
+              {CLOSED_REASONS.map((r) => <option key={r} value={r}>{tr(`closed_reason.${r}`)}</option>)}
+            </select>
+          )}
           <button disabled={bulk.isPending} className={BUTTON_SMALL.danger}
             onClick={() => run({ keys: picked, action: "delete" },
               { text: tr("issue_list.really_delete_n_tickets", { n: picked.length }),

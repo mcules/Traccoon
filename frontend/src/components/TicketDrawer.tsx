@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, AttachmentInfo, Comment, FileChange, Issue, IssueCosts, Project, ProjectMeta, workflowApi } from "../api";
+import { api, ApiError, AttachmentInfo, CLOSED_REASONS, Comment, FileChange, Issue, IssueCosts, Project, ProjectMeta, workflowApi } from "../api";
 import { useAuth } from "../auth";
 import Markdown from "./Markdown";
 import { waitInfo } from "../lib/waitReason";
@@ -256,6 +256,18 @@ export default function TicketDrawer({
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["permreqs", project.id] }); invalidate(); },
     onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
+  // Closed unfinished: the ticket leaves board and lists and waits in the archive with
+  // its reason on it. The four words share one effect.
+  const [askClose, setAskClose] = useState(false);
+  const closeIssue = useMutation({
+    mutationFn: (reason: string) => api.post(`/issues/${issueKey}/close`, { reason }),
+    onSuccess: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["issues-archived", project.id] });
+      onClose();
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
+  });
   const del = useMutation({
     mutationFn: () => api.del(`/issues/${issueKey}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["issues", project.id] }); onClose(); },
@@ -314,7 +326,10 @@ export default function TicketDrawer({
     <div className="flex items-center gap-1.5">
       {canWrite && issue.archived && (
         <>
-          <span className="rounded bg-line px-1.5 text-[11px] uppercase text-muted">archiviert</span>
+          <span className={`rounded px-1.5 text-[11px] uppercase ${
+            issue.closed_reason ? "bg-red-500/20 text-red-300" : "bg-line text-muted"}`}>
+            {issue.closed_reason ? tr(`closed_reason.${issue.closed_reason}`) : "archiviert"}
+          </span>
           <button onClick={() => archive.mutate()} title={tr("ticket_drawer.restore")}
             className={`${iconBtn} hover:bg-brand/90`}>♻️</button>
         </>
@@ -323,6 +338,19 @@ export default function TicketDrawer({
         <button onClick={() => archive.mutate()} title={tr("ticket_drawer.archive_ticket")}
           className={`${iconBtn} hover:bg-brand/90`}>📦</button>
       )}
+      {canWrite && !issue.archived && (askClose ? (
+        <span className="flex flex-wrap items-center gap-1 text-sm">
+          <span className="text-muted">{tr("ticket_drawer.close_as")}</span>
+          {CLOSED_REASONS.map((r) => (
+            <button key={r} onClick={() => closeIssue.mutate(r)} disabled={closeIssue.isPending}
+              className={BUTTON_SMALL.secondary}>{tr(`closed_reason.${r}`)}</button>
+          ))}
+          <button onClick={() => setAskClose(false)} className={BUTTON_SMALL.secondary}>{tr("ticket_drawer.no")}</button>
+        </span>
+      ) : (
+        <button onClick={() => setAskClose(true)} title={tr("ticket_drawer.close_ticket")}
+          className={`${iconBtn} hover:bg-brand/90`}>⛔</button>
+      ))}
       {canManage && (confirmDel ? (
         <span className="flex items-center gap-1 text-sm">
           <span className="text-red-400">{tr("ticket_drawer.delete")}</span>

@@ -297,6 +297,8 @@ async def lifespan(app: FastAPI):
                 "REFERENCES artifacts(id) ON DELETE SET NULL",
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_issue_artifact ON issues "
                 "(artifact_id) WHERE artifact_id IS NOT NULL",
+                # Why a ticket was closed unfinished; it sits in the archive with it.
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS closed_reason VARCHAR(30)",
                 # The two JSON placeholders are superseded by the real field model
                 # (`artifact_fields`/`artifact_values`). They were never filled but stand in
                 # the table as NOT NULL without a default, so every INSERT would fail without a DROP.

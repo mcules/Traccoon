@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from ..models.enums import Priority, TicketAgentStatus
+from ..models.enums import ClosedReason, Priority, TicketAgentStatus
 
 
 class IssueCreate(BaseModel):
@@ -89,6 +89,7 @@ class IssueOut(BaseModel):
     artifact_id: int | None = None
     archived: bool = False
     archived_at: dt.datetime | None = None
+    closed_reason: str | None = None
     testenv_status: str | None = None
     testenv_url: str | None = None
     testenv_error: str | None = None
@@ -97,6 +98,10 @@ class IssueOut(BaseModel):
     updated_at: dt.datetime
 
     model_config = {"from_attributes": True}
+
+
+class CloseIn(BaseModel):
+    reason: ClosedReason
 
 
 class MoveIn(BaseModel):
@@ -113,8 +118,9 @@ class BulkIn(BaseModel):
     """
     keys: list[str]
     action: Literal["status", "priority", "assignee", "sprint", "archive", "unarchive",
-                    "delete", "assign_agent"]
+                    "close", "delete", "assign_agent"]
     status_id: int | None = None
+    reason: ClosedReason | None = None  # at "close": why
     priority: Priority | None = None
     user_id: int | None = None          # None at "assignee" clears it
     sprint_id: int | None = None        # None at "sprint" puts it back into the backlog

@@ -233,3 +233,39 @@ async def test_a_foreign_sprint_is_refused(db, client):
     assert body["failed"][0]["error_key"] == "err.sprint_does_not_belong_project"
     await db.refresh(a)
     assert a.sprint_id is None
+
+
+async def test_closing_puts_the_ticket_away_with_its_reason(db, client, monkeypatch):
+    """Closed unfinished: done column, archive, the reason on it; the way back clears it."""
+    boss, proj, t, stats = await _project(db)
+    a = await _make(db, proj, t, stats, boss, 1, agent_status=TicketAgentStatus.in_progress,
+                    agent_working=True, assigned_agent="developer")
+    b = await _make(db, proj, t, stats, boss, 2)
+    killed = []
+    monkeypatch.setattr("app.core.redis.publish_kill", lambda key: killed.append(key) or _none())
+
+    r = await client.post(f"/issues/{a.key}/close", headers=auth(boss), json={"reason": "duplicate"})
+    assert r.status_code == 200, r.text
+    assert r.json()["closed_reason"] == "duplicate" and r.json()["archived"] is True
+    await db.refresh(a)
+    assert a.status_id == stats["Done"].id and a.agent_status is None and a.agent_working is False
+    assert killed == [a.key]
+
+    # It is gone from the list and waits in the archive.
+    live = (await client.get(f"/projects/{proj.id}/issues", headers=auth(boss))).json()
+    assert a.key not in [i["key"] for i in live]
+    arch = (await client.get(f"/projects/{proj.id}/issues?archived=true", headers=auth(boss))).json()
+    assert [i["closed_reason"] for i in arch if i["key"] == a.key] == ["duplicate"]
+
+    r = await client.post(f"/projects/{proj.id}/issues/bulk", headers=auth(boss),
+                          json={"keys": [b.key], "action": "close", "reason": "obsolete"})
+    assert r.json()["done"] == 1
+    await db.refresh(b)
+    assert b.closed_reason == "obsolete" and b.archived is True
+
+    r = await client.post(f"/issues/{a.key}/unarchive", headers=auth(boss))
+    assert r.json()["closed_reason"] is None and r.json()["archived"] is False
+
+
+async def _none():
+    return None

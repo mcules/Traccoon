@@ -22,7 +22,7 @@ from sqlalchemy import select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.error import Error
-from ..models.enums import Priority, ProjectRole, StatusCategory, TicketAgentStatus
+from ..models.enums import ClosedReason, Priority, ProjectRole, StatusCategory, TicketAgentStatus
 from ..models.project import Project, ProjectMember
 from ..models.ticket import Issue, WorkflowStatus
 from ..models.user import User
@@ -166,11 +166,41 @@ async def archive(db: AsyncSession, issue: Issue, access) -> None:
                      .values(archived=True, archived_at=issue.archived_at))
 
 
+async def close(db: AsyncSession, issue: Issue, access, *, reason: ClosedReason) -> None:
+    """Put a ticket away unfinished: no longer needed, rejected, a duplicate, overtaken.
+
+    One effect for every reason: a running agent is stopped and the lifecycle cancelled,
+    the ticket goes into the done column and into the archive, and the reason stays on it
+    so the archive says why. `unarchive` is the way back; it clears the reason.
+    """
+    require_write(access)
+    from ..core.redis import publish_kill
+    from .lifecycle_flow import cancel_lifecycle
+    from .comments import add_system_comment
+    if issue.agent_working:
+        await publish_kill(issue.key)
+    await cancel_lifecycle(db, issue)
+    issue.agent_working = False
+    issue.agent_status = None
+    issue.hold_reason = None
+    done = (await db.execute(
+        select(WorkflowStatus).where(WorkflowStatus.project_id == issue.project_id,
+                                     WorkflowStatus.category == StatusCategory.done)
+        .order_by(WorkflowStatus.order))).scalars().first()
+    if done is not None:
+        issue.status_id = done.id
+    issue.closed_reason = reason.value
+    issue.resolved_at = issue.resolved_at or _now()
+    await add_system_comment(db, issue.id, f"⛔ Closed: {reason.value} ({access.name_here})")
+    await archive(db, issue, access)
+
+
 async def unarchive(db: AsyncSession, issue: Issue, access) -> None:
     require_write(access)
     from ..models.agents import Run
     issue.archived = False
     issue.archived_at = None
+    issue.closed_reason = None
     await db.execute(sa_update(Run).where(Run.issue_id == issue.id, Run.archived.is_(True))
                      .values(archived=False, archived_at=None))
 

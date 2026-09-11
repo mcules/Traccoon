@@ -16,7 +16,7 @@ from ..models.ticket import (
 )
 from ..models.user import User
 from ..schemas.issue import (
-    AssignAgentIn, AssigneeIn, BulkIn, CommentCreate, CommentOut, IssueCreate, IssueOut,
+    AssignAgentIn, AssigneeIn, BulkIn, CloseIn, CommentCreate, CommentOut, IssueCreate, IssueOut,
     IssueUpdate,
     MoveIn, TagIn,
 )
@@ -186,6 +186,20 @@ async def archive_issue(
 ):
     issue, access = pair
     await actions.archive(db, issue, access)
+    await db.commit()
+    await db.refresh(issue)
+    return issue
+
+
+@router.post("/issues/{key}/close", response_model=IssueOut)
+async def close_issue(
+    data: CloseIn,
+    pair: tuple[Issue, Access] = Depends(get_issue_access),
+    db: AsyncSession = Depends(get_session),
+):
+    """Closed unfinished, with a reason. Lands in the archive; `unarchive` brings it back."""
+    issue, access = pair
+    await actions.close(db, issue, access, reason=data.reason)
     await db.commit()
     await db.refresh(issue)
     return issue
@@ -500,6 +514,11 @@ async def bulk_issues(
                 await actions.set_sprint(db, issue, access, sprint_id=data.sprint_id)
             elif data.action == "archive":
                 await actions.archive(db, issue, access)
+            elif data.action == "close":
+                if data.reason is None:
+                    raise Error(status.HTTP_400_BAD_REQUEST, "err.reason_missing",
+                                 "reason is missing")
+                await actions.close(db, issue, access, reason=data.reason)
             elif data.action == "unarchive":
                 await actions.unarchive(db, issue, access)
             elif data.action == "delete":

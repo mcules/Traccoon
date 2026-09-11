@@ -54,6 +54,15 @@ class TicketAgentStatus(str, enum.Enum):
     failed = "failed"
 
 
+class ClosedReason(str, enum.Enum):
+    """Why a ticket was put away unfinished. Four words, one effect: the ticket leaves the
+    board and the lists and waits in the archive with its reason on it."""
+    cancelled = "cancelled"   # not needed any more
+    rejected = "rejected"     # will not be done
+    duplicate = "duplicate"   # another ticket covers it
+    obsolete = "obsolete"     # overtaken by events
+
+
 class HoldReason(str, enum.Enum):
     plan_review = "plan_review"
     plan_split = "plan_split"

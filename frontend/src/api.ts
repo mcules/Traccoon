@@ -201,8 +201,10 @@ export interface Issue {
   artifact_id?: number | null;            // the shared artifact identity (free fields)
   asset_id?: number | null;   // Hardware-Bezug (Exemplar), nur in Hardware-Projekten
   archived?: boolean;
+  closed_reason?: string | null;   // cancelled | rejected | duplicate | obsolete
   resolved_at?: string | null;
 }
+export const CLOSED_REASONS = ["cancelled", "rejected", "duplicate", "obsolete"] as const;
 export interface FileChange { id: number; path: string; status: string; additions: number; deletions: number; }
 export interface AttachmentInfo { id: number; filename: string; mime_type: string; size: number; created_at: string; }
 export interface Comment { id: number; issue_id: number; author_id: number | null; author_label: string; body: string; kind: string; created_at: string; }

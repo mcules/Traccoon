@@ -107,6 +107,7 @@ export default function IssueTable({
                 <td className="py-1.5">
                   {t && <span className="mr-1.5" style={{ color: t.color }}>{t.icon === "bug" ? "🐞" : "•"}</span>}
                   {i.summary}
+                  {i.closed_reason && <span className="ml-2 rounded bg-red-500/20 px-1.5 text-[11px] uppercase text-red-300">{tr(`closed_reason.${i.closed_reason}`)}</span>}
                   {i.agent_working && <span className="ml-2 text-xs text-yellow-400">{tr("issue_list.running")}</span>}
                   {(() => { const w = waitInfo(i); return w && (
                     <span title={`${w.title}: ${w.label}`} className="ml-2 text-xs">{w.icon}</span>
@@ -143,6 +144,7 @@ export default function IssueTable({
                 <span className="font-mono text-xs text-muted">{i.key}</span>
                 {t && <span style={{ color: t.color }}>{t.icon === "bug" ? "🐞" : "•"}</span>}
                 <span className="min-w-0 flex-1">{i.summary}</span>
+                {i.closed_reason && <span className="rounded bg-red-500/20 px-1.5 text-[11px] uppercase text-red-300">{tr(`closed_reason.${i.closed_reason}`)}</span>}
                 {w && <span title={`${w.title}: ${w.label}`}>{w.icon}</span>}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">

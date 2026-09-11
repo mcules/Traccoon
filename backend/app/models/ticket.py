@@ -217,6 +217,9 @@ class Issue(TimestampMixin, Base):
     # Archive: archived tickets appear neither on the board nor in the list.
     archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set when the ticket was closed unfinished (cancelled, rejected, duplicate, obsolete).
+    # Such a ticket is archived as well; the reason is what the archive shows on it.
+    closed_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
 class Blocker(Base):
