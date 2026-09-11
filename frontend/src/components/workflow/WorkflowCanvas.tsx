@@ -131,10 +131,11 @@ function Inner(props: WorkflowCanvasProps) {
     >
       <PhaseBands nodes={nodes} />
       <Background className="!bg-surface" />
-      <Controls />
-      {/* The minimap covered a quarter of the surface on a phone — there the
-          surface itself is already the overview. */}
-      <MiniMap pannable zoomable className="!bg-card !hidden md:!block" />
+      {/* Zoom buttons and minimap only in the editor. In the runtime view they
+          sit on top of the graph and hide more than they show; scroll and
+          drag are enough there. */}
+      {!readOnly && <Controls />}
+      {!readOnly && <MiniMap pannable zoomable className="!bg-card !hidden md:!block" />}
     </ReactFlow>
   );
 }
