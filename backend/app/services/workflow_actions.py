@@ -54,6 +54,8 @@ Actions accept both config shapes (the editor nests {action:{action,params}}, fl
 """
 from __future__ import annotations
 
+import json
+
 import os
 import re
 
@@ -1755,8 +1757,18 @@ async def _script(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     except asyncio.TimeoutError:
         return {"action": "script", "ok": False, "error": "the time limit was exceeded"}
     key = str(params.get("context_key") or "script")
-    inst.context = {**ctx, key: {"output": text, "exit_code": rc, "ok": rc == 0}}
-    return {"action": "script", "ok": rc == 0, "exit_code": rc, "context_key": key}
+    # A script that answers with one JSON object hands its fields to the graph: a decision
+    # node can then branch on `<key>.data.<field>` instead of parsing text.
+    data = None
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            data = parsed
+    except ValueError:
+        pass
+    inst.context = {**ctx, key: {"output": text, "exit_code": rc, "ok": rc == 0, "data": data}}
+    return {"action": "script", "ok": rc == 0, "exit_code": rc, "context_key": key,
+            "json": data is not None}
 
 
 

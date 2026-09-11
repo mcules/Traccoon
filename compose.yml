@@ -117,6 +117,9 @@ services:
       # image: they run by hand, often exactly once, and should be the version from the working
       # directory while they do.
       - ./backend/scripts:/app/scripts
+      # Scripts a flow may run (`script` node, JOB_SCRIPT_DIR). Data, not code: their
+      # credentials and state files sit next to them and stay out of the repository.
+      - ./data/scripts:/scripts
       - ./data/workspace:/workspace   # the repo browser/editor (api/repo.py) reads and writes here
       # Media store for Telegram: the backend WRITES here, the telegram-bot READS.
       # Both mounts belong together — if it is missing over there, the bot never finds the file
