@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -40,6 +40,11 @@ class Notification(Base):
     throttle_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
     read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # Telegram gesendet
+    # The Telegram message this went out as, and whether its buttons are still standing.
+    # A question decided in the web interface takes its buttons in the chat down with it;
+    # without the message id the bot could not find them.
+    tg_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    buttons_open: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("ix_notifications_drossel", "throttle_key", "created_at"),)

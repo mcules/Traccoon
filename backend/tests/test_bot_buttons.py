@@ -57,3 +57,62 @@ async def test_the_note_is_escaped(raw, expected):
     msg = FakeMessage()
     await _done(FakeCq(msg), raw)
     assert expected in msg.processed
+
+
+# ── Decided elsewhere: the buttons in the chat come down ────────────────────
+
+from app.bot.__main__ import _settled_elsewhere  # noqa: E402
+from app.models.enums import ProjectRole, TicketAgentStatus  # noqa: E402
+from app.models.notification import Notification  # noqa: E402
+from app.models.ops import PermRequest  # noqa: E402
+from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus  # noqa: E402
+from conftest import add_member, make_project, make_user  # noqa: E402
+
+
+async def _ticket(db, agent_status):
+    boss = await make_user(db, "chef")
+    proj = await make_project(db, "TGB", "Buttons")
+    await add_member(db, proj, boss, ProjectRole.owner)
+    t = IssueType(project_id=proj.id, name="Task")
+    st = WorkflowStatus(project_id=proj.id, name="To Do", category="todo", order=0)
+    db.add_all([t, st, IssueCounter(project_id=proj.id, last_number=0)])
+    await db.flush()
+    iss = Issue(project_id=proj.id, number=1, key="TGB-1", type_id=t.id, status_id=st.id,
+                summary="x", reporter_id=boss.id, rank="1", agent_status=agent_status)
+    db.add(iss)
+    await db.commit()
+    return iss
+
+
+def _note(iss, kind):
+    return Notification(issue_id=iss.id, kind=kind, chat_id="1", tg_message_id=7, buttons_open=True)
+
+
+async def test_plan_buttons_stand_while_the_plan_waits_and_fall_once_it_is_decided(db):
+    iss = await _ticket(db, TicketAgentStatus.plan_review)
+    n = _note(iss, "plan_review")
+    assert await _settled_elsewhere(db, n) is False
+    iss.agent_status = TicketAgentStatus.approved     # approved in the web interface
+    await db.commit()
+    assert await _settled_elsewhere(db, n) is True
+
+
+async def test_permission_buttons_fall_when_no_request_is_pending_any_more(db):
+    iss = await _ticket(db, TicketAgentStatus.hold)
+    pr = PermRequest(issue_id=iss.id, tool="x", resource="*", status="pending")
+    db.add(pr)
+    await db.commit()
+    n = _note(iss, "blocked")
+    assert await _settled_elsewhere(db, n) is False
+    pr.status = "decided"
+    await db.commit()
+    assert await _settled_elsewhere(db, n) is True
+
+
+async def test_a_closed_ticket_takes_every_button_down(db):
+    iss = await _ticket(db, TicketAgentStatus.to_test)
+    n = _note(iss, "to_test")
+    assert await _settled_elsewhere(db, n) is False
+    iss.archived = True
+    await db.commit()
+    assert await _settled_elsewhere(db, n) is True

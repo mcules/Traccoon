@@ -73,6 +73,13 @@ async def _done(cq: CallbackQuery, note: str,
     msg = cq.message
     if msg is None:
         return
+    chat = getattr(msg, "chat", None)
+    if chat is not None:
+        try:
+            await _buttons_gone(chat.id, msg.message_id)
+        except Exception:  # noqa: BLE001
+            # The mark is bookkeeping for the sweeper; taking the buttons down comes first.
+            log.warning("Could not mark the buttons on message %s as gone", msg.message_id)
     # `.astimezone()` and not the bare moment: `_now()` is UTC, and formatting it directly
     # printed UTC into a message a person reads with their own clock in view.
     line = f"<i>{safe(note)} · {_now().astimezone().strftime('%d.%m. %H:%M')}</i>"
@@ -171,6 +178,14 @@ def _gif_mass(raw: bytes) -> dict[str, int]:
 
 
 async def _deliver(bot, n, text: str, markup) -> None:
+    """Send and remember the message: id and whether buttons stand on it (see `sweeper`)."""
+    msg = await _send(bot, n, text, markup)
+    n.tg_message_id = getattr(msg, "message_id", None)
+    n.buttons_open = bool(msg is not None and markup is not None
+                          and n.kind in ("plan_review", "to_test", "blocked"))
+
+
+async def _send(bot, n, text: str, markup):
     """Deliver one notification, with media when some lies there, otherwise as text.
 
     Three decisions come together here:
@@ -197,23 +212,50 @@ async def _deliver(bot, n, text: str, markup) -> None:
             label = text[:1024]
             kind = (n.media_kind or "").strip() or "animation"
             if kind == "photo":
-                await bot.send_photo(int(n.chat_id), photo=file, caption=label,
-                                     parse_mode="HTML", reply_markup=markup)
-            elif kind == "document":
-                await bot.send_document(int(n.chat_id), document=file, caption=label,
-                                        parse_mode="HTML", reply_markup=markup)
-            else:
-                await bot.send_animation(int(n.chat_id), animation=file, caption=label,
-                                         parse_mode="HTML", reply_markup=markup,
-                                         **_gif_mass(raw))
-        else:
-            if path:
-                log.warning("Medium %s not readable, notification %s goes as text", path, n.id)
-            await bot.send_message(int(n.chat_id), text, parse_mode="HTML", reply_markup=markup)
+                return await bot.send_photo(int(n.chat_id), photo=file, caption=label,
+                                            parse_mode="HTML", reply_markup=markup)
+            if kind == "document":
+                return await bot.send_document(int(n.chat_id), document=file, caption=label,
+                                               parse_mode="HTML", reply_markup=markup)
+            return await bot.send_animation(int(n.chat_id), animation=file, caption=label,
+                                            parse_mode="HTML", reply_markup=markup,
+                                            **_gif_mass(raw))
+        if path:
+            log.warning("Medium %s not readable, notification %s goes as text", path, n.id)
+        return await bot.send_message(int(n.chat_id), text, parse_mode="HTML", reply_markup=markup)
     except Exception:  # noqa: BLE001
         log.exception("Sending to %s failed", n.chat_id)
+        return None
     finally:
         n.notified_at = _now()
+
+
+async def _buttons_gone(chat_id: int | str, message_id: int) -> None:
+    """The bot itself took the buttons down (a tap): the sweeper must not do it again."""
+    from sqlalchemy import update as sa_update
+    async with SessionLocal() as db:
+        await db.execute(sa_update(Notification)
+                         .where(Notification.chat_id == str(chat_id),
+                                Notification.tg_message_id == int(message_id))
+                         .values(buttons_open=False))
+        await db.commit()
+
+
+async def _settled_elsewhere(db, n: Notification) -> bool:
+    """Was the question on this message answered somewhere else (web interface, another
+    chat, a process that moved on)? Then its buttons in the chat only invite a wrong tap."""
+    iss = await db.get(Issue, n.issue_id) if n.issue_id else None
+    if iss is None or iss.archived:
+        return True
+    if n.kind == "plan_review":
+        return iss.agent_status != TicketAgentStatus.plan_review
+    if n.kind == "to_test":
+        return iss.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing)
+    if n.kind == "blocked":
+        pending = (await db.execute(select(PermRequest.id).where(
+            PermRequest.issue_id == iss.id, PermRequest.status == "pending"))).first()
+        return pending is None
+    return True
 
 
 async def _acting_user(db, chat_id: str) -> User | None:
@@ -423,6 +465,26 @@ async def run_bot() -> None:
                         # `_zustellen` decides between text and media, and sets `notified_at`
                         # in every case (otherwise an endless retry).
                         await _deliver(bot, n, text, markup)
+                    await db.commit()
+                    # Buttons whose question was answered elsewhere come down. A message
+                    # that keeps offering "approve" for a plan long approved in the web
+                    # interface is the one thing worse than no button at all.
+                    open_rows = (await db.execute(select(Notification).where(
+                        Notification.buttons_open.is_(True),
+                        Notification.tg_message_id.isnot(None))
+                        .order_by(Notification.id).limit(50))).scalars().all()
+                    for n in open_rows:
+                        if not await _settled_elsewhere(db, n):
+                            continue
+                        n.buttons_open = False
+                        try:
+                            await bot.edit_message_reply_markup(
+                                chat_id=int(n.chat_id), message_id=n.tg_message_id,
+                                reply_markup=None)
+                        except Exception:  # noqa: BLE001
+                            # Already without buttons, too old to edit, or deleted: the aim
+                            # is reached either way, and not retrying it is the point.
+                            log.info("Buttons on message %s could not be edited", n.tg_message_id)
                     await db.commit()
             except Exception:  # noqa: BLE001
                 log.exception("notifier error")
@@ -797,6 +859,12 @@ async def run_bot() -> None:
                         iss.hold_reason = None
                         iss.continuation_count += 1
                     await db.commit()
+                    # The process waits at an event node for exactly this answer, the same
+                    # as after a decision in the web interface. The status alone woke nobody.
+                    if iss is not None:
+                        from ..services.workflow_engine import resume_on_event
+                        await resume_on_event(iss.id, "answer",
+                                              {"kind": "permission", "tool": pr.tool, "decision": dec})
                     await cq.answer(f"Permission: {dec}")
                     await _done(cq, f"🔑 Permission: {_DEC_TEXT.get(dec, dec)}")
                 else:

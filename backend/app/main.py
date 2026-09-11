@@ -468,6 +468,11 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email VARCHAR(255)",
                 # Throttle per message kind: "the same thing every N minutes at most".
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS throttle_key VARCHAR(160)",
+                # The Telegram message a notification went out as, so a question decided in
+                # the web interface can take its chat buttons down.
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS tg_message_id INTEGER",
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS buttons_open BOOLEAN "
+                "DEFAULT FALSE NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_notifications_drossel "
                 "ON notifications (throttle_key, created_at)",
                 # The German column from before the rename. It is empty in every case the
