@@ -111,6 +111,56 @@ TRACCOON_TOOLS = [
           "issue_key": {"type": "string", "description": "only for flows on tickets"},
           "context": {"type": "object", "description": "Start values for the graph"}},
          ["workflow_id"]),
+    _def("traccoon_get_workflow",
+         "The graph of a flow (nodes, edges) as JSON, the published version or the open draft. "
+         "Read it before you change a flow: the existing nodes show the exact shape "
+         "(id, type, position, data.config) and which context fields the start node's "
+         "`trigger.sample` provides.",
+         {"workflow_id": {"type": "integer", "description": "id from traccoon_list_workflows "
+                                                             "or the webhook's workflow_definition_id"}},
+         ["workflow_id"]),
+    _def("traccoon_save_workflow",
+         "Save a changed graph of a flow as a draft, and publish it when `publish` is true. The "
+         "graph is validated first; errors come back as text and nothing is saved then. Send the "
+         "WHOLE graph (nodes and edges), not a diff. Node shape: {id, type, position:{x,y}, "
+         "data:{config:{label, …}}}; edge shape: {id, source, target, sourceHandle?, label?}. "
+         "A decision node carries config.branches [{handle, label, guard}] with guards in "
+         "JSON-logic ({\"==\": [{\"var\": \"event.type\"}, \"x\"]}) and a default_handle; a "
+         "message is an auto_action with config.action {action: 'notify', params: {title, text}}, "
+         "templates like {{ position.address | default:'?' }}. Running instances keep their "
+         "version.",
+         {"workflow_id": {"type": "integer"},
+          "graph": {"type": "object", "description": "{nodes: [...], edges: [...]}"},
+          "notes": {"type": "string", "description": "What changed and why (version note)"},
+          "publish": {"type": "boolean", "description": "true = publish right away"}},
+         ["workflow_id", "graph"]),
+    _def("traccoon_list_webhooks",
+         "The inbound webhooks your person may see: id, route, mode, on/off, event filter and "
+         "the flow they start.",
+         {}, []),
+    _def("traccoon_get_webhook",
+         "One inbound webhook in full: event header and filter, cooldowns, alert events, "
+         "reference field, context mapping, flow.",
+         {"webhook_id": {"type": "integer"}}, ["webhook_id"]),
+    _def("traccoon_update_webhook",
+         "Change an inbound webhook of your person. Only the fields given change; the public "
+         "id and the secret never do, so no sender notices. `event_filter` is a comma list of "
+         "event types, `event_cooldowns` {event: seconds} merges follow-up events of the same "
+         "kind, `alert_events` bypass that window, `ref_field` is the payload path for "
+         "deduplication.",
+         {"webhook_id": {"type": "integer"},
+          "route": {"type": "string", "description": "label"},
+          "enabled": {"type": "boolean"},
+          "event_header": {"type": "string", "description": "header or payload:<path> that carries the event type"},
+          "event_filter": {"type": "string", "description": "comma list; empty = every event"},
+          "event_key_header": {"type": "string"},
+          "event_cooldowns": {"type": "object", "description": "{event: seconds}"},
+          "alert_events": {"type": "array", "items": {"type": "string"}},
+          "ref_field": {"type": "string"},
+          "context_map": {"type": "object", "description": "{context field: payload path}"},
+          "context_fixed": {"type": "object", "description": "{context field: fixed value}"},
+          "workflow_definition_id": {"type": "integer", "description": "the flow it starts (mode workflow)"}},
+         ["webhook_id"]),
     _def("traccoon_http_call",
          "Call a released destination. The base URL and the login come from the destination; you "
          "only give the method, the path suffix, the query, the headers and the body.",
@@ -179,6 +229,9 @@ TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 # Listing stays free.
 TRACCOON_GATED_TOOLS = {"traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
                         "traccoon_start_workflow", "traccoon_mail_policy",
+                        # A published flow and a webhook's routing are standing arrangements
+                        # as well: they act on every future event without anybody watching.
+                        "traccoon_save_workflow", "traccoon_update_webhook",
                         # A draft lies in one's own mailbox and goes nowhere; sending reaches
                         # somebody else, and that is a decision a person makes once.
                         "traccoon_mail_send"}
@@ -634,6 +687,12 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
     if name in ("traccoon_list_workflows", "traccoon_start_workflow"):
         return await _workflow_tool(db, user, name, args)
 
+    if name in ("traccoon_get_workflow", "traccoon_save_workflow"):
+        return await _graph_tool(db, user, name, args)
+
+    if name in ("traccoon_list_webhooks", "traccoon_get_webhook", "traccoon_update_webhook"):
+        return await _webhook_tool(db, user, name, args)
+
     if name == "traccoon_issue_costs":
         iss, acc, err = await _issue_access(db, user, args.get("key", ""))
         if iss is None:
@@ -655,6 +714,140 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         return await _mail_policy_tool(db, user, args)
 
     return f"ERROR: unknown control tool '{name}'."
+
+
+async def _graph_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
+    """Read and change the graph of a flow, with the rights and the draft rules of the API.
+
+    The API handlers are called directly on purpose: who may write a flow (set, owner,
+    project) and when a save is a layout, a draft update or a new draft is decided in ONE
+    place, and a second copy of that here would drift on the next rule.
+    """
+    import json
+
+    from ..api.workflows import publish_version, save_graph
+    from ..models.enums import WorkflowVersionStatus
+    from ..models.workflow import WorkflowDefinition, WorkflowVersion
+    from ..schemas.workflow import WorkflowVersionUpdate
+    from ..services.workflow_engine import validate_graph
+
+    d = await db.get(WorkflowDefinition, int(args.get("workflow_id") or 0))
+    if d is None or d.archived_at is not None:
+        return "Flow not found."
+    if d.project_id is not None:
+        project = await db.get(Project, d.project_id)
+        try:
+            if project is None:
+                raise HTTPException(404)
+            await build_access(project, user, db)
+        except HTTPException:
+            return "No access to this flow."
+
+    if name == "traccoon_get_workflow":
+        draft = (await db.execute(
+            select(WorkflowVersion).where(
+                WorkflowVersion.definition_id == d.id,
+                WorkflowVersion.status == WorkflowVersionStatus.draft)
+            .order_by(WorkflowVersion.version.desc()))).scalars().first()
+        live = await db.get(WorkflowVersion, d.current_version_id) if d.current_version_id else None
+        v = draft or live
+        if v is None:
+            return f"The flow '{d.key}' has no version yet."
+        head = (f"Flow '{d.key}' (id {d.id}, {d.name}), "
+                + (f"open DRAFT v{v.version}" if draft else f"published v{v.version}")
+                + (f", published is v{live.version}" if draft and live else ""))
+        return f"{head}\n{json.dumps(v.graph or {}, ensure_ascii=False)}"
+
+    graph = args.get("graph")
+    if not isinstance(graph, dict) or not isinstance(graph.get("nodes"), list):
+        return "ERROR: `graph` must be an object with `nodes` and `edges`."
+    errors = validate_graph(d.subject_kind, graph)
+    if errors:
+        return "Not saved, the graph has errors:\n- " + "\n- ".join(errors)
+    try:
+        saved = await save_graph(d.id, WorkflowVersionUpdate(graph=graph, notes=args.get("notes")),
+                                 user, db)
+        v = saved.version
+        if saved.result == "layout":
+            return (f"Nothing to do: the graph equals v{v.version} of '{d.key}', only positions "
+                    "differed and those are stored.")
+        if not args.get("publish"):
+            return f"Draft v{v.version} of '{d.key}' saved (not published)."
+        v = await publish_version(d.id, v.id, user, db)
+        return f"v{v.version} of '{d.key}' published. Running instances keep their version."
+    except HTTPException as e:
+        return f"ERROR: {e.detail}"
+
+
+async def _webhook_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
+    """Inbound webhooks with the visibility and write rules of the API (owner or admin)."""
+    import json
+
+    from ..api.deps import is_owner_or_admin, owned_or_global
+    from ..models.ops import WebhookSub
+
+    def _line(w: WebhookSub) -> str:
+        return (f"- id {w.id} · {w.route} · mode {w.mode} · {'on' if w.enabled else 'OFF'}"
+                f" · filter: {w.event_filter or '(all)'}"
+                + (f" · flow {w.workflow_definition_id}" if w.workflow_definition_id else "")
+                + (f" · project {w.project_id}" if w.project_id else ""))
+
+    if name == "traccoon_list_webhooks":
+        rows = (await db.execute(select(WebhookSub)
+                                 .where(owned_or_global(WebhookSub.owner_user_id, user))
+                                 .order_by(WebhookSub.route))).scalars().all()
+        return "\n".join(_line(w) for w in rows) or "No webhooks."
+
+    w = await db.get(WebhookSub, int(args.get("webhook_id") or 0))
+    if w is None or not (user.global_role == "admin" or w.owner_user_id in (None, user.id)):
+        return "Webhook not found."
+
+    if name == "traccoon_get_webhook":
+        return json.dumps({
+            "id": w.id, "route": w.route, "mode": w.mode, "enabled": w.enabled,
+            "project_id": w.project_id, "workflow_definition_id": w.workflow_definition_id,
+            "event_header": w.event_header, "event_filter": w.event_filter,
+            "event_key_header": w.event_key_header, "event_cooldowns": w.event_cooldowns or {},
+            "alert_events": w.alert_events or [], "ref_field": w.ref_field,
+            "context_map": w.context_map or {}, "context_fixed": w.context_fixed or {},
+            "event_name": w.event_name, "agent": w.agent,
+            "title_template": w.title_template, "body_template": w.body_template,
+            "response_timeout": w.response_timeout or 0,
+        }, ensure_ascii=False)
+
+    if not is_owner_or_admin(w.owner_user_id, user):
+        return "This webhook belongs to somebody else (or is global), you may not change it."
+    # What an agent may touch: the filtering and the routing, never the secret or the
+    # public id (those are the sender's side of the contract).
+    fields = {
+        "route": str, "enabled": bool, "event_header": str, "event_filter": str,
+        "event_key_header": str, "event_cooldowns": dict, "alert_events": list,
+        "ref_field": str, "context_map": dict, "context_fixed": dict,
+        "workflow_definition_id": int,
+    }
+    changed = []
+    for field, kind in fields.items():
+        if field not in args or args[field] is None:
+            continue
+        value = args[field]
+        if kind is int:
+            value = int(value)
+        elif kind is bool:
+            value = bool(value)
+        elif not isinstance(value, kind):
+            return f"ERROR: `{field}` must be a {kind.__name__}."
+        if field == "event_cooldowns":
+            value = {str(k): int(v) for k, v in value.items()}
+        if field == "workflow_definition_id":
+            from ..models.workflow import WorkflowDefinition
+            if (await db.get(WorkflowDefinition, value)) is None:
+                return f"ERROR: flow {value} does not exist."
+        setattr(w, field, value)
+        changed.append(field)
+    if not changed:
+        return "Nothing given to change."
+    await db.commit()
+    return f"Webhook {w.id} ({w.route}) changed: {', '.join(changed)}."
 
 
 async def _mail_write_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:

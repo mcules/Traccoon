@@ -52,7 +52,10 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   open_tasks: "read",
   codegraph: "read",
   delegate: "delegate",
+  // Gives the whole ticket away and ends the run: a gesture towards the flow, like ask_human.
+  hand_over: "other",
   load_skill: "read",
+  load_tools: "read",
 
   // ── worker/tools_memory.py: the memory tools ───────────────────────────────
   remember: "write",
@@ -84,6 +87,11 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   traccoon_run_job: "run",
   traccoon_list_workflows: "read",
   traccoon_start_workflow: "run",
+  traccoon_get_workflow: "read",
+  traccoon_save_workflow: "write",
+  traccoon_list_webhooks: "read",
+  traccoon_get_webhook: "read",
+  traccoon_update_webhook: "write",
   // The only way of an agent onto the network (destinations, `allow_agents`); here "browse" is proven.
   traccoon_http_call: "browse",
   traccoon_run_health: "read",
@@ -100,21 +108,24 @@ export const TOOL_ACT: Record<string, ToolAct> = {
  *
  *  Kept twice and not derived from `TOOL_ACT`, see the head, point 2. */
 export const NATIVE_TOOLS: readonly string[] = [
-  // runtime.py (15)
+  // runtime.py (17)
   "submit_plan", "ask_human", "continue_later",
   "fs_read", "fs_list", "fs_write", "fs_edit",
   "check", "deploy", "screenshot", "read_attachment", "open_tasks", "codegraph",
-  "delegate", "load_skill",
+  "delegate", "hand_over", "load_skill", "load_tools",
   // tools_memory.py (4)
   "remember", "forget", "memory_search", "memory_teach",
-  // tools_traccoon.py (24)
+  // tools_traccoon.py (29)
   "traccoon_list_projects", "traccoon_list_issues", "traccoon_get_issue",
   "traccoon_create_issue", "traccoon_comment", "traccoon_assign_agent",
   "traccoon_start_planning", "traccoon_approve_plan", "traccoon_issue_costs",
   "traccoon_notify_human", "traccoon_list_destinations",
   "traccoon_list_jobs", "traccoon_get_job", "traccoon_job_templates",
   "traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
-  "traccoon_list_workflows", "traccoon_start_workflow", "traccoon_http_call",
+  "traccoon_list_workflows", "traccoon_start_workflow",
+  "traccoon_get_workflow", "traccoon_save_workflow",
+  "traccoon_list_webhooks", "traccoon_get_webhook", "traccoon_update_webhook",
+  "traccoon_http_call",
   "traccoon_run_health", "traccoon_mail_policy",
   "traccoon_mail_draft", "traccoon_mail_send",
 ];
