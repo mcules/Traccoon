@@ -4,7 +4,6 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Background,
-  Controls,
   Handle,
   Position,
   MarkerType,
@@ -265,7 +264,6 @@ export default function LifecycleView({
           proOptions={{ hideAttribution: true }}
         >
           <Background className="!bg-surface" />
-          <Controls showInteractive={false} />
         </ReactFlow>
       </ReactFlowProvider>
     </div>
