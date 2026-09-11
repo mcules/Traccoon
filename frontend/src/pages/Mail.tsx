@@ -2093,6 +2093,36 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   });
 
   /** Back into the writing window, with everything the draft already had. */
+  /**
+   * Pass the mail on.
+   *
+   * With files on it the question comes first: a forwarded invoice without its PDF is the
+   * mail that gets sent twice. The files travel the same way as with a draft, as bytes the
+   * server builds the message from.
+   */
+  const [forwardAsk, setForwardAsk] = useState(false);
+  const forward = async (withFiles: boolean) => {
+    if (!m) return;
+    setForwardAsk(false);
+    let files: NonNullable<ComposeStart["attachments"]> = [];
+    if (withFiles) {
+      setDraftBusy(true);
+      const got = await draftFiles();
+      setDraftBusy(false);
+      files = got.files;
+      if (got.failed) onError(tr("mail.forward_files_missing"));
+    }
+    onReplies({
+      identity: String(matchingIdentity() ?? ""),
+      subject: `Fwd: ${m.subject || ""}`,
+      text: `\n\n${tr("mail.forwarded_message")}\n`
+        + `${tr("mail.from_label")}: ${(m.from || []).map((a) => a.addr).join(", ")}\n`
+        + `${tr("mail.date_label")}: ${m.date || ""}\n${tr("mail.subject")}: ${m.subject || ""}\n\n${m.text || ""}`,
+      attachments: files,
+      about_uid: uid, about_folder: folder, about_kind: "forward",
+    });
+  };
+
   const editDraft = async () => {
     if (!m) return;
     setDraftBusy(true);
@@ -2180,14 +2210,9 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
             {tr("mail.reply_all")}
           </Rowbutton>
         )}
-        {!isDraft && <Rowbutton onClick={() => onReplies({
-          identity: String(matchingIdentity() ?? ""),
-          subject: `Fwd: ${m?.subject || ""}`,
-          text: `\n\n${tr("mail.forwarded_message")}\n`
-            + `${tr("mail.from_label")}: ${(m?.from || []).map((a) => a.addr).join(", ")}\n`
-            + `${tr("mail.date_label")}: ${m?.date || ""}\n${tr("mail.subject")}: ${m?.subject || ""}\n\n${m?.text || ""}`,
-          about_uid: uid, about_folder: folder, about_kind: "forward",
-        })}>{tr("mail.forward")}</Rowbutton>}
+        {!isDraft && <Rowbutton disabled={draftBusy}
+          onClick={() => ((m?.attachments.length ?? 0) > 0 ? setForwardAsk(true) : forward(false))}>
+          {tr("mail.forward")}</Rowbutton>}
         {/* Archive and spam appear only when the account names a target for them — a button
             that explains on being pressed that it cannot is none. */}
         {!isDraft && (account?.archive_mode === "pattern" ? account?.archive_pattern : account?.folder_archive) && (
@@ -2443,6 +2468,22 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           }} />
       )}
 
+      {forwardAsk && m && (
+        <Dialog title={tr("mail.forward")} onClose={() => setForwardAsk(false)} foot={
+          <>
+            <Button onClick={() => setForwardAsk(false)}>{tr("common.cancel")}</Button>
+            <Button onClick={() => forward(false)}>{tr("mail.forward_without_files")}</Button>
+            <Button variant="primary" onClick={() => forward(true)}>{tr("mail.forward_with_files")}</Button>
+          </>
+        }>
+          <div className="text-sm">
+            {tr("mail.forward_files_question", { n: m.attachments.length })}
+            <ul className="mt-2 list-disc pl-5 text-muted">
+              {m.attachments.map((a) => <li key={a.index}>{a.filename}</li>)}
+            </ul>
+          </div>
+        </Dialog>
+      )}
       {attachmentOn !== null && m && (
         <AttachmentDialog basis={basis} folder={folder} attachments={m.attachments}
           at={attachmentOn} onAt={setAttachmentOn} onClose={() => setAttachmentOn(null)} />
