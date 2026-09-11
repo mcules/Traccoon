@@ -9,8 +9,6 @@ import { formatTime } from "../lib/formatTime";
 import ArtifactFields from "./ArtifactFields";
 import WorkflowInstanceView from "./workflow/WorkflowInstanceView";
 import LifecycleView from "./workflow/LifecycleView";
-import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
-import { NODE_TYPE_LABELS } from "./workflow/types";
 import { BUTTON, BUTTON_SMALL, BUTTON_TEXT} from "./ui";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
@@ -840,7 +838,8 @@ export default function TicketDrawer({
   );
 
   // AI lifecycle. If a process is running, EXACTLY THAT graph is shown (including the
-  // adjustments of the project); otherwise the shipped scheme as an orientation.
+  // adjustments of the project) together with its open approvals and tasks; otherwise the
+  // shipped scheme as an orientation.
   const bLifecycle = (issue.assigned_agent || issue.agent_status != null) && (
     <details open className="mb-4 rounded-lg border border-line">
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-muted">
@@ -852,6 +851,7 @@ export default function TicketDrawer({
             iid={issue.workflow_instance_id}
             projectId={issue.project_id}
             height={asPage ? "360px" : "240px"}
+            members={meta.members}
           />
         ) : (
           <LifecycleView
@@ -865,8 +865,9 @@ export default function TicketDrawer({
     </details>
   );
 
-  // Prozess-Instanzen an diesem Ticket (Workflow-Engine)
-  const bWorkflows = <IssueWorkflows issueId={issue.id} project={project} meta={meta} />;
+  // Other process instances at this ticket; the lifecycle itself sits in bLifecycle.
+  const bWorkflows = <IssueWorkflows issueId={issue.id} project={project} meta={meta}
+                                     skipInstanceId={issue.workflow_instance_id} />;
 
   // (Archiving and deleting now sit at the top in the header, see headerActions.)
 
@@ -996,54 +997,29 @@ export default function TicketDrawer({
   );
 }
 
-/** Compact view of the workflow instances of a ticket plus open steps. */
-function IssueWorkflows({ issueId, project, meta }: { issueId: number; project: Project; meta: ProjectMeta }) {
+/** Compact view of the workflow instances of a ticket plus open steps.
+ *  The lifecycle instance is left out: it has its own block with the same graph and forms,
+ *  showing it twice was the same run in two boxes. */
+function IssueWorkflows({ issueId, project, meta, skipInstanceId }: {
+  issueId: number; project: Project; meta: ProjectMeta; skipInstanceId?: number | null;
+}) {
   const { data: instances } = useQuery({
     queryKey: ["issue-workflows", issueId],
     queryFn: () => workflowApi.instancesForSubject(`issue:${issueId}`),
     refetchInterval: 8000,
   });
-  if (!instances || instances.length === 0) return null;
+  const shown = (instances ?? []).filter((inst) => inst.id !== skipInstanceId);
+  if (shown.length === 0) return null;
 
   return (
     <div className="mb-4 space-y-3">
-      {instances.map((inst) => {
-        const open = inst.steps.filter(
-          (s) => (s.status === "waiting" || s.status === "running") &&
-            (s.node_type === "human_task" || s.node_type === "approval")
-        );
-        return (
-          <div key={inst.id} className="rounded-lg border border-line p-3">
-            <div className="mb-2 text-sm font-medium">Prozess-Instanz #{inst.id}</div>
-            <WorkflowInstanceView iid={inst.id} projectId={project.id} height="240px" compact />
-            {open.length > 0 && (
-              <div className="mt-3 space-y-3">
-                {open.map((s) => {
-                  const node = inst.graph.nodes.find((n) => n.id === s.node_id);
-                  if (!node) return null;
-                  return (
-                    <div key={s.id} className="rounded border border-brand/40 bg-brand/5 p-2">
-                      <div className="mb-1 flex items-center gap-2 text-xs text-muted">
-                        <span className="rounded bg-surface px-1.5 py-0.5">
-                          {tr(NODE_TYPE_LABELS[s.node_type])}
-                        </span>
-                        <span className="text-ink">{node.data.config.label || tr("ticket_drawer.open_step")}</span>
-                      </div>
-                      <WorkflowTaskForm
-                        iid={inst.id}
-                        sid={s.id}
-                        nodeType={s.node_type as "human_task" | "approval"}
-                        config={node.data.config}
-                        members={meta.members}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {shown.map((inst) => (
+        <div key={inst.id} className="rounded-lg border border-line p-3">
+          <div className="mb-2 text-sm font-medium">Prozess-Instanz #{inst.id}</div>
+          <WorkflowInstanceView iid={inst.id} projectId={project.id} height="240px" compact
+                                members={meta.members} />
+        </div>
+      ))}
     </div>
   );
 }

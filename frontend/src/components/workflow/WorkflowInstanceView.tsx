@@ -2,8 +2,10 @@ import { useEffect, useMemo } from "react";
 import { tr } from "../../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "@xyflow/react/dist/style.css";
-import { workflowApi, getToken, type WorkflowInstance } from "../../api";
+import { workflowApi, getToken, type MemberLite, type WorkflowInstance } from "../../api";
 import WorkflowCanvas from "./WorkflowCanvas";
+import WorkflowTaskForm from "./WorkflowTaskForm";
+import { NODE_TYPE_LABELS } from "./types";
 import { graphToFlow } from "./convert";
 import { runtimeStates } from "./runtimeState";
 import Steplog from "./StepLog";
@@ -24,17 +26,53 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "text-muted",
 };
 
-/** Read-only graph of a running or finished instance with the progress highlighted. */
+/** The steps a person has to act on right now (approval, human task), as forms. */
+function OpenSteps({ instance, members }: { instance: WorkflowInstance; members: MemberLite[] }) {
+  const open = instance.steps.filter(
+    (s) => (s.status === "waiting" || s.status === "running") &&
+      (s.node_type === "human_task" || s.node_type === "approval")
+  );
+  if (open.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-3">
+      {open.map((s) => {
+        const node = instance.graph.nodes.find((n) => n.id === s.node_id);
+        if (!node) return null;
+        return (
+          <div key={s.id} className="rounded border border-brand/40 bg-brand/5 p-2">
+            <div className="mb-1 flex items-center gap-2 text-xs text-muted">
+              <span className="rounded bg-surface px-1.5 py-0.5">{tr(NODE_TYPE_LABELS[s.node_type])}</span>
+              <span className="text-ink">{node.data.config.label || tr("ticket_drawer.open_step")}</span>
+            </div>
+            <WorkflowTaskForm
+              iid={instance.id}
+              sid={s.id}
+              nodeType={s.node_type as "human_task" | "approval"}
+              config={node.data.config}
+              members={members}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Read-only graph of a running or finished instance with the progress highlighted.
+ *  With `members` the open approvals and human tasks are shown as forms below it, so the
+ *  place that shows where the run stands is also the place to move it on. */
 export default function WorkflowInstanceView({
   iid,
   projectId,
   height = "360px",
   compact,
+  members,
 }: {
   iid: number;
   projectId?: number | null;
   height?: string;
   compact?: boolean;
+  members?: MemberLite[];
 }) {
   const qc = useQueryClient();
   const { data: instance } = useQuery({
@@ -90,12 +128,14 @@ export default function WorkflowInstanceView({
               <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
             </div>
           </details>
+          {members && <OpenSteps instance={instance as WorkflowInstance} members={members} />}
         </>
       ) : (
         <>
           <div className="overflow-hidden rounded-lg border border-line" style={{ height }}>
             <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
           </div>
+          {members && <OpenSteps instance={instance as WorkflowInstance} members={members} />}
           <details className="mt-2" open>
             <summary className="cursor-pointer text-xs text-muted">
               Verlauf — {instance.steps.length} Schritt{instance.steps.length === 1 ? "" : "e"}
