@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -6,6 +6,7 @@ import {
   Controls,
   MiniMap,
   useReactFlow,
+  useNodesInitialized,
   type NodeTypes,
   type EdgeTypes,
   type OnConnect,
@@ -69,18 +70,31 @@ function Inner(props: WorkflowCanvasProps) {
           onDropNode, focus } = props;
   const rf = useReactFlow();
   const height = useStore((st) => st.height);
+  const ready = useNodesInitialized();
+  const focusRef = useRef(focus);
+  focusRef.current = focus;
+
+  // Show the focus point at the top centre of the surface. Called once the surface is
+  // measured and the nodes are laid out (`onInit`), and again whenever the point changes.
+  const aim = useCallback((duration = 400) => {
+    const f = focusRef.current;
+    const h = height;
+    if (!f || !h) return;
+    const zoom = f.zoom ?? rf.getZoom();
+    const edge = 60;
+    rf.setCenter(f.x, f.y - edge + h / (2 * zoom), { zoom, duration });
+  }, [rf, height]);
 
   // After arranging, the view should stand where the flow begins; otherwise one looks at an
   // arbitrary excerpt of the newly distributed cards after the click.
   useEffect(() => {
-    if (!focus || !height) return;
-    const zoom = focus.zoom ?? rf.getZoom();
-    const edge = 60;
-    rf.setCenter(focus.x, focus.y - edge + height / (2 * zoom), { zoom, duration: 400 });
-    // Deliberately only on `token` (and the first measured height, before that there is
-    // nothing to aim in): aiming at the same target again is a new wish.
+    if (!focus || !height || !ready) return;
+    aim();
+    // Deliberately only on `token` (and on the surface being measured and the nodes laid
+    // out, before that there is nothing to aim in): aiming at the same target again is a
+    // new wish.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus?.token, height > 0]);
+  }, [focus?.token, height > 0, ready]);
 
   const onDrop = useCallback(
     (ev: React.DragEvent) => {
@@ -128,7 +142,12 @@ function Inner(props: WorkflowCanvasProps) {
       // Delete AND backspace remove the selection (edge or node). React Flow ignores the
       // keys while typing in an input field.
       deleteKeyCode={readOnly ? null : ["Delete", "Backspace"]}
-      fitView
+      // With a focus the view is aimed by hand; fitting the whole graph in as well would
+      // undo that a moment later.
+      fitView={!focus}
+      // The first aim happens here: before init a viewport change is thrown away, and the
+      // effect above may already have fired by then.
+      onInit={() => aim(0)}
       proOptions={{ hideAttribution: true }}
       defaultEdgeOptions={{ type: "condition" }}
     >

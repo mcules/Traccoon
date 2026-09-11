@@ -104,7 +104,7 @@ export function BaseNode({
         // A second, thick frame with a gap around the card: the one node the run stands
         // on has to be found at a glance in a graph of forty, and a coloured line alone
         // vanished next to the green ones of the finished steps.
-        <div aria-hidden className="pointer-events-none absolute -inset-2 rounded-lg border-[3px] border-yellow-400 shadow-[0_0_14px_rgba(250,204,21,0.55)]" />
+        <div aria-hidden className="pointer-events-none absolute -inset-2 -top-[11px] rounded-lg border-[3px] border-yellow-400 shadow-[0_0_14px_rgba(250,204,21,0.55)]" />
       )}
       {hasTarget && (
         <Handle type="target" position={Position.Top} className={`${handleDot} !bg-muted`} />
@@ -113,7 +113,7 @@ export function BaseNode({
         {icon && <span>{icon}</span>}
         <span className="truncate">{title}</span>
         {from && <span className="ml-auto text-[9px] uppercase text-amber-300">aus</span>}
-        {rs && <span className={`ml-auto ${rs.text}`}>{rs.icon}</span>}
+        {rs && <span className={`ml-auto leading-none ${rs.text} ${runtimeState === "active" ? "text-2xl" : ""}`}>{rs.icon}</span>}
       </div>
       {children && <div className="mt-1 space-y-0.5 text-[11px] text-muted">{children}</div>}
 
