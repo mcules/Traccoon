@@ -31,6 +31,7 @@ from ..services.assistant_policy import parse_sender, revoke_policy, upsert_poli
 from ..services import assistant_sessions as sessions
 from ..services.artifacts import set_ticket_status
 from ..services.comments import add_system_comment, apply_user_comment
+from ..services.lifecycle_flow import decide_open_approval
 from ..services.spam_review import decide_batch, decide, karte, reclaim
 from ..worker.assistant_gate import apply_perm_decision
 from .mdtg import clip, safe
@@ -315,6 +316,12 @@ async def run_bot() -> None:
             u = (await db.execute(
                 select(User).where(User.telegram_chat_id == str(uid)))).scalar_one_or_none()
             return u is not None
+
+    async def _actor_id(db, uid: int) -> int | None:
+        """The Traccoon user behind a Telegram chat id, for `completed_by` on the step."""
+        u = (await db.execute(
+            select(User).where(User.telegram_chat_id == str(uid)))).scalar_one_or_none()
+        return u.id if u else None
 
     def _kb_for(kind: str, issue_key: str, req_id: int | None) -> InlineKeyboardMarkup | None:
         if kind == "plan_review":
@@ -726,7 +733,8 @@ async def run_bot() -> None:
                 iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
                 if iss and iss.agent_status == TicketAgentStatus.plan_review:
                     who = f"{cq.from_user.first_name or cq.from_user.id} (Telegram)"
-                    if data.startswith("approve:"):
+                    approved = data.startswith("approve:")
+                    if approved:
                         await set_ticket_status(db, iss, TicketAgentStatus.approved)
                         await add_system_comment(db, iss.id, f"✅ Plan freigegeben von {who}")
                     else:
@@ -734,26 +742,39 @@ async def run_bot() -> None:
                         await set_ticket_status(db, iss, None, board=False)
                         await add_system_comment(db, iss.id, f"✖ Plan abgelehnt von {who}")
                     iss.hold_reason = None
+                    # The approval is a STEP in the process, not a field on the ticket. The
+                    # status alone left the graph waiting on `approve_plan` while the ticket
+                    # looked approved (seen on 2026-09-11). Advancing stays with the backend
+                    # tick, the same as for the worker tools.
+                    decided = await decide_open_approval(
+                        db, iss, "approved" if approved else "rejected",
+                        await _actor_id(db, cq.from_user.id))
                     await db.commit()
                     await cq.answer("OK")
-                    await _done(cq, "✅ Plan freigegeben" if data.startswith("approve:")
-                                    else "✖ Plan abgelehnt")
+                    note = "✅ Plan freigegeben" if approved else "✖ Plan abgelehnt"
+                    if not decided:
+                        note += " (no approval was waiting in the flow)"
+                    await _done(cq, note)
                 else:
                     await cq.answer("no longer open")
                     await _done(cq, "⏭ no longer open (decided elsewhere)")
             elif data.startswith("accept:"):
                 key = data.split(":", 1)[1]
                 iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
-                if iss and iss.agent_status in (TicketAgentStatus.to_test, TicketAgentStatus.testing):
-                    await set_ticket_status(db, iss, TicketAgentStatus.done)
-                    iss.resolved_at = _now()
-                    iss.hold_reason = None
+                if iss and iss.agent_status in (TicketAgentStatus.to_test, TicketAgentStatus.testing,
+                                                TicketAgentStatus.hold):
+                    # Same as /complete in the API: the acceptance decides the waiting
+                    # approval, everything after it (test environment, merge, deploy) is the
+                    # process "acceptance and delivery". The old direct `accept` job skipped
+                    # that process and left its approval node waiting.
+                    who = f"{cq.from_user.first_name or cq.from_user.id} (Telegram)"
+                    await add_system_comment(db, iss.id, f"✅ Abnahme durch {who}")
+                    decided = await decide_open_approval(
+                        db, iss, "approved", await _actor_id(db, cq.from_user.id))
                     await db.commit()
-                    from ..core.redis import enqueue_task
-                    await enqueue_task({"kind": "accept", "task_id": f"accept-{iss.key}",
-                                        "issue_id": iss.id, "project_id": iss.project_id})
                     await cq.answer("Accepted")
-                    await _done(cq, "✅ Accepted")
+                    await _done(cq, "✅ Accepted" if decided
+                                    else "✅ Accepted (no approval was waiting in the flow)")
                 else:
                     await cq.answer("no longer open")
                     await _done(cq, "⏭ no longer open (decided elsewhere)")
