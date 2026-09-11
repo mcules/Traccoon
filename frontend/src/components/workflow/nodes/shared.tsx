@@ -21,7 +21,7 @@ const RS: Record<RuntimeState, { icon: string; ring: string; text: string }> = {
   // a thicker border, a glow around it and a pulsing marker, not just a yellow line.
   active: {
     icon: "◉",
-    ring: "border-2 border-yellow-400 shadow-[0_0_0_4px_rgba(250,204,21,0.35),0_0_18px_rgba(250,204,21,0.45)]",
+    ring: "border-yellow-400",
     text: "text-yellow-300 animate-pulse",
   },
   pending: { icon: "○", ring: "border-line", text: "text-muted" },
@@ -100,6 +100,12 @@ export function BaseNode({
       } ${from ? "opacity-60 [border-style:dashed]" : ""}`}
       style={{ minWidth: Math.max(160, labeled * 92) }}
     >
+      {runtimeState === "active" && (
+        // A second, thick frame with a gap around the card: the one node the run stands
+        // on has to be found at a glance in a graph of forty, and a coloured line alone
+        // vanished next to the green ones of the finished steps.
+        <div aria-hidden className="pointer-events-none absolute -inset-2 rounded-lg border-[3px] border-yellow-400 shadow-[0_0_14px_rgba(250,204,21,0.55)]" />
+      )}
       {hasTarget && (
         <Handle type="target" position={Position.Top} className={`${handleDot} !bg-muted`} />
       )}
