@@ -69,6 +69,14 @@
      * would otherwise be a hundred messages before the first one is drawn.
      */
     texts: function () { return ask("i18n.texts"); },
+    /**
+     * A foreign address, fetched by the host in its own name — only hosts the manifest lists
+     * under `allowed_hosts`. Text comes back as `{status, content_type, body}`, anything
+     * else as `{status, content_type, body_base64}`, ready for a `data:` address.
+     */
+    fetch: function (url, opt) {
+      return ask("fetch", { url: url, method: opt && opt.method, headers: opt && opt.headers });
+    },
     /** The plugin's own storage (tables from the manifest). */
     store: {
       list: function (table) { return ask("store.list", { table: table }); },

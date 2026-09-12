@@ -89,6 +89,18 @@ const CALLS: Record<string, Call> = {
       texts: textsWithPrefix(`${slug}.`),
     }),
   },
+  // A foreign address through the house's proxy. The server measures it against the
+  // plugin's `allowed_hosts` and speaks there with its own name; the plugin itself cannot
+  // reach the network (`connect-src 'none'`), and a sandboxed frame could not identify
+  // itself to anybody if it could.
+  fetch: {
+    fetch: (a, { slug }) =>
+      api.post(`/plugins/${slug}/fetch`, {
+        url: String(a?.url || ""),
+        method: String(a?.method || "GET"),
+        headers: a?.headers && typeof a.headers === "object" ? a.headers : {},
+      }),
+  },
   "store.list": {
     fetch: (a, { slug }) =>
       api.get(`/plugins/${slug}/data/${encodeURIComponent(String(a?.table || ""))}`),

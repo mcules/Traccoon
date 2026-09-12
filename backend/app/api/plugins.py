@@ -11,10 +11,12 @@ grants it.
 """
 from __future__ import annotations
 
+import base64
 import io
 import ipaddress
 import json
 import socket
+import time
 import zipfile
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -363,6 +365,47 @@ def _ssrf_ok(url: str, allowed_hosts: list[str]) -> bool:
     return True
 
 
+# The proxy's own name at the door. Servers that want to know whom they serve get the
+# house's name and not a plugin's guess: OpenStreetMap's tile servers, for one, answer a
+# browser without a Referer with a block tile, and a plugin frame (origin `null`) can never
+# send one — an identifiable User-Agent is the other door their policy leaves open.
+PROXY_USER_AGENT = "Traccoon (+https://github.com/mcules/Traccoon)"
+PROXY_MAX_BYTES = 5 * 1024 * 1024
+_TEXTUAL = ("text/", "application/json", "application/xml", "application/javascript", "+json", "+xml")
+
+# What the proxy keeps of GET answers, for as long as the far side allows (`max-age`) and
+# a day at most: a map tile the person scrolls back to within the hour need not travel
+# again, and a tile server counts a repeat as a reason to block. Bounded, oldest out first.
+_CACHE: dict[str, tuple[float, dict]] = {}
+_CACHE_MAX = 2000
+_CACHE_CAP_S = 24 * 3600
+
+
+def _max_age(headers) -> int:
+    control = (headers.get("cache-control") or "").lower()
+    if "no-store" in control or "no-cache" in control:
+        return 0
+    for part in control.split(","):
+        part = part.strip()
+        if part.startswith("max-age="):
+            try:
+                return max(0, int(part[8:]))
+            except ValueError:
+                return 0
+    return 0
+
+
+def _proxy_answer(r: httpx.Response) -> dict:
+    """Text as text, everything else as base64 — a plugin cannot read bytes out of JSON."""
+    ctype = r.headers.get("content-type", "")
+    content = r.content[:PROXY_MAX_BYTES]
+    if not content or any(t in ctype for t in _TEXTUAL):
+        return {"status": r.status_code, "content_type": ctype,
+                "body": content.decode(r.encoding or "utf-8", errors="replace")}
+    return {"status": r.status_code, "content_type": ctype,
+            "body_base64": base64.b64encode(content).decode()}
+
+
 @router.post("/{slug}/fetch")
 async def fetch_proxy(slug: str, data: FetchIn, _: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
@@ -370,9 +413,24 @@ async def fetch_proxy(slug: str, data: FetchIn, _: User = Depends(get_current_us
     if not _ssrf_ok(data.url, plugin.allowed_hosts or []):
         raise Error(400, "err.url_not_allowed",
                      "URL not allowed (SSRF protection / allowed_hosts)")
+    method = (data.method or "GET").upper()
+    if method == "GET":
+        hit = _CACHE.get(data.url)
+        if hit and hit[0] > time.monotonic():
+            return hit[1]
+    # The plugin may add headers, but the name at the door is the house's.
+    headers = {**{k: v for k, v in (data.headers or {}).items() if k.lower() != "user-agent"},
+               "User-Agent": PROXY_USER_AGENT}
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-            r = await client.request(data.method, data.url, headers=data.headers, content=data.body)
-        return {"status": r.status_code, "body": r.text[:5 * 1024 * 1024]}
+            r = await client.request(method, data.url, headers=headers, content=data.body)
     except Exception as exc:  # noqa: BLE001
         raise Error(502, "err.fetch_error", "Fetch error: {reason}", reason=exc)
+    answer = _proxy_answer(r)
+    keep = _max_age(r.headers) if method == "GET" and r.status_code == 200 else 0
+    if keep:
+        if len(_CACHE) >= _CACHE_MAX:
+            for stale in sorted(_CACHE, key=lambda u: _CACHE[u][0])[:_CACHE_MAX // 10]:
+                _CACHE.pop(stale, None)
+        _CACHE[data.url] = (time.monotonic() + min(keep, _CACHE_CAP_S), answer)
+    return answer
