@@ -18,6 +18,8 @@ _MUTATING = (
     "replace", "remove", "move", "post", "put", "set_", "exec", "commit",
     "push", "send", "upload", "rename", "manage", "deploy", "build", "shell",
     "save", "mark",
+    # Attaching a file to a note writes into the vault as much as a save does.
+    "attach",
 )
 
 _RESOURCE_KEYS = ("path", "file_path", "file", "filename", "target_path",

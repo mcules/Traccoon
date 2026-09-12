@@ -89,9 +89,13 @@ async def release(db: AsyncSession, session_id: int | None) -> AssistantTask | N
     carrier = waiting[-1]
     if len(waiting) > 1:
         joined = join(text_of(x) for x in waiting)
+        # The files of every folded-in message ride along: a photo sent a moment before the
+        # words that explain it must not vanish with the message it came in.
+        files = [f for x in waiting for f in ((x.meta or {}).get("chat_files") or [])]
         carrier.meta = {**(carrier.meta or {}), "chat_text": joined,
                         # So the answer can say what it is answering.
-                        "merged_from": [x.id for x in waiting[:-1]]}
+                        "merged_from": [x.id for x in waiting[:-1]],
+                        **({"chat_files": files} if files else {})}
         for earlier in waiting[:-1]:
             earlier.status = MERGED
             earlier.result = ""

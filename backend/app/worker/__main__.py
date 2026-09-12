@@ -894,6 +894,24 @@ REPORT_RULE = (
 )
 
 
+def _files_note(files: list[dict]) -> str:
+    """What the message carries, and what to do about it: look, decide, hand on, report."""
+    lines = "\n".join(
+        f"- #{f.get('id')} {f.get('filename')} ({f.get('mime_type')}, {f.get('size')} bytes)"
+        for f in files)
+    return (
+        "Your person attached these files to the message:\n" + lines + "\n"
+        "Look at a file with `traccoon_file_read` whenever its content matters. Then decide "
+        "yourself whether it belongs anywhere: a receipt, an invoice, a letter or a contract is "
+        "a document for the document filing (`paperless__post_document`, field `file`, with "
+        "`filename` and a good `title`); something worth keeping next to a note goes into the "
+        "vault (`vault__notes_attach`, field `data`, with `name` and the `note` or `folder`); a "
+        "picture that only illustrates a question needs no filing at all. Hand a file on with "
+        "`traccoon_file_forward` — you never carry its content yourself. Say in one line per "
+        "file what you did with it, or why nothing was needed."
+    )
+
+
 async def _reference_source(db, task_id) -> str:
     """Extra context for the quoted message: what was the original mail about?"""
     if not task_id:
@@ -985,6 +1003,8 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             # traccoon_* tools (with the rights of your person), personal things through your own tools.
             prompt = (meta.get("chat_text") or t.title) + (
                 f"\n\n(Kontext: gelernte Vorgabe — {t.action_hint})" if t.action_hint else "")
+            if meta.get("chat_files"):
+                prompt += "\n\n" + _files_note(meta["chat_files"])
             # A reply to one particular message: that message is the reference, not the
             # conversation in general. Without it "do that" would have no object, and the
             # earlier item (mail, approval) would only exist as a scrap of memory.

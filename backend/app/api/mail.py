@@ -8,13 +8,14 @@ import logging
 import re
 
 from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.error import Error
 from ..db import get_session
-from ..models.assistant import AssistantPermission, AssistantPolicy, AssistantTask
+from ..models.assistant import AssistantFile, AssistantPermission, AssistantPolicy, AssistantTask
 from ..models.user import User
 from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
 from ..services.assistant_policy import upsert_policy
@@ -393,6 +394,8 @@ def _chat_out(t: AssistantTask) -> dict:
         # live events of its own chat message has to guess.
         "run_id": t.run_id,
         "pending_tool": t.pending_tool, "created_at": t.created_at, "finished_at": t.finished_at,
+        # What went out with the message: id, name, type, size. The bytes are a request away.
+        "files": (t.meta or {}).get("chat_files") or [],
     }
 
 
@@ -401,6 +404,8 @@ class ChatIn(BaseModel):
     # Optional so that a client which knows nothing of sessions can still send: without it the
     # channel pointer decides, and a conversation comes into being when there is none.
     session_id: int | None = None
+    # Files uploaded beforehand (`POST /assistant/files`) that go out with this message.
+    file_ids: list[int] = []
 
 
 class DecideIn(BaseModel):
@@ -502,8 +507,13 @@ async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
     that a person who was last in a session in the browser finds the same one after a reload.
     """
     text = (data.text or "").strip()
-    if not text:
+    files = await _files_for_message(db, user, data.file_ids)
+    if not text and not files:
         raise Error(400, "err.empty_message", "Empty message")
+    if not text:
+        # Files without words: their names are the message, so the list has something to
+        # show and the run something to start from.
+        text = ", ".join(f.filename for f in files)
     if data.session_id and await sessions.get_owned(db, data.session_id, user.id) is None:
         raise Error(404, "err.not_found", "Not found")
     s = await sessions.for_message(db, user.id, "web", text, session_id=data.session_id)
@@ -512,18 +522,86 @@ async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
     # conversation answer each other's questions.
     from ..services import assistant_queue
     wartet = await assistant_queue.busy(db, s.id)
+    meta = {"chat_text": text}
+    if files:
+        meta["chat_files"] = _files_out(files)
     t = AssistantTask(owner_user_id=user.id, kind="chat", source="web",
                       status="queued" if wartet else "approved",
-                      title=text[:200], meta={"chat_text": text}, session_id=s.id)
+                      title=text[:200], meta=meta, session_id=s.id)
     db.add(t)
     await db.commit()
     await db.refresh(t)
+    if files:
+        # Bound to the message: from now on the run can find them, and no second message can
+        # take them along again.
+        for f in files:
+            f.task_id = t.id
+        await db.commit()
     if not wartet:
         from ..core.redis import enqueue_task
         # A conversation goes into the lane of its own: somebody is sitting in front of it.
         await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
                             "assistant_task_id": t.id, "is_chat": True})
     return _chat_out(t)
+
+
+# ---- Files with a message ----
+#
+# Uploaded first, sent with the message by id. Two requests instead of one multipart post,
+# so the chat route stays JSON and a client can show a file as attached before the words are
+# written. The bytes live in the database like a ticket attachment, and the same cap applies.
+
+MAX_FILE_BYTES = 20 * 1024 * 1024
+
+
+def _files_out(rows) -> list[dict]:
+    return [{"id": f.id, "filename": f.filename, "mime_type": f.mime_type, "size": f.size}
+            for f in rows]
+
+
+async def _files_for_message(db: AsyncSession, user: User, ids: list[int] | None) -> list[AssistantFile]:
+    """The person's own files with these ids, not yet bound to a message; in the order named.
+
+    A foreign id, an unknown one and one that already went out all get the same answer, so
+    nothing about other people's files can be probed through the chat.
+    """
+    wanted = [int(i) for i in (ids or [])]
+    if not wanted:
+        return []
+    rows = (await db.execute(select(AssistantFile).where(
+        AssistantFile.id.in_(wanted), AssistantFile.owner_user_id == user.id,
+        AssistantFile.task_id.is_(None)))).scalars().all()
+    if len(rows) != len(set(wanted)):
+        raise Error(404, "err.not_found", "Not found")
+    return sorted(rows, key=lambda f: wanted.index(f.id))
+
+
+@router.post("/assistant/files", status_code=201)
+async def chat_upload(file: UploadFile = File(...), user: User = Depends(get_current_user),
+                      db: AsyncSession = Depends(get_session)):
+    """Keep a file for a message that is about to be sent. Answers with what the message needs."""
+    raw = await file.read()
+    if not raw:
+        raise Error(400, "err.empty_file", "Empty file")
+    if len(raw) > MAX_FILE_BYTES:
+        raise Error(400, "err.file_too_large_mb", "File too large (>20MB)")
+    row = AssistantFile(owner_user_id=user.id, filename=(file.filename or "datei")[:500],
+                        mime_type=(file.content_type or "application/octet-stream")[:120],
+                        size=len(raw), data=raw)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _files_out([row])[0]
+
+
+@router.get("/assistant/files/{fid}")
+async def chat_file(fid: int, user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)):
+    row = await db.get(AssistantFile, fid)
+    if row is None or not is_owner_or_admin(row.owner_user_id, user):
+        raise Error(404, "err.not_found", "Not found")
+    return Response(content=row.data, media_type=row.mime_type,
+                    headers={"Content-Disposition": f'inline; filename="{row.filename}"'})
 
 
 @router.post("/assistant/transcribe")

@@ -39,6 +39,7 @@ from . import compaction as _compaction
 from .compaction import compact as _compact
 from .compaction import handover as _handover
 from .read_ledger import ReadLedger as _ReadLedger
+from .tools_files import FILE_TOOL_NAMES, FILE_TOOLS, call_file_tool
 from .tools_traccoon import (
     TRACCOON_GATED_TOOLS,
     TRACCOON_TOOL_NAMES,
@@ -1310,6 +1311,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             if owner_id:
                 for _t in TRACCOON_TOOLS:
                     _maybe(_t)
+                # The files a person attached to a chat message: reading them, and handing
+                # them on to a filing tool without the bytes passing through the model.
+                if assistant_task_id:
+                    for _t in FILE_TOOLS:
+                        _maybe(_t)
             if mode == "plan":
                 openai_tools.append(SUBMIT_PLAN_TOOL)
 
@@ -1649,6 +1655,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     if call.name == "traccoon_http_call":
                         _gated = str(call.arguments.get("method") or "GET").upper() not in (
                             "GET", "HEAD", "OPTIONS")
+                    # Handing a file on is exactly as consequential as the tool it goes to:
+                    # the gate looks at that one. Reading a file changes nothing.
+                    if call.name == "traccoon_file_forward":
+                        _gated = perms.is_gated(str(call.arguments.get("tool") or ""))
+                    elif call.name == "traccoon_file_read":
+                        _gated = False
                     if assistant_task_id and _gated:
                         _atask = await db.get(AssistantTask, assistant_task_id)
                         if _atask is not None:
@@ -1748,6 +1760,9 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         result = await _do_screenshot(call.arguments, testenv_url or project.get("live_url", ""))
                     elif call.name == "read_attachment":
                         result = await _do_read_attachment(db, issue_id, call.arguments)
+                    elif call.name in FILE_TOOL_NAMES:
+                        result = await call_file_tool(db, mcp, owner_id, call.name, call.arguments,
+                                                      allowed=agent.tool_allowed)
                     elif call.name in TRACCOON_TOOL_NAMES:
                         result = await call_traccoon_tool(db, owner_id, call.name, call.arguments,
                                                           assistant_task_id)

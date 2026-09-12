@@ -1,7 +1,8 @@
 import datetime as dt
 
 from sqlalchemy import (
-    Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, text,
+    Boolean, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text,
+    UniqueConstraint, func, text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -383,3 +384,25 @@ class ChatSummary(TimestampMixin, Base):
         ForeignKey("assistant_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
     to_task_id: Mapped[int] = mapped_column(Integer, default=0)
     text: Mapped[str] = mapped_column(Text, default="")
+
+
+class AssistantFile(Base):
+    """A file the person handed the assistant along with a chat message.
+
+    Kept as bytes in the database like a ticket attachment, and bound to the message it went
+    out with (`task_id`), so the run that answers the message can find it and nothing else
+    can. Unbound rows are files uploaded and never sent. The bytes belong to the person, not
+    to a project: the assistant serves one human, and its files follow that line.
+    """
+    __tablename__ = "assistant_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assistant_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
