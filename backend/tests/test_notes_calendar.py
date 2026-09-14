@@ -296,6 +296,29 @@ def test_running_it_twice_changes_nothing_the_second_time() -> None:
     assert twice.added == 0 and twice.updated == 0
 
 
+def test_the_day_is_listed_in_the_order_it_happens() -> None:
+    """An appointment that turns up after the day was first written must not
+    sit at the end of the list. What is written under one moves with it."""
+    note = """# Termine
+
+- 09:00 Daily Dev · Vostura
+\t- was ich mir dazu notiert habe
+- 13:00 Klinikum anrufen · Privat
+
+# Notizen
+"""
+    events = [ev("Daily Dev", "09:00", "Vostura"), ev("Klinikum anrufen", "13:00"),
+              ev("Frist"), ev("Augenarzt", "11:00"), ev("Anrufen", "08:30")]
+    out = cd.apply_lines(note, events)
+    section = out.text.split("# Termine\n")[1].split("# Notizen")[0].strip().split("\n")
+    assert [l.split(" ")[1] for l in section] == [
+        "Frist", "08:30", "09:00", "was", "11:00", "13:00"], section
+    assert "· Privat ^ev-" in section[-1] and "\n\n# Notizen\n" in out.text
+    # A line the feed no longer carries keeps its place by its own time.
+    twice = cd.apply_lines(out.text, [ev("Daily Dev", "09:00", "Vostura")])
+    assert twice.text == out.text
+
+
 def test_the_note_of_a_day_is_where_the_vault_puts_it() -> None:
     day = dt.date(2026, 9, 3)
     assert cd.daily_note_path(day, "05 Daily Notes", "YYYY/MM/YYYY-MM-DD") == \

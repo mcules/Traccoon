@@ -266,7 +266,8 @@ def apply_lines(content: str, events: list[Event], *, heading: str = HEADING,
 
     fresh = [e for e in events if e.id not in seen]
     if fresh:
-        # At the end of the section, before its trailing blank lines.
+        # At the end of the section, before its trailing blank lines. Where in
+        # the day it belongs is settled below, for the whole section at once.
         while out and not out[-1].strip():
             out.pop()
         for event in fresh:
@@ -279,8 +280,42 @@ def apply_lines(content: str, events: list[Event], *, heading: str = HEADING,
                 out.extend(template.lines)
         out.append("")
 
+    out = in_order(out)
     return Result(text="\n".join(lines[:head + 1] + out + lines[end:]),
                   added=added, updated=updated, cancelled=cancelled)
+
+
+def in_order(section: list[str]) -> list[str]:
+    """The section's appointments in the order they happen — all day first,
+    then by the clock — each taking what is written under it along.
+
+    An appointment that turns up after the day was first written used to land
+    at the end of the list, so a note synced twice showed 13:00 before 08:30.
+    The order is read off the lines themselves, not off the events, so a line
+    the feed no longer has — struck through, moved away — keeps its place in
+    the day too. Two at the same time stay as they were.
+    """
+    lead: list[str] = []                # anything before the first appointment
+    blocks: list[tuple[tuple[int, str], list[str]]] = []
+    for line in section:
+        m = EVENT_LINE.match(split_block_id(line)[0])
+        if m and not m.group(1):
+            time = m.group(2)
+            blocks.append(((1 if time else 0, time or ""), [line]))
+        elif blocks:
+            blocks[-1][1].append(line)
+        else:
+            lead.append(line)
+    if not blocks:
+        return section
+    # The blank lines that close the section belong to the section, not to
+    # whichever appointment happened to be written last.
+    tail: list[str] = []
+    last = blocks[-1][1]
+    while len(last) > 1 and not last[-1].strip():
+        tail.insert(0, last.pop())
+    blocks.sort(key=lambda b: b[0])
+    return lead + [line for _, block in blocks for line in block] + tail
 
 
 KEEP = object()                     # "leave that annotation as it is"
