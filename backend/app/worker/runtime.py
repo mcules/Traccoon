@@ -1790,7 +1790,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         try:
                             result = await mcp.call(call.name, call.arguments)
                         except Exception as exc:  # noqa: BLE001
-                            result = f"TOOL-ERROR: {exc}"
+                            # repr, not str: httpx raises ReadTimeout with an EMPTY message, and
+                            # "TOOL-ERROR: " told nobody anything. On 2026-09-16 that hid a
+                            # paperless-mcp hang for a whole morning; "ReadTimeout('')" names it.
+                            result = f"TOOL-ERROR: {exc!r}"
 
                     # Before ANYTHING else happens with it. The next two steps both encode to
                     # UTF-8 — the step row goes into Postgres, the message to the provider —

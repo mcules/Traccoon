@@ -138,7 +138,8 @@ async def call_file_tool(db: AsyncSession, mcp: Any, owner_id: int | None, name:
         try:
             out = await mcp.call(tool, arguments)
         except Exception as exc:  # noqa: BLE001
-            return f"TOOL-ERROR: {exc}"
+            # repr for the same reason as in runtime.py: a timeout has no message.
+            return f"TOOL-ERROR: {exc!r}"
         text = out if isinstance(out, str) else str(out)
         return f"{tool} took {head}:\n{text[:MAX_ANSWER]}"
 
