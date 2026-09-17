@@ -628,11 +628,14 @@ def _listing_sync(account: MailAccount, folder: str, search: str, offset: int,
                 "messages": [_row(uid, raw.get(uid) or {}, folder) for uid in excerpt]}
 
 
-# How the server is asked to thread. REFERENCES follows the headers a mail carries about
-# what it answers (`In-Reply-To`, `References`) and is the one that gets it right; ORDERED‐
-# SUBJECT only groups by subject and is the emergency exit. A server that offers neither
-# gets no conversations — and says so, rather than pretending with a guess of our own.
-_THREADING = ("REFERENCES", "REFS", "ORDEREDSUBJECT")
+# How the server is asked to thread. REFS follows only the headers a mail carries about
+# what it answers (`In-Reply-To`, `References`) and is the one that gets it right. REFERENCES
+# (RFC 5256) does the same but then merges every root with the same subject into one thread,
+# which glues order mails of different shops together — shop software sends "New document
+# for your order" to everyone. ORDEREDSUBJECT only groups by subject and is the emergency
+# exit. A server that offers none of them gets no conversations — and says so, rather than
+# pretending with a guess of our own.
+_THREADING = ("REFS", "REFERENCES", "ORDEREDSUBJECT")
 
 
 def _algorithm(client) -> str:
