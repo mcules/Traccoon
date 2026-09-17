@@ -106,11 +106,43 @@ async def _as_flow(db: AsyncSession, sub: WebhookSub, key: str, graph: dict,
     log.info("webhook %s (%s) now runs through the flow %s", sub.route, key, d.key)
 
 
+# The context keys the mail intake was converted with before the rename of 2026-08-20.
+# The graphs were migrated (`workflow_terms`), the fixed context of the webhook was not:
+# it kept saying `eingang.classify_agent` while every step read `intake.classify_agent`.
+# Nothing failed loudly — the local model was simply never asked and the assistant got
+# the mail without its prompt, for four weeks (found 2026-09-17).
+_OLD_CONTEXT_PREFIXES = {"eingang.": "intake."}
+
+
+async def rename_context_keys(db: AsyncSession) -> int:
+    """Bring the fixed context of every webhook onto today's key names. Idempotent."""
+    subs = (await db.execute(select(WebhookSub).where(
+        WebhookSub.context_fixed.isnot(None)))).scalars().all()
+    count = 0
+    for sub in subs:
+        fixed = sub.context_fixed or {}
+        renamed = {}
+        for key, value in fixed.items():
+            new_key = key
+            for old, new in _OLD_CONTEXT_PREFIXES.items():
+                if key.startswith(old):
+                    new_key = new + key[len(old):]
+            renamed[new_key] = value
+        if renamed != fixed:
+            sub.context_fixed = renamed
+            count += 1
+            log.info("Webhook %s: fixed context renamed onto the current keys", sub.route)
+    return count
+
+
 async def convert(db: AsyncSession) -> int:
     """Converts everything that still carries an old mode. Returns the count."""
+    renamed = await rename_context_keys(db)
     subs = (await db.execute(select(WebhookSub).where(
         WebhookSub.mode.in_(OLD_MODI)))).scalars().all()
     if not subs:
+        if renamed:
+            await db.commit()
         return 0
     for sub in subs:
         if sub.mode == "assistant" and _is_mail(sub):

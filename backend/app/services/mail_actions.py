@@ -19,6 +19,7 @@ Nothing here decides what comes next; that is done by the branches in the graph.
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit
 
 from ..models.workflow import WorkflowInstance
 from .i18n import tr
@@ -34,6 +35,20 @@ def _mail(ctx: dict) -> dict:
 def _intake(ctx: dict) -> dict:
     e = ctx.get("intake")
     return e if isinstance(e, dict) else {}
+
+
+def _link_hosts(payload: dict) -> list[str]:
+    """The hosts the links of the mail lead to, each once, in the order they appear."""
+    out: list[str] = []
+    for link in payload.get("links") or []:
+        href = str((link or {}).get("href") or "") if isinstance(link, dict) else ""
+        try:
+            host = (urlsplit(href).hostname or "").lower()
+        except ValueError:
+            host = ""
+        if host and host not in out:
+            out.append(host)
+    return out
 
 
 def _owner(inst: WorkflowInstance, ctx: dict) -> int | None:
@@ -79,7 +94,9 @@ async def classify(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
                                       subject=subject, body=body,
                                       classify_agent=classify_agent,
                                       spam_hints=rule.reasons,
-                                      spam_examples=await spam_learn.examples(db, owner_id))
+                                      spam_examples=await spam_learn.examples(db, owner_id),
+                                      recipient=str(payload.get("to") or ""),
+                                      link_hosts=_link_hosts(payload))
     else:
         classification = {"category": "", "priority": "normal", "sensitive": False,
                   "redacted_summary": "", "spam_score": 0.0, "spam_reason": "",

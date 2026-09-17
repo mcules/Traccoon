@@ -296,6 +296,14 @@ def _mail_intake() -> dict:
     "Not spam" deliberately leads NOT into nothing but into the assistant branch: a mail
     that was suspected wrongly should be workable completely normally afterwards. Before, it
     stayed lying around as an item without a card.
+
+    One more gate stands in front of the assistant: bulk mail. The watcher used to drop
+    everything with an unsubscribe header before this flow ever saw it, and that was the
+    hole: a phish that copies a newsletter footer passed on its headers alone (2026-09-17,
+    three of them in one morning, SPF and DKIM clean). Now the watcher delivers such mail
+    tagged `massenpost:*`, the model reads the text, and only what came through the spam
+    check as unremarkable AND is bulk ends here without an item. Everything the check
+    finds goes its usual way — a fraud in a newsletter's clothing is moved like any other.
     """
     nodes = [
         _n("start", "start", 0, 0, {
@@ -437,6 +445,21 @@ def _mail_intake() -> dict:
         # starts itself when a learned rule releases it. What makes the mail case are its
         # values — they stand in `mail_actions.ASSIGNMENT_PARAMS` so that the template and the
         # legacy names do not drift apart.
+        # Bulk mail that the check found unremarkable is a newsletter, and a newsletter is
+        # nobody's task. The tag comes from the watcher (`massenpost:` for a clean bulk
+        # header, `massenpost_aber_*` for one it let through on suspicion); either way,
+        # once the check has cleared it there is nothing left to do.
+        _n("massenpost", "decision", 0, 7, {
+            "label": "Massenpost?",
+            "branches": [
+                {"handle": "bulk", "label": "Newsletter, nichts zu tun",
+                 "guard": {"in": ["massenpost", {"var": "mail.filter_decision"}]}},
+                {"handle": "post", "label": "an den Assistenten"},
+            ],
+            "default_handle": "post",
+        }),
+        _n("end_bulk", "end", 1, 8, {"label": "Massenpost, still beendet",
+                                     "outcome": "completed"}),
         _n("item", "auto_action", 0, 8,
            _action("assistant_task", "Assistent-Eingang anlegen", **TASK_PARAMS)),
         _n("ist_auto", "decision", 0, 9, {
@@ -480,13 +503,16 @@ def _mail_intake() -> dict:
         _e("weg", "notiz"),
         _e("notiz", "end_spam"),
         # Suspected wrongly: the sender is remembered, the mail goes its normal way.
-        _e("kein_spam", "item"),
+        _e("kein_spam", "massenpost"),
 
-        # Four paths, one target: the assistant handles the mail like any other.
-        _e("weiche", "item", "sauber"),
-        _e("weiche", "item", "aus", "detection off"),
-        _e("weiche", "item", "kontakt", "bekannt"),
-        _e("weiche", "item", "geklaert_ham", "learned: wanted"),
+        # Four paths, one target: the assistant handles the mail like any other — unless
+        # it is bulk mail, which ends quietly once the check has cleared it.
+        _e("weiche", "massenpost", "sauber"),
+        _e("weiche", "massenpost", "aus", "detection off"),
+        _e("weiche", "massenpost", "kontakt", "bekannt"),
+        _e("weiche", "massenpost", "geklaert_ham", "learned: wanted"),
+        _e("massenpost", "end_bulk", "bulk"),
+        _e("massenpost", "item", "post"),
         _e("item", "ist_auto"),
         # The released path needs no step any more: it is already running.
         _e("ist_auto", "end_item", "auto", "already running"),

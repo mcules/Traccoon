@@ -60,6 +60,38 @@ async def test_an_empty_answer_falls_back_safely(db, anna, monkeypatch):
     assert "geheim" not in str(out)
 
 
+async def test_recipient_and_link_targets_reach_the_model(db, anna, monkeypatch):
+    """The two facts the text does not carry, and the ones a phish trips over: whom it was
+    sent to, and where its buttons lead."""
+    seen = {}
+
+    async def fake_chat(self, **kw):
+        seen.update(kw)
+        return ChatResponse(text='{"category": "phishing", "spam_score": 0.97, "betrug": true}')
+
+    monkeypatch.setattr(mail_classify.OpenAIProvider, "chat", fake_chat)
+    out = await mail_classify.classify_email(
+        db, anna.id, account="privat", sender="Finom Support <info@dachdecker.example>",
+        subject="Geräteautorisierung", body="Bitte verifizieren Sie Ihr Gerät.",
+        classify_agent="mail_classifier", recipient="de@catchall.example",
+        link_hosts=["verify-finom.example"])
+
+    prompt = seen["messages"][1]["content"]
+    assert "An: de@catchall.example" in prompt
+    assert "Linkziele (Hosts): verify-finom.example" in prompt
+    assert out["betrug"] is True and out["spam_score"] == 0.97
+
+
+def test_link_hosts_come_out_once_each_and_in_order():
+    from app.services.mail_actions import _link_hosts
+    payload = {"links": [{"href": "https://Shop.example/a", "text": "a"},
+                         {"href": "https://shop.example/b", "text": "b"},
+                         {"href": "http://tracker.example/x", "text": "c"},
+                         {"href": "mailto:x@y.z", "text": "d"}, "kaputt", None]}
+    assert _link_hosts(payload) == ["shop.example", "tracker.example"]
+    assert _link_hosts({}) == []
+
+
 # --- What the model returns ------------------------------------------------------------
 
 def test_the_string_false_is_not_a_yes():

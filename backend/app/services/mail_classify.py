@@ -67,7 +67,13 @@ _SYSTEM = (
     "the two belong together. Pushy advertising, an unwanted newsletter or the real dunning "
     "letter of the real provider are NO fraud: there betrug stays false, even when the "
     "spam_score is high. Watch WHO really sends: a known brand name in the display name with a "
-    "foreign sender domain is the most common pattern.\n"
+    "foreign sender domain is the most common pattern. Judge the content on its own: a "
+    "company the recipient has no business with, writing about an account, a device, a "
+    "verification or a parcel, is fraud even when every header is in order. An "
+    "unsubscribe footer or a legal notice proves nothing, fraud copies both. Also weigh the "
+    "recipient: mail about a personal account sent to a role address or a catch-all of "
+    "another domain is a mass send, not a customer notice. And the link targets: a button "
+    "that leads somewhere other than the house that claims to write is a give-away.\n"
     "On merkmale: one short identifier per finding that can be recognised again "
     "(marke_fremde_domain, drohung_sperrung, zahlungsaufforderung), plus one sentence in plain "
     "words. The identifier is counted, the sentence is read. Name only what you really see."
@@ -93,7 +99,8 @@ def _parse_json(text: str) -> dict:
 async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str,
                          sender: str, subject: str, body: str,
                          classify_agent: str = "", spam_hints: list[str] | None = None,
-                         spam_examples: list[str] | None = None) -> dict:
+                         spam_examples: list[str] | None = None,
+                         recipient: str = "", link_hosts: list[str] | None = None) -> dict:
     """Returns {category, priority, sensitive, redacted_summary, spam_score, spam_reason}. On
     every error a safe fallback (sensitive=True, empty summary): in case of doubt give
     NOTHING to the outside. Provider, model and token come from the classifying agent (when
@@ -104,6 +111,12 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
     with the findings in the prompt it judges the same mail as the rules. `spam_beispiele`
     are the most recent decisions of the human, so that the assessment of the model moves
     along as well, not only the statistics.
+
+    `recipient` and `link_hosts` are the two facts the text alone does not carry, and
+    both are what gives a phish away: a "device authorisation" from a payment provider
+    sent to a catch-all address of an unrelated domain, or a button whose target has
+    nothing to do with the house that claims to write. After the HTML has been turned into
+    text the targets are gone, so the watcher hands them over separately.
     """
     fallback = {"category": "sonstiges", "priority": "normal",
                 "sensitive": True, "redacted_summary": "",
@@ -126,7 +139,12 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
 
     impl = OpenAIProvider(base_url=base_url)
     # Limit the raw text defensively (the local context need not be the whole mail).
-    parts = [f"Konto: {account}", f"Von: {sender}", f"Betreff: {subject}"]
+    parts = [f"Konto: {account}", f"Von: {sender}"]
+    if recipient:
+        parts.append(f"An: {recipient}")
+    parts.append(f"Betreff: {subject}")
+    if link_hosts:
+        parts.append("Linkziele (Hosts): " + ", ".join(link_hosts[:10]))
     if spam_hints:
         parts.append("\nTechnische Befunde zu dieser Mail:\n"
                      + "\n".join(f"- {h}" for h in spam_hints[:8]))

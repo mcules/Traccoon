@@ -199,3 +199,24 @@ async def test_a_preset_flow_keeps_its_key(client, db, owner):
     await db.commit()
     r = await client.put(f"/workflows/{d.id}", headers=auth(owner), json={"key": "anders"})
     assert r.status_code == 400
+
+
+# ── The fixed context keeps up with the vocabulary ───────────────────────────
+
+async def test_old_context_keys_are_renamed_on_conversion(db, owner):
+    """A mail webhook converted before the rename said `eingang.*`; the steps read
+    `intake.*`. Nothing failed, the classifier was simply never asked (2026-09-17)."""
+    from app.services.webhook_modes import convert, rename_context_keys
+
+    sub = await make_webhook(db, owner, "post-alt", mode="event")
+    sub.context_fixed = {"eingang.classify_agent": "mail_classifier",
+                         "eingang.prompt_tmpl": "Schau {sache} an.", "other": 1}
+    await db.commit()
+
+    assert await rename_context_keys(db) == 1
+    assert sub.context_fixed == {"intake.classify_agent": "mail_classifier",
+                                 "intake.prompt_tmpl": "Schau {sache} an.", "other": 1}
+    # Idempotent, and `convert` carries it along on every start.
+    assert await rename_context_keys(db) == 0
+    await convert(db)
+    assert sub.context_fixed["intake.classify_agent"] == "mail_classifier"

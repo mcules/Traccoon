@@ -402,3 +402,61 @@ async def test_without_a_fraud_verdict_everything_stays_as_it_was(db, owner, ima
     inst = await _report_classified(db, owner, _n26(uid=9103))
     assert inst.status == WorkflowInstanceStatus.waiting
     assert imap_stub == []
+
+
+# ── Bulk mail: judged, and quiet when harmless ────────────────────────────────
+#
+# The watcher no longer drops mail with an unsubscribe header; it delivers it tagged so the
+# text gets read. Three phishing mails of 2026-09-17 had passed on that header alone.
+
+def _bulk(uid: int = 9201, **over) -> dict:
+    return _mail(uid=uid, **{
+        "filter_decision": "massenpost:header:list-unsubscribe",
+        "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
+                    "Return-Path": "<bounce@shop.de>", "Received-Count": 3,
+                    "List-Unsubscribe": "<mailto:x@shop.de>", "Precedence": "bulk"},
+        **over})
+
+
+async def test_a_harmless_newsletter_ends_without_an_item(db, owner, imap_stub, model_stub):
+    model_stub(betrug=False, category="newsletter", spam_score=0.2, spam_reason="")
+    inst = await _report_classified(db, owner, _bulk())
+
+    assert inst.status == WorkflowInstanceStatus.completed
+    assert (await db.execute(select(AssistantTask))).scalars().all() == []
+    assert (await db.execute(select(Notification))).scalars().all() == []
+    assert imap_stub == []
+
+
+async def test_a_phish_in_newsletter_clothing_is_filed_away(db, owner, imap_stub, model_stub):
+    """SPF, DKIM and DMARC pass, unsubscribe footer present — and the text gives it away."""
+    model_stub(spam_reason="Phishing: Geräteautorisierung von fremder Domain")
+    await set_setting(db, spam_review.AUTO_FROM_KEY, "0.95")
+    inst = await _report_classified(db, owner, _bulk(uid=9202, **{
+        "from": [{"name": "Finom Support", "addr": "info@dachdecker.example"}],
+        "to": [{"name": "", "addr": "de@catchall.example"}],
+        "subject": "Sicherheitsupdate: Erneuerung Ihrer Geräteautorisierung"}))
+
+    assert inst.status == WorkflowInstanceStatus.completed
+    assert imap_stub[0][0] == "mark_spam"
+    verdict = (await db.execute(select(SpamVerdict))).scalars().one()
+    assert verdict.status == "spam" and verdict.kind == "phishing"
+    assert (await db.execute(select(AssistantTask))).scalars().all() == []
+
+
+async def test_a_bulk_mail_let_through_on_suspicion_is_quiet_when_cleared(db, owner, imap_stub,
+                                                                          model_stub):
+    """`massenpost_aber_*` means the watcher had a reason to look; once the check finds
+    nothing, it is still a newsletter and nobody's task."""
+    model_stub(betrug=False, category="newsletter", spam_score=0.1, spam_reason="")
+    inst = await _report_classified(db, owner, _bulk(
+        uid=9203, filter_decision="massenpost_aber_marke:sparkasse"))
+    assert inst.status == WorkflowInstanceStatus.completed
+    assert (await db.execute(select(AssistantTask))).scalars().all() == []
+
+
+async def test_ordinary_mail_still_reaches_the_assistant(db, owner, imap_stub, model_stub):
+    model_stub(betrug=False, category="bestellung", spam_score=0.0, spam_reason="")
+    inst = await _report_classified(db, owner, _mail(uid=9204, filter_decision="passed"))
+    assert inst.status == WorkflowInstanceStatus.completed
+    assert len((await db.execute(select(AssistantTask))).scalars().all()) == 1
