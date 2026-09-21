@@ -2545,6 +2545,99 @@ function ActionFields({ act, runs: running, onClose, onStart }: {
 }
 
 
+/**
+ * A recipient field that knows whom one writes with.
+ *
+ * The text stays what it was, addresses separated by commas; what is new is that the piece
+ * behind the last comma is looked up while it is typed, in the mailboxes and in the vault
+ * (`/mailbox/addresses`). Picking a hit replaces that piece with `Name <address>, ` and
+ * leaves the cursor ready for the next one. The list hangs off the window like the `Picker`
+ * does, for the same reason: the dialog scrolls, and what reaches past its edge is cut off.
+ *
+ * Options take the mouse on `mousedown` and swallow it: a click on them would otherwise blur
+ * the field first, and the blur is what closes the list.
+ */
+function AddressInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [hits, setHits] = useState<{ email: string; name: string }[]>([]);
+  const [at, setAt] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [row, setRow] = useState(0);
+  const field = useRef<HTMLInputElement>(null);
+  const timer = useRef<number>(0);
+  const asked = useRef("");
+
+  const close = () => { setAt(null); setHits([]); };
+  const lookup = (text: string) => {
+    window.clearTimeout(timer.current);
+    const piece = text.slice(text.lastIndexOf(",") + 1).trim();
+    if (piece.length < 2) { close(); return; }
+    // A short pause instead of one request per keystroke; the answer to "an" is not the one
+    // anybody is waiting for.
+    timer.current = window.setTimeout(async () => {
+      asked.current = piece;
+      const got = await api.get<{ email: string; name: string }[]>(
+        `/mailbox/addresses?q=${encodeURIComponent(piece)}`).catch(() => []);
+      // Typed on in the meantime: that answer is to a question nobody asks any more.
+      if (asked.current !== piece) return;
+      setHits(got);
+      setRow(0);
+      const box = field.current?.getBoundingClientRect();
+      if (got.length && box) setAt({ top: box.bottom + 4, left: box.left, width: box.width });
+      else setAt(null);
+    }, 150);
+  };
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!at) return;
+    const zu = () => setAt(null);
+    window.addEventListener("scroll", zu, true);
+    window.addEventListener("resize", zu);
+    return () => {
+      window.removeEventListener("scroll", zu, true);
+      window.removeEventListener("resize", zu);
+    };
+  }, [at]);
+
+  const take = (h: { email: string; name: string }) => {
+    // A comma in a name would be read as the next address; it goes, the name stays.
+    const name = h.name.replace(/[,"<>]/g, " ").replace(/\s+/g, " ").trim();
+    const head = value.slice(0, value.lastIndexOf(",") + 1);
+    onChange(`${head}${head ? " " : ""}${name ? `${name} <${h.email}>` : h.email}, `);
+    close();
+    field.current?.focus();
+  };
+
+  return (
+    <>
+      <input ref={field} value={value} className={INPUT_VALUE}
+        onChange={(e) => { onChange(e.target.value); lookup(e.target.value); }}
+        onBlur={close}
+        onKeyDown={(e) => {
+          if (!at) return;
+          if (e.key === "ArrowDown") { e.preventDefault(); setRow((r) => Math.min(hits.length - 1, r + 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setRow((r) => Math.max(0, r - 1)); }
+          else if (e.key === "Enter") { e.preventDefault(); take(hits[row]); }
+          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+        }} />
+      {at && (
+        <div role="listbox" style={{ top: at.top, left: at.left, width: at.width }}
+          className="fixed z-50 max-h-60 overflow-y-auto rounded-lg border border-line bg-card p-1 text-sm shadow-2xl">
+          {hits.map((h, i) => (
+            <button type="button" key={h.email} role="option" aria-selected={i === row}
+              onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setRow(i)}
+              onClick={() => take(h)}
+              className={`flex w-full items-baseline gap-2 rounded px-2 py-1.5 text-left text-ink transition-colors ${
+                i === row ? "bg-surface" : ""}`}>
+              <span className="min-w-0 truncate">{h.name || h.email}</span>
+              {h.name && <span className="min-w-0 truncate text-xs text-muted">{h.email}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+
 function ComposeDialog({ accountId, start, onClose, onGone, onError: onError }: {
   accountId: number; start: ComposeStart; onClose: () => void;
   /** The draft that was replaced is gone. Whoever was looking at it has to look away. */
@@ -2654,10 +2747,10 @@ function ComposeDialog({ accountId, start, onClose, onGone, onError: onError }: 
             }))} />
         </Field>
         <Field label={tr("mail.to_label")} hint={tr("mail.several_addresses_comma")}>
-          <input value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} className={INPUT_VALUE} />
+          <AddressInput value={f.to} onChange={(to) => setF({ ...f, to })} />
         </Field>
         <Field label={tr("mail.copy")}>
-          <input value={f.cc} onChange={(e) => setF({ ...f, cc: e.target.value })} className={INPUT_VALUE} />
+          <AddressInput value={f.cc} onChange={(cc) => setF({ ...f, cc })} />
         </Field>
         <Field label={tr("mail.subject")}>
           <input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} className={INPUT_VALUE} />

@@ -316,6 +316,14 @@ async def _vault_contacts() -> None:
                 log.exception("Vault contact reconciliation for user %s failed", owner_id)
 
 
+async def _correspondents() -> None:
+    """Count in what is new in the mailboxes, for the recipient field."""
+    from .mail_correspondents import harvest_all
+
+    async with SessionLocal() as db:
+        await harvest_all(db)
+
+
 async def run_scheduler() -> None:
     global _purge_after, _vault_after
     await asyncio.sleep(8)
@@ -332,6 +340,7 @@ async def run_scheduler() -> None:
                 _vault_after = loop.time() + 3600
                 await _vault_contacts()
                 await _mailbox_learn()
+                await _correspondents()
         except Exception:  # noqa: BLE001
             log.exception("scheduler tick failed")
         await asyncio.sleep(INTERVAL)

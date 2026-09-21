@@ -10,7 +10,9 @@ Gmail and Microsoft can be added later without a migration of the data.
 """
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+import datetime as dt
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -185,3 +187,28 @@ class MailDocument(TimestampMixin, Base):
     doc_id: Mapped[str] = mapped_column(String(80), default="")
     doc_url: Mapped[str] = mapped_column(String(1000), default="")
     title: Mapped[str] = mapped_column(String(500), default="")
+
+
+class MailCorrespondent(TimestampMixin, Base):
+    """Whoever has stood in a From, To or Cc of this mailbox, and how often.
+
+    The address book of the recipient field. It is not the acquittal list of the spam
+    detection (`AssistantContact`): that one says who is *trusted*, this one says who one
+    *writes with*: a shop that has sent forty order mails belongs here and not there.
+
+    Filled by the harvest in `services/mail_correspondents.py`, which walks every folder but
+    junk, trash and drafts. Sent mails count their recipients, everything else its sender.
+    The counts are what the suggestion is ranked by: whoever got answers from me stands
+    above whoever only wrote.
+    """
+    __tablename__ = "mail_correspondents"
+    __table_args__ = (UniqueConstraint("account_id", "email", name="uq_mail_correspondent"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("mail_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(300), default="")
+    sent: Mapped[int] = mapped_column(Integer, default=0)
+    received: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

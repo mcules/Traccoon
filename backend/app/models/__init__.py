@@ -10,7 +10,7 @@ from .api_token import ApiToken  # noqa: F401
 from .passkey import Passkey  # noqa: F401
 from .project import Project, ProjectMember, ResourceGrant, default_ai_assign  # noqa: F401
 from .invitation import ProjectInvitation  # noqa: F401
-from .mail import MailAccount, MailIdentity  # noqa: F401
+from .mail import MailAccount, MailCorrespondent, MailIdentity  # noqa: F401
 from .ticket import (  # noqa: F401
     ActivityLog, Attachment, Blocker, Board, BoardColumn, Comment, Issue, IssueCounter,
     IssueLink, IssueTag, IssueType, SavedFilter, Sprint, Tag, TicketFileChange, WorkflowStatus,

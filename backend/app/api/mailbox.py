@@ -8,6 +8,7 @@ flow and puts account, folder, UID and — if chosen — the attachment into its
 "Attachment to Paperless" is thereby a flow with a tool call, and the next feature comes into
 being in the editor instead of in a development run.
 """
+import asyncio
 import base64
 import logging
 
@@ -281,6 +282,21 @@ async def all_identities(user: User = Depends(get_current_user),
         .where(MailAccount.owner_user_id == user.id)
         .order_by(MailIdentity.account_id, MailIdentity.id))).scalars().all()
     return rows
+
+
+@router.get("/addresses")
+async def addresses(q: str = "", user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)):
+    """Recipients for the To field: whoever this person has written with, plus the vault.
+
+    Across all their mailboxes, because a person is the same person whichever address one
+    happens to be writing from. Ranked, not merely filtered, see `suggest`.
+    """
+    from ..services.mail_correspondents import suggest
+
+    if len(q.strip()) < 2:
+        return []
+    return await suggest(db, user.id, q)
 
 
 @router.post("/accounts/{kid}/identities", response_model=IdentityOut, status_code=201)
@@ -1146,6 +1162,22 @@ async def send(kid: int, data: SendIn, user: User = Depends(get_current_user),
     await _mark_about(account, data)
     await _drop_replaced(account, data)
     await cache.invalidate(account.id)
+    # The copy in the sent folder carries the recipients; counting them in now means the
+    # next To field already knows them, not the one after the hourly pass.
+    asyncio.create_task(_harvest_later(account.id))
+
+
+async def _harvest_later(account_id: int) -> None:
+    from ..db import SessionLocal
+    from ..services.mail_correspondents import harvest
+
+    try:
+        async with SessionLocal() as db:
+            account = await db.get(MailAccount, account_id)
+            if account is not None:
+                await harvest(db, account)
+    except Exception:  # noqa: BLE001, a missed count is not a failed send
+        log.exception("correspondent harvest after sending failed")
 
 
 @router.post("/accounts/{kid}/draft", status_code=204)
