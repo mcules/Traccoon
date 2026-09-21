@@ -277,6 +277,11 @@ urgency, the word the meaning — a colour alone is no information.
 `INPUT_VALUE` as the class chain for input fields, `Errorrow` for an error above a list or in
 a dialog. An error is never built as a raw red `div`.
 
+`Picker` for a choice that has outgrown a `<select>`: it looks like an input field, opens
+into a search field over label and detail, and is driven with the arrows. The sender identity
+of a mail is one; a list of five roles is not — there the plain `<select>` stays, because a
+search over five things is a memory check without a reason.
+
 ### Tabs inside a page
 
 `Tab` — for toggles that do **not** change the address (the assistant: chat · incoming ·

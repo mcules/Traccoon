@@ -7,10 +7,7 @@ import { toast } from "../toast";
 import { useAuth } from "../auth";
 import { formatDateTime } from "../lib/formatTime";
 import { AccountDialog, type MailAccount, type MailIdentity } from "../components/MailAccountsPanel";
-import {
-  Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
-  Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT,
-  Menu, MenuItem, MenuLine, Splitter, Busy, BUTTON_SMALL, SortBar, Spinner} from "../components/ui";
+import { Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow, Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT, Menu, MenuItem, MenuLine, Splitter, Busy, BUTTON_SMALL, SortBar, Spinner, Picker } from "../components/ui";
 
 /**
  * The mailbox.
@@ -2646,14 +2643,15 @@ function ComposeDialog({ accountId, start, onClose, onGone, onError: onError }: 
           <Errorrow text={tr("mail.account_without_identity")} />
         )}
         <Field label={tr("mail.from_label")}>
-          <select value={identity ?? ""} className={INPUT_VALUE}
-            onChange={(e) => setIdentity(Number(e.target.value))}>
-            {identities?.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.display_name ? `${i.display_name} <${i.email}>` : i.email}
-              </option>
-            ))}
-          </select>
+          {/* With a search: the identities have grown past what one scrolls through, and a
+              name or a domain is quicker typed than looked for. */}
+          <Picker value={identity === null ? "" : String(identity)}
+            onChange={(v) => setIdentity(Number(v))}
+            options={(identities || []).map((i) => ({
+              value: String(i.id),
+              label: i.display_name || i.email,
+              detail: i.display_name ? `<${i.email}>` : undefined,
+            }))} />
         </Field>
         <Field label={tr("mail.to_label")} hint={tr("mail.several_addresses_comma")}>
           <input value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} className={INPUT_VALUE} />

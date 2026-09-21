@@ -921,6 +921,8 @@
   "common.really_delete_what": "Really delete “{what}”?",
   "common.run_now": "Run now",
   "common.save": "Save",
+  "common.search": "Search…",
+  "common.no_match": "No match.",
   "common.save_failed": "Saving failed",
   "common.saved": "Saved.",
   "common.send": "Send",

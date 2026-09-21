@@ -921,6 +921,8 @@
   "common.really_delete_what": "„{what}“ wirklich löschen?",
   "common.run_now": "Jetzt starten",
   "common.save": "Speichern",
+  "common.search": "Suchen…",
+  "common.no_match": "Kein Treffer.",
   "common.save_failed": "Speichern fehlgeschlagen",
   "common.saved": "Gespeichert.",
   "common.send": "Senden",

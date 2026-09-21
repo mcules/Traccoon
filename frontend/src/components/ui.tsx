@@ -1,4 +1,4 @@
-import { ReactNode, RefObject, useEffect, useRef, useState } from "react";
+import { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { tr } from "../i18n";
 
@@ -784,6 +784,129 @@ export function MenuItem({ onClick, disabled = false, danger = false, title: tit
 /** The line between two groups of a menu. */
 export function MenuLine() {
   return <div className="my-1 border-t border-line" />;
+}
+
+
+/** One entry of a `Picker`: what is shown, and what else the search may hit. */
+export type PickerOption = {
+  value: string;
+  label: string;
+  /** Smaller text beside the label, for the second half of a thing — the address behind a
+   *  name, the model behind an agent. Searched like the label. */
+  detail?: string;
+};
+
+/**
+ * A choice with a search field. Takes the place of a `<select>` once the list has grown
+ * beyond what one scrolls through: twenty sender identities are not looked for by eye.
+ *
+ * Closed it looks like an input field and shows the current entry. Open it is a field to
+ * type into and the entries that match, over label and detail alike — a name finds the
+ * address, a domain finds every identity on it. Arrows move, enter takes, escape closes only
+ * the list and not the dialog around it. The list hangs off the window like a `Menu` does,
+ * for the same reason: a dialog scrolls, and what reaches past its edge is cut off.
+ */
+export function Picker({ options, value, onChange, placeholder, disabled = false }: {
+  options: PickerOption[]; value: string; onChange: (value: string) => void;
+  placeholder?: string; disabled?: boolean;
+}) {
+  const [at, setAt] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [term, setTerm] = useState("");
+  const [row, setRow] = useState(0);
+  const button = useRef<HTMLButtonElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const HEIGHT = 288;      // the room the list may take, needed to decide above or below
+
+  const current = options.find((o) => o.value === value);
+  const words = term.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  // Every word has to be found somewhere; "dennis darc" finds the one identity that carries
+  // both, in whichever half.
+  const hits = words.length === 0 ? options : options.filter((o) => {
+    const text = `${o.label} ${o.detail || ""}`.toLowerCase();
+    return words.every((w) => text.includes(w));
+  });
+
+  const open = () => {
+    const box = button.current?.getBoundingClientRect();
+    if (!box) return;
+    const below = window.innerHeight - box.bottom >= HEIGHT + 8;
+    setTerm("");
+    setRow(Math.max(0, options.findIndex((o) => o.value === value)));
+    setAt({ top: below ? box.bottom + 4 : Math.max(8, box.top - HEIGHT - 4),
+            left: box.left, width: box.width });
+  };
+  const close = () => { setAt(null); button.current?.focus(); };
+  const take = (o: PickerOption | undefined) => { if (o) { onChange(o.value); close(); } };
+
+  // The field gets the cursor as soon as the list stands; that is what it opened for.
+  useEffect(() => { if (at) field.current?.focus(); }, [at]);
+  // Scrolling and resizing move the button away from under the list.
+  useEffect(() => {
+    if (!at) return;
+    const zu = (e: Event) => { if (e.target !== list.current) setAt(null); };
+    window.addEventListener("scroll", zu, true);
+    window.addEventListener("resize", zu);
+    return () => {
+      window.removeEventListener("scroll", zu, true);
+      window.removeEventListener("resize", zu);
+    };
+  }, [at]);
+  // The marked row stays in view while the arrows move it.
+  useEffect(() => {
+    list.current?.children[row]?.scrollIntoView?.({ block: "nearest" });
+  }, [row, at]);
+
+  const keys = (e: ReactKeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setRow((r) => Math.min(hits.length - 1, r + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setRow((r) => Math.max(0, r - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); take(hits[row]); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+  };
+
+  return (
+    <>
+      <button type="button" ref={button} disabled={disabled}
+        onClick={() => (at ? setAt(null) : open())}
+        onKeyDown={(e) => { if (!at && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); open(); } }}
+        aria-haspopup="listbox" aria-expanded={!!at}
+        className={`${INPUT_VALUE} flex items-center gap-2 text-left disabled:opacity-60`}>
+        <span className={`min-w-0 flex-1 truncate ${current ? "" : "text-muted"}`}>
+          {current ? current.label : (placeholder || "")}
+          {current?.detail && <span className="ml-1.5 text-muted">{current.detail}</span>}
+        </span>
+        <span className="shrink-0 text-muted">▾</span>
+      </button>
+      {at && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setAt(null); }} />
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ top: at.top, left: at.left, width: at.width }}
+            className="fixed z-50 flex flex-col rounded-lg border border-line bg-card p-1 text-sm shadow-2xl">
+            <input ref={field} value={term} onKeyDown={keys}
+              onChange={(e) => { setTerm(e.target.value); setRow(0); }}
+              placeholder={tr("common.search")} aria-label={tr("common.search")}
+              className={`${INPUT_VALUE} mb-1`} />
+            <div ref={list} role="listbox" className="max-h-60 overflow-y-auto">
+              {hits.map((o, i) => (
+                <button type="button" key={o.value} role="option" aria-selected={o.value === value}
+                  onMouseEnter={() => setRow(i)} onClick={() => take(o)}
+                  className={`flex w-full items-baseline gap-2 rounded px-2 py-1.5 text-left transition-colors ${
+                    i === row ? "bg-surface text-ink" : "text-ink"} ${
+                    o.value === value ? "font-medium" : ""}`}>
+                  <span className="min-w-0 truncate">{o.label}</span>
+                  {o.detail && <span className="min-w-0 truncate text-xs text-muted">{o.detail}</span>}
+                </button>
+              ))}
+              {hits.length === 0 && (
+                <div className="px-2 py-1.5 text-muted">{tr("common.no_match")}</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
 }
 
 
