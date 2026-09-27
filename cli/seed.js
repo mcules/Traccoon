@@ -1,9 +1,9 @@
 // Prepare the config directory of the session before claude starts.
 //
-// Merged, never replaced: the directory lives on a volume, and what the person set up in the
-// session themselves (settings, their own MCP servers, the conversation history) stays.
-// Only the keys Traccoon owns are written on every start: the onboarding flags, the trust of
-// the working directory and the `traccoon` MCP server (its token changes with every start).
+// Merged, never replaced: the directory lives on a volume shared by all sessions of one person,
+// and what they set up themselves (login, settings, own MCP servers, conversation history)
+// stays. Only the keys Traccoon owns are written on every start: the onboarding flags and the
+// trust of the working directory.
 const fs = require("fs");
 const path = require("path");
 
@@ -33,15 +33,24 @@ state.projects[workdir] = {
   hasTrustDialogAccepted: true,
   hasCompletedProjectOnboarding: true,
 };
-state.mcpServers = state.mcpServers || {};
-if (process.env.TRACCOON_MCP_URL && process.env.TRACCOON_MCP_TOKEN) {
-  state.mcpServers.traccoon = {
-    type: "http",
-    url: process.env.TRACCOON_MCP_URL,
-    headers: { Authorization: `Bearer ${process.env.TRACCOON_MCP_TOKEN}` },
-  };
-}
+// The config directory is shared by all sessions of one person (one login for all of them),
+// so the per-session ticket tools do not go in here but into a file of this container, handed
+// to claude with --mcp-config (session.sh). An entry from before that is taken out.
+if (state.mcpServers) delete state.mcpServers.traccoon;
 writeJson(stateFile, state);
+
+if (process.env.TRACCOON_MCP_URL && process.env.TRACCOON_MCP_TOKEN) {
+  fs.mkdirSync("/run/traccoon", { recursive: true });
+  writeJson("/run/traccoon/mcp.json", {
+    mcpServers: {
+      traccoon: {
+        type: "http",
+        url: process.env.TRACCOON_MCP_URL,
+        headers: { Authorization: `Bearer ${process.env.TRACCOON_MCP_TOKEN}` },
+      },
+    },
+  });
+}
 
 // The ticket tools may run without asking: they are the session's own way of reporting back.
 const settingsFile = path.join(dir, "settings.json");

@@ -25,7 +25,7 @@ interface ReleaseOut {
   id: number; name: string; state: "open" | "deploying" | "deployed" | "failed";
   summary: string; deployed_at: string | null; tickets: ReleaseTicket[];
 }
-interface SessionOut { status: string; error: string; container: string; queue: QueueEntry[]; }
+interface SessionOut { status: string; error: string; container: string; auth: string; queue: QueueEntry[]; }
 
 // ttyd's commands: the first byte of every frame.
 const INPUT = "0".charCodeAt(0);
@@ -44,6 +44,10 @@ export default function CliSession({ project }: { project: Project }) {
   const onError = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
   const start = useMutation({
     mutationFn: () => api.post<SessionOut>(`/projects/${project.id}/cli/session/start`),
+    onSuccess: (d) => { setErr(""); qc.setQueryData(key, d); }, onError,
+  });
+  const login = useMutation({
+    mutationFn: () => api.post<SessionOut>(`/projects/${project.id}/cli/session/start`, { login: true }),
     onSuccess: (d) => { setErr(""); qc.setQueryData(key, d); }, onError,
   });
   const stop = useMutation({
@@ -97,6 +101,18 @@ export default function CliSession({ project }: { project: Project }) {
         tools={<>
           {statusTag}
           {admin && img?.version && <span className="font-mono text-xs text-muted">{img.version}</span>}
+          {running && sess?.auth === "login" && (
+            <Tag color="green" title={tr("cli_session.auth_login_hint")}>{tr("cli_session.auth_login")}</Tag>
+          )}
+          {running && sess?.auth === "login-pending" && (
+            <Tag color="yellow">{tr("cli_session.auth_pending")}</Tag>
+          )}
+          {running && sess?.auth === "token" && (
+            <button className={BUTTON_SMALL.secondary} disabled={login.isPending}
+              title={tr("cli_session.login_hint")} onClick={() => login.mutate()}>
+              {tr("cli_session.login")}
+            </button>
+          )}
           <div className="flex-1" />
           {admin && (
             <button className={BUTTON_SMALL.secondary} disabled={rebuild.isPending}

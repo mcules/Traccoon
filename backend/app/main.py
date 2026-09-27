@@ -603,6 +603,8 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS release_auto_new BOOLEAN "
                 "DEFAULT TRUE NOT NULL",
+                "ALTER TABLE cli_sessions ADD COLUMN IF NOT EXISTS auth VARCHAR(20) "
+                "DEFAULT 'token' NOT NULL",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS cli_before_ticket TEXT "
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS cli_ssh_key_enc TEXT "

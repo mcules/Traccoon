@@ -55,9 +55,9 @@ async def _queue(db: AsyncSession, sess: CliSession) -> list[dict]:
 
 async def _out(db: AsyncSession, sess: CliSession | None) -> dict:
     if sess is None:
-        return {"status": "stopped", "error": "", "container": "", "queue": []}
+        return {"status": "stopped", "error": "", "container": "", "auth": "", "queue": []}
     return {"status": sess.status, "error": sess.error, "container": sess.container,
-            "queue": await _queue(db, sess)}
+            "auth": sess.auth, "queue": await _queue(db, sess)}
 
 
 @router.get("/projects/{project_id}/cli/session")
@@ -71,14 +71,22 @@ async def my_session(access: Access = Depends(require_ai_assign),
     return await _out(db, sess)
 
 
+class StartIn(BaseModel):
+    # Restart without Traccoon's token, so that /login can be done in the terminal.
+    login: bool = False
+
+
 @router.post("/projects/{project_id}/cli/session/start")
-async def start_session(access: Access = Depends(require_ai_assign),
+async def start_session(body: StartIn | None = None, access: Access = Depends(require_ai_assign),
                         db: AsyncSession = Depends(get_session)):
     _require_cli(access)
+    login = bool(body and body.login)
     sess = await cli_sessions.get_session(db, access.project.id, access.user.id, create=True)
     await cli_sessions.refresh_status(db, [sess])
+    if login and sess.status == "running":
+        await cli_sessions.stop(db, sess)
     if sess.status != "running":
-        await cli_sessions.start(db, sess)
+        await cli_sessions.start(db, sess, login=login)
     await db.commit()
     cli_sessions.kick(sess.id)
     return await _out(db, sess)

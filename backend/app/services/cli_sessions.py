@@ -120,8 +120,14 @@ async def refresh_status(db: AsyncSession, sessions: list[CliSession]) -> None:
             s.status = "stopped"
 
 
-async def start(db: AsyncSession, sess: CliSession) -> bool:
-    """Start the container (idempotent). A fresh MCP token on every start."""
+async def start(db: AsyncSession, sess: CliSession, login: bool = False) -> bool:
+    """Start the container (idempotent). A fresh MCP token on every start.
+
+    Login: the person's own claude.ai login (/login in the terminal) wins over the
+    subscription token from Traccoon once it exists; only that login shows the plan's limits.
+    `login` starts without the token so that /login can be done at all. Without a token and
+    without a login the session starts too, and waits for /login.
+    """
     from ..worker.secrets import resolve_provider_token
 
     project = await db.get(Project, sess.project_id)
@@ -130,10 +136,6 @@ async def start(db: AsyncSession, sess: CliSession) -> bool:
         return False
     token_name = project.default_token_name if project.default_provider == "claude_code" else ""
     oauth = await resolve_provider_token(db, user.id, "claude_code", token_name)
-    if not oauth:
-        sess.status = "failed"
-        sess.error = "No Claude subscription token for this person (Account → tokens)."
-        return False
     if not WORKSPACE_HOST_PATH or not CLI_DATA_HOST_PATH:
         sess.status = "failed"
         sess.error = "WORKSPACE_HOST_PATH / CLI_DATA_HOST_PATH are not configured."
@@ -149,20 +151,23 @@ async def start(db: AsyncSession, sess: CliSession) -> bool:
         {"host": f"{WORKSPACE_HOST_PATH}/{pkey}", "target": f"/workspace/{pkey}"},
         {"host": f"{WORKSPACE_HOST_PATH}/.traccoon-worktrees/{pkey}",
          "target": f"/workspace/.traccoon-worktrees/{pkey}"},
-        {"host": f"{CLI_DATA_HOST_PATH}/{pkey}/u{user.id}", "target": "/cfg"},
+        # One config directory per person, shared by all their sessions: one /login is
+        # enough, and it survives every restart.
+        {"host": f"{CLI_DATA_HOST_PATH}/u{user.id}", "target": "/cfg"},
     ]
     # Without ticket worktrees everything happens in the project checkout: start there, so
     # claude finds the project's CLAUDE.md and `--continue` picks up the right conversation.
     workdir = "/workspace" if (project.git_enabled and project.work_in_branches) \
         else f"/workspace/{pkey}"
     env = {
-        "CLAUDE_CODE_OAUTH_TOKEN": oauth,
         "SESSION_WORKDIR": workdir,
         "TRACCOON_MCP_URL": CLI_MCP_URL,
         "TRACCOON_MCP_TOKEN": raw,
         "GIT_NAME": user.display_name or user.username,
         "GIT_EMAIL": user.email or f"{user.username}@traccoon.local",
     }
+    if oauth:
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth
     if project.cli_ssh_key_enc:
         # Base64: the env file the deployer writes has one line per variable.
         import base64
@@ -178,11 +183,15 @@ async def start(db: AsyncSession, sess: CliSession) -> bool:
         res = await _deployer("/cli/start", {
             "name": sess.container, "mounts": mounts, "env": env,
             "labels": {"project": pkey, "user": str(user.id)},
+            "token_env": "CLAUDE_CODE_OAUTH_TOKEN", "login": login,
+            "credentials": f"{CLI_DATA_HOST_PATH}/u{user.id}/claude/.credentials.json",
         }, 180)
     except httpx.HTTPError as exc:
         res = {"ok": False, "log": f"deployer unreachable: {exc}"}
     sess.status = "running" if res.get("ok") else "failed"
     sess.error = "" if res.get("ok") else str(res.get("log") or "")[-2000:]
+    if res.get("ok") and res.get("log") in ("login", "login-pending", "token"):
+        sess.auth = res["log"]
     await db.commit()
     if res.get("ok"):
         # ttyd needs a moment before the first attach or paste succeeds.

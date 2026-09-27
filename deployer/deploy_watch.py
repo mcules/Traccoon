@@ -679,6 +679,18 @@ def cli_start(body):
         sh(["docker", "rm", "-f", name], timeout=60)
     for m in mounts:
         os.makedirs(m["host"], exist_ok=True)
+    # Login: once the person has logged in inside a session (/login, credentials in their
+    # config directory), that login wins, and the subscription token from Traccoon stays out:
+    # only the real login shows the plan's limits (/usage). `login` asks for it explicitly.
+    env = dict(body.get("env") or {})
+    creds = body.get("credentials") or ""
+    token_env = body.get("token_env") or ""
+    logged_in = bool(creds) and _cli_mount_ok(os.path.dirname(os.path.dirname(creds)), "/cfg") \
+        and os.path.isfile(creds)
+    if token_env and (logged_in or body.get("login")):
+        env.pop(token_env, None)
+    auth = "login" if logged_in else ("login-pending" if token_env not in env else "token")
+    body = {**body, "env": env}
     # The token goes in over an env file, not the command line, where every `ps` shows it.
     env_file = f"/tmp/{name}.env"
     fd = os.open(env_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -701,7 +713,7 @@ def cli_start(body):
             os.unlink(env_file)
         except OSError:
             pass
-    return rc == 0, out[-2000:]
+    return rc == 0, (auth if rc == 0 else out[-2000:])
 
 
 def cli_stop(name):

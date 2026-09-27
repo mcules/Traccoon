@@ -3832,5 +3832,10 @@
   "project_settings.cli_ssh_generate": "Generate key",
   "project_settings.cli_ssh_replace": "Generate a new key",
   "project_settings.cli_ssh_copy": "Copy",
-  "project_settings.cli_ssh_replace_confirm": "Replace the old key? It stops working from Traccoon, and the new one has to be entered on the server first."
+  "project_settings.cli_ssh_replace_confirm": "Replace the old key? It stops working from Traccoon, and the new one has to be entered on the server first.",
+  "cli_session.auth_login": "logged in with claude.ai",
+  "cli_session.auth_login_hint": "Your own login: /usage shows how much of the limit is used.",
+  "cli_session.auth_pending": "type /login in the terminal",
+  "cli_session.login": "Log in with claude.ai",
+  "cli_session.login_hint": "Restarts the session without Traccoon's token. Then /login in the terminal; the login holds for all your sessions and survives restarts."
 }

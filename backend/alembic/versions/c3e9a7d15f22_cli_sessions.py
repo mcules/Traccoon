@@ -59,6 +59,7 @@ def upgrade() -> None:
                   nullable=False),
         sa.Column('container', sa.String(120), nullable=False, server_default=''),
         sa.Column('status', sa.String(20), nullable=False, server_default='stopped'),
+        sa.Column('auth', sa.String(20), nullable=False, server_default='token'),
         sa.Column('error', sa.Text(), nullable=False, server_default=''),
         sa.Column('mcp_token_enc', sa.Text(), nullable=False, server_default=''),
         sa.Column('mcp_token_hash', sa.String(64), nullable=False, server_default=''),

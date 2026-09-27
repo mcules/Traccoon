@@ -25,6 +25,9 @@ class CliSession(TimestampMixin, Base):
     # container itself; this is only what the list shows without asking Docker every time.
     status: Mapped[str] = mapped_column(String(20), default="stopped")
     error: Mapped[str] = mapped_column(Text, default="")
+    # How claude is logged in: token (Traccoon's subscription token), login (the person's own
+    # claude.ai login, shows the plan's limits), login-pending (started for /login).
+    auth: Mapped[str] = mapped_column(String(20), default="token")
     # The token the session's ticket tools log in with (/api/mcp/project). Renewed on every
     # start, so a stopped session's token is worthless. Stored encrypted plus a hash to find it.
     mcp_token_enc: Mapped[str] = mapped_column(Text, default="")

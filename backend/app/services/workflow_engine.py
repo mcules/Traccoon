@@ -1078,9 +1078,10 @@ async def _start_cli_task(db, inst, node, token, cfg, issue, existing, spawn_aft
     issue.agent_working = True
     from ..models.enums import TicketAgentStatus
     from .artifacts import set_ticket_status
+    # `planning` too: the release sets it, and in CLI mode no planning run follows.
     if issue.agent_status in (TicketAgentStatus.approved, TicketAgentStatus.plan_review,
                               TicketAgentStatus.open, TicketAgentStatus.hold,
-                              TicketAgentStatus.failed, None):
+                              TicketAgentStatus.failed, TicketAgentStatus.planning, None):
         issue.hold_reason = None
         await set_ticket_status(db, issue, TicketAgentStatus.in_progress, board=False)
     delivery = await cli_sessions.enqueue(db, issue, task_id)
