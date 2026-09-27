@@ -26,6 +26,8 @@ def upgrade() -> None:
                                         server_default=''))
     op.add_column('projects', sa.Column('release_auto_new', sa.Boolean(), nullable=False,
                                         server_default=sa.true()))
+    for col in ('cli_before_ticket', 'cli_ssh_key_enc', 'cli_ssh_public'):
+        op.add_column('projects', sa.Column(col, sa.Text(), nullable=False, server_default=''))
     op.create_table(
         'releases',
         sa.Column('id', sa.Integer(), primary_key=True),
@@ -101,6 +103,8 @@ def downgrade() -> None:
     op.drop_index('ix_issues_release_id', 'issues')
     op.drop_column('issues', 'release_id')
     op.drop_table('releases')
+    for col in ('cli_before_ticket', 'cli_ssh_key_enc', 'cli_ssh_public'):
+        op.drop_column('projects', col)
     op.drop_column('projects', 'release_auto_new')
     op.drop_column('projects', 'cli_deploy_command')
     op.drop_column('issues', 'cli_context')

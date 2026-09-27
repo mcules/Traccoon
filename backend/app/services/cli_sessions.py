@@ -163,6 +163,12 @@ async def start(db: AsyncSession, sess: CliSession) -> bool:
         "GIT_NAME": user.display_name or user.username,
         "GIT_EMAIL": user.email or f"{user.username}@traccoon.local",
     }
+    if project.cli_ssh_key_enc:
+        # Base64: the env file the deployer writes has one line per variable.
+        import base64
+        from ..core.security import decrypt_secret
+        env["SSH_PRIVATE_KEY_B64"] = base64.b64encode(
+            decrypt_secret(project.cli_ssh_key_enc).encode()).decode()
     # The deployer only sees a running container as "keep it", so a restart with a new token
     # has to take the old one down first.
     await _deployer("/cli/stop", {"name": sess.container}, 60)
@@ -193,6 +199,18 @@ async def stop(db: AsyncSession, sess: CliSession) -> None:
     sess.mcp_token_enc = ""
     sess.mcp_token_hash = ""
     await db.commit()
+
+
+async def run(sess: CliSession, command: str, workdir: str,
+              timeout: int = 300) -> tuple[bool, str]:
+    """Run a shell command inside the session container (not in the claude conversation)."""
+    try:
+        res = await _deployer("/cli/exec", {"name": sess.container, "cmd": command,
+                                            "workdir": workdir, "timeout": timeout},
+                              timeout + 30)
+    except httpx.HTTPError as exc:
+        return False, f"deployer unreachable: {exc}"
+    return bool(res.get("ok")), str(res.get("log") or "")
 
 
 async def logs(sess: CliSession, tail: int = 300) -> str:
@@ -453,7 +471,27 @@ async def _deliver(db: AsyncSession, sess: CliSession, d: CliDelivery) -> None:
         ctx = await prepare_issue_git(db, issue, project, sess.user_id)
         if ctx is not None and ctx.worktree:
             workdir = ctx.worktree
+    before = ""
+    if project.cli_before_ticket.strip():
+        ok, before = await run(sess, project.cli_before_ticket, workdir)
+        before = before.strip()[-3000:]
+        from .comments import add_system_comment
+        if not ok:
+            # The ticket must not start on a stale state: it goes on hold with the reason,
+            # and whoever fixes the cause releases it again.
+            await add_system_comment(
+                db, issue.id, f"⚠️ Check before the work failed, the ticket was not handed "
+                f"to the session:\n```\n{before}\n```", author_label="Workflow")
+            await db.commit()
+            await report(db, sess, issue.key, "blocked",
+                         "The check before the work failed (see comment).")
+            return
+        if before:
+            await add_system_comment(db, issue.id, f"🔄 Check before the work:\n```\n{before}\n```",
+                                     author_label="Workflow")
     text = await _ticket_text(db, issue, workdir)
+    if before:
+        text += "\n\nCheck before the work (already run):\n" + before[-1500:]
     ok, out = await send(sess, text, clear=d.context == "clear")
     if not ok:
         d.error = out[-2000:]

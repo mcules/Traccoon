@@ -290,6 +290,9 @@ class PreviewHandler(BaseHTTPRequestHandler):
             self._json(200, cli_logs(body.get("name", ""), int(body.get("tail") or 200)))
         elif self.path == "/cli/image":
             self._json(200, cli_image(bool(body.get("build")), bool(body.get("latest"))))
+        elif self.path == "/cli/exec":
+            ok, log = cli_exec(body)
+            self._json(200, {"ok": ok, "log": log})
         elif self.path == "/cli/send":
             ok, log = cli_send(body)
             self._json(200 if ok else 500, {"ok": ok, "log": log})
@@ -720,6 +723,26 @@ def cli_status(names):
     if names:
         return {n: states[n] for n in names if n in states}
     return states
+
+
+def cli_exec(body):
+    """A shell command inside a session container (the check before a ticket, for instance).
+    Runs beside the claude conversation, not in it."""
+    name = body.get("name", "")
+    if not _CLI_NAME.match(name):
+        return False, "invalid container name"
+    workdir = body.get("workdir") or "/workspace"
+    if not _CLI_TARGET.match(workdir):
+        return False, "invalid working directory"
+    timeout = max(5, min(int(body.get("timeout") or 300), 1800))
+    try:
+        p = subprocess.run(["docker", "exec", "-w", workdir, name, "bash", "-lc",
+                            body.get("cmd") or "true"],
+                           capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {timeout}s"
+    out = (p.stdout + p.stderr)[-8000:]
+    return p.returncode == 0, out if p.returncode == 0 else f"exit {p.returncode}\n{out}"
 
 
 def _tmux(name, *args, stdin=None):

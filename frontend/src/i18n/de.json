@@ -3824,5 +3824,13 @@
   "releases.retry": "Erneut deployen",
   "releases.unfinished_title": "Nicht alles ist fertig",
   "releases.unfinished_text": "Diese Tickets sind noch nicht fertig. Sie wandern ins nächste Release, deployt wird nur der Rest:",
-  "releases.deploy_finished_only": "Nur Fertiges deployen"
+  "releases.deploy_finished_only": "Nur Fertiges deployen",
+  "project_settings.cli_before_ticket": "Vor jedem Ticket ausführen",
+  "project_settings.cli_before_ticket_hint": "Läuft in der Session im Projektordner, bevor ein Ticket hineingeht, zum Beispiel ein Abgleich mit dem Server. Schlägt er fehl, geht das Ticket nicht in die Session, sondern wartet.",
+  "project_settings.cli_ssh_key": "SSH-Schlüssel der Sessions",
+  "project_settings.cli_ssh_key_hint": "Für Deploy und Abgleich mit einem Server. Traccoon erzeugt ihn, sichtbar ist nur der öffentliche Teil. Den trägst du auf dem Server in authorized_keys ein. Laufende Sessions bekommen ihn beim nächsten Start.",
+  "project_settings.cli_ssh_generate": "Schlüssel erzeugen",
+  "project_settings.cli_ssh_replace": "Neuen Schlüssel erzeugen",
+  "project_settings.cli_ssh_copy": "Kopieren",
+  "project_settings.cli_ssh_replace_confirm": "Den alten Schlüssel ersetzen? Er funktioniert danach nicht mehr aus Traccoon heraus, der neue muss erst auf dem Server eingetragen werden."
 }

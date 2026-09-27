@@ -199,6 +199,7 @@ async def _settings_out(db: AsyncSession, p: Project) -> ProjectSettingsOut:
     return ProjectSettingsOut(**{f: getattr(p, f) for f in _SETTINGS_FIELDS},
                               git_token_set=bool(p.git_token_enc),
                               testenv_env_set=bool(p.testenv_env_enc),
+                              cli_ssh_public=p.cli_ssh_public,
                               mail_account_name=account.name if account is not None else "")
 
 

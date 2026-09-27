@@ -43,6 +43,7 @@ class ProjectSettings(BaseModel):
     cli_mode: bool | None = None
     cli_deploy_command: str | None = None
     release_auto_new: bool | None = None
+    cli_before_ticket: str | None = None
     verify_command: str | None = None
     review_enabled: bool | None = None
     auto_continue: bool | None = None
@@ -87,6 +88,8 @@ class ProjectSettings(BaseModel):
 class ProjectSettingsOut(ProjectSettings):
     git_token_set: bool = False
     testenv_env_set: bool = False
+    # Read only: the public half of the project's session key (to enter on a server).
+    cli_ssh_public: str = ""
     # The name of the chosen mailbox. Read only, so that the form can say which one it is
     # instead of showing a number.
     mail_account_name: str = ""

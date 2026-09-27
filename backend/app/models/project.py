@@ -69,6 +69,14 @@ class Project(TimestampMixin, Base):
     # After a release was deployed, open the next one right away (tickets released later go
     # into it). Off: they wait without a release until one is opened by hand.
     release_auto_new: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Run inside the session before every delivered ticket, in its working directory. For a
+    # project whose live state can move on elsewhere (edits straight on a server): fetch that
+    # first. A non-zero exit keeps the ticket out of the session and puts it on hold.
+    cli_before_ticket: Mapped[str] = mapped_column(Text, default="")
+    # The project's own SSH key for its sessions, generated here. The public half is shown
+    # to be entered on the server; the private half only goes into the session containers.
+    cli_ssh_key_enc: Mapped[str] = mapped_column(Text, default="")
+    cli_ssh_public: Mapped[str] = mapped_column(Text, default="")
     plan_agent: Mapped[str] = mapped_column(String(100), default="architect")
     exec_agent: Mapped[str] = mapped_column(String(100), default="developer")
     # Default subscription or token of this project; overrides the personal default

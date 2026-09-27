@@ -3824,5 +3824,13 @@
   "releases.retry": "Deploy again",
   "releases.unfinished_title": "Not everything is finished",
   "releases.unfinished_text": "These tickets are not finished yet. They move on to the next release, only the rest is deployed:",
-  "releases.deploy_finished_only": "Deploy the finished ones"
+  "releases.deploy_finished_only": "Deploy the finished ones",
+  "project_settings.cli_before_ticket": "Run before every ticket",
+  "project_settings.cli_before_ticket_hint": "Runs in the session in the project folder before a ticket goes in, for instance a sync with the server. If it fails, the ticket does not go into the session but waits.",
+  "project_settings.cli_ssh_key": "SSH key of the sessions",
+  "project_settings.cli_ssh_key_hint": "For deploying and syncing with a server. Traccoon generates it, only the public half is shown. Enter it in authorized_keys on the server. Running sessions get it on their next start.",
+  "project_settings.cli_ssh_generate": "Generate key",
+  "project_settings.cli_ssh_replace": "Generate a new key",
+  "project_settings.cli_ssh_copy": "Copy",
+  "project_settings.cli_ssh_replace_confirm": "Replace the old key? It stops working from Traccoon, and the new one has to be entered on the server first."
 }

@@ -25,7 +25,8 @@ from ..models.project import Project
 from ..models.ticket import Comment, Issue
 from ..models.user import User
 from ..services import api_tokens, cli_sessions
-from .deps import Access, build_access, get_current_user, require_ai_assign
+from ..models.enums import ProjectRole
+from .deps import Access, build_access, get_current_user, require_ai_assign, require_role
 
 log = logging.getLogger("traccoon.cli")
 router = APIRouter(tags=["cli"])
@@ -152,6 +153,29 @@ async def move_entry(delivery_id: int, body: MoveIn, access: Access = Depends(re
         a.position, b.position = b.position, a.position
         await db.commit()
     return await _out(db, sess)
+
+
+@router.post("/projects/{project_id}/cli/ssh-key")
+async def new_ssh_key(access: Access = Depends(require_role(ProjectRole.maintainer)),
+                      db: AsyncSession = Depends(get_session)):
+    """Generate the project's session key (replacing an old one) and hand out the public half.
+
+    The private half is never shown: it goes into the session containers only. Sessions
+    started before get it with their next start.
+    """
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from ..core.security import encrypt_secret
+    key = Ed25519PrivateKey.generate()
+    private = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.OpenSSH,
+                                serialization.NoEncryption()).decode()
+    public = key.public_key().public_bytes(serialization.Encoding.OpenSSH,
+                                           serialization.PublicFormat.OpenSSH).decode()
+    p = access.project
+    p.cli_ssh_key_enc = encrypt_secret(private)
+    p.cli_ssh_public = f"{public} traccoon-{p.key.lower()}"
+    await db.commit()
+    return {"public": p.cli_ssh_public}
 
 
 # ── Releases ────────────────────────────────────────────────────────────────

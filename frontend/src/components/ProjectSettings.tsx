@@ -45,7 +45,7 @@ const TAB_KEYS = TABS.map(([k]) => k);
 
 type Settings = {
   description: string;
-  managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; cli_mode: boolean; cli_deploy_command: string; release_auto_new: boolean; verify_command: string; review_enabled: boolean;
+  managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; cli_mode: boolean; cli_deploy_command: string; release_auto_new: boolean; cli_before_ticket: string; cli_ssh_public?: string; verify_command: string; review_enabled: boolean;
   auto_continue: boolean; auto_deploy: boolean; screenshot_enabled: boolean;
   plan_agent: string; exec_agent: string; default_provider: string; default_token_name: string;
   vault_moc_path: string; system_prompt: string;
@@ -183,6 +183,11 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
           <Field label={tr("project_settings.cli_deploy_command")} hint={tr("project_settings.cli_deploy_command_hint")}
             textarea rows={3}
             value={s.cli_deploy_command} onChange={(v) => set({ cli_deploy_command: v })} />
+          <Field label={tr("project_settings.cli_before_ticket")} hint={tr("project_settings.cli_before_ticket_hint")}
+            textarea rows={2}
+            value={s.cli_before_ticket} onChange={(v) => set({ cli_before_ticket: v })} />
+          <SshKey projectId={project.id} publicKey={s.cli_ssh_public ?? ""}
+            onNew={(k) => { set({ cli_ssh_public: k }); qc.invalidateQueries({ queryKey: ["project-settings", project.id] }); }} />
         </>)}
         <Check label={tr("project_settings.review_gate")} hint={tr("project_settings.a_reviewing_agent_reads_the_diff_before_the_w")}
           on={s.review_enabled} onChange={(v) => set({ review_enabled: v })} />
@@ -476,6 +481,48 @@ function Select({ label, value, onChange }: { label: string; value: string; onCh
         <option value="">— Standard —</option>
         {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
       </select>
+    </div>
+  );
+}
+
+
+/** The project's SSH key for its sessions: generated here, only the public half is shown. */
+function SshKey({ projectId, publicKey, onNew }: {
+  projectId: number; publicKey: string; onNew: (key: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const generate = async () => {
+    if (publicKey && !window.confirm(tr("project_settings.cli_ssh_replace_confirm"))) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ public: string }>(`/projects/${projectId}/cli/ssh-key`);
+      setErr("");
+      onNew(r.public);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : tr("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-1.5">
+      <div className="text-sm font-medium text-ink">{tr("project_settings.cli_ssh_key")}</div>
+      <p className="text-xs text-muted">{tr("project_settings.cli_ssh_key_hint")}</p>
+      {publicKey && (
+        <textarea readOnly value={publicKey} rows={2} onFocus={(e) => e.currentTarget.select()}
+          className="w-full rounded border border-line bg-surface px-2 py-1.5 font-mono text-xs text-ink" />
+      )}
+      <div className="flex items-center gap-2">
+        <button type="button" className={BUTTON_SMALL.secondary} disabled={busy} onClick={generate}>
+          🔑 {publicKey ? tr("project_settings.cli_ssh_replace") : tr("project_settings.cli_ssh_generate")}
+        </button>
+        {publicKey && (
+          <button type="button" className={BUTTON_SMALL.secondary}
+            onClick={() => navigator.clipboard?.writeText(publicKey)}>{tr("project_settings.cli_ssh_copy")}</button>
+        )}
+        {err && <span className="text-xs text-red-400">{err}</span>}
+      </div>
     </div>
   );
 }
