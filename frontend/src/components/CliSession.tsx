@@ -7,7 +7,7 @@ import { tr } from "../i18n";
 import { api, ApiError, getToken, Project } from "../api";
 import { useAuth } from "../auth";
 import { formatDateTime } from "../lib/formatTime";
-import { Area, BUTTON_SMALL, Dialog, Errorrow, Listing, ListingEmpty, Tag } from "./ui";
+import { Area, BUTTON_SMALL, Dialog, Errorrow, INPUT_VALUE, Listing, ListingEmpty, Tag } from "./ui";
 
 /**
  * The person's own Claude CLI session in a project in CLI mode.
@@ -141,7 +141,10 @@ export default function CliSession({ project }: { project: Project }) {
         {err && <Errorrow text={err} />}
         {sess?.status === "failed" && sess.error && <Errorrow text={sess.error} />}
         {running
-          ? <TerminalView projectId={project.id} />
+          ? <>
+              <TerminalView projectId={project.id} />
+              <TypeBar projectId={project.id} loginPending={sess?.auth === "login-pending"} />
+            </>
           : <p className="text-sm text-muted">{tr("cli_session.not_running_hint")}</p>}
       </Area>
 
@@ -351,6 +354,53 @@ function TerminalView({ projectId }: { projectId: number }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * Typing into the session without the terminal, and the login link as a link.
+ *
+ * On a phone neither works in the terminal itself: a long link cannot be selected out of it,
+ * and a pasted code does not arrive. The text goes in as one paste plus Enter.
+ */
+function TypeBar({ projectId, loginPending }: { projectId: number; loginPending: boolean }) {
+  const [text, setText] = useState("");
+  const [link, setLink] = useState<string | null>(null);
+  const [err, setErr] = useState("");
+  const send = useMutation({
+    mutationFn: () => api.post(`/projects/${projectId}/cli/type`, { text }),
+    onSuccess: () => { setText(""); setErr(""); },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
+  });
+  const fetchLink = useMutation({
+    mutationFn: () => api.get<{ url: string }>(`/projects/${projectId}/cli/login-url`),
+    onSuccess: (d) => setLink(d.url),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
+  });
+  return (
+    <div className="space-y-2">
+      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (text.trim()) send.mutate(); }}>
+        <input value={text} onChange={(e) => setText(e.target.value)} className={INPUT_VALUE}
+          placeholder={loginPending ? tr("cli_session.type_code") : tr("cli_session.type_placeholder")}
+          autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+        <button type="submit" className={BUTTON_SMALL.primary} disabled={send.isPending || !text.trim()}>
+          {tr("cli_session.type_send")}
+        </button>
+      </form>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <button type="button" className={BUTTON_SMALL.secondary} onClick={() => fetchLink.mutate()}>
+          {tr("cli_session.login_link")}
+        </button>
+        {link === "" && <span className="text-muted">{tr("cli_session.login_link_none")}</span>}
+        {link && (
+          <a href={link} target="_blank" rel="noopener noreferrer" className="break-all text-brand underline">
+            {tr("cli_session.login_link_open")}
+          </a>
+        )}
+        {err && <span className="text-red-400">{err}</span>}
+      </div>
     </div>
   );
 }

@@ -222,6 +222,38 @@ async def run(sess: CliSession, command: str, workdir: str,
     return bool(res.get("ok")), str(res.get("log") or "")
 
 
+async def screen(sess: CliSession, lines: int = 200) -> str:
+    try:
+        res = await _deployer("/cli/capture", {"name": sess.container, "lines": lines}, 30)
+    except httpx.HTTPError:
+        return ""
+    return str(res.get("text") or "")
+
+
+def login_url(text: str) -> str:
+    """The newest login link on the screen, put back together.
+
+    claude wraps a long link itself at the terminal's width (on a phone every 40 columns), so
+    it stands on the screen as a block of lines without spaces. They are joined until the first
+    line that is not part of it any more.
+    """
+    lines = text.splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        pos = lines[i].find("https://claude.ai/oauth/authorize")
+        if pos < 0:
+            pos = lines[i].find("https://claude.com/cai/oauth/authorize")
+        if pos < 0:
+            continue
+        url = lines[i][pos:].strip()
+        for nxt in lines[i + 1:]:
+            part = nxt.strip()
+            if not part or " " in part:
+                break
+            url += part
+        return url
+    return ""
+
+
 async def logs(sess: CliSession, tail: int = 300) -> str:
     try:
         res = await _deployer("/cli/logs", {"name": sess.container, "tail": tail}, 30)

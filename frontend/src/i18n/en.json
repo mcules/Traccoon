@@ -3837,5 +3837,12 @@
   "cli_session.auth_login_hint": "Your own login: /usage shows how much of the limit is used.",
   "cli_session.auth_pending": "type /login in the terminal",
   "cli_session.login": "Log in with claude.ai",
-  "cli_session.login_hint": "Restarts the session without Traccoon's token. Then /login in the terminal; the login holds for all your sessions and survives restarts."
+  "cli_session.login_hint": "Restarts the session without Traccoon's token. Then /login in the terminal; the login holds for all your sessions and survives restarts.",
+  "cli_session.type_placeholder": "Text for the session (from a phone, say)",
+  "cli_session.type_code": "Paste the code from the browser here",
+  "cli_session.type_send": "Send",
+  "cli_session.login_link": "Get login link",
+  "cli_session.login_link_none": "No login link on the screen. Run /login in the session first.",
+  "cli_session.login_link_open": "Open login link",
+  "err.cli_type_failed": "{reason}"
 }

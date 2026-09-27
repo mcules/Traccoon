@@ -136,6 +136,37 @@ async def image_build(body: ImageBuildIn, user: User = Depends(get_current_user)
     return await cli_sessions.image(build=True, latest=body.latest)
 
 
+@router.get("/projects/{project_id}/cli/login-url")
+async def login_link(access: Access = Depends(require_ai_assign),
+                     db: AsyncSession = Depends(get_session)):
+    """The login link /login printed in the caller's session, as one clickable piece: on a
+    phone it cannot be copied out of the terminal."""
+    _require_cli(access)
+    sess = await cli_sessions.get_session(db, access.project.id, access.user.id)
+    if sess is None:
+        return {"url": ""}
+    return {"url": cli_sessions.login_url(await cli_sessions.screen(sess, 300))}
+
+
+class TypeIn(BaseModel):
+    text: str
+
+
+@router.post("/projects/{project_id}/cli/type")
+async def type_text(body: TypeIn, access: Access = Depends(require_ai_assign),
+                    db: AsyncSession = Depends(get_session)):
+    """Type text into the caller's own session (a login code, a message): typing in a terminal
+    on a phone is no fun."""
+    _require_cli(access)
+    sess = await cli_sessions.get_session(db, access.project.id, access.user.id)
+    if sess is None or sess.status != "running":
+        raise Error(status.HTTP_409_CONFLICT, "err.cli_no_session", "No session")
+    ok, out = await cli_sessions.send(sess, body.text.strip())
+    if not ok:
+        raise Error(status.HTTP_502_BAD_GATEWAY, "err.cli_type_failed", "{reason}", reason=out[:300])
+    return {"ok": True}
+
+
 class MoveIn(BaseModel):
     direction: str  # up | down
 

@@ -3837,5 +3837,12 @@
   "cli_session.auth_login_hint": "Deine eigene Anmeldung: /usage zeigt, wie viel vom Limit verbraucht ist.",
   "cli_session.auth_pending": "tippe /login im Terminal",
   "cli_session.login": "Mit claude.ai anmelden",
-  "cli_session.login_hint": "Startet die Session ohne den Token aus Traccoon neu. Danach /login im Terminal; die Anmeldung gilt für alle deine Sessions und bleibt erhalten."
+  "cli_session.login_hint": "Startet die Session ohne den Token aus Traccoon neu. Danach /login im Terminal; die Anmeldung gilt für alle deine Sessions und bleibt erhalten.",
+  "cli_session.type_placeholder": "Text an die Session (z. B. vom Handy)",
+  "cli_session.type_code": "Code aus dem Browser hier einfügen",
+  "cli_session.type_send": "Senden",
+  "cli_session.login_link": "Anmelde-Link holen",
+  "cli_session.login_link_none": "Kein Anmelde-Link zu sehen. Erst /login in der Session.",
+  "cli_session.login_link_open": "Anmelde-Link öffnen",
+  "err.cli_type_failed": "{reason}"
 }

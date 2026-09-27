@@ -213,3 +213,17 @@ async def test_tickets_collect_in_the_open_release_until_it_is_deployed(db, fake
     assert "reported as done" in await cli.release_report(db, sess, rel.id, "done", "live")
     await db.refresh(rel)
     assert rel.state == "deployed" and rel.deployed_at is not None
+
+
+def test_the_login_link_is_put_back_together():
+    screen = """  Browser didn't open? Use the url below to sign in:
+
+https://claude.ai/oauth/authorize?code=true&client_id=abc
+def&response_type=code&scope=user%3Aprofile
+&state=xyz
+   Paste code here if prompted >
+"""
+    assert cli.login_url(screen) == (
+        "https://claude.ai/oauth/authorize?code=true&client_id=abcdef&response_type=code"
+        "&scope=user%3Aprofile&state=xyz")
+    assert cli.login_url("nothing here") == ""

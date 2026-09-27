@@ -290,6 +290,8 @@ class PreviewHandler(BaseHTTPRequestHandler):
             self._json(200, cli_logs(body.get("name", ""), int(body.get("tail") or 200)))
         elif self.path == "/cli/image":
             self._json(200, cli_image(bool(body.get("build")), bool(body.get("latest"))))
+        elif self.path == "/cli/capture":
+            self._json(200, cli_capture(body.get("name", ""), int(body.get("lines") or 200)))
         elif self.path == "/cli/exec":
             ok, log = cli_exec(body)
             self._json(200, {"ok": ok, "log": log})
@@ -735,6 +737,15 @@ def cli_status(names):
     if names:
         return {n: states[n] for n in names if n in states}
     return states
+
+
+def cli_capture(name, lines=200):
+    """What the session's screen shows (plus some history), as plain text."""
+    if not _CLI_NAME.match(name or ""):
+        return {"text": ""}
+    rc, out = _tmux(name, "capture-pane", "-p", "-J", "-t", "main",
+                    "-S", f"-{max(10, min(lines, 2000))}")
+    return {"text": out if rc == 0 else ""}
 
 
 def cli_exec(body):
