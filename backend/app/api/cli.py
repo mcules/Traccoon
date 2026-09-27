@@ -56,8 +56,10 @@ async def _queue(db: AsyncSession, sess: CliSession) -> list[dict]:
 async def _out(db: AsyncSession, sess: CliSession | None) -> dict:
     if sess is None:
         return {"status": "stopped", "error": "", "container": "", "auth": "", "queue": []}
+    user = await db.get(User, sess.user_id)
     return {"status": sess.status, "error": sess.error, "container": sess.container,
-            "auth": sess.auth, "queue": await _queue(db, sess)}
+            "auth": sess.auth, "remote_control": bool(user and user.cli_remote_control),
+            "queue": await _queue(db, sess)}
 
 
 @router.get("/projects/{project_id}/cli/session")
@@ -165,6 +167,21 @@ async def type_text(body: TypeIn, access: Access = Depends(require_ai_assign),
     if not ok:
         raise Error(status.HTTP_502_BAD_GATEWAY, "err.cli_type_failed", "{reason}", reason=out[:300])
     return {"ok": True}
+
+
+class RemoteControlIn(BaseModel):
+    on: bool
+
+
+@router.post("/projects/{project_id}/cli/remote-control")
+async def set_remote_control(body: RemoteControlIn, access: Access = Depends(require_ai_assign),
+                             db: AsyncSession = Depends(get_session)):
+    """Remote Control for all of the caller's sessions; takes effect with a session's next
+    start (claude reads it when it starts)."""
+    _require_cli(access)
+    access.user.cli_remote_control = body.on
+    await db.commit()
+    return {"remote_control": body.on}
 
 
 class MoveIn(BaseModel):

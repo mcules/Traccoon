@@ -192,6 +192,8 @@ async def start(db: AsyncSession, sess: CliSession, login: bool = False) -> bool
         else f"/workspace/{pkey}"
     env = {
         "SESSION_WORKDIR": workdir,
+        "SESSION_TITLE": project.name,
+        "REMOTE_CONTROL": "1" if user.cli_remote_control else "0",
         "TRACCOON_MCP_URL": CLI_MCP_URL,
         # The same token opens the session's own endpoints (build) for scripts.
         "TRACCOON_API_URL": CLI_MCP_URL.rsplit("/mcp/", 1)[0],
@@ -329,10 +331,11 @@ async def _stop_idle() -> None:
 
 
 async def send(sess: CliSession, text: str = "", *, clear: bool = False,
-               interrupt: bool = False) -> tuple[bool, str]:
+               interrupt: bool = False, title: str = "") -> tuple[bool, str]:
     try:
         res = await _deployer("/cli/send", {"name": sess.container, "text": text,
-                                            "clear": clear, "interrupt": interrupt}, 60)
+                                            "clear": clear, "interrupt": interrupt,
+                                            "title": title}, 60)
     except httpx.HTTPError as exc:
         return False, str(exc)
     return bool(res.get("ok")), str(res.get("log") or "")
@@ -566,7 +569,8 @@ async def _deliver(db: AsyncSession, sess: CliSession, d: CliDelivery) -> None:
     text = await _ticket_text(db, issue, workdir)
     if before:
         text += "\n\nCheck before the work (already run):\n" + before[-1500:]
-    ok, out = await send(sess, text, clear=d.context == "clear")
+    ok, out = await send(sess, text, clear=d.context == "clear",
+                         title=await session_title(db, issue))
     if not ok:
         d.error = out[-2000:]
         await db.commit()
@@ -603,7 +607,7 @@ async def _deliver_release(db: AsyncSession, sess: CliSession, d: CliDelivery) -
         "worked, then call the MCP tool traccoon release_report with release "
         f"{rel.id}, status done|failed and a short summary.",
     ])
-    ok, out = await send(sess, text)
+    ok, out = await send(sess, text, title=f"REL {rel.number} - Deploy")
     if not ok:
         d.error = out[-2000:]
         await db.commit()
@@ -613,6 +617,13 @@ async def _deliver_release(db: AsyncSession, sess: CliSession, d: CliDelivery) -
     d.error = ""
     await db.commit()
     await publish_event(project.id, {"type": "cli_queue", "session_id": sess.id})
+
+
+async def session_title(db: AsyncSession, issue: Issue) -> str:
+    """The name the session gets for a ticket (shown in the Claude app with Remote Control):
+    release and ticket, `REL 2 - AFU-14`, or only the ticket without a release."""
+    rel = await db.get(Release, issue.release_id) if issue.release_id else None
+    return f"REL {rel.number} - {issue.key}" if rel else issue.key
 
 
 async def _field_lines(db: AsyncSession, issue: Issue) -> list[str]:

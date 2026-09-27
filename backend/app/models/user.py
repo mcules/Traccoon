@@ -129,6 +129,9 @@ class User(TimestampMixin, Base):
     # Presentation of the PM chat: bubbles or cli (terminal look like the Claude Code CLI).
     # Applies globally to the user across all projects.
     pm_chat_style: Mapped[str] = mapped_column(String(10), default="bubbles")
+    # Claude CLI sessions of this person start with Remote Control (claude.ai/code, the Claude
+    # app), as long as they are logged in with claude.ai there (services/cli_sessions.py).
+    cli_remote_control: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Night window (Europe/Berlin) for night_task tickets
     night_start_hour: Mapped[int] = mapped_column(Integer, default=22)

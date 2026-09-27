@@ -282,3 +282,33 @@ async def test_the_ticket_text_names_the_areas_and_where_they_live(db, seeded, f
     text = await cli._ticket_text(db, issue, "/workspace/cli")
     assert "Fields of the ticket:\n- Bereich: Core\n    afu.tools repo: site/, api/\n" \
            "    never the remote copies\n- Bereich: Station" in text
+
+
+async def test_the_session_is_named_after_release_and_ticket(db, fake):
+    from app.models.cli import Release
+    from app.models.enums import TicketAgentStatus
+    owner, proj, (issue,) = await _cli_project(db)
+    _, calls = fake
+    await cli.enqueue(db, issue, "t-name")
+    await db.commit()
+    sess = (await db.execute(select(CliSession))).scalar_one()
+    await cli.dispatch(sess.id)
+    assert _sent(calls)[-1]["title"] == "REL 1 - CLI-1"
+
+    await cli.report(db, sess, "CLI-1", "done", "ok")
+    issue.agent_status = TicketAgentStatus.done
+    rel = (await db.execute(select(Release))).scalar_one()
+    await cli.deploy_release(db, rel, owner.id)
+    await db.commit()
+    await cli.dispatch(sess.id)
+    assert _sent(calls)[-1]["title"] == "REL 1 - Deploy"
+
+
+async def test_remote_control_is_a_setting_of_the_person(db, client, fake):
+    from conftest import auth
+    owner, proj, _ = await _cli_project(db, 0)
+    r = await client.post(f"/projects/{proj.id}/cli/remote-control", json={"on": False},
+                          headers=auth(owner))
+    assert r.json() == {"remote_control": False}
+    await db.refresh(owner)
+    assert owner.cli_remote_control is False

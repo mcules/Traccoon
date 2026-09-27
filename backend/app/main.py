@@ -615,6 +615,8 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE artifact_field_options ADD COLUMN IF NOT EXISTS description TEXT "
                 "DEFAULT '' NOT NULL",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS cli_remote_control BOOLEAN "
+                "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS release_id INTEGER "
                 "REFERENCES releases(id) ON DELETE SET NULL",
                 "CREATE INDEX IF NOT EXISTS ix_issues_release_id ON issues (release_id)",

@@ -25,7 +25,7 @@ interface ReleaseOut {
   id: number; name: string; state: "open" | "deploying" | "deployed" | "failed";
   summary: string; deployed_at: string | null; tickets: ReleaseTicket[];
 }
-interface SessionOut { status: string; error: string; container: string; auth: string; queue: QueueEntry[]; }
+interface SessionOut { status: string; error: string; container: string; auth: string; remote_control?: boolean; queue: QueueEntry[]; }
 
 // ttyd's commands: the first byte of every frame.
 const INPUT = "0".charCodeAt(0);
@@ -45,6 +45,10 @@ export default function CliSession({ project }: { project: Project }) {
   const start = useMutation({
     mutationFn: () => api.post<SessionOut>(`/projects/${project.id}/cli/session/start`),
     onSuccess: (d) => { setErr(""); qc.setQueryData(key, d); }, onError,
+  });
+  const remote = useMutation({
+    mutationFn: (on: boolean) => api.post(`/projects/${project.id}/cli/remote-control`, { on }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }), onError,
   });
   const login = useMutation({
     mutationFn: () => api.post<SessionOut>(`/projects/${project.id}/cli/session/start`, { login: true }),
@@ -120,6 +124,11 @@ export default function CliSession({ project }: { project: Project }) {
               ⬆ {rebuild.isPending ? tr("cli_session.updating") : tr("cli_session.update")}
             </button>
           )}
+          <label className="flex items-center gap-1.5 text-xs text-muted" title={tr("cli_session.remote_hint")}>
+            <input type="checkbox" checked={sess?.remote_control ?? true} disabled={remote.isPending}
+              onChange={(e) => remote.mutate(e.target.checked)} />
+            {tr("cli_session.remote")}
+          </label>
           <button className={BUTTON_SMALL.secondary} onClick={() => showLog.mutate()}>
             {tr("cli_session.log")}
           </button>

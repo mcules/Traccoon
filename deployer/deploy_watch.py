@@ -855,6 +855,14 @@ def cli_send(body):
         rc, out = _tmux(name, "send-keys", "-t", "main", "/clear", "Enter")
         log.append(f"clear rc={rc} {out}")
         time.sleep(2)
+    # The session's name (shown in the Claude app with Remote Control): after /clear, which
+    # starts a new conversation and with it forgets the old name.
+    title = " ".join(str(body.get("title") or "").split())[:80]
+    if title:
+        rc, out = _tmux(name, "send-keys", "-t", "main", "-l", f"/rename {title}")
+        rc2, out2 = _tmux(name, "send-keys", "-t", "main", "Enter")
+        log.append(f"rename rc={rc}/{rc2} {out}{out2}")
+        time.sleep(1.5)
     text = body.get("text") or ""
     if text:
         rc, out = _tmux(name, "load-buffer", "-b", "traccoon", "-", stdin=text)
