@@ -168,6 +168,11 @@ class Issue(TimestampMixin, Base):
     plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     exec_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Only in projects in CLI mode: how the ticket goes into the session on release.
+    # `now` types it in straight away (next to whatever runs), `queue` waits until the
+    # session has reported its current ticket. `clear` starts it with an empty context.
+    cli_delivery: Mapped[str] = mapped_column(String(10), default="queue")
+    cli_context: Mapped[str] = mapped_column(String(10), default="keep")
     branch_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     base_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     git_base_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)

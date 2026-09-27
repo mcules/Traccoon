@@ -45,7 +45,7 @@ const TAB_KEYS = TABS.map(([k]) => k);
 
 type Settings = {
   description: string;
-  managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; verify_command: string; review_enabled: boolean;
+  managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; cli_mode: boolean; verify_command: string; review_enabled: boolean;
   auto_continue: boolean; auto_deploy: boolean; screenshot_enabled: boolean;
   plan_agent: string; exec_agent: string; default_provider: string; default_token_name: string;
   vault_moc_path: string; system_prompt: string;
@@ -175,6 +175,8 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
           on={s.managed} onChange={(v) => set({ managed: v })} />
         <Check label="PM-Chat" hint={tr("project_settings.chat_tab_for_delegating_to_the_project_manage")}
           on={s.pm_chat_enabled} onChange={(v) => set({ pm_chat_enabled: v })} />
+        <Check label={tr("project_settings.cli_mode")} hint={tr("project_settings.cli_mode_hint")}
+          on={s.cli_mode} onChange={(v) => set({ cli_mode: v })} />
         <Check label={tr("project_settings.review_gate")} hint={tr("project_settings.a_reviewing_agent_reads_the_diff_before_the_w")}
           on={s.review_enabled} onChange={(v) => set({ review_enabled: v })} />
         <Check label={tr("project_settings.continue_automatically")} hint={tr("project_settings.exhausted_runs_continue_until_the_limit_kicks")}

@@ -27,6 +27,7 @@ from .services.dispatcher import recover_on_start, run_dispatcher
 from .services.deploy_watch import run_deploy_watch
 from .services.scheduler import run_scheduler
 from .services.workflow_engine import run_workflow_engine
+from .api import cli as cli_api
 from .api.ws import event_bridge
 from .api.office_ws import office_bridge, router as office_ws_router
 
@@ -589,6 +590,14 @@ async def lifespan(app: FastAPI):
                 # The ingest token is looked up on every single point.
                 "CREATE INDEX IF NOT EXISTS ix_series_token_hash "
                 "ON series (token_hash)",
+                # Claude CLI sessions (models/cli.py): the switch per project and the two
+                # delivery options per ticket.
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS cli_mode BOOLEAN "
+                "DEFAULT FALSE NOT NULL",
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cli_delivery VARCHAR(10) "
+                "DEFAULT 'queue' NOT NULL",
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cli_context VARCHAR(10) "
+                "DEFAULT 'keep' NOT NULL",
             ):
                 if not await _missing_still(conn, _ddl):
                     continue
@@ -727,6 +736,7 @@ api.include_router(mail.router)
 api.include_router(mailbox.router)
 api.include_router(notes_native.router)
 api.include_router(mcp_server.router)
+api.include_router(cli_api.router)
 api.include_router(secrets.router)
 api.include_router(permissions.router)
 api.include_router(notifications.router)

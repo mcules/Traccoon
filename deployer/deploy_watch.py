@@ -279,6 +279,16 @@ class PreviewHandler(BaseHTTPRequestHandler):
             self._json(200, stack_logs(body.get("service", ""), int(body.get("tail") or 200)))
         elif self.path == "/stack/services":
             self._json(200, {"services": stack_services()})
+        elif self.path == "/cli/start":
+            ok, log = cli_start(body)
+            self._json(200 if ok else 500, {"ok": ok, "log": log})
+        elif self.path == "/cli/stop":
+            self._json(200, {"ok": cli_stop(body.get("name", ""))})
+        elif self.path == "/cli/status":
+            self._json(200, cli_status(body.get("names") or []))
+        elif self.path == "/cli/send":
+            ok, log = cli_send(body)
+            self._json(200 if ok else 500, {"ok": ok, "log": log})
         else:
             self._json(404, {"error": "not found"})
 
@@ -581,6 +591,128 @@ def cleanup_orphans(keep):
         removed.append(proj)
         print(f"[deployer] verwaiste Preview entfernt: {proj}", flush=True)
     return removed
+
+
+# ── Claude CLI sessions ──────────────────────────────────────────────────────
+# One container per (person, project), see backend services/cli_sessions.py. The deployer only
+# runs what the backend describes, but it checks the description: the backend is the bigger
+# target, and a request that mounts `/` or names a foreign container must not get through
+# just because it carries the internal token.
+CLI_IMAGE = os.getenv("CLI_IMAGE", "traccoon-cli:latest")
+CLI_NETWORK = os.getenv("CLI_NETWORK", "traccoon-cli")
+CLI_MEMORY = os.getenv("CLI_MEMORY", "2g")
+CLI_CPUS = os.getenv("CLI_CPUS", "2")
+CLI_ROOTS = [r.rstrip("/") + "/" for r in os.getenv("CLI_MOUNT_ROOTS", "").split(":") if r]
+_CLI_NAME = re.compile(r"^traccoon-cli-[a-z0-9][a-z0-9-]{0,80}$")
+_CLI_TARGET = re.compile(r"^/(workspace|cfg)(/[A-Za-z0-9._-]+)*$")
+
+
+def _cli_mount_ok(host, target):
+    real = os.path.realpath(host)
+    return (bool(_CLI_TARGET.match(target or ""))
+            and any((real + "/").startswith(root) for root in CLI_ROOTS))
+
+
+def cli_start(body):
+    """Start (or keep) the session container. Idempotent: a running one is left alone."""
+    name = body.get("name", "")
+    if not _CLI_NAME.match(name):
+        return False, "invalid container name"
+    mounts = body.get("mounts") or []
+    for m in mounts:
+        if not _cli_mount_ok(m.get("host", ""), m.get("target", "")):
+            return False, f"mount refused: {m.get('host')} -> {m.get('target')}"
+    state = cli_status([name]).get(name)
+    if state == "running":
+        return True, "running"
+    if state:  # exists but stopped or dead: start it fresh with the current description
+        sh(["docker", "rm", "-f", name], timeout=60)
+    for m in mounts:
+        os.makedirs(m["host"], exist_ok=True)
+    # The token goes in over an env file, not the command line, where every `ps` shows it.
+    env_file = f"/tmp/{name}.env"
+    fd = os.open(env_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        for k, v in (body.get("env") or {}).items():
+            fh.write(f"{k}={str(v).replace(chr(10), ' ')}\n")
+    args = ["docker", "run", "-d", "--init", "--name", name, "--restart", "unless-stopped",
+            "--network", CLI_NETWORK, "--memory", str(body.get("mem_limit") or CLI_MEMORY),
+            "--cpus", str(body.get("cpus") or CLI_CPUS), "--env-file", env_file,
+            "--label", "traccoon.cli=1"]
+    for k, v in (body.get("labels") or {}).items():
+        args += ["--label", f"traccoon.cli.{k}={v}"]
+    for m in mounts:
+        args += ["-v", f"{m['host']}:{m['target']}"]
+    args.append(CLI_IMAGE)
+    try:
+        rc, out = sh(args, timeout=120)
+    finally:
+        try:
+            os.unlink(env_file)
+        except OSError:
+            pass
+    return rc == 0, out[-2000:]
+
+
+def cli_stop(name):
+    if not _CLI_NAME.match(name or ""):
+        return False
+    rc, _ = sh(["docker", "rm", "-f", name], timeout=60)
+    return rc == 0
+
+
+def cli_status(names):
+    """State per container name: running, exited, ... or missing from the answer."""
+    rc, out = sh(["docker", "ps", "-a", "--filter", "label=traccoon.cli=1",
+                  "--format", "{{.Names}} {{.State}}"], timeout=30)
+    states = {}
+    for line in out.splitlines() if rc == 0 else []:
+        parts = line.split()
+        if len(parts) == 2:
+            states[parts[0]] = parts[1]
+    if names:
+        return {n: states[n] for n in names if n in states}
+    return states
+
+
+def _tmux(name, *args, stdin=None):
+    p = subprocess.run(["docker", "exec", "-i", name, "tmux", *args], input=stdin,
+                       capture_output=True, text=True, timeout=30)
+    return p.returncode, p.stdout + p.stderr
+
+
+def cli_send(body):
+    """Type into the session: optionally Escape (interrupt), `/clear`, then the text.
+
+    The text is pasted as one bracketed paste, so a multi-line ticket arrives as ONE message
+    and not as one message per line. Claude queues it when it is still busy.
+    """
+    name = body.get("name", "")
+    if not _CLI_NAME.match(name):
+        return False, "invalid container name"
+    log = []
+    if body.get("interrupt"):
+        rc, out = _tmux(name, "send-keys", "-t", "main", "Escape")
+        log.append(f"interrupt rc={rc} {out}")
+        time.sleep(1)
+    if body.get("clear"):
+        rc, out = _tmux(name, "send-keys", "-t", "main", "/clear", "Enter")
+        log.append(f"clear rc={rc} {out}")
+        time.sleep(2)
+    text = body.get("text") or ""
+    if text:
+        rc, out = _tmux(name, "load-buffer", "-b", "traccoon", "-", stdin=text)
+        if rc != 0:
+            return False, f"load-buffer: {out}"
+        rc, out = _tmux(name, "paste-buffer", "-b", "traccoon", "-t", "main", "-d", "-p")
+        if rc != 0:
+            return False, f"paste-buffer: {out}"
+        time.sleep(0.5)
+        rc, out = _tmux(name, "send-keys", "-t", "main", "Enter")
+        log.append(f"text rc={rc} {out}")
+        if rc != 0:
+            return False, "\n".join(log)
+    return True, "\n".join(log)
 
 
 def _serve_preview():

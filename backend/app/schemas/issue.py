@@ -33,10 +33,16 @@ class IssueUpdate(BaseModel):
     sprint_id: int | None = None
     story_points: int | None = None
     asset_id: int | None = None     # Hardware-Bezug
+    # CLI mode only: how the ticket goes into the Claude session on release.
+    cli_delivery: Literal["now", "queue"] | None = None
+    cli_context: Literal["keep", "clear"] | None = None
 
 
 class AssignAgentIn(BaseModel):
     agent: str = "project_manager"
+    # CLI mode: the release sets both delivery options in the same step (see IssueUpdate).
+    cli_delivery: Literal["now", "queue"] | None = None
+    cli_context: Literal["keep", "clear"] | None = None
 
 
 class AssigneeIn(BaseModel):
@@ -82,6 +88,8 @@ class IssueOut(BaseModel):
     asset_id: int | None = None   # hardware reference; the label is resolved by the frontend
     rank: str
     agent_working: bool
+    cli_delivery: str = "queue"
+    cli_context: str = "keep"
     # Running lifecycle process (the truth about the flow; agent_status is the projection of
     # it). NULL = none is running for this ticket right now.
     workflow_instance_id: int | None = None

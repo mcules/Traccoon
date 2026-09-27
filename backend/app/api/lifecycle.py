@@ -191,6 +191,9 @@ async def stop_agent(pair: tuple[Issue, Access] = Depends(get_issue_access),
     _require_ai(access)
     from ..core.redis import publish_kill
     await publish_kill(issue.key)
+    # And out of a Claude CLI session, if the project works in one.
+    from ..services.cli_sessions import cancel as cli_cancel
+    await cli_cancel(db, issue)
     issue.agent_working = False
     from ..services.artifacts import set_ticket_status
     await set_ticket_status(db, issue, TicketAgentStatus.hold,

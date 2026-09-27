@@ -174,6 +174,7 @@ export interface Project {
   parent_id?: number | null; inherit_members?: boolean;
   managed: boolean; pm_chat_enabled: boolean; has_hardware: boolean; git_enabled?: boolean;
   testenv_enabled?: boolean;   // Testumgebungs-Schritt vor „Fertig“
+  cli_mode?: boolean;          // Claude CLI sessions instead of PM chat and agents
   my_role: string; my_ai_assign: boolean; my_role_inherited?: boolean;
   is_member: boolean; is_new: boolean;
 }
@@ -197,6 +198,7 @@ export interface Issue {
   testenv_status?: string | null; testenv_url?: string | null; testenv_error?: string | null;
   parent_ticket_id: number | null; split_order: number | null;
   sprint_id: number | null; story_points: number | null; rank: string; agent_working: boolean;
+  cli_delivery?: "now" | "queue"; cli_context?: "keep" | "clear";   // CLI mode only
   workflow_instance_id?: number | null;   // laufender Lebenszyklus-Prozess
   artifact_id?: number | null;            // the shared artifact identity (free fields)
   asset_id?: number | null;   // Hardware-Bezug (Exemplar), nur in Hardware-Projekten

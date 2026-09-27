@@ -72,6 +72,14 @@ async def start_lifecycle(db: AsyncSession, issue: Issue, actor_id: int | None =
             t.state = WorkflowTokenState.consumed
         await db.flush()
 
+    # CLI mode: the person's session plans and implements in one go, there is no separate
+    # planning run and no plan approval (the release IS the approval).
+    if entry == "plan":
+        from ..models.project import Project
+        project = await db.get(Project, issue.project_id)
+        if project is not None and project.cli_mode:
+            entry = "exec"
+
     # The issue type has a say: a bug may have a flow of its own.
     definition = await resolve_definition(db, issue.project_id, LIFECYCLE_SLOT,
                                           issue.type_id)

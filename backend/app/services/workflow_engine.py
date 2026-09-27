@@ -972,6 +972,11 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
         ))
         return Outcome(terminal=True, instance_status="failed", error="Ticket not found")
 
+    from ..models.project import Project as _Project
+    project = await db.get(_Project, issue.project_id)
+    if project is not None and project.cli_mode:
+        return await _start_cli_task(db, inst, node, token, cfg, issue, existing, spawn_after)
+
     # -- gatekeeper (policy, not graph) --------------------------------------
     from . import agent_gate
     verdict = await agent_gate.check(db, issue)
@@ -1041,6 +1046,62 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
     # later would overwrite its changes).
     spawn_after.append(_await_agent(inst.id, token.id, step.id, task_id,
                                     dict(outcomes_map), timeout))
+    return Outcome(wait=True, waiting_for="agent")
+
+
+async def _start_cli_task(db, inst, node, token, cfg, issue, existing, spawn_after: list) -> Outcome:
+    """The same step for a project in CLI mode: the ticket goes into the Claude CLI session
+    of whoever released it instead of into the worker queue (services/cli_sessions.py).
+
+    No gatekeeper: time windows and runner limits are about agents this house runs on its own;
+    a session is a person's own, and it is busy or not by their doing. The waiting is the
+    same as for a worker run, so the graph needs no node of its own.
+    """
+    import uuid
+
+    from . import cli_sessions
+
+    outcomes_map = cfg.get("outcomes_map") or {}
+    task_id = f"wf-{inst.id}-{token.id}-{node['id']}-cli-{uuid.uuid4().hex[:8]}"
+    step = existing if (existing is not None and existing.status == SStatus.pending) else None
+    if step is None:
+        step = WorkflowStepRun(
+            instance_id=inst.id, token_id=token.id, node_id=node["id"],
+            node_type=NType.agent_task, assignee_user_id=None,
+        )
+        db.add(step)
+    step.status = SStatus.running
+    step.token_id = token.id
+    step.error = None
+    step.result = {"task_id": task_id, "cli": True}
+    await db.flush()
+    issue.agent_working = True
+    from ..models.enums import TicketAgentStatus
+    from .artifacts import set_ticket_status
+    if issue.agent_status in (TicketAgentStatus.approved, TicketAgentStatus.plan_review,
+                              TicketAgentStatus.open, TicketAgentStatus.hold,
+                              TicketAgentStatus.failed, None):
+        issue.hold_reason = None
+        await set_ticket_status(db, issue, TicketAgentStatus.in_progress, board=False)
+    delivery = await cli_sessions.enqueue(db, issue, task_id)
+    await publish_event(inst.project_id or 0, {
+        "type": "workflow_step", "instance_id": inst.id, "node_id": node["id"],
+        "node_type": "agent_task", "status": "running",
+    })
+    from .comments import add_system_comment
+    how = "right away" if delivery.delivery == "now" else "into the queue"
+    await add_system_comment(
+        db, issue.id, f"💻 The ticket goes {how} of the Claude CLI session"
+        + (" (fresh context)" if delivery.context == "clear" else ""),
+        author_label="Workflow",
+    )
+
+    async def _after_commit():
+        cli_sessions.kick(delivery.session_id)
+        # No hard cap: a person may take a day over a ticket. Alive is what CLI_TASKS says.
+        await _await_agent(inst.id, token.id, step.id, task_id, dict(outcomes_map), 0)
+
+    spawn_after.append(_after_commit())
     return Outcome(wait=True, waiting_for="agent")
 
 
@@ -1983,6 +2044,13 @@ async def _engine_tick() -> None:
     except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Collecting orphaned tickets failed")
 
+    # Tickets waiting for a Claude CLI session (projects in CLI mode).
+    try:
+        from . import cli_sessions
+        await cli_sessions.tick()
+    except Exception:  # noqa: BLE001, must never block the tick
+        log.exception("Delivering into the CLI sessions failed")
+
     gated = await _retry_gated()
     async with SessionLocal() as db:
         ids = (
@@ -2039,8 +2107,10 @@ async def recover_workflow_agents() -> None:
             cfg = node_config(node) if node else {}
             omap = dict(cfg.get("outcomes_map") or {})
             if s.node_type == NType.agent_task:
-                agents.append((s.instance_id, s.token_id, s.id, task_id, omap,
-                               int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT)))
+                # A ticket in a CLI session has no cap (see _start_cli_task).
+                cap = 0 if (s.result or {}).get("cli") else int(
+                    cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT)
+                agents.append((s.instance_id, s.token_id, s.id, task_id, omap, cap))
             else:
                 actions.append((s.instance_id, s.token_id, s.id, task_id,
                                 int(cfg.get("timeout_sec") or ACTION_DEFAULT_TIMEOUT), omap,

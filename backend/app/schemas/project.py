@@ -39,6 +39,8 @@ class ProjectSettings(BaseModel):
     managed: bool | None = None
     has_hardware: bool | None = None
     pm_chat_enabled: bool | None = None
+    # Claude CLI sessions instead of PM chat and agents (services/cli_sessions.py).
+    cli_mode: bool | None = None
     verify_command: str | None = None
     review_enabled: bool | None = None
     auto_continue: bool | None = None
@@ -98,6 +100,7 @@ class ProjectOut(BaseModel):
     avatar_color: str
     managed: bool
     pm_chat_enabled: bool
+    cli_mode: bool = False
     has_hardware: bool
     git_enabled: bool = False
     testenv_enabled: bool = True

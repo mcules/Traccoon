@@ -27,6 +27,7 @@ import IssueList from "../components/IssueList";
 import Dashboard from "../components/Dashboard";
 import Board from "../components/Board";
 import PmChat from "../components/PmChat";
+import CliSession from "../components/CliSession";
 import AgentMonitor from "../components/AgentMonitor";
 
 // The tab list and the icons lie in ../projectTabs so that the ticket page can render the
@@ -206,7 +207,7 @@ export default function ProjectView() {
         </Suspense>
       )}
       {tab === "dashboard" && <Dashboard project={project} />}
-      {tab === "pm" && <PmChat project={project} />}
+      {tab === "pm" && (project.cli_mode ? <CliSession project={project} /> : <PmChat project={project} />)}
       {tab === "operations" && (
         <>
           {view === "monitor" && <AgentMonitor project={project} />}

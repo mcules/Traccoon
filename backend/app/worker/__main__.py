@@ -32,6 +32,7 @@ from ..models.ticket import Comment, Issue
 from ..models.user import User
 from ..services import continuation
 from . import gitops
+from .issue_git import prepare_issue_git
 from .runtime import AgentDef, agent_def_from_row, run_agent
 from .secrets import (
     resolve_git_token, resolve_provider_base_url,
@@ -301,37 +302,8 @@ async def handle(job: dict, redis: Redis) -> None:
         ws_root = None
         ctx = None
         if project.git_enabled:
-            host = urlsplit(project.github_repo).hostname or ""
-            token = await resolve_git_token(db, project.git_token_enc, owner_id, host) or ""
-            wt = gitops.worktree_path(project.key, issue.key) if project.work_in_branches else None
-            base_branch = project.merge_target or "main"
-            # Subticket: base it on the branch of the umbrella ticket (and merge back there).
-            if issue.parent_ticket_id:
-                umbrella = await db.get(Issue, issue.parent_ticket_id)
-                if umbrella:
-                    umb_branch = umbrella.branch_name or gitops.issue_branch(umbrella.key)
-                    ens = gitops.GitCtx(
-                        workdir=gitops.project_workdir(project.key), branch=umb_branch,
-                        remote=project.github_repo, token=token,
-                        main=project.merge_target or "main", enabled=True)
-                    log.info("git ensure-umbrella %s: %s", umbrella.key,
-                             await gitops.ensure_branch(ens, umb_branch, project.merge_target or "main"))
-                    if not umbrella.branch_name:
-                        umbrella.branch_name = umb_branch
-                        umbrella.base_branch = project.merge_target or "main"
-                        await db.commit()
-                    base_branch = umb_branch
-            ctx = gitops.GitCtx(
-                workdir=gitops.project_workdir(project.key), branch=gitops.issue_branch(issue.key),
-                remote=project.github_repo, token=token, worktree=wt, main=base_branch,
-                enabled=True)
-            note = await gitops.prepare(ctx)
-            log.info("git prepare %s: %s", issue.key, note)
+            ctx = await prepare_issue_git(db, issue, project, owner_id)
             ws_root = ctx.worktree or ctx.workdir
-            issue.branch_name = ctx.branch
-            issue.base_branch = ctx.main
-            issue.git_base_sha = ctx.base_commit
-            await db.commit()
         elif project.managed:
             ws_root = gitops.project_workdir(project.key)
 

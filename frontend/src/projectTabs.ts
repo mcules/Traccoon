@@ -68,7 +68,10 @@ export function operationViews(project: Project | undefined): [OperationView, st
 export function projectTabs(project: Project | undefined): [ProjectTab, string][] {
   if (!project) return [];
   return [
-    ...(project.my_ai_assign && project.pm_chat_enabled
+    // CLI mode: the same place holds the person's own Claude CLI session instead of the chat.
+    ...(project.my_ai_assign && project.cli_mode
+      ? ([["pm", tr("project_page.tab_session")]] as [ProjectTab, string][])
+      : project.my_ai_assign && project.pm_chat_enabled
       ? ([["pm", tr("project_page.tab_pm")]] as [ProjectTab, string][]) : []),
     ["work", tr("project_page.work")],
     ...(canManage(project) && project.git_enabled
@@ -94,7 +97,7 @@ export function projectChromeTabs(
   return projectTabs(project).map(([key, label]) => ({
     key,
     label,
-    icon: TAB_ICONS[key],
+    icon: key === "pm" && project.cli_mode ? "💻" : TAB_ICONS[key],
     to: projectPath(project.key, key, current && current.tab === key ? current.sub : undefined),
   }));
 }

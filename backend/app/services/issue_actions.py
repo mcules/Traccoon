@@ -213,7 +213,8 @@ async def delete(db: AsyncSession, issue: Issue, access) -> None:
 
 # ── The agent ───────────────────────────────────────────────────────────────
 
-async def assign_agent(db: AsyncSession, issue: Issue, access, *, agent: str) -> None:
+async def assign_agent(db: AsyncSession, issue: Issue, access, *, agent: str,
+                       cli_delivery: str | None = None, cli_context: str | None = None) -> None:
     """Assign a role AND start the lifecycle: setting the field alone starts nothing.
 
     This one is the expensive action of the list, and the only one that commits in the middle:
@@ -221,6 +222,14 @@ async def assign_agent(db: AsyncSession, issue: Issue, access, *, agent: str) ->
     to stand there.
     """
     _require_ai(access)
+    # CLI mode: no agent roles; the ticket goes into the Claude session of whoever releases
+    # it, and the role name only marks it as released.
+    if access.project.cli_mode:
+        agent = "cli_session"
+        if cli_delivery:
+            issue.cli_delivery = cli_delivery
+        if cli_context:
+            issue.cli_context = cli_context
     issue.assigned_agent = agent
     issue.assigned_by_user_id = access.user.id
     issue.assigned_at = _now()

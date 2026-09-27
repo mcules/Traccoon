@@ -226,7 +226,8 @@ async def assign_agent(
     db: AsyncSession = Depends(get_session),
 ):
     issue, access = pair
-    await actions.assign_agent(db, issue, access, agent=data.agent)
+    await actions.assign_agent(db, issue, access, agent=data.agent,
+                               cli_delivery=data.cli_delivery, cli_context=data.cli_context)
     await db.refresh(issue)
     return issue
 

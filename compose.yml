@@ -61,6 +61,10 @@ services:
       FILMER_URL: ${FILMER_URL:-http://filmer:8710}
       WORKSPACE_ROOT: /workspace
       WORKSPACE_HOST_PATH: ${WORKSPACE_HOST_PATH:?WORKSPACE_HOST_PATH required (see .env)}
+      # Claude CLI sessions: where their config volumes live on the host (the deployer mounts
+      # them), and where a session reaches the ticket tools.
+      CLI_DATA_HOST_PATH: ${SELF_STACK_DIR}/data/cli
+      CLI_MCP_URL: ${CLI_MCP_URL:-http://traccoon-backend:8800/api/mcp/project}
       TESTENV_HOST: ${TESTENV_HOST:-localhost}
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
@@ -158,6 +162,12 @@ services:
           # reaches the note tool server back the other way. A generic name on a
           # shared network is how a neighbouring stack's `backend` ends up being
           # asked, so it is the unique one on both sides.
+          - traccoon-backend
+      # The Claude CLI session containers (cli/). They sit on this network ONLY: the backend
+      # is the one thing of the stack they reach (ticket tools over /api/mcp/project), and
+      # the backend reaches their terminal. Database and Redis stay out of their sight.
+      cli:
+        aliases:
           - traccoon-backend
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8800", "--reload"]
 
@@ -384,10 +394,23 @@ services:
       # Portbereich/Grenzen kommen zur Laufzeit aus den globalen Einstellungen (Admin).
       TESTENV_MAX_BUILDS: ${TESTENV_MAX_BUILDS:-2}
       TESTENV_LIVENESS_WAIT: ${TESTENV_LIVENESS_WAIT:-6}
+      # Claude CLI sessions: the only host folders a session container may mount (the
+      # deployer refuses anything else), and their limits.
+      CLI_MOUNT_ROOTS: ${WORKSPACE_HOST_PATH}:${SELF_STACK_DIR}/data/cli
+      CLI_MEMORY: ${CLI_MEMORY:-2g}
+      CLI_CPUS: ${CLI_CPUS:-2}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DOCKER_STACKS_DIR:?DOCKER_STACKS_DIR required (see .env)}:${DOCKER_STACKS_DIR}
       - ./deployer/deploy_watch.py:/deploy_watch.py:ro
+
+  # The image of the Claude CLI session containers. Never started by compose (the profile
+  # keeps it out of `up`); the deployer starts one per person and project. Build it with
+  # `docker compose --profile cli build cli`.
+  cli:
+    build: ./cli
+    image: traccoon-cli:latest
+    profiles: ["cli"]
 
   # The front door. Its own service so that it keeps standing while backend and frontend are
   # being replaced — that is the whole reason it exists, and the reason it contains nothing
@@ -450,6 +473,8 @@ services:
 
 networks:
   default:
+  cli:
+    name: traccoon-cli
   mcp-backends:
     external: true
   proxy:

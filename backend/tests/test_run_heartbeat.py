@@ -48,6 +48,9 @@ class FakeRedis:
     async def hvals(self, key):
         return []
 
+    async def sismember(self, key, member):
+        return False
+
 
 async def test_a_live_run_is_not_cut_off(monkeypatch):
     """As long as the run lives it is waited for: the old 30 minute limit does not exist any more."""

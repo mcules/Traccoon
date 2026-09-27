@@ -59,6 +59,10 @@ class Project(TimestampMixin, Base):
     auto_create_agents: Mapped[bool] = mapped_column(Boolean, default=False)
     system_prompt: Mapped[str] = mapped_column(Text, default="")
     pm_chat_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # CLI mode: instead of the PM chat and the agents, every member works in an own Claude
+    # CLI session, and released tickets are delivered into the session of whoever released
+    # them (services/cli_sessions.py). The agent roles below are not used then.
+    cli_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     plan_agent: Mapped[str] = mapped_column(String(100), default="architect")
     exec_agent: Mapped[str] = mapped_column(String(100), default="developer")
     # Default subscription or token of this project; overrides the personal default

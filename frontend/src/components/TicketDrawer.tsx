@@ -86,6 +86,9 @@ export default function TicketDrawer({
   const [comment, setComment] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [agent, setAgent] = useState("project_manager");
+  // CLI mode: how the ticket goes into the Claude session when it is released.
+  const [cliDelivery, setCliDelivery] = useState<"now" | "queue">("queue");
+  const [cliContext, setCliContext] = useState<"keep" | "clear">("keep");
   const [err, setErr] = useState("");
   const [showDiff, setShowDiff] = useState(false);
   const diff = useQuery({
@@ -190,7 +193,9 @@ export default function TicketDrawer({
     onSuccess: () => { setComment(""); qc.invalidateQueries({ queryKey: ["comments", issueKey] }); },
   });
   const assign = useMutation({
-    mutationFn: () => api.post(`/issues/${issueKey}/assign-agent`, { agent }),
+    mutationFn: () => api.post(`/issues/${issueKey}/assign-agent`, project.cli_mode
+      ? { agent: "cli_session", cli_delivery: cliDelivery, cli_context: cliContext }
+      : { agent }),
     onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const [newPersonName, setNewPersonName] = useState("");
@@ -747,7 +752,7 @@ export default function TicketDrawer({
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
             <span className="rounded bg-brand/20 px-2 py-0.5 text-brand">
-              🤖 {issue.assigned_agent}
+              {project.cli_mode ? `💻 ${tr("ticket_drawer.cli_session")}` : `🤖 ${issue.assigned_agent}`}
               {issue.agent_status ? ` · ${issue.agent_working ? tr("ticket_drawer.running") : issue.agent_status}` : ""}
               {issue.hold_reason ? ` (${issue.hold_reason})` : ""}
             </span>
@@ -769,9 +774,27 @@ export default function TicketDrawer({
             || issue.agent_status === "failed") && (
             <button onClick={() => life.mutate("plan")}
               className={BUTTON_SMALL.primary}>
-              🧭 {issue.agent_status === "failed" ? tr("ticket_drawer.plan_again") : tr("ticket_drawer.start_planning")}
+              {project.cli_mode
+                ? `💻 ${tr("ticket_drawer.cli_send_again")}`
+                : `🧭 ${issue.agent_status === "failed" ? tr("ticket_drawer.plan_again") : tr("ticket_drawer.start_planning")}`}
             </button>
           )}
+        </div>
+      ) : project.cli_mode ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={cliDelivery} onChange={(e) => setCliDelivery(e.target.value as "now" | "queue")}
+            className="rounded border border-line bg-surface px-2 py-1 text-ink">
+            <option value="queue">{tr("ticket_drawer.cli_queue")}</option>
+            <option value="now">{tr("ticket_drawer.cli_now")}</option>
+          </select>
+          <select value={cliContext} onChange={(e) => setCliContext(e.target.value as "keep" | "clear")}
+            className="rounded border border-line bg-surface px-2 py-1 text-ink">
+            <option value="keep">{tr("ticket_drawer.cli_keep")}</option>
+            <option value="clear">{tr("ticket_drawer.cli_clear")}</option>
+          </select>
+          <button onClick={() => assign.mutate()}
+            className={BUTTON_SMALL.primary}>💻 {tr("ticket_drawer.cli_release")}</button>
+          <span className="text-xs text-muted">{tr("ticket_drawer.cli_release_hint")}</span>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">

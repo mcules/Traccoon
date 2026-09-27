@@ -43,7 +43,8 @@ from app.models.enums import (  # noqa: E402
 _SESSION_MODULES = (
     "app.db", "app.services.workflow_engine", "app.services.dispatcher",
     "app.services.inbound", "app.services.scheduler", "app.services.testenv",
-    "app.services.retention", "app.worker.__main__",
+    "app.services.retention", "app.worker.__main__", "app.services.cli_sessions",
+    "app.api.cli",
 )
 
 
@@ -195,7 +196,7 @@ def redis_stub(monkeypatch):
     # Modules that bound the functions at import time need the same replacement.
     import importlib
     for modname in ("app.services.workflow_engine", "app.services.dispatcher",
-                    "app.services.scheduler"):
+                    "app.services.scheduler", "app.services.cli_sessions"):
         mod = importlib.import_module(modname)
         for name, fn in stubs.items():
             if hasattr(mod, name):

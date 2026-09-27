@@ -88,6 +88,10 @@ async def run_alive(task_id: str) -> bool:
     r = get_redis()
     if await r.get(pulse_key(task_id)) is not None:
         return True
+    # A ticket in a person's Claude CLI session (services/cli_sessions.py): alive for as long
+    # as it waits there or is being worked on, however long that takes.
+    if await r.sismember(PREFIX + "cli:tasks", task_id):
+        return True
     for listing in (QUEUE, PROCESSING):
         for raw in await r.lrange(listing, 0, -1):
             if task_id in raw:
