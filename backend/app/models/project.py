@@ -77,6 +77,10 @@ class Project(TimestampMixin, Base):
     # to be entered on the server; the private half only goes into the session containers.
     cli_ssh_key_enc: Mapped[str] = mapped_column(Text, default="")
     cli_ssh_public: Mapped[str] = mapped_column(Text, default="")
+    # More folders of the workspace for the sessions, beside the project's own checkout
+    # (space or comma separated names, each mounted at /workspace/<name>): a second
+    # repository the project is deployed from, for instance.
+    cli_extra_dirs: Mapped[str] = mapped_column(Text, default="")
     plan_agent: Mapped[str] = mapped_column(String(100), default="architect")
     exec_agent: Mapped[str] = mapped_column(String(100), default="developer")
     # Default subscription or token of this project; overrides the personal default

@@ -290,6 +290,9 @@ class PreviewHandler(BaseHTTPRequestHandler):
             self._json(200, cli_logs(body.get("name", ""), int(body.get("tail") or 200)))
         elif self.path == "/cli/image":
             self._json(200, cli_image(bool(body.get("build")), bool(body.get("latest"))))
+        elif self.path == "/cli/build":
+            ok, log = cli_build(body)
+            self._json(200, {"ok": ok, "log": log})
         elif self.path == "/cli/capture":
             self._json(200, cli_capture(body.get("name", ""), int(body.get("lines") or 200)))
         elif self.path == "/cli/exec":
@@ -737,6 +740,66 @@ def cli_status(names):
     if names:
         return {n: states[n] for n in names if n in states}
     return states
+
+
+_CLI_BUILD_NAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,40}$")
+_CLI_BUILD_PLATFORMS = ("linux/amd64", "linux/arm64")
+_cli_build_run_lock = threading.Lock()
+
+
+def _inside(root, rel):
+    """rel as a path inside root, or None when it leaves it."""
+    path = os.path.realpath(os.path.join(root, rel or "."))
+    return path if (path + "/").startswith(os.path.realpath(root) + "/") else None
+
+
+def cli_build(body):
+    """Build a session's programs in throwaway containers, from `traccoon-build.json` in the
+    repository (allowed by the owner of the house for CLI sessions):
+
+        {"steps": [{"name": "linux-x86_64", "dockerfile": "tools/Dockerfile.linux",
+                    "context": "tools", "platform": "linux/amd64", "out": "dist/bin"}, ...]}
+
+    Every step builds its image from the repository's Dockerfile and runs it without network
+    and with only the repository (/src) and its output folder (/out) mounted: no Docker
+    socket and no other folder of the host.
+    """
+    repo = body.get("repo") or ""
+    if not _cli_mount_ok(repo, "/workspace"):
+        return False, "repository outside the allowed folders"
+    try:
+        with open(os.path.join(repo, "traccoon-build.json"), encoding="utf-8") as fh:
+            steps = json.load(fh).get("steps") or []
+    except (OSError, ValueError) as exc:
+        return False, f"traccoon-build.json: {exc}"
+    only = set(body.get("only") or [])
+    log = []
+    with _cli_build_run_lock:
+        for st in steps:
+            name = str(st.get("name") or "")
+            if only and name not in only:
+                continue
+            plat = st.get("platform") or "linux/amd64"
+            dockerfile = _inside(repo, st.get("dockerfile"))
+            context = _inside(repo, st.get("context") or ".")
+            out = _inside(repo, st.get("out") or "dist")
+            if not (_CLI_BUILD_NAME.match(name) and plat in _CLI_BUILD_PLATFORMS
+                    and dockerfile and context and out):
+                return False, "\n".join(log + [f"invalid step: {st}"])
+            os.makedirs(out, exist_ok=True)
+            tag = f"traccoon-build-{name}"
+            started = time.time()
+            rc, text = sh(["docker", "build", "-q", "--platform", plat, "-t", tag,
+                           "-f", dockerfile, context], timeout=1800)
+            if rc != 0:
+                return False, "\n".join(log + [f"== {name}: image failed", text[-3000:]])
+            rc, text = sh(["docker", "run", "--rm", "--platform", plat, "--network", "none",
+                           "-v", f"{repo}:/src", "-v", f"{out}:/out", tag], timeout=1800)
+            log.append(f"== {name} ({plat}): {'ok' if rc == 0 else 'FAILED'} "
+                       f"in {int(time.time() - started)} s\n{text[-1500:]}")
+            if rc != 0:
+                return False, "\n".join(log)[-8000:]
+    return True, "\n".join(log)[-8000:]
 
 
 def cli_capture(name, lines=200):

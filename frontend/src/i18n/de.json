@@ -3844,5 +3844,7 @@
   "cli_session.login_link": "Anmelde-Link holen",
   "cli_session.login_link_none": "Kein Anmelde-Link zu sehen. Erst /login in der Session.",
   "cli_session.login_link_open": "Anmelde-Link öffnen",
-  "err.cli_type_failed": "{reason}"
+  "err.cli_type_failed": "{reason}",
+  "project_settings.cli_extra_dirs": "Weitere Ordner der Session",
+  "project_settings.cli_extra_dirs_hint": "Ordnernamen im Arbeitsbereich, mit Leerzeichen getrennt, z. B. ein zweites Repo, aus dem mit deployt wird. Die Session sieht sie unter /workspace/<name>, nach dem nächsten Start."
 }

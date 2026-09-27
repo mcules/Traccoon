@@ -63,6 +63,35 @@ def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
 
+_DIR = re.compile(r"^[a-z0-9][a-z0-9._-]{0,60}$")
+
+
+def extra_dirs(project: Project) -> list[str]:
+    """The project's additional workspace folders (projects.cli_extra_dirs), checked."""
+    names = re.split(r"[\s,]+", project.cli_extra_dirs or "")
+    return [n for n in names if _DIR.match(n) and n != project.key.lower()]
+
+
+def session_dirs(project: Project) -> list[str]:
+    """Every folder of /workspace a session of this project sees."""
+    return [project.key.lower(), *extra_dirs(project)]
+
+
+async def build(sess: CliSession, directory: str, only: list[str] | None = None) -> tuple[bool, str]:
+    """Build the programs of one of the session's folders on this host (deployer, steps from
+    traccoon-build.json in that folder). Allowed for CLI sessions by the owner of the house."""
+    async with SessionLocal() as db:
+        project = await db.get(Project, sess.project_id)
+    if project is None or directory not in session_dirs(project):
+        return False, f"{directory} is not a folder of this session"
+    try:
+        res = await _deployer("/cli/build", {"repo": f"{WORKSPACE_HOST_PATH}/{directory}",
+                                             "only": only or []}, 3700)
+    except httpx.HTTPError as exc:
+        return False, f"deployer unreachable: {exc}"
+    return bool(res.get("ok")), str(res.get("log") or "")
+
+
 def container_name(project: Project, user_id: int) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", project.key.lower()).strip("-") or f"p{project.id}"
     return f"traccoon-cli-{slug}-u{user_id}"
@@ -151,6 +180,8 @@ async def start(db: AsyncSession, sess: CliSession, login: bool = False) -> bool
         {"host": f"{WORKSPACE_HOST_PATH}/{pkey}", "target": f"/workspace/{pkey}"},
         {"host": f"{WORKSPACE_HOST_PATH}/.traccoon-worktrees/{pkey}",
          "target": f"/workspace/.traccoon-worktrees/{pkey}"},
+        *[{"host": f"{WORKSPACE_HOST_PATH}/{d}", "target": f"/workspace/{d}"}
+          for d in extra_dirs(project)],
         # One config directory per person, shared by all their sessions: one /login is
         # enough, and it survives every restart.
         {"host": f"{CLI_DATA_HOST_PATH}/u{user.id}", "target": "/cfg"},
@@ -162,6 +193,8 @@ async def start(db: AsyncSession, sess: CliSession, login: bool = False) -> bool
     env = {
         "SESSION_WORKDIR": workdir,
         "TRACCOON_MCP_URL": CLI_MCP_URL,
+        # The same token opens the session's own endpoints (build) for scripts.
+        "TRACCOON_API_URL": CLI_MCP_URL.rsplit("/mcp/", 1)[0],
         "TRACCOON_MCP_TOKEN": raw,
         "GIT_NAME": user.display_name or user.username,
         "GIT_EMAIL": user.email or f"{user.username}@traccoon.local",

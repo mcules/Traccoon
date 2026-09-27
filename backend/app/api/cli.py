@@ -408,6 +408,16 @@ TOOLS = [
          "release": {"type": "integer", "description": "The release id from the deploy job"},
          "status": {"type": "string", "enum": ["done", "failed"]},
          "summary": {"type": "string"}}, "required": ["release", "status", "summary"]}},
+    {"name": "build",
+     "description": "Build the programs of one of this session's folders on the host "
+                    "(steps in traccoon-build.json there; output lands in that folder). "
+                    "Takes a few minutes. Scripts: POST $TRACCOON_API_URL/cli/build with "
+                    "Authorization: Bearer $TRACCOON_MCP_TOKEN and {\"dir\": ...}.",
+     "inputSchema": {"type": "object", "properties": {
+         "dir": {"type": "string", "description": "Folder name under /workspace"},
+         "only": {"type": "array", "items": {"type": "string"},
+                  "description": "Only these steps (names from traccoon-build.json)"}},
+         "required": ["dir"]}},
     {"name": "queue_list",
      "description": "The tickets waiting for or delivered into this session.",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -469,9 +479,31 @@ async def _call(db: AsyncSession, sess: CliSession, name: str, args: dict):
         return await cli_sessions.release_report(db, sess, int(args.get("release") or 0),
                                                  str(args.get("status") or ""),
                                                  str(args.get("summary") or ""))
+    if name == "build":
+        ok, log = await cli_sessions.build(sess, str(args.get("dir") or ""),
+                                           [str(x) for x in (args.get("only") or [])])
+        return ("build ok\n" if ok else "build FAILED\n") + log
     if name == "queue_list":
         return await _queue(db, sess)
     raise LookupError(f"unknown tool {name}")
+
+
+class BuildIn(BaseModel):
+    dir: str
+    only: list[str] = []
+
+
+@router.post("/cli/build")
+async def session_build(body: BuildIn, authorization: str | None = Header(default=None),
+                        db: AsyncSession = Depends(get_session)):
+    """The build for scripts inside a session (its deploy script, for instance): the same
+    as the MCP tool, with the session's own token."""
+    try:
+        sess = await _session_by_token(db, authorization)
+    except PermissionError as exc:
+        raise Error(status.HTTP_401_UNAUTHORIZED, "err.cli_bad_token", "{reason}", reason=str(exc))
+    ok, log = await cli_sessions.build(sess, body.dir, body.only)
+    return {"ok": ok, "log": log}
 
 
 @router.post("/mcp/project")

@@ -227,3 +227,34 @@ def&response_type=code&scope=user%3Aprofile
         "https://claude.ai/oauth/authorize?code=true&client_id=abcdef&response_type=code"
         "&scope=user%3Aprofile&state=xyz")
     assert cli.login_url("nothing here") == ""
+
+
+def test_extra_folders_are_checked():
+    from app.models.project import Project
+    p = Project(key="AFU", name="x", cli_extra_dirs="afu-remote, ../etc  afu Bad/Name")
+    assert cli.extra_dirs(p) == ["afu-remote"]
+    assert cli.session_dirs(p) == ["afu", "afu-remote"]
+
+
+async def test_build_only_for_the_sessions_folders(db, fake, monkeypatch):
+    owner, proj, _ = await _cli_project(db, 0)
+    proj.cli_extra_dirs = "cli-tools"
+    sess = await cli.get_session(db, proj.id, owner.id, create=True)
+    await db.commit()
+    _, calls = fake
+    ok, log = await cli.build(sess, "other-project")
+    assert not ok and "not a folder of this session" in log
+    ok, _ = await cli.build(sess, "cli-tools", ["linux-x86_64"])
+    assert ok and calls[-1] == ("/cli/build", {
+        "repo": f"{cli.WORKSPACE_HOST_PATH}/cli-tools", "only": ["linux-x86_64"]})
+
+
+async def test_the_build_endpoint_wants_the_session_token(db, client, fake):
+    owner, proj, _ = await _cli_project(db, 0)
+    sess = await cli.get_session(db, proj.id, owner.id, create=True)
+    sess.mcp_token_hash = cli.token_hash("tok")
+    await db.commit()
+    r = await client.post("/cli/build", json={"dir": "cli"}, headers={"Authorization": "Bearer no"})
+    assert r.status_code == 401
+    r = await client.post("/cli/build", json={"dir": "cli"}, headers={"Authorization": "Bearer tok"})
+    assert r.json()["ok"] is True

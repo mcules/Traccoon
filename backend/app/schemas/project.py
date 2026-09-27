@@ -44,6 +44,7 @@ class ProjectSettings(BaseModel):
     cli_deploy_command: str | None = None
     release_auto_new: bool | None = None
     cli_before_ticket: str | None = None
+    cli_extra_dirs: str | None = None
     verify_command: str | None = None
     review_enabled: bool | None = None
     auto_continue: bool | None = None

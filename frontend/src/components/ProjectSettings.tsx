@@ -45,7 +45,7 @@ const TAB_KEYS = TABS.map(([k]) => k);
 
 type Settings = {
   description: string;
-  managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; cli_mode: boolean; cli_deploy_command: string; release_auto_new: boolean; cli_before_ticket: string; cli_ssh_public?: string; verify_command: string; review_enabled: boolean;
+  managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; cli_mode: boolean; cli_deploy_command: string; release_auto_new: boolean; cli_before_ticket: string; cli_extra_dirs: string; cli_ssh_public?: string; verify_command: string; review_enabled: boolean;
   auto_continue: boolean; auto_deploy: boolean; screenshot_enabled: boolean;
   plan_agent: string; exec_agent: string; default_provider: string; default_token_name: string;
   vault_moc_path: string; system_prompt: string;
@@ -186,6 +186,8 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
           <Field label={tr("project_settings.cli_before_ticket")} hint={tr("project_settings.cli_before_ticket_hint")}
             textarea rows={2}
             value={s.cli_before_ticket} onChange={(v) => set({ cli_before_ticket: v })} />
+          <Field label={tr("project_settings.cli_extra_dirs")} hint={tr("project_settings.cli_extra_dirs_hint")}
+            value={s.cli_extra_dirs} onChange={(v) => set({ cli_extra_dirs: v })} />
           <SshKey projectId={project.id} publicKey={s.cli_ssh_public ?? ""}
             onNew={(k) => { set({ cli_ssh_public: k }); qc.invalidateQueries({ queryKey: ["project-settings", project.id] }); }} />
         </>)}

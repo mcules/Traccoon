@@ -3844,5 +3844,7 @@
   "cli_session.login_link": "Get login link",
   "cli_session.login_link_none": "No login link on the screen. Run /login in the session first.",
   "cli_session.login_link_open": "Open login link",
-  "err.cli_type_failed": "{reason}"
+  "err.cli_type_failed": "{reason}",
+  "project_settings.cli_extra_dirs": "More folders for the session",
+  "project_settings.cli_extra_dirs_hint": "Folder names in the workspace, space separated, e.g. a second repository the project deploys from. The session sees them at /workspace/<name> after its next start."
 }
