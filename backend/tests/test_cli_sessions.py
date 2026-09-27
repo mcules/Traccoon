@@ -312,3 +312,16 @@ async def test_remote_control_is_a_setting_of_the_person(db, client, fake):
     assert r.json() == {"remote_control": False}
     await db.refresh(owner)
     assert owner.cli_remote_control is False
+
+
+async def test_a_backend_restart_leaves_a_session_ticket_alone(db, fake):
+    from app.models.enums import TicketAgentStatus
+    from app.services import dispatcher
+    owner, proj, (issue,) = await _cli_project(db)
+    await cli.enqueue(db, issue, "t-restart")
+    issue.agent_working = True
+    issue.agent_status = TicketAgentStatus.in_progress
+    await db.commit()
+    await dispatcher.recover_on_start()
+    await db.refresh(issue)
+    assert issue.agent_status == TicketAgentStatus.in_progress and issue.agent_working

@@ -207,7 +207,15 @@ async def recover_on_start() -> None:
             await set_setting(db, "last_update_completed_at", _now().isoformat())
         stuck = (await db.execute(
             select(Issue).where(Issue.agent_working.is_(True)))).scalars().all()
+        from ..models.cli import CliDelivery
         for issue in stuck:
+            # A ticket in a Claude CLI session has no worker run at all: it lives as long as
+            # its delivery is open, and a backend restart does not touch the session.
+            in_session = (await db.execute(select(CliDelivery.id).where(
+                CliDelivery.issue_id == issue.id,
+                CliDelivery.state.in_(("waiting", "delivered"))).limit(1))).first()
+            if in_session:
+                continue
             run = (await db.execute(select(Run).where(Run.issue_id == issue.id)
                                     .order_by(Run.id.desc()))).scalars().first()
             alive = False
