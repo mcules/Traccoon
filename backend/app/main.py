@@ -598,6 +598,19 @@ async def lifespan(app: FastAPI):
                 "DEFAULT 'queue' NOT NULL",
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cli_context VARCHAR(10) "
                 "DEFAULT 'keep' NOT NULL",
+                # Releases (models/cli.Release).
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS cli_deploy_command TEXT "
+                "DEFAULT '' NOT NULL",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS release_auto_new BOOLEAN "
+                "DEFAULT TRUE NOT NULL",
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS release_id INTEGER "
+                "REFERENCES releases(id) ON DELETE SET NULL",
+                "CREATE INDEX IF NOT EXISTS ix_issues_release_id ON issues (release_id)",
+                "ALTER TABLE cli_deliveries ADD COLUMN IF NOT EXISTS release_id INTEGER "
+                "REFERENCES releases(id) ON DELETE CASCADE",
+                "CREATE INDEX IF NOT EXISTS ix_cli_deliveries_release_id "
+                "ON cli_deliveries (release_id)",
+                "ALTER TABLE cli_deliveries ALTER COLUMN issue_id DROP NOT NULL",
             ):
                 if not await _missing_still(conn, _ddl):
                     continue

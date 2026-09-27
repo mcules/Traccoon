@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.redis import PREFIX, RESULT_TTL, get_redis, publish_event
 from ..core.security import encrypt_secret
 from ..db import SessionLocal
-from ..models.cli import CliDelivery, CliSession
+from ..models.cli import CliDelivery, CliSession, Release
 from ..models.project import Project
 from ..models.ticket import Comment, Issue
 from ..models.user import User
@@ -52,6 +52,9 @@ CLI_TASKS = PREFIX + "cli:tasks"
 # The port ttyd serves the tmux session on, inside the container.
 TTYD_PORT = 7681
 REPORT_STATES = ("done", "blocked", "failed")
+# A running session with nothing delivered, waiting or attached for this long is stopped.
+# It costs memory while it idles, and it starts again by itself with the next ticket.
+IDLE_HOURS = float(os.getenv("CLI_IDLE_HOURS", "8"))
 
 _locks: dict[int, asyncio.Lock] = {}
 
@@ -148,9 +151,13 @@ async def start(db: AsyncSession, sess: CliSession) -> bool:
          "target": f"/workspace/.traccoon-worktrees/{pkey}"},
         {"host": f"{CLI_DATA_HOST_PATH}/{pkey}/u{user.id}", "target": "/cfg"},
     ]
+    # Without ticket worktrees everything happens in the project checkout: start there, so
+    # claude finds the project's CLAUDE.md and `--continue` picks up the right conversation.
+    workdir = "/workspace" if (project.git_enabled and project.work_in_branches) \
+        else f"/workspace/{pkey}"
     env = {
         "CLAUDE_CODE_OAUTH_TOKEN": oauth,
-        "SESSION_WORKDIR": "/workspace",
+        "SESSION_WORKDIR": workdir,
         "TRACCOON_MCP_URL": CLI_MCP_URL,
         "TRACCOON_MCP_TOKEN": raw,
         "GIT_NAME": user.display_name or user.username,
@@ -188,6 +195,47 @@ async def stop(db: AsyncSession, sess: CliSession) -> None:
     await db.commit()
 
 
+async def logs(sess: CliSession, tail: int = 300) -> str:
+    try:
+        res = await _deployer("/cli/logs", {"name": sess.container, "tail": tail}, 30)
+    except httpx.HTTPError as exc:
+        return f"deployer unreachable: {exc}"
+    return str(res.get("log") or "")
+
+
+async def image(build: bool = False, latest: bool = False) -> dict:
+    """Version of the session image; with `build` (re)build it first (admins only)."""
+    try:
+        return await _deployer("/cli/image", {"build": build, "latest": latest},
+                               1300 if build else 90)
+    except httpx.HTTPError as exc:
+        return {"ok": False, "version": "", "log": f"deployer unreachable: {exc}"}
+
+
+async def stop_project(db: AsyncSession, project_id: int) -> None:
+    """Take down every session of a project (it is being deleted)."""
+    for sess in (await db.execute(select(CliSession).where(
+            CliSession.project_id == project_id))).scalars().all():
+        await stop(db, sess)
+
+
+async def _stop_idle() -> None:
+    cutoff = _now() - dt.timedelta(hours=IDLE_HOURS)
+    async with SessionLocal() as db:
+        running = (await db.execute(select(CliSession).where(
+            CliSession.status == "running"))).scalars().all()
+        for sess in running:
+            busy = (await db.execute(select(func.count()).select_from(CliDelivery).where(
+                CliDelivery.session_id == sess.id,
+                CliDelivery.state.in_(("waiting", "delivered"))))).scalar() or 0
+            last = max(t for t in (sess.last_attach_at, sess.updated_at) if t is not None)
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=dt.timezone.utc)
+            if not busy and last < cutoff:
+                log.info("CLI session %s idle since %s, stopping", sess.container, last)
+                await stop(db, sess)
+
+
 async def send(sess: CliSession, text: str = "", *, clear: bool = False,
                interrupt: bool = False) -> tuple[bool, str]:
     try:
@@ -218,6 +266,13 @@ async def enqueue(db: AsyncSession, issue: Issue, task_id: str) -> CliDelivery:
         await get_redis().srem(CLI_TASKS, old.task_id)
     last = (await db.execute(select(func.max(CliDelivery.position)).where(
         CliDelivery.session_id == sess.id))).scalar() or 0
+    # The ticket ships with the open release. One that comes back after its release was
+    # deployed (rework) belongs to the next one.
+    current = await db.get(Release, issue.release_id) if issue.release_id else None
+    if current is None or current.state != "open":
+        project = await db.get(Project, issue.project_id)
+        rel = await open_release(db, project)
+        issue.release_id = rel.id if rel else None
     row = CliDelivery(session_id=sess.id, issue_id=issue.id, task_id=task_id,
                       delivery=issue.cli_delivery or "queue", context=issue.cli_context or "keep",
                       position=last + 1, state="waiting")
@@ -225,6 +280,109 @@ async def enqueue(db: AsyncSession, issue: Issue, task_id: str) -> CliDelivery:
     await db.flush()
     await get_redis().sadd(CLI_TASKS, task_id)
     return row
+
+
+# ── Releases ────────────────────────────────────────────────────────────────
+
+# A ticket in these states is finished work as far as deploying goes: acceptance can come
+# after the deploy (that is what one tests against).
+FINISHED = ("done", "testing", "to_test")
+
+
+async def open_release(db: AsyncSession, project: Project, *,
+                       force_new: bool = False) -> Release | None:
+    """The project's open release; a new one when there is none and the project opens them
+    by itself (or it never had one, or `force_new`)."""
+    rel = (await db.execute(select(Release).where(
+        Release.project_id == project.id, Release.state == "open")
+        .order_by(Release.id.desc()))).scalars().first()
+    if rel is not None:
+        return rel
+    last = (await db.execute(select(func.max(Release.number)).where(
+        Release.project_id == project.id))).scalar()
+    if not (force_new or project.release_auto_new or last is None):
+        return None
+    number = (last or 0) + 1
+    rel = Release(project_id=project.id, number=number, name=f"Release {number}", state="open")
+    db.add(rel)
+    await db.flush()
+    return rel
+
+
+async def release_tickets(db: AsyncSession, release_id: int) -> list[Issue]:
+    return list((await db.execute(select(Issue).where(Issue.release_id == release_id)
+                                  .order_by(Issue.number))).scalars().all())
+
+
+def _status(issue: Issue) -> str:
+    v = issue.agent_status
+    return (v.value if hasattr(v, "value") else v) or "open"
+
+
+async def deploy_release(db: AsyncSession, rel: Release, user_id: int,
+                         force: bool = False) -> CliDelivery:
+    """Hand the deploy of a release to the caller's session (behind what it works on).
+
+    Unfinished tickets block it; with `force` they move on to the next release instead and
+    are not part of this one. The next release is opened right away (if the project does
+    that), so tickets released from now on already land there.
+    """
+    if rel.state not in ("open", "failed"):
+        raise ValueError(f"{rel.name} is {rel.state}")
+    tickets = await release_tickets(db, rel.id)
+    unfinished = [i for i in tickets if _status(i) not in FINISHED]
+    if unfinished and not force:
+        raise ValueError("unfinished: " + ", ".join(i.key for i in unfinished))
+    if not [i for i in tickets if _status(i) in FINISHED]:
+        raise ValueError(f"{rel.name} has no finished ticket")
+    project = await db.get(Project, rel.project_id)
+    rel.state = "deploying"
+    rel.deploy_started_at = _now()
+    rel.deployed_by_user_id = user_id
+    await db.flush()
+    nxt = await open_release(db, project)
+    for i in unfinished:
+        i.release_id = nxt.id if nxt else None
+    import uuid
+    sess = await get_session(db, rel.project_id, user_id, create=True)
+    last = (await db.execute(select(func.max(CliDelivery.position)).where(
+        CliDelivery.session_id == sess.id))).scalar() or 0
+    row = CliDelivery(session_id=sess.id, issue_id=None, release_id=rel.id,
+                      task_id=f"release-{rel.id}-{uuid.uuid4().hex[:8]}",
+                      delivery="queue", context="keep", position=last + 1, state="waiting")
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def release_report(db: AsyncSession, sess: CliSession, release_id: int, status: str,
+                         summary: str) -> str:
+    """The session says how the deploy went."""
+    if status not in ("done", "failed"):
+        return "status must be done or failed"
+    rel = await db.get(Release, release_id)
+    if rel is None or rel.project_id != sess.project_id:
+        return f"no release {release_id} in this project"
+    d = (await db.execute(select(CliDelivery).where(
+        CliDelivery.session_id == sess.id, CliDelivery.release_id == rel.id,
+        CliDelivery.state.in_(("delivered", "waiting"))))).scalars().first()
+    if d is None:
+        return f"{rel.name} is not waiting for a report from this session"
+    d.state = "reported"
+    d.reported_at = _now()
+    rel.state = "deployed" if status == "done" else "failed"
+    rel.summary = summary
+    if status == "done":
+        rel.deployed_at = _now()
+    from .comments import add_system_comment
+    text = (f"🚀 Deployed with {rel.name}" if status == "done"
+            else f"⚠️ Deploy of {rel.name} failed: {summary[:500]}")
+    for i in await release_tickets(db, rel.id):
+        await add_system_comment(db, i.id, text, author_label="Release")
+    await db.commit()
+    await publish_event(sess.project_id, {"type": "cli_queue", "session_id": sess.id})
+    kick(sess.id)
+    return f"{rel.name} reported as {status}"
 
 
 def kick(session_id: int) -> None:
@@ -281,6 +439,8 @@ async def dispatch(session_id: int, retry_failed: bool = False) -> None:
 
 
 async def _deliver(db: AsyncSession, sess: CliSession, d: CliDelivery) -> None:
+    if d.release_id is not None:
+        return await _deliver_release(db, sess, d)
     issue = await db.get(Issue, d.issue_id)
     project = await db.get(Project, sess.project_id)
     if issue is None or project is None:
@@ -306,6 +466,39 @@ async def _deliver(db: AsyncSession, sess: CliSession, d: CliDelivery) -> None:
     from .comments import add_system_comment
     await add_system_comment(db, issue.id, "💻 Delivered into the Claude CLI session",
                              author_label="Workflow")
+    await db.commit()
+    await publish_event(project.id, {"type": "cli_queue", "session_id": sess.id})
+
+
+async def _deliver_release(db: AsyncSession, sess: CliSession, d: CliDelivery) -> None:
+    rel = await db.get(Release, d.release_id)
+    project = await db.get(Project, sess.project_id)
+    if rel is None or project is None:
+        d.state = "cancelled"
+        await db.commit()
+        return
+    tickets = [i for i in await release_tickets(db, rel.id)]
+    how = (f"Deploy with: {project.cli_deploy_command.strip()}"
+           if project.cli_deploy_command.strip()
+           else "Deploy as the project's instructions (CLAUDE.md) describe.")
+    text = "\n".join([
+        f"[Traccoon release {rel.id}] Deploy {rel.name} of {project.name}",
+        "Tickets in this release:",
+        *[f"- {i.key}: {i.summary}" for i in tickets],
+        "",
+        how,
+        "First make sure the work of these tickets is committed. Deploy, check that it "
+        "worked, then call the MCP tool traccoon release_report with release "
+        f"{rel.id}, status done|failed and a short summary.",
+    ])
+    ok, out = await send(sess, text)
+    if not ok:
+        d.error = out[-2000:]
+        await db.commit()
+        return
+    d.state = "delivered"
+    d.delivered_at = _now()
+    d.error = ""
     await db.commit()
     await publish_event(project.id, {"type": "cli_queue", "session_id": sess.id})
 
@@ -411,3 +604,5 @@ async def tick() -> None:
         await get_redis().sadd(CLI_TASKS, *open_ids)
     for sid in ids:
         await _dispatch_safe(sid)
+    if IDLE_HOURS > 0:
+        await _stop_idle()

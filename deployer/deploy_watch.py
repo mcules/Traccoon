@@ -286,6 +286,10 @@ class PreviewHandler(BaseHTTPRequestHandler):
             self._json(200, {"ok": cli_stop(body.get("name", ""))})
         elif self.path == "/cli/status":
             self._json(200, cli_status(body.get("names") or []))
+        elif self.path == "/cli/logs":
+            self._json(200, cli_logs(body.get("name", ""), int(body.get("tail") or 200)))
+        elif self.path == "/cli/image":
+            self._json(200, cli_image(bool(body.get("build")), bool(body.get("latest"))))
         elif self.path == "/cli/send":
             ok, log = cli_send(body)
             self._json(200 if ok else 500, {"ok": ok, "log": log})
@@ -613,11 +617,54 @@ def _cli_mount_ok(host, target):
             and any((real + "/").startswith(root) for root in CLI_ROOTS))
 
 
+def _cli_image_version():
+    """The claude version in the image, or "" when there is no image."""
+    rc, out = sh(["docker", "run", "--rm", "--entrypoint", "claude", CLI_IMAGE, "--version"],
+                 timeout=60)
+    return out.strip().splitlines()[-1] if rc == 0 and out.strip() else ""
+
+
+_cli_build_lock = threading.Lock()
+
+
+def cli_image(build=False, latest=False):
+    """State of the session image, and (on request) build it.
+
+    `latest` rebuilds without cache against the newest Claude Code release; without it the
+    version pinned in cli/Dockerfile is built. Sessions keep their old image until restarted.
+    """
+    log = ""
+    if build:
+        with _cli_build_lock:
+            args = ["docker", "build", "-t", CLI_IMAGE]
+            if latest:
+                args += ["--no-cache", "--pull", "--build-arg", "CLAUDE_CODE_VERSION=latest"]
+            args.append(os.path.join(SELF_STACK_DIR, "cli"))
+            rc, out = sh(args, timeout=1200)
+            log = out[-4000:]
+            if rc != 0:
+                return {"ok": False, "version": _cli_image_version(), "log": log}
+    return {"ok": True, "version": _cli_image_version(), "log": log}
+
+
+def cli_logs(name, tail=200):
+    if not _CLI_NAME.match(name or ""):
+        return {"log": "invalid container name"}
+    rc, out = sh(["docker", "logs", "--tail", str(max(1, min(tail, 2000))), name], timeout=30)
+    return {"log": out[-20000:]}
+
+
 def cli_start(body):
     """Start (or keep) the session container. Idempotent: a running one is left alone."""
     name = body.get("name", "")
     if not _CLI_NAME.match(name):
         return False, "invalid container name"
+    # First session on this host: build the image instead of failing on a missing one.
+    rc, _ = sh(["docker", "image", "inspect", CLI_IMAGE], timeout=30)
+    if rc != 0:
+        built = cli_image(build=True)
+        if not built["ok"]:
+            return False, "building the session image failed:\n" + built["log"]
     mounts = body.get("mounts") or []
     for m in mounts:
         if not _cli_mount_ok(m.get("host", ""), m.get("target", "")):

@@ -173,6 +173,9 @@ class Issue(TimestampMixin, Base):
     # session has reported its current ticket. `clear` starts it with an empty context.
     cli_delivery: Mapped[str] = mapped_column(String(10), default="queue")
     cli_context: Mapped[str] = mapped_column(String(10), default="keep")
+    # The release this ticket ships with (CLI mode, see models/cli.Release).
+    release_id: Mapped[int | None] = mapped_column(
+        ForeignKey("releases.id", ondelete="SET NULL"), nullable=True, index=True)
     branch_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     base_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     git_base_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)

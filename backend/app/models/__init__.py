@@ -45,7 +45,7 @@ from .assistant import (  # noqa: F401
     AssistantSession, AssistantTask, ChatSummary, SpamFeatureStat, SpamVerdict,
 )
 from .chat import Message  # noqa: F401
-from .cli import CliDelivery, CliSession  # noqa: F401
+from .cli import CliDelivery, CliSession, Release  # noqa: F401
 from .notification import Notification  # noqa: F401
 from .notes import NotesCalendar  # noqa: F401
 from .notes_servers import NotesCalendarServer  # noqa: F401

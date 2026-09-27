@@ -269,6 +269,9 @@ async def delete_project(
         raise Error(status.HTTP_409_CONFLICT, "err.project_carries_reporting_programs",
                     "The project still carries the reporting programs {programs} — "
                     "move them first", programs=", ".join(reporting))
+    # Its Claude CLI sessions would otherwise keep running as containers nobody can reach.
+    from ..services.cli_sessions import stop_project
+    await stop_project(db, access.project.id)
     await db.delete(access.project)
     await db.commit()
 

@@ -90,6 +90,7 @@ class IssueOut(BaseModel):
     agent_working: bool
     cli_delivery: str = "queue"
     cli_context: str = "keep"
+    release_id: int | None = None
     # Running lifecycle process (the truth about the flow; agent_status is the projection of
     # it). NULL = none is running for this ticket right now.
     workflow_instance_id: int | None = None

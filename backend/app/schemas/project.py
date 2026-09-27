@@ -41,6 +41,8 @@ class ProjectSettings(BaseModel):
     pm_chat_enabled: bool | None = None
     # Claude CLI sessions instead of PM chat and agents (services/cli_sessions.py).
     cli_mode: bool | None = None
+    cli_deploy_command: str | None = None
+    release_auto_new: bool | None = None
     verify_command: str | None = None
     review_enabled: bool | None = None
     auto_continue: bool | None = None

@@ -43,7 +43,11 @@ class CliDelivery(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("cli_sessions.id", ondelete="CASCADE"), index=True)
-    issue_id: Mapped[int] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"), index=True)
+    # A ticket, or (issue_id NULL) the deploy job of a release.
+    issue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="CASCADE"), nullable=True, index=True)
+    release_id: Mapped[int | None] = mapped_column(
+        ForeignKey("releases.id", ondelete="CASCADE"), nullable=True, index=True)
     task_id: Mapped[str] = mapped_column(String(120), unique=True)
     # now | queue, keep | clear: copied from the ticket at the moment of release, so changing
     # the ticket afterwards does not reorder what is already waiting.
@@ -56,3 +60,28 @@ class CliDelivery(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     delivered_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reported_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Release(Base):
+    """A set of tickets deployed together (projects in CLI mode).
+
+    Released tickets collect in the project's open release. Deploying it hands one deploy
+    job to a session, behind whatever that session is still working on; the session answers
+    with `release_report`. After that a fresh open release is started, unless the project
+    says otherwise (`projects.release_auto_new`).
+    """
+    __tablename__ = "releases"
+    __table_args__ = (UniqueConstraint("project_id", "number", name="uq_release_project_number"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    number: Mapped[int] = mapped_column(Integer, default=1)
+    name: Mapped[str] = mapped_column(String(120), default="")
+    # open | deploying | deployed | failed
+    state: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    deployed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deploy_started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deployed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

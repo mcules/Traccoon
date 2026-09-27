@@ -5,7 +5,9 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { tr } from "../i18n";
 import { api, ApiError, getToken, Project } from "../api";
-import { Area, BUTTON_SMALL, Errorrow, Listing, ListingEmpty, Tag } from "./ui";
+import { useAuth } from "../auth";
+import { formatDateTime } from "../lib/formatTime";
+import { Area, BUTTON_SMALL, Dialog, Errorrow, Listing, ListingEmpty, Tag } from "./ui";
 
 /**
  * The person's own Claude CLI session in a project in CLI mode.
@@ -15,8 +17,13 @@ import { Area, BUTTON_SMALL, Errorrow, Listing, ListingEmpty, Tag } from "./ui";
  * there; the session keeps running and keeps receiving the tickets that are released.
  */
 interface QueueEntry {
-  id: number; issue_key: string; summary: string; state: "waiting" | "delivered";
+  id: number; issue_key: string; release_id: number | null; summary: string; state: "waiting" | "delivered";
   delivery: "now" | "queue"; context: "keep" | "clear"; error: string;
+}
+interface ReleaseTicket { key: string; summary: string; agent_status: string; finished: boolean; }
+interface ReleaseOut {
+  id: number; name: string; state: "open" | "deploying" | "deployed" | "failed";
+  summary: string; deployed_at: string | null; tickets: ReleaseTicket[];
 }
 interface SessionOut { status: string; error: string; container: string; queue: QueueEntry[]; }
 
@@ -49,6 +56,27 @@ export default function CliSession({ project }: { project: Project }) {
     onSuccess: (d) => qc.setQueryData(key, d), onError,
   });
 
+  const [log, setLog] = useState<string | null>(null);
+  const showLog = useMutation({
+    mutationFn: () => api.get<{ log: string }>(`/projects/${project.id}/cli/logs`),
+    onSuccess: (d) => setLog(d.log || tr("cli_session.log_empty")), onError,
+  });
+  // The image is shared by every session of the house: only an admin rebuilds it.
+  const { user } = useAuth();
+  const admin = user?.global_role === "admin";
+  const { data: img } = useQuery({
+    queryKey: ["cli-image"], enabled: admin, staleTime: 60_000,
+    queryFn: () => api.get<{ version: string }>("/cli/image"),
+  });
+  const rebuild = useMutation({
+    mutationFn: () => api.post<{ ok: boolean; version: string; log: string }>("/cli/image/build", { latest: true }),
+    onSuccess: (d) => {
+      qc.setQueryData(["cli-image"], d);
+      setLog(d.ok ? tr("cli_session.image_built", { version: d.version }) : d.log);
+    },
+    onError,
+  });
+
   const running = sess?.status === "running";
   const statusTag = {
     running: <Tag color="green">{tr("cli_session.running")}</Tag>,
@@ -58,12 +86,27 @@ export default function CliSession({ project }: { project: Project }) {
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      {log !== null && (
+        <Dialog title={tr("cli_session.log")} wide onClose={() => setLog(null)}>
+          <pre className="whitespace-pre-wrap break-all font-mono text-xs text-ink">{log}</pre>
+        </Dialog>
+      )}
       <Area
         title={tr("cli_session.title")}
         subtitle={sess?.container}
         tools={<>
           {statusTag}
+          {admin && img?.version && <span className="font-mono text-xs text-muted">{img.version}</span>}
           <div className="flex-1" />
+          {admin && (
+            <button className={BUTTON_SMALL.secondary} disabled={rebuild.isPending}
+              title={tr("cli_session.update_hint")} onClick={() => rebuild.mutate()}>
+              ⬆ {rebuild.isPending ? tr("cli_session.updating") : tr("cli_session.update")}
+            </button>
+          )}
+          <button className={BUTTON_SMALL.secondary} onClick={() => showLog.mutate()}>
+            {tr("cli_session.log")}
+          </button>
           {running ? (<>
             <button className={BUTTON_SMALL.secondary} disabled={start.isPending}
               onClick={() => { stop.mutateAsync().then(() => start.mutate()); }}>
@@ -91,7 +134,7 @@ export default function CliSession({ project }: { project: Project }) {
           {(sess?.queue ?? []).length === 0 && <ListingEmpty>{tr("cli_session.queue_empty")}</ListingEmpty>}
           {(sess?.queue ?? []).map((q) => (
             <div key={q.id} className="flex items-center gap-2 bg-surface px-3 py-2 text-sm">
-              <span className="font-mono text-xs text-muted">{q.issue_key}</span>
+              <span className="font-mono text-xs text-muted">{q.release_id ? "🚀" : q.issue_key}</span>
               <span className="min-w-0 flex-1 truncate" title={q.summary}>{q.summary}</span>
               {q.state === "delivered"
                 ? <Tag color="blue">{tr("cli_session.in_session")}</Tag>
@@ -109,7 +152,113 @@ export default function CliSession({ project }: { project: Project }) {
           ))}
         </Listing>
       </Area>
+
+      <Releases project={project} />
     </div>
+  );
+}
+
+/** Tickets collect in the open release; deploying it hands one job to my session. */
+function Releases({ project }: { project: Project }) {
+  const qc = useQueryClient();
+  const key = ["releases", project.id];
+  const { data: releases } = useQuery({
+    queryKey: key, refetchInterval: 10000,
+    queryFn: () => api.get<ReleaseOut[]>(`/projects/${project.id}/releases`),
+  });
+  const [err, setErr] = useState("");
+  const [confirm, setConfirm] = useState<ReleaseOut | null>(null);
+  const refresh = () => {
+    setErr("");
+    qc.invalidateQueries({ queryKey: key });
+    qc.invalidateQueries({ queryKey: ["cli-session", project.id] });
+  };
+  const onError = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
+  const deploy = useMutation({
+    mutationFn: ({ id, force }: { id: number; force: boolean }) =>
+      api.post(`/projects/${project.id}/releases/${id}/deploy`, { force }),
+    onSuccess: () => { setConfirm(null); refresh(); }, onError,
+  });
+  const open = useMutation({
+    mutationFn: () => api.post(`/projects/${project.id}/releases`), onSuccess: refresh, onError,
+  });
+  const drop = useMutation({
+    mutationFn: ({ id, key: k }: { id: number; key: string }) =>
+      api.del(`/projects/${project.id}/releases/${id}/issues/${k}`),
+    onSuccess: refresh, onError,
+  });
+
+  const current = releases?.find((r) => r.state === "open");
+  const past = (releases ?? []).filter((r) => r.state !== "open");
+  const stateTag = (r: ReleaseOut) => ({
+    deploying: <Tag color="yellow">{tr("releases.deploying")}</Tag>,
+    deployed: <Tag color="green">{tr("releases.deployed")}</Tag>,
+    failed: <Tag color="red">{tr("releases.failed")}</Tag>,
+    open: <Tag color="blue">{tr("releases.open")}</Tag>,
+  }[r.state]);
+  const tryDeploy = (r: ReleaseOut) =>
+    r.tickets.some((t) => !t.finished) ? setConfirm(r) : deploy.mutate({ id: r.id, force: false });
+
+  return (
+    <Area span="xl:col-span-2" title={tr("releases.title")}
+      subtitle={current?.name}
+      tools={<>
+        <div className="flex-1" />
+        {current ? (
+          <button className={BUTTON_SMALL.primary}
+            disabled={deploy.isPending || !current.tickets.some((t) => t.finished)}
+            onClick={() => tryDeploy(current)}>🚀 {tr("releases.deploy", { name: current.name })}</button>
+        ) : (
+          <button className={BUTTON_SMALL.secondary} onClick={() => open.mutate()}>
+            + {tr("releases.open_new")}
+          </button>
+        )}
+      </>}
+    >
+      {err && <Errorrow text={err} />}
+      {confirm && (
+        <Dialog title={tr("releases.unfinished_title")} onClose={() => setConfirm(null)}
+          foot={<>
+            <button className={BUTTON_SMALL.secondary} onClick={() => setConfirm(null)}>{tr("common.cancel")}</button>
+            <button className={BUTTON_SMALL.primary}
+              onClick={() => deploy.mutate({ id: confirm.id, force: true })}>{tr("releases.deploy_finished_only")}</button>
+          </>}>
+          <p className="text-sm text-ink">{tr("releases.unfinished_text")}</p>
+          <ul className="mt-2 list-disc pl-5 text-sm text-muted">
+            {confirm.tickets.filter((t) => !t.finished).map((t) => <li key={t.key}>{t.key}: {t.summary}</li>)}
+          </ul>
+        </Dialog>
+      )}
+      <Listing>
+        {!current?.tickets.length && <ListingEmpty>{tr("releases.empty")}</ListingEmpty>}
+        {current?.tickets.map((t) => (
+          <div key={t.key} className="flex items-center gap-2 bg-surface px-3 py-2 text-sm">
+            <span className="font-mono text-xs text-muted">{t.key}</span>
+            <span className="min-w-0 flex-1 truncate" title={t.summary}>{t.summary}</span>
+            <Tag color={t.finished ? "green" : "yellow"}>{t.agent_status}</Tag>
+            <button className={BUTTON_SMALL.secondary} title={tr("releases.drop")}
+              onClick={() => drop.mutate({ id: current.id, key: t.key })}>✕</button>
+          </div>
+        ))}
+      </Listing>
+      {past.length > 0 && (
+        <Listing>
+          {past.map((r) => (
+            <div key={r.id} className="flex items-center gap-2 bg-surface px-3 py-2 text-sm">
+              <span className="w-24 shrink-0 font-medium">{r.name}</span>
+              {stateTag(r)}
+              <span className="min-w-0 flex-1 truncate text-muted" title={r.summary}>
+                {r.tickets.map((t) => t.key).join(", ")}{r.summary ? ` · ${r.summary}` : ""}
+              </span>
+              {r.deployed_at && <span className="text-xs text-muted">{formatDateTime(r.deployed_at)}</span>}
+              {r.state === "failed" && (
+                <button className={BUTTON_SMALL.secondary} onClick={() => tryDeploy(r)}>{tr("releases.retry")}</button>
+              )}
+            </div>
+          ))}
+        </Listing>
+      )}
+    </Area>
   );
 }
 

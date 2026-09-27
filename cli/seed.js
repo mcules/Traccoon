@@ -66,10 +66,12 @@ Tickets are delivered into this session by Traccoon. Each one starts with a line
 
 - Work on the ticket in the current working directory.
 - Commit your changes yourself, with the ticket key at the start of the message.
-  Commit messages are in English. Never add Co-Authored-By or "Generated with" lines.
+  Follow the project's commit conventions. Never add Co-Authored-By or "Generated with" lines.
 - When the ticket is finished, or you cannot go on, call the MCP tool
   \`traccoon.ticket_report\` with the ticket key, a status (done, blocked, failed) and a
   short summary. Traccoon only moves the ticket on after that call.
+- A deploy job starts with \`[Traccoon release ID]\` and lists the tickets of the release.
+  Deploy, check the result, then call \`traccoon.release_report\` with that id, done or failed.
 - Questions to the person who released the ticket go into \`ticket_report\` with status
   \`blocked\`, or directly here in the terminal if they are watching.
 `,

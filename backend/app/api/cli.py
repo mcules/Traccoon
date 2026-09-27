@@ -20,12 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core import scopes
 from ..core.error import Error
 from ..db import SessionLocal, get_session
-from ..models.cli import CliDelivery, CliSession
+from ..models.cli import CliDelivery, CliSession, Release
 from ..models.project import Project
 from ..models.ticket import Comment, Issue
 from ..models.user import User
 from ..services import api_tokens, cli_sessions
-from .deps import Access, build_access, require_ai_assign
+from .deps import Access, build_access, get_current_user, require_ai_assign
 
 log = logging.getLogger("traccoon.cli")
 router = APIRouter(tags=["cli"])
@@ -39,13 +39,17 @@ def _require_cli(access: Access) -> None:
 
 async def _queue(db: AsyncSession, sess: CliSession) -> list[dict]:
     rows = (await db.execute(
-        select(CliDelivery, Issue).join(Issue, Issue.id == CliDelivery.issue_id)
+        select(CliDelivery, Issue, Release)
+        .outerjoin(Issue, Issue.id == CliDelivery.issue_id)
+        .outerjoin(Release, Release.id == CliDelivery.release_id)
         .where(CliDelivery.session_id == sess.id,
                CliDelivery.state.in_(("waiting", "delivered")))
         .order_by(CliDelivery.state.desc(), CliDelivery.position))).all()
-    return [{"id": d.id, "issue_key": i.key, "summary": i.summary, "state": d.state,
-             "delivery": d.delivery, "context": d.context, "error": d.error,
-             "delivered_at": d.delivered_at} for d, i in rows]
+    return [{"id": d.id, "issue_key": i.key if i else "",
+             "release_id": r.id if r else None,
+             "summary": i.summary if i else (f"Deploy {r.name}" if r else ""),
+             "state": d.state, "delivery": d.delivery, "context": d.context, "error": d.error,
+             "delivered_at": d.delivered_at} for d, i, r in rows]
 
 
 async def _out(db: AsyncSession, sess: CliSession | None) -> dict:
@@ -89,6 +93,40 @@ async def stop_session(access: Access = Depends(require_ai_assign),
     return await _out(db, sess)
 
 
+@router.get("/projects/{project_id}/cli/logs")
+async def session_logs(access: Access = Depends(require_ai_assign),
+                       db: AsyncSession = Depends(get_session)):
+    """What the container printed (start, ttyd); the conversation itself is in the terminal."""
+    _require_cli(access)
+    sess = await cli_sessions.get_session(db, access.project.id, access.user.id)
+    if sess is None:
+        return {"log": ""}
+    return {"log": await cli_sessions.logs(sess)}
+
+
+def _require_admin(user: User) -> None:
+    from ..models.enums import GlobalRole
+    if user.global_role != GlobalRole.admin:
+        raise Error(status.HTTP_403_FORBIDDEN, "err.admin_required", "Admins only")
+
+
+@router.get("/cli/image")
+async def image_state(user: User = Depends(get_current_user)):
+    return await cli_sessions.image()
+
+
+class ImageBuildIn(BaseModel):
+    latest: bool = True
+
+
+@router.post("/cli/image/build")
+async def image_build(body: ImageBuildIn, user: User = Depends(get_current_user)):
+    """Rebuild the session image (newest Claude Code by default). Running sessions keep the
+    old one until they are restarted."""
+    _require_admin(user)
+    return await cli_sessions.image(build=True, latest=body.latest)
+
+
 class MoveIn(BaseModel):
     direction: str  # up | down
 
@@ -114,6 +152,81 @@ async def move_entry(delivery_id: int, body: MoveIn, access: Access = Depends(re
         a.position, b.position = b.position, a.position
         await db.commit()
     return await _out(db, sess)
+
+
+# ── Releases ────────────────────────────────────────────────────────────────
+
+async def _release_out(db: AsyncSession, rel: Release) -> dict:
+    tickets = await cli_sessions.release_tickets(db, rel.id)
+    return {"id": rel.id, "number": rel.number, "name": rel.name, "state": rel.state,
+            "summary": rel.summary, "created_at": rel.created_at,
+            "deploy_started_at": rel.deploy_started_at, "deployed_at": rel.deployed_at,
+            "tickets": [{"key": i.key, "summary": i.summary,
+                         "agent_status": cli_sessions._status(i),
+                         "finished": cli_sessions._status(i) in cli_sessions.FINISHED}
+                        for i in tickets]}
+
+
+@router.get("/projects/{project_id}/releases")
+async def list_releases(access: Access = Depends(require_ai_assign),
+                        db: AsyncSession = Depends(get_session)):
+    """The open release first, then the last ones deployed (or failed, or deploying)."""
+    _require_cli(access)
+    rows = (await db.execute(select(Release).where(Release.project_id == access.project.id)
+                             .order_by(Release.number.desc()).limit(15))).scalars().all()
+    rows = sorted(rows, key=lambda r: (r.state != "open", -r.number))
+    return [await _release_out(db, r) for r in rows]
+
+
+@router.post("/projects/{project_id}/releases")
+async def new_release(access: Access = Depends(require_ai_assign),
+                      db: AsyncSession = Depends(get_session)):
+    """Open a release by hand (for projects that do not open the next one by themselves)."""
+    _require_cli(access)
+    rel = await cli_sessions.open_release(db, access.project, force_new=True)
+    await db.commit()
+    return await _release_out(db, rel)
+
+
+class DeployIn(BaseModel):
+    force: bool = False
+
+
+@router.post("/projects/{project_id}/releases/{release_id}/deploy")
+async def deploy(release_id: int, body: DeployIn, access: Access = Depends(require_ai_assign),
+                 db: AsyncSession = Depends(get_session)):
+    _require_cli(access)
+    rel = await db.get(Release, release_id)
+    if rel is None or rel.project_id != access.project.id:
+        raise Error(status.HTTP_404_NOT_FOUND, "err.release_not_found", "No such release")
+    try:
+        d = await cli_sessions.deploy_release(db, rel, access.user.id, force=body.force)
+    except ValueError as exc:
+        msg = str(exc)
+        if msg.startswith("unfinished: "):
+            raise Error(status.HTTP_409_CONFLICT, "err.release_unfinished",
+                        "Not finished yet: {tickets}", tickets=msg.removeprefix("unfinished: "))
+        raise Error(status.HTTP_409_CONFLICT, "err.release_not_deployable", "{reason}",
+                    reason=msg)
+    await db.commit()
+    cli_sessions.kick(d.session_id)
+    return await _release_out(db, rel)
+
+
+@router.delete("/projects/{project_id}/releases/{release_id}/issues/{key}")
+async def drop_from_release(release_id: int, key: str,
+                            access: Access = Depends(require_ai_assign),
+                            db: AsyncSession = Depends(get_session)):
+    """Take a ticket out of an open release; it waits without one until released again."""
+    _require_cli(access)
+    rel = await db.get(Release, release_id)
+    issue = (await db.execute(select(Issue).where(
+        Issue.key == key, Issue.project_id == access.project.id))).scalar_one_or_none()
+    if rel is None or issue is None or issue.release_id != rel.id or rel.state != "open":
+        raise Error(status.HTTP_404_NOT_FOUND, "err.release_not_found", "No such release")
+    issue.release_id = None
+    await db.commit()
+    return await _release_out(db, rel)
 
 
 # ── The terminal ────────────────────────────────────────────────────────────
@@ -147,6 +260,7 @@ async def terminal(websocket: WebSocket, project_id: int, token: str = ""):
             await websocket.close(code=4409)
             return
         upstream_url = cli_sessions.terminal_url(sess)
+        session_id = sess.id
         sess.last_attach_at = cli_sessions._now()
         await db.commit()
 
@@ -171,7 +285,19 @@ async def terminal(websocket: WebSocket, project_id: int, token: str = ""):
                     elif msg.get("text") is not None:
                         await upstream.send(msg["text"])
 
-            tasks = [asyncio.create_task(down()), asyncio.create_task(up())]
+            async def alive():
+                # An open terminal counts as use: the idle stop must not pull the session
+                # away under somebody who is reading it.
+                while True:
+                    await asyncio.sleep(300)
+                    async with SessionLocal() as db2:
+                        s2 = await db2.get(CliSession, session_id)
+                        if s2 is not None:
+                            s2.last_attach_at = cli_sessions._now()
+                            await db2.commit()
+
+            tasks = [asyncio.create_task(down()), asyncio.create_task(up()),
+                     asyncio.create_task(alive())]
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for t in pending:
                 t.cancel()
@@ -212,6 +338,13 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {
          "summary": {"type": "string"}, "description": {"type": "string"}},
          "required": ["summary"]}},
+    {"name": "release_report",
+     "description": "Report how the deploy of a release went (done or failed). Every deploy "
+                    "job Traccoon delivers ends with this call.",
+     "inputSchema": {"type": "object", "properties": {
+         "release": {"type": "integer", "description": "The release id from the deploy job"},
+         "status": {"type": "string", "enum": ["done", "failed"]},
+         "summary": {"type": "string"}}, "required": ["release", "status", "summary"]}},
     {"name": "queue_list",
      "description": "The tickets waiting for or delivered into this session.",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -269,6 +402,10 @@ async def _call(db: AsyncSession, sess: CliSession, name: str, args: dict):
                                 description=str(args.get("description") or ""),
                                 reporter_id=sess.user_id, source="cli")
         return {"key": issue.key}
+    if name == "release_report":
+        return await cli_sessions.release_report(db, sess, int(args.get("release") or 0),
+                                                 str(args.get("status") or ""),
+                                                 str(args.get("summary") or ""))
     if name == "queue_list":
         return await _queue(db, sess)
     raise LookupError(f"unknown tool {name}")

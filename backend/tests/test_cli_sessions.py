@@ -170,3 +170,46 @@ async def test_the_tools_only_open_with_the_session_token(db, client, fake):
     r = await client.post("/mcp/project", json=report,
                           headers={"Authorization": "Bearer secret"})
     assert "reported as done" in r.json()["result"]["content"][0]["text"]
+
+
+async def test_tickets_collect_in_the_open_release_until_it_is_deployed(db, fake):
+    from app.models.cli import Release
+    from app.models.enums import TicketAgentStatus
+    owner, proj, (a, b, c) = await _cli_project(db, 3)
+    _, calls = fake
+    for n, issue in enumerate((a, b)):
+        await cli.enqueue(db, issue, f"t-{n}")
+    await db.commit()
+    rel = (await db.execute(select(Release))).scalar_one()
+    assert (rel.name, a.release_id, b.release_id) == ("Release 1", rel.id, rel.id)
+
+    # b is not finished: the deploy refuses, with force b moves on to the next release.
+    a.agent_status = TicketAgentStatus.done
+    await db.commit()
+    with pytest.raises(ValueError, match="CLI-2"):
+        await cli.deploy_release(db, rel, owner.id)
+    job = await cli.deploy_release(db, rel, owner.id, force=True)
+    await db.commit()
+    nxt = (await db.execute(select(Release).where(Release.state == "open"))).scalar_one()
+    assert (rel.state, nxt.name, b.release_id) == ("deploying", "Release 2", nxt.id)
+
+    # A ticket released now goes into the new release.
+    await cli.enqueue(db, c, "t-c")
+    await db.commit()
+    assert c.release_id == nxt.id
+
+    # The deploy job waits behind the ticket the session is working on.
+    sess = (await db.execute(select(CliSession))).scalar_one()
+    await cli.dispatch(sess.id)
+    assert [s["text"].splitlines()[0] for s in _sent(calls)] == ["[Traccoon ticket CLI-1] Ticket 1"]
+    await cli.report(db, sess, "CLI-1", "done", "ok")
+    await cli.report(db, sess, "CLI-2", "done", "ok")
+    await cli.dispatch(sess.id)
+    first_lines = [s["text"].splitlines()[0] for s in _sent(calls)]
+    assert first_lines[1] == f"[Traccoon release {rel.id}] Deploy Release 1 of Cli"
+    await db.refresh(job)
+    assert job.state == "delivered"
+
+    assert "reported as done" in await cli.release_report(db, sess, rel.id, "done", "live")
+    await db.refresh(rel)
+    assert rel.state == "deployed" and rel.deployed_at is not None

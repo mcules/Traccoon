@@ -63,6 +63,12 @@ class Project(TimestampMixin, Base):
     # CLI session, and released tickets are delivered into the session of whoever released
     # them (services/cli_sessions.py). The agent roles below are not used then.
     cli_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    # How a session deploys a release: handed to it with the deploy job. Empty = as the
+    # project's own instructions (CLAUDE.md in the repository) say.
+    cli_deploy_command: Mapped[str] = mapped_column(Text, default="")
+    # After a release was deployed, open the next one right away (tickets released later go
+    # into it). Off: they wait without a release until one is opened by hand.
+    release_auto_new: Mapped[bool] = mapped_column(Boolean, default=True)
     plan_agent: Mapped[str] = mapped_column(String(100), default="architect")
     exec_agent: Mapped[str] = mapped_column(String(100), default="developer")
     # Default subscription or token of this project; overrides the personal default
