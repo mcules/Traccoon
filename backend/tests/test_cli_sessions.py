@@ -258,3 +258,27 @@ async def test_the_build_endpoint_wants_the_session_token(db, client, fake):
     assert r.status_code == 401
     r = await client.post("/cli/build", json={"dir": "cli"}, headers={"Authorization": "Bearer tok"})
     assert r.json()["ok"] is True
+
+
+async def test_the_ticket_text_names_the_areas_and_where_they_live(db, seeded, fake):
+    from app.models.artifact import ArtifactField, ArtifactFieldOption
+    from app.services import artifact_fields as fields
+    from app.services.artifacts import ensure_for_issue
+    owner, proj, (issue,) = await _cli_project(db)
+    artifact = await ensure_for_issue(db, issue)
+    area = ArtifactField(type_id=artifact.type_id, project_id=proj.id, key="bereich",
+                         label="Bereich", kind="select", multi=True)
+    db.add(area)
+    await db.flush()
+    db.add_all([
+        ArtifactFieldOption(field_id=area.id, value="core", label="Core",
+                            description="afu.tools repo: site/, api/\nnever the remote copies"),
+        ArtifactFieldOption(field_id=area.id, value="station", label="Station"),
+    ])
+    await db.flush()
+    await fields.set_values(db, artifact.id, area, ["core", "station"], proj.id)
+    await db.commit()
+
+    text = await cli._ticket_text(db, issue, "/workspace/cli")
+    assert "Fields of the ticket:\n- Bereich: Core\n    afu.tools repo: site/, api/\n" \
+           "    never the remote copies\n- Bereich: Station" in text

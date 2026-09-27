@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, type Project } from "../api";
@@ -8,6 +8,7 @@ import {
 
 interface Value {
   id: number; value: string; label: string; color: string; order: number; enabled: boolean;
+  description?: string;
 }
 interface Field {
   id: number; key: string; label: string; kind: string; multi: boolean;
@@ -249,13 +250,17 @@ function Valuelist({ field: field, onFail, onOk }: {
   return (
     <div className="space-y-1">
       {field.options.map((o) => (
-        <div key={o.id} className="flex items-center gap-2 rounded border border-line px-2 py-1 text-sm">
-          <span className={o.enabled ? "flex-1" : "flex-1 text-muted line-through"}>{o.label || o.value}</span>
-          <IconButton icon={o.enabled ? "○" : "●"}
-            title={tr(o.enabled ? "project_fields.stop_offering_stays_existing" : "artifact_types_panel.offer")}
-            onClick={() => update.mutate({ id: o.id, enabled: !o.enabled })} />
-          <IconButton icon={ICON.remove} title={tr("common.delete")} danger
-            onClick={() => remove.mutate(o.id)} />
+        <div key={o.id} className="space-y-1 rounded border border-line px-2 py-1 text-sm">
+          <div className="flex items-center gap-2">
+            <span className={o.enabled ? "flex-1" : "flex-1 text-muted line-through"}>{o.label || o.value}</span>
+            <IconButton icon={o.enabled ? "○" : "●"}
+              title={tr(o.enabled ? "project_fields.stop_offering_stays_existing" : "artifact_types_panel.offer")}
+              onClick={() => update.mutate({ id: o.id, enabled: !o.enabled })} />
+            <IconButton icon={ICON.remove} title={tr("common.delete")} danger
+              onClick={() => remove.mutate(o.id)} />
+          </div>
+          <OptionHint text={o.description ?? ""}
+            onSave={(description) => update.mutate({ id: o.id, description })} />
         </div>
       ))}
       <div className="flex items-center gap-2">
@@ -266,5 +271,19 @@ function Valuelist({ field: field, onFail, onOk }: {
           onClick={() => value.trim() && create.mutate()} />
       </div>
     </div>
+  );
+}
+
+
+/** What a value means for whoever works on the ticket (an area: where its code lives).
+ *  Handed to a Claude CLI session with the ticket; saved when the field is left. */
+function OptionHint({ text, onSave }: { text: string; onSave: (t: string) => void }) {
+  const [draft, setDraft] = useState(text);
+  useEffect(() => { setDraft(text); }, [text]);
+  return (
+    <textarea value={draft} rows={draft ? 2 : 1} onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => { if (draft !== text) onSave(draft); }}
+      placeholder={tr("project_fields.option_hint")} title={tr("project_fields.option_hint_title")}
+      className={`w-full text-xs ${inp}`} />
   );
 }

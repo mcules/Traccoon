@@ -131,6 +131,10 @@ class ArtifactFieldOption(Base):
     category: Mapped[str] = mapped_column(String(20), default="")
     # … and `waiting` highlights that a human is needed here.
     waiting: Mapped[bool] = mapped_column(Boolean, default=False)
+    # What this value means for whoever works on the ticket: for an area of a project, where
+    # its code lives and what to watch out for. Handed to a Claude CLI session along with the
+    # ticket (services/cli_sessions._field_lines).
+    description: Mapped[str] = mapped_column(Text, default="")
 
 
 class ArtifactValue(Base):

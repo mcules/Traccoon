@@ -3846,5 +3846,7 @@
   "cli_session.login_link_open": "Anmelde-Link öffnen",
   "err.cli_type_failed": "{reason}",
   "project_settings.cli_extra_dirs": "Weitere Ordner der Session",
-  "project_settings.cli_extra_dirs_hint": "Ordnernamen im Arbeitsbereich, mit Leerzeichen getrennt, z. B. ein zweites Repo, aus dem mit deployt wird. Die Session sieht sie unter /workspace/<name>, nach dem nächsten Start."
+  "project_settings.cli_extra_dirs_hint": "Ordnernamen im Arbeitsbereich, mit Leerzeichen getrennt, z. B. ein zweites Repo, aus dem mit deployt wird. Die Session sieht sie unter /workspace/<name>, nach dem nächsten Start.",
+  "project_fields.option_hint": "Hinweis für die Session (optional), z. B. wo der Code liegt",
+  "project_fields.option_hint_title": "Geht mit dem Ticket an die Claude-CLI-Session, wenn dieser Wert gewählt ist."
 }

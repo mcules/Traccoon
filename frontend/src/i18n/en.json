@@ -3846,5 +3846,7 @@
   "cli_session.login_link_open": "Open login link",
   "err.cli_type_failed": "{reason}",
   "project_settings.cli_extra_dirs": "More folders for the session",
-  "project_settings.cli_extra_dirs_hint": "Folder names in the workspace, space separated, e.g. a second repository the project deploys from. The session sees them at /workspace/<name> after its next start."
+  "project_settings.cli_extra_dirs_hint": "Folder names in the workspace, space separated, e.g. a second repository the project deploys from. The session sees them at /workspace/<name> after its next start.",
+  "project_fields.option_hint": "Hint for the session (optional), e.g. where the code lives",
+  "project_fields.option_hint_title": "Goes to the Claude CLI session with the ticket when this value is chosen."
 }

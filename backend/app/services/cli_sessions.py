@@ -615,6 +615,34 @@ async def _deliver_release(db: AsyncSession, sess: CliSession, d: CliDelivery) -
     await publish_event(project.id, {"type": "cli_queue", "session_id": sess.id})
 
 
+async def _field_lines(db: AsyncSession, issue: Issue) -> list[str]:
+    """The ticket's own fields (not the built-in ones), readable: for a choice its label and,
+    when the option has one, its description. That is how a person tells the session which
+    part of a project a ticket is about (an area field with where its code lives)."""
+    if not issue.artifact_id:
+        return []
+    from ..models.artifact import Artifact
+    from . import artifact_fields as fields
+    artifact = await db.get(Artifact, issue.artifact_id)
+    if artifact is None:
+        return []
+    values = await fields.values_of(db, artifact.id)
+    lines: list[str] = []
+    for f in await fields.fields_of(db, artifact.type_id, artifact.project_id):
+        if f.source or not values.get(f.key):
+            continue
+        if f.kind != "select":
+            lines.append(f"- {f.label}: {', '.join(str(v) for v in values[f.key])}")
+            continue
+        options = {o.value: o for o in await fields.options_of(db, f.id, only_active=False)}
+        for v in values[f.key]:
+            o = options.get(str(v))
+            lines.append(f"- {f.label}: {(o.label or o.value) if o else v}")
+            if o is not None and o.description.strip():
+                lines += [f"    {line}" for line in o.description.strip().splitlines()]
+    return lines
+
+
 async def _ticket_text(db: AsyncSession, issue: Issue, workdir: str) -> str:
     """What is typed into the session: enough to start, the rest is one tool call away."""
     comments = (await db.execute(select(Comment).where(
@@ -627,12 +655,17 @@ async def _ticket_text(db: AsyncSession, issue: Issue, workdir: str) -> str:
         "",
         (issue.description or "(no description)").strip(),
     ]
+    extra = await _field_lines(db, issue)
+    if extra:
+        lines += ["", "Fields of the ticket:", *extra]
     if comments:
         lines += ["", "Latest comments (newest first):"]
         lines += [f"- {c.author_label or 'comment'}: {c.body.strip()[:1500]}" for c in comments]
+    where = (f"Work in {workdir} or the folders the fields above name, and commit in the "
+             "repository you changed." if extra else f"Work in {workdir} and commit there.")
     lines += [
         "",
-        f"Work in {workdir} and commit there. When finished or stuck, call the MCP tool "
+        f"{where} When finished or stuck, call the MCP tool "
         f"traccoon ticket_report with key \"{issue.key}\", status done|blocked|failed and a "
         "short summary.",
     ]

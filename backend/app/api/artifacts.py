@@ -47,6 +47,7 @@ class OptionOut(BaseModel):
     # highlights that a human is needed here.
     category: str = ""
     waiting: bool = False
+    description: str = ""
     model_config = {"from_attributes": True}
 
 
@@ -452,6 +453,7 @@ class OptionIn(BaseModel):
     order: int = 0
     category: str = ""
     waiting: bool = False
+    description: str = ""
 
 
 class OptionUpdate(BaseModel):
@@ -461,6 +463,7 @@ class OptionUpdate(BaseModel):
     enabled: bool | None = None
     category: str | None = None
     waiting: bool | None = None
+    description: str | None = None
 
 
 @router.post("/artifact-fields/{fid}/options", response_model=TypeOut, status_code=201)

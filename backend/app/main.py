@@ -613,6 +613,8 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS cli_extra_dirs TEXT "
                 "DEFAULT '' NOT NULL",
+                "ALTER TABLE artifact_field_options ADD COLUMN IF NOT EXISTS description TEXT "
+                "DEFAULT '' NOT NULL",
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS release_id INTEGER "
                 "REFERENCES releases(id) ON DELETE SET NULL",
                 "CREATE INDEX IF NOT EXISTS ix_issues_release_id ON issues (release_id)",
